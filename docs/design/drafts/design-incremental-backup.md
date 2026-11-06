@@ -873,6 +873,62 @@ instrumented 隔离包 `nativeSafGarbageCollectionRepacksMultiplePacksOfOneSnaps
 **未做**：ETA / 速率估算；阶段历史（结束后不保留每次回收的阶段耗时）；WebDAV/S3 上的真机进度手测
 （隔离包用 SAF 覆盖了同一代码路径）；把阶段文案拆成 i18n 字符串（沿用本页既有中文硬编码风格）。
 
+### 0.16 SAF 逐对象往返治理：预估/提交提速（2026-11-06，本地提交，未推送）
+
+**背景**：真机 SAF（`DocumentsProvider`）的每次 `resolve` 都要按路径逐层重新列举，`stat` ≈ 3 次 provider 查询、
+`put` ≈ 5–7 次（存在性查找、`createDocument`、父目录复查、开流）。聊天记录按会话/表拆成数百个 DB 对象后，
+plan 会为**每个唯一内容**做一次存在性探测（即使这些内容最终都进同一两个 pack），commit 又逐键 fresh 复核；
+目录查询数随对象数线性增长，单次查询在外部存储 provider 上可达数百毫秒。PJX110 实测（552 个对象 / 130 MB，
+180 个 200 KB 测试文件 + 53.1 MB DB）：增量未变场景 plan **80.8 s / 372 次目录查询**、commit **44.4 s / 371 次**；
+首次 plan **69.6 s / 366 次**。这类耗时用户体感就是「预估和增量备份都很慢」。
+
+**改动**：
+- **P0 计数**：新增 `SafAccessStats`（children/create/openRead/openWrite/delete/readBytes/writeBytes）与
+  `CountingBackupDocumentAccess` 装饰器（Debug 下包住 SAF access）；service 的 `list`/`plan`/`commit`/`gc`
+  在 `finally` 里用 logcat tag `IncrementalBackupSAF` 打 `elapsedMs` 与计数（commit 前 reset，单独看提交阶段）。
+  只测量，不改行为；release/WebDAV/S3 不装饰。
+- **P1 减少往返**：
+  1. `BackupObjectStore.statFresh`：默认等于 `stat`，SAF 覆盖为「绕过操作内缓存」的解析。
+  2. SAF store 增加**操作级目录缓存**（`id → children`）：`resolve`/`resolveFresh` 走 `children(id)` 只列一次；
+     `put` 不再在 `createDocument` 后重列父目录校验，改为按返回的 document uri 读元数据并校验 name/type；
+     `ensureDir` 只在目录缺失时创建；`putOverwrite`、创建失败回滚、删除时精确失效父目录缓存。
+     store 由每次服务操作新建（不是全局单例），因此缓存生命周期天然 = 一次操作。
+  3. plan 改用「已发布快照索引」：`RepositoryIndex` 一次 `inspectRepository` + 一次 `listSnapshots`，
+     建 `sha → SnapshotObjectRef`（优先 pack 引用）；决策阶段只对「复用引用实际指向的键」去重探测
+     （pack 键或独立对象键），新对象在启用 packing 且低于 `PACK_ENTRY_LIMIT` 时**不再逐对象探测**；
+     探测用缓存 `stat`（本操作开始时的仓库状态），commit 的发布前复核才强制 fresh。
+  4. commit 复核批量化：新增 `missingKeysFresh(keys)`（默认逐键 `statFresh`；SAF 覆盖为按父目录各 fresh 列举
+     一次、在本地比对名字），本次刚上传的键跳过复核；GC 租约读取用 `statFresh`（跨设备租约必须新鲜）。
+  5. 真机暴露并修复：同一份内容被多个逻辑路径引用（重复文件/复制出来的会话）时，提交校验原来的
+     `refsByKey[key]?.singleOrNull()` 会因「两个引用」判成未引用而失败 → 改 `firstOrNull()`：
+     对象仍只上传一次，任一引用做本地编码校验即可。
+
+**代价与取舍**：
+- 缓存正确性依赖「store 生命周期 = 一次操作」+「commit 必须 fresh 复核」两个前提；plan 的探测允许用缓存，
+  并发缺失由 commit 复核兜底（缺失即 fail-closed，重扫即可），不发布引用不存在对象的快照。
+- commit 的 fresh 复核只回源叶子目录列表，父目录本身沿用操作内缓存解析（内容寻址目录不会被并发改名；
+  父目录消失时退化为 fresh 解析并判缺失）；相比逐键 `statFresh` 少一个「路径深度」乘数。
+- 计数装饰器只在 Debug + LOCAL SAF 生效，每次操作多一层委托，量级可忽略；logcat 只打一行汇总，不逐对象刷屏。
+- 只降低 SAF 往返数，不改变本地捕获/哈希/压缩的成本：130 MB 场景 plan 剩下的 ~6–7 s 主要是
+  `VACUUM INTO` + DB 对象捕获 + 内容哈希 + DEFLATE，这些留给后续优化。
+
+**验证**：编译 ✅；全量 `:app:testDebugUnitTest` **3089 项 0 失败/错误、2 跳过** ✅；新增 JVM 用例
+（SAF 目录列表在操作内缓存、`statFresh` 绕过缓存、`put` 创建后不再重列父目录、plan 不探测新 pack 对象且跨设备
+复用 0 上传、同内容重复路径可提交、commit 只按父目录复核复用引用）；真机 PJX110 同一测试仓库（130 MB / 552 对象）：
+
+| 场景 | 改前 | 改后 |
+|---|---|---|
+| 首次（空仓库）plan | 69.6 s / 366 次目录查询 | 6.7 s / 1 次 |
+| 增量未变 plan | 80.8 s / 372 次 | 6.9 s / 87 次 |
+| 增量未变 commit | 44.4 s / 371 次 | 2.4 s / 80 次 |
+
+改前后输入相同；改前 commit 的 371 次是逐键 fresh 复核，改后是「pack 目录 + 每个对象分片目录各一次」的批量复核。
+另测首次提交 96.8 MB（552 对象 → 2 个 pack）：11.6 s / 82 次目录查询 / 95 次创建（空仓库需建 92 个分片目录），
+改前同等操作因逐键探测/复核会多出上千次查询。
+
+**未做**：真实多设备并发删除的破坏性验证（现有 fail-closed 用例覆盖缺失对象 → 提交失败）；WebDAV/S3 上的
+同类计数与提速（往返模型不同，S3 批量列举、WebDAV 每路径 PROPFIND）；捕获/哈希/压缩侧优化。
+
 ## 1. 问题与目标
 
 ### 1.1 现状与痛点（实测/代码事实）

@@ -30,7 +30,35 @@ class SafBackupObjectStoreTest {
     @Test fun missingIsDifferentFromQueryFailure() = runBlocking<Unit> {
         assertNull(store.stat("missing"))
         access.failQuery = true
-        assertThrows(java.io.IOException::class.java) { runBlocking { store.stat("missing") } }
+        // 目录列举在一次操作内缓存；provider 故障必须从「尚未列举过的路径」冒出来，不能被缓存当成 missing。
+        val fresh = SafBackupObjectStore(access, "fake-tree")
+        assertThrows(java.io.IOException::class.java) { runBlocking { fresh.stat("v3/missing") } }
+    }
+
+    @Test fun directoryListingIsCachedWithinOperation() = runBlocking<Unit> {
+        store.ensureDir("v3/objects/aa")
+        store.listChildren("v3/objects/aa")
+        val calls = access.childrenCalls
+        assertNull(store.stat("v3/objects/aa/missing"))
+        assertNull(store.stat("v3/objects/other"))
+        // 已列举过的目录不再回源：这是把对象级 O(N) 次 provider 往返压回目录数的关键。
+        assertEquals(calls, access.childrenCalls)
+    }
+
+    @Test fun freshStatBypassesCache() = runBlocking<Unit> {
+        store.ensureDir("v3/objects/aa")
+        val calls = access.childrenCalls
+        assertNull(store.statFresh("v3/objects/aa/missing"))
+        assertTrue(access.childrenCalls > calls)
+    }
+
+    @Test fun putDoesNotRelistParentAfterCreate() = runBlocking<Unit> {
+        store.ensureDir("dir")
+        store.listChildren("dir")
+        val calls = access.childrenCalls
+        store.put("dir/file", source())
+        // put 只回查新建文档本身，不再整层列举父目录做冲突校验。
+        assertEquals(calls, access.childrenCalls)
     }
 
     @Test fun providerAutomaticRenameFailsBeforeWrite() = runBlocking<Unit> {
@@ -133,7 +161,9 @@ internal class FakeBackupDocuments : BackupDocumentAccess {
     var duplicate = false
     var failClose = false
     var unknownSize = false
+    var childrenCalls = 0
     override fun children(parent: String): List<SafDocument> {
+        childrenCalls++
         if (failQuery) throw java.io.IOException("Provider disconnected")
         if (duplicate) return listOf(SafDocument("1", "same", false, null), SafDocument("2", "same", false, null))
         return children.getValue(parent).map { it.copy(bytes = if (unknownSize) null else content[it.id]?.size?.toLong()) }

@@ -26,6 +26,29 @@ internal interface BackupObjectStore {
     suspend fun stat(key: String): BackupStoredObject?
 
     /**
+     * 绕过本地缓存的新鲜查询：发布前复核必须用它。
+     *
+     * SAF 的 [SafBackupObjectStore] 会在一次操作内缓存目录列举结果以减少 DocumentsProvider 往返；
+     * 缓存对「本设备刚上传的对象」是准确的，但可能看不到其它设备/其它进程在操作中途的删除，
+     * 所以「提交前确认引用仍在」这一步要强制回源。
+     */
+    suspend fun statFresh(key: String): BackupStoredObject? = stat(key)
+
+    /**
+     * 发布前复核一批复用键是否仍在仓库中，返回缺失的键（空 = 全部存在）。
+     *
+     * 默认逐键走 [statFresh]；实现可以按父目录批量回源以减少 provider 往返。
+     */
+    suspend fun missingKeysFresh(keys: Collection<String>): List<String> {
+        val missing = ArrayList<String>()
+        keys.forEach { key ->
+            val existing = statFresh(key)
+            if (existing == null || existing.directory) missing += key
+        }
+        return missing
+    }
+
+    /**
      * 递归列举 `prefix` 下所有**文件**（不含目录项）。
      *
      * 默认实现逐层 [listChildren]；S3 没有目录概念，直接覆盖为一次前缀列举。

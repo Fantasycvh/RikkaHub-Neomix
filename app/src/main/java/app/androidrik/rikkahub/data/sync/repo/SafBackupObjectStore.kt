@@ -57,7 +57,27 @@ internal class AndroidBackupDocumentAccess(private val resolver: ContentResolver
         val created = requireNotNull(DocumentsContract.createDocument(resolver, uri(parent),
             if (directory) DocumentsContract.Document.MIME_TYPE_DIR else "application/octet-stream", name)) { "Cannot create backup entry" }
         val id = DocumentsContract.getDocumentId(created)
-        return children(parent).single { it.id == id }
+        // 只回查新建的这一个文档（一次查询），不再把父目录整层再列一遍：
+        // 目录列举是 provider 往返的主要成本，而 create 只需要确认 provider 没有改名/改类型。
+        val query = DocumentsContract.buildDocumentUriUsingTree(tree, id)
+        return requireNotNull(resolver.query(query, arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME,
+            Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE, Document.COLUMN_LAST_MODIFIED), null, null, null)) {
+            "Cannot read created backup entry"
+        }.use { cursor ->
+            require(cursor.moveToFirst()) { "Created backup entry disappeared: $id" }
+            fun text(column: String): String = cursor.getString(cursor.getColumnIndexOrThrow(column))
+            fun optionalLong(column: String): Long? {
+                val index = cursor.getColumnIndex(column)
+                return if (index < 0 || cursor.isNull(index)) null else cursor.getLong(index)
+            }
+            SafDocument(
+                id = id,
+                name = text(Document.COLUMN_DISPLAY_NAME),
+                directory = text(Document.COLUMN_MIME_TYPE) == Document.MIME_TYPE_DIR,
+                bytes = optionalLong(Document.COLUMN_SIZE),
+                lastModified = optionalLong(Document.COLUMN_LAST_MODIFIED),
+            )
+        }
     }
     override fun read(id: String) = requireNotNull(resolver.openInputStream(uri(id))) { "Cannot read backup file" }
     override fun write(id: String) = requireNotNull(resolver.openOutputStream(uri(id), "wt")) { "Cannot write backup file" }
@@ -65,19 +85,66 @@ internal class AndroidBackupDocumentAccess(private val resolver: ContentResolver
 }
 
 internal class SafBackupObjectStore(private val access: BackupDocumentAccess, override val destinationId: String) : BackupObjectStore {
-    private fun children(id: String): List<SafDocument> = access.children(id).also { list ->
-        require(list.map { it.name }.distinct().size == list.size) { "Ambiguous duplicate names in backup folder" }
+    /** debug 计数装饰器（若该 store 建立在计数 access 上），让服务层记录阶段日志时不受其它操作干扰。 */
+    internal val countingAccess: CountingBackupDocumentAccess? get() = access as? CountingBackupDocumentAccess
+    /**
+     * 一次操作内的目录列举缓存：`dirId -> 子文档`。
+     *
+     * SAF 每个 `children()` 都是一次 provider IPC（ExternalStorageProvider 还要走 FUSE），
+     * 而按路径解析、逐对象存在性检查、提交前复核都会反复访问同一批目录；对象上千时这部分
+     * 往返会把一次备份拖到分钟级。store 实例只在一次操作内存活（`IncrementalBackupService`
+     * 每次操作新建），因此缓存不需要（也不应该）跨操作失效；写入/删除时同步修补。
+     */
+    private val cacheLock = Any()
+    private val dirCache = HashMap<String, List<SafDocument>>()
+
+    private fun children(id: String): List<SafDocument> =
+        synchronized(cacheLock) { dirCache[id] } ?: fetchChildren(id).also {
+            synchronized(cacheLock) { dirCache[id] = it }
+        }
+
+    /** 不读缓存的目录列举（发布前复核用，保证能看到其它设备的并发删除）。 */
+    private fun freshChildren(id: String): List<SafDocument> = validate(access.children(id))
+
+    private fun fetchChildren(id: String): List<SafDocument> = validate(access.children(id))
+
+    private fun validate(list: List<SafDocument>): List<SafDocument> = list.also {
+        require(it.map { doc -> doc.name }.distinct().size == it.size) { "Ambiguous duplicate names in backup folder" }
     }
-    private fun resolve(key: String): SafDocument? {
+
+    private fun remember(parentId: String, doc: SafDocument) {
+        synchronized(cacheLock) {
+            val current = dirCache[parentId] ?: return
+            dirCache[parentId] = current.filterNot { it.name == doc.name } + doc
+        }
+    }
+
+    private fun forget(parentId: String, docId: String) {
+        synchronized(cacheLock) {
+            val current = dirCache[parentId] ?: return
+            dirCache[parentId] = current.filterNot { it.id == docId }
+        }
+    }
+
+    private fun resolve(key: String): SafDocument? = resolvePath(key) { children(it) }
+
+    private fun resolveFresh(key: String): SafDocument? = resolvePath(key) { freshChildren(it) }
+
+    private inline fun resolvePath(key: String, childrenOf: (String) -> List<SafDocument>): SafDocument? {
         if (key.isEmpty()) return SafDocument(access.rootId, "", true, null)
         validateKey(key)
         var current = SafDocument(access.rootId, "", true, null)
         key.split('/').forEach { part ->
             require(current.directory) { "Backup path is not a directory" }
-            current = children(current.id).singleOrNull { it.name == part } ?: return null
+            current = childrenOf(current.id).singleOrNull { it.name == part } ?: return null
         }
         return current
     }
+
+    private fun stored(key: String, doc: SafDocument) = BackupStoredObject(
+        key, doc.bytes, doc.directory, doc.lastModified?.let(java.time.Instant::ofEpochMilli),
+    )
+
     /**
      * SAF 只能逐层列目录：默认实现每个对象目录都要用 [resolve] 重走一遍路径（每层多出三次查询），
      * 对象上百时整次 GC 会慢到分钟级。这里按目录 id 逐层列举，并且只在同层兄弟目录之间并行查询，
@@ -118,13 +185,37 @@ internal class SafBackupObjectStore(private val access: BackupDocumentAccess, ov
         val parent = resolve(prefix) ?: return emptyList()
         require(parent.directory)
         return children(parent.id).map {
-            BackupStoredObject((if (prefix.isEmpty()) "" else "$prefix/") + it.name, it.bytes, it.directory,
-                it.lastModified?.let(java.time.Instant::ofEpochMilli))
+            stored((if (prefix.isEmpty()) "" else "$prefix/") + it.name, it)
         }
     }
-    override suspend fun stat(key: String) = resolve(key)?.let {
-        BackupStoredObject(key, it.bytes, it.directory, it.lastModified?.let(java.time.Instant::ofEpochMilli))
+
+    /** 发布前复核：不看缓存里的叶子列表，重新向 provider 列举，能看到其它设备的并发删除。 */
+    override suspend fun missingKeysFresh(keys: Collection<String>): List<String> {
+        if (keys.isEmpty()) return emptyList()
+        val byParent = keys.groupBy { it.substringBeforeLast('/', "") }
+        val missing = java.util.Collections.synchronizedList(mutableListOf<String>())
+        coroutineScope {
+            byParent.entries.map { (parent, groupKeys) ->
+                async(Dispatchers.IO) {
+                    // 父目录用本次操作内的缓存解析（plan 已列过 v3/objects 及各分片目录）；
+                    // 只有叶子列表回源，避免逐键重新逐层解析路径。目录是内容寻址结构、不会被并发改名；
+                    // 万一父目录已消失则退化为 fresh 解析，仍会判定为缺失。
+                    val dir = resolve(parent) ?: resolveFresh(parent)
+                    val names = if (dir == null || !dir.directory) {
+                        emptySet()
+                    } else {
+                        freshChildren(dir.id).asSequence().filter { !it.directory }.map { it.name }.toSet()
+                    }
+                    val base = if (parent.isEmpty()) "" else "$parent/"
+                    groupKeys.forEach { key -> if (key.removePrefix(base) !in names) missing += key }
+                }
+            }.awaitAll()
+        }
+        return missing.toList()
     }
+    override suspend fun stat(key: String) = resolve(key)?.let { stored(key, it) }
+
+    override suspend fun statFresh(key: String) = resolveFresh(key)?.let { stored(key, it) }
     override suspend fun get(key: String, target: File, maxBytes: Long, onBytes: (Long) -> Unit) {
         val doc = requireNotNull(resolve(key)) { "Missing backup file: $key" }
         require(!doc.directory && (doc.bytes == null || doc.bytes <= maxBytes)) { "Invalid backup file size" }
@@ -151,13 +242,15 @@ internal class SafBackupObjectStore(private val access: BackupDocumentAccess, ov
         val created = access.create(parent.id, name, false)
         val coroutine = currentCoroutineContext()
         try {
+            // provider 若把文件改名（同名冲突/异常卷），这里立刻失败：绝不把内容写进「不是目标键」的文档。
             require(created.name == name && !created.directory) { "Provider changed the backup filename" }
-            require(children(parent.id).single { it.name == name }.id == created.id) { "Backup filename collision" }
             access.write(created.id).use { output -> source.inputStream().use { input ->
                 copyBounded(input, output, source.length()) { coroutine.ensureActive(); onBytes(it) }
             } }
+            remember(parent.id, created)
         } catch (failure: Throwable) {
             // Only this newly-created document is ours to remove; never delete an existing object.
+            synchronized(cacheLock) { dirCache.remove(parent.id) }
             try { access.delete(created.id) } catch (cleanup: Exception) { failure.addSuppressed(cleanup) }
             throw failure
         }
@@ -177,22 +270,121 @@ internal class SafBackupObjectStore(private val access: BackupDocumentAccess, ov
         access.write(existing.id).use { output -> source.inputStream().use { input ->
             copyBounded(input, output, source.length()) { coroutine.ensureActive(); onBytes(it) }
         } }
+        // 覆盖写后大小变了；缓存里的旧尺寸只用于读预算，丢掉让下一次 fresh 列举纠正。
+        synchronized(cacheLock) { dirCache.remove(parent.id) }
     }
 
     override suspend fun ensureDir(prefix: String) {
         validateKey(prefix)
-        var parent = access.rootId
+        var parent = SafDocument(access.rootId, "", true, null)
         prefix.split('/').forEach { name ->
-            val doc = children(parent).singleOrNull { it.name == name } ?: access.create(parent, name, true)
+            require(parent.directory) { "Backup path is not a directory" }
+            val existing = children(parent.id).singleOrNull { it.name == name }
+            val doc = existing ?: access.create(parent.id, name, true).also { remember(parent.id, it) }
             require(doc.name == name && doc.directory) { "Backup directory name/type conflict" }
-            require(children(parent).single { it.name == name }.id == doc.id) { "Ambiguous backup directory" }
-            parent = doc.id
+            parent = doc
         }
     }
-    override suspend fun delete(key: String) { resolve(key)?.let { require(!it.directory); access.delete(it.id) } }
+    override suspend fun delete(key: String) {
+        val doc = resolve(key) ?: return
+        require(!doc.directory) { "Backup path is a directory" }
+        val parentId = if (key.contains('/')) resolve(key.substringBeforeLast('/'))?.id else access.rootId
+        access.delete(doc.id)
+        if (parentId != null) forget(parentId, doc.id)
+    }
 
     private companion object {
         /** 逐层列举时同一层的并发查询数；provider 侧本就是 IPC，串行跑会把延迟叠加成分钟级。 */
         const val LIST_PARALLEL = 8
+    }
+}
+
+/**
+ * SAF/DocumentsProvider 调用的计数快照（仅 debug 诊断用）。
+ *
+ * 「逐对象写入慢」只能靠数往返次数定位：同一操作里 `children`/`create`/打开流的次数、
+ * 读写字节数、以及各阶段耗时。这里只做无锁累加，运营时零分支外开销可忽略。
+ */
+internal data class SafAccessStats(
+    val children: Long,
+    val create: Long,
+    val openRead: Long,
+    val openWrite: Long,
+    val delete: Long,
+    val readBytes: Long,
+    val writeBytes: Long,
+) {
+    fun summary(): String =
+        "children=$children create=$create openRead=$openRead openWrite=$openWrite delete=$delete " +
+            "readBytes=$readBytes writeBytes=$writeBytes"
+}
+
+/** 给 [BackupDocumentAccess] 加计数的装饰器；只包在 debug 构建的本地仓库访问上。 */
+internal class CountingBackupDocumentAccess(private val delegate: BackupDocumentAccess) : BackupDocumentAccess {
+    private val childrenCount = java.util.concurrent.atomic.AtomicLong()
+    private val createCount = java.util.concurrent.atomic.AtomicLong()
+    private val openReadCount = java.util.concurrent.atomic.AtomicLong()
+    private val openWriteCount = java.util.concurrent.atomic.AtomicLong()
+    private val deleteCount = java.util.concurrent.atomic.AtomicLong()
+    private val readBytes = java.util.concurrent.atomic.AtomicLong()
+    private val writeBytes = java.util.concurrent.atomic.AtomicLong()
+
+    override val rootId get() = delegate.rootId
+
+    fun stats(): SafAccessStats = SafAccessStats(
+        children = childrenCount.get(),
+        create = createCount.get(),
+        openRead = openReadCount.get(),
+        openWrite = openWriteCount.get(),
+        delete = deleteCount.get(),
+        readBytes = readBytes.get(),
+        writeBytes = writeBytes.get(),
+    )
+
+    /** commit 复用 plan 创建的 store；重置一次计数，让该阶段日志只包含 commit 自身开销。 */
+    fun reset() {
+        childrenCount.set(0)
+        createCount.set(0)
+        openReadCount.set(0)
+        openWriteCount.set(0)
+        deleteCount.set(0)
+        readBytes.set(0)
+        writeBytes.set(0)
+    }
+
+    override fun children(parent: String): List<SafDocument> =
+        delegate.children(parent).also { childrenCount.incrementAndGet() }
+
+    override fun create(parent: String, name: String, directory: Boolean): SafDocument =
+        delegate.create(parent, name, directory).also { createCount.incrementAndGet() }
+
+    override fun read(id: String): InputStream =
+        CountingInputStream(delegate.read(id), readBytes).also { openReadCount.incrementAndGet() }
+
+    override fun write(id: String): OutputStream =
+        CountingOutputStream(delegate.write(id), writeBytes).also { openWriteCount.incrementAndGet() }
+
+    override fun delete(id: String) {
+        deleteCount.incrementAndGet()
+        delegate.delete(id)
+    }
+}
+
+private class CountingInputStream(private val delegate: InputStream, private val counter: java.util.concurrent.atomic.AtomicLong) :
+    java.io.FilterInputStream(delegate) {
+    override fun read(): Int = super.read().also { if (it >= 0) counter.incrementAndGet() }
+    override fun read(b: ByteArray, off: Int, len: Int): Int =
+        super.read(b, off, len).also { if (it > 0) counter.addAndGet(it.toLong()) }
+}
+
+private class CountingOutputStream(private val delegate: OutputStream, private val counter: java.util.concurrent.atomic.AtomicLong) :
+    java.io.FilterOutputStream(delegate) {
+    override fun write(b: Int) {
+        delegate.write(b)
+        counter.incrementAndGet()
+    }
+    override fun write(b: ByteArray, off: Int, len: Int) {
+        delegate.write(b, off, len)
+        counter.addAndGet(len.toLong())
     }
 }

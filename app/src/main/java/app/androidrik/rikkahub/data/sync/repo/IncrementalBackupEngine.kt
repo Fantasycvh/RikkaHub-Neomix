@@ -94,8 +94,7 @@ internal class IncrementalBackupEngine(
         } finally { dir.deleteRecursively() }
     }
 
-    private suspend fun repository(store: BackupObjectStore): BackupRepositoryInfo {
-        inspectRepository(store)?.let { return it }
+    private suspend fun repositoryForEmptyFolder(store: BackupObjectStore): BackupRepositoryInfo {
         require(store.allowNonEmptyInitialization || store.listChildren("").isEmpty()) {
             "Select an empty folder or an existing backup repository"
         }
@@ -103,20 +102,34 @@ internal class IncrementalBackupEngine(
         return BackupRepositoryInfo(repoId = UUID.randomUUID().toString(), createdAt = Instant.now().toString())
     }
 
-    suspend fun list(store: BackupObjectStore): List<BackupSnapshotManifest> {
-        val repo = inspectRepository(store) ?: return emptyList()
+    /**
+     * 一次操作内复用的仓库索引：仓库标记只读一次、已发布快照清单只列一次。
+     *
+     * 旧实现里 plan 会「读 repo.json → 列快照 → 每对象回源 stat」三遍，SAF 上每次 stat 还要按路径
+     * 逐层列目录；聊天多的用户 DB 对象（每个会话一个）上千，往返次数被乘到分钟级。
+     */
+    private suspend fun loadRepositoryIndex(store: BackupObjectStore): RepositoryIndex {
+        val repo = inspectRepository(store) ?: return RepositoryIndex(null, emptyList())
         val dir = taskDir()
-        return try {
-            store.listChildren("v3/snapshots").filter { !it.directory && it.key.endsWith(".complete.json") }.mapNotNull {
-                currentCoroutineContext().ensureActive()
-                val id = it.key.substringAfterLast('/').removeSuffix(".complete.json")
-                if (!validUuid(id)) null else try {
-                    readSnapshot(store, id, repo.repoId, dir)
-                } catch (_: IllegalArgumentException) { null }
-                catch (_: java.util.zip.ZipException) { null }
-                catch (_: java.io.EOFException) { null }
-            }.sortedByDescending { it.createdAt }
-        } finally { dir.deleteRecursively() }
+        return try { RepositoryIndex(repo, listSnapshots(store, repo, dir)) } finally { dir.deleteRecursively() }
+    }
+
+    suspend fun list(store: BackupObjectStore): List<BackupSnapshotManifest> = loadRepositoryIndex(store).snapshots
+
+    private suspend fun listSnapshots(
+        store: BackupObjectStore,
+        repo: BackupRepositoryInfo,
+        dir: File,
+    ): List<BackupSnapshotManifest> {
+        return store.listChildren("v3/snapshots").filter { !it.directory && it.key.endsWith(".complete.json") }.mapNotNull {
+            currentCoroutineContext().ensureActive()
+            val id = it.key.substringAfterLast('/').removeSuffix(".complete.json")
+            if (!validUuid(id)) null else try {
+                readSnapshot(store, id, repo.repoId, dir)
+            } catch (_: IllegalArgumentException) { null }
+            catch (_: java.util.zip.ZipException) { null }
+            catch (_: java.io.EOFException) { null }
+        }.sortedByDescending { it.createdAt }
     }
 
     private suspend fun readSnapshot(store: BackupObjectStore, id: String, repoId: String, dir: File): BackupSnapshotManifest {
@@ -162,10 +175,12 @@ internal class IncrementalBackupEngine(
     ): BackupSnapshotPlan {
         val dir = taskDir()
         try {
-            val repo = repository(store)
-            val trusted = list(store).firstOrNull { it.deviceId == deviceId }?.objects?.associateBy { it.sha256 }.orEmpty()
+            val loadedIndex = loadRepositoryIndex(store)
+            val repo = loadedIndex.repo ?: repositoryForEmptyFolder(store)
+            val trusted = loadedIndex.trustedBy(deviceId)
             val usesLogicalDatabase = databaseObjects.isNotEmpty()
             val legacyDatabaseFile = inputs.any { it.path == "rikka_hub.db" }
+            val usePacking = packing && !legacyDatabaseFile
             require(!usesLogicalDatabase || !legacyDatabaseFile) {
                 "Database must be captured once, either as a file or as logical objects"
             }
@@ -218,29 +233,52 @@ internal class IncrementalBackupEngine(
                 work += WorkItem(source.file, size, source.objectKey, databaseObject = true)
             }
 
-            // 2) 哈希按对象并行；每个唯一内容只判定一次处置，避免 290 次串行远端 HEAD。
+            // 2) 哈希按对象并行；每个唯一内容只判定一次处置。仓库/快照元数据只回源一次（RepositoryIndex），
+            //    存在性再按「去重后的仓库路径」批量复核：pack 级查询把上千对象的探测压到 pack 数量级。
             val hashes = parallelMap(work) { fileSha256(it.raw) }
             val firstIndexBySha = LinkedHashMap<String, Int>()
             work.forEachIndexed { index, _ -> firstIndexBySha.putIfAbsent(hashes[index], index) }
-            val decisions: Map<String, ObjectDecision> = parallelMap(firstIndexBySha.entries.toList()) { (sha, index) ->
-                val item = work[index]
+            data class Tentative(val decision: ObjectDecision, val ref: SnapshotObjectRef?)
+            val tentative: Map<String, Tentative> = parallelMap(firstIndexBySha.entries.toList()) { (sha, idx) ->
+                val item = work[idx]
                 val trustedRef = trusted[sha]
-                val decision = when {
-                    // 沿用本设备上一份快照的引用（可能已在 pack 里）：pack/对象都是内容寻址不可变的。
-                    trustedRef != null && trustedRef.size == item.size && store.stat(trustedRef.key)?.directory == false ->
-                        ObjectDecision.Reuse(trustedRef.pack)
-                    // 仓库里已有、但不是本设备快照引用的对象（跨设备共享/上次失败留下）：
-                    // 不能只信「存在」，先完整回读校验，避免把部分写入的孤儿对象带进新快照。
-                    trustedRef == null && store.stat(objectKeyFor(sha))?.directory == false -> {
-                        verifyObject(store, sha, item.size, dir)
-                        ObjectDecision.Reuse(null)
-                    }
-                    else -> ObjectDecision.Upload
+                val known = loadedIndex.objectsBySha[sha]
+                // 沿用本设备上一份快照的引用，或仓库里任一已发布快照引用过的内容（跨设备共享）：
+                // pack/对象都是内容寻址不可变的，存在性在下面按 distinct 路径统一回源确认。
+                val ref = when {
+                    trustedRef != null && trustedRef.size == item.size -> trustedRef
+                    known != null && known.size == item.size -> known
+                    else -> null
                 }
-                sha to decision
+                sha to Tentative(ref?.let { ObjectDecision.Reuse(it.pack) } ?: ObjectDecision.Upload, ref)
             }.toMap()
+            // 需要回源确认的路径：暂定复用引用的实际路径（pack 或独立对象）；不打包时再探测可能已存在的独立对象。
+            val probeKeys = LinkedHashSet<String>()
+            tentative.forEach { (sha, candidate) ->
+                val ref = candidate.ref
+                if (ref != null) probeKeys += ref.key
+                else if (!(usePacking && work[firstIndexBySha.getValue(sha)].size < PACK_ENTRY_LIMIT)) probeKeys += objectKeyFor(sha)
+            }
+            val present: Map<String, Boolean> = parallelMap(probeKeys.toList()) { key ->
+                // plan 阶段用本次操作内的目录缓存：缓存对本操作开始时的仓库状态是准确的，
+                // 并发删除由 commit 的 fresh 复核兜底；这里每次都 fresh 会把「pack 级去重」的收益又乘回路径层数。
+                key to (store.stat(key)?.directory == false)
+            }.toMap()
+            val decisions: Map<String, ObjectDecision> = LinkedHashMap<String, ObjectDecision>(tentative.size).apply {
+                tentative.forEach { (sha, candidate) ->
+                    val ref = candidate.ref
+                    put(sha, when {
+                        ref != null && present[ref.key] == true -> ObjectDecision.Reuse(ref.pack)
+                        // 未被任何快照引用的孤儿独立对象：不能只信「存在」，先完整回读校验再复用。
+                        ref == null && present[objectKeyFor(sha)] == true -> {
+                            verifyObject(store, sha, work[firstIndexBySha.getValue(sha)].size, dir)
+                            ObjectDecision.Reuse(null)
+                        }
+                        else -> ObjectDecision.Upload
+                    })
+                }
+            }
             // 3) 新内容：小的（含 DB 逻辑对象）进内容寻址 pack，大的单独编码成对象。
-            val usePacking = packing && !legacyDatabaseFile
             val packCandidates = ArrayList<Pair<String, File>>()
             firstIndexBySha.forEach { (sha, index) ->
                 if (decisions.getValue(sha) !is ObjectDecision.Upload) return@forEach
@@ -311,7 +349,11 @@ internal class IncrementalBackupEngine(
                 SnapshotPacking.verify(file, packSha, requireNotNull(refsByKey[key]) { "Uploaded pack is not referenced" }, plan.directory)
             }
             val entry = if (packSha == null) {
-                requireNotNull(refsByKey[key]?.singleOrNull()) { "Uploaded object is not referenced by the snapshot" }
+                // 同一份内容可能被多个逻辑路径引用（重复文件/复制出来的会话）：对象只上传一次，
+                // 用任一引用做本地编码校验即可；不能要求「恰好一个引用」。
+                requireNotNull(refsByKey[key]?.firstOrNull()) {
+                    "Uploaded object is not referenced by the snapshot: $key refs=${refsByKey[key]?.size ?: 0}"
+                }
             } else null
             store.put(key, file) { n ->
                 coroutine.ensureActive()
@@ -320,9 +362,13 @@ internal class IncrementalBackupEngine(
             if (entry != null) verifyLocalEncodedObject(entry, file, plan.directory)
         }
         // Recheck reused references immediately before publication; missing objects/packs never produce a snapshot.
-        parallelMap(plan.snapshot.objects.distinctBy { it.key }) { entry ->
-            require(store.stat(entry.key)?.directory == false) { "Backup object disappeared; scan again" }
-        }
+        // 本次新上传的键刚由本进程写入、发布前无需回源；复用引用按父目录批量回源一次后本地判定，
+        // 避免「每个键沿路径逐层解析」把 SAF 往返数乘上路径深度（pack 目录 + 每个对象分片各一次即可）。
+        val uploadedKeys = plan.uploads.keys
+        val missing = store.missingKeysFresh(
+            plan.snapshot.objects.asSequence().map { it.key }.distinct().filter { it !in uploadedKeys }.toList(),
+        )
+        require(missing.isEmpty()) { "Backup object disappeared; scan again" }
         progress(BackupProgress(BackupPhase.COMMITTING, 0, null))
         val manifest = File(plan.directory, "manifest.json.gz")
         val text = json.encodeToString(plan.snapshot).toByteArray(Charsets.UTF_8)
@@ -881,7 +927,8 @@ internal class IncrementalBackupEngine(
     }
 
     private suspend fun readGcLease(store: BackupObjectStore): GcLease? {
-        if (store.stat(GC_LEASE_KEY)?.directory != false) return null
+        // 租约是跨设备互斥，必须回源：plan 时列举过的目录缓存可能早于其它设备刚写下的租约。
+        if (store.statFresh(GC_LEASE_KEY)?.directory != false) return null
         val dir = taskDir()
         return try {
             val file = File(dir, "gc.json")
@@ -976,4 +1023,28 @@ internal class IncrementalBackupEngine(
             val permits = Semaphore(minOf(parallelism, items.size))
             items.map { item -> async(Dispatchers.IO) { permits.withPermit { block(item) } } }.awaitAll()
         }
+}
+
+/**
+ * 一次操作内复用的仓库索引：仓库标记只读一次、已发布快照清单只列一次。
+ *
+ * [objectsBySha] 让 plan 能直接复用「仓库里任一快照引用过的内容」（跨设备增量/重装后），
+ * 不再为每个新内容回源探测独立对象路径；packed 引用优先，这样一次确认就覆盖整包条目。
+ */
+private class RepositoryIndex(
+    val repo: BackupRepositoryInfo?,
+    val snapshots: List<BackupSnapshotManifest>,
+) {
+    val objectsBySha: Map<String, SnapshotObjectRef> = buildMap {
+        snapshots.forEach { snapshot ->
+            snapshot.objects.forEach { ref ->
+                val previous = this[ref.sha256]
+                if (previous == null || (previous.pack == null && ref.pack != null)) put(ref.sha256, ref)
+            }
+        }
+    }
+
+    /** 本设备最近一份快照的引用（沿用它的处置/复用口径，与旧实现一致）。 */
+    fun trustedBy(deviceId: String): Map<String, SnapshotObjectRef> =
+        snapshots.firstOrNull { it.deviceId == deviceId }?.objects?.associateBy { it.sha256 }.orEmpty()
 }

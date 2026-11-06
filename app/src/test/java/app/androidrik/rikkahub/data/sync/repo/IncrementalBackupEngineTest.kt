@@ -261,6 +261,56 @@ class IncrementalBackupEngineTest {
             plan(listOf(settings(), source("images/a", "a"), source("images/a/b", "b"))).close()
         } }
     }
+
+    @Test fun packedPlanDoesNotProbeObjectsAndReusesAcrossDevices() = runBlocking<Unit> {
+        val shared = settings()
+        val inputs = listOf(shared) + (1..24).map { source("upload/file-$it.txt", "content-$it") }
+        val first = engine().plan(store, inputs, listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, device, 58, "1")
+            .use { engine().commit(it) }
+        // 首次 plan 的小对象全部进 pack：不应为每个对象探测独立对象路径（SAF 上每次探测都要逐层列目录）。
+        assertTrue(store.statKeys.none { it.startsWith("v3/objects/") })
+
+        store.statKeys.clear()
+        val otherDevice = UUID.randomUUID().toString()
+        engine().plan(store, inputs, listOf(BackupItem.FILES), SnapshotDatabaseState.NOT_SELECTED, otherDevice, 58, "1").use { second ->
+            assertEquals(0L, second.uploadBytes)
+            engine().commit(second)
+        }
+        // 跨设备复用走快照里已有的 pack 引用：回源只按 distinct pack 键，不按对象数。
+        assertTrue(store.statKeys.none { it.startsWith("v3/objects/") })
+        assertTrue(store.statKeys.count { it.startsWith("v3/packs/") } <= first.packs.size * 2)
+    }
+
+    @Test fun duplicateNewContentSharesOneUploadAndCommit() = runBlocking<Unit> {
+        // 同一份内容在一份快照里被多个逻辑路径引用：对象只上传一次，但清单有两条引用，
+        // 提交时的本地校验不能要求「恰好一个引用」。
+        val inputs = listOf(settings(), source("upload/a.txt", "same"), source("upload/b.txt", "same"))
+        val saved = plan(inputs).use { engine().commit(it) }
+        val duplicates = saved.files.filter { it.path.startsWith("upload/") }
+        assertEquals(2, duplicates.size)
+        assertEquals(duplicates[0].sha256, duplicates[1].sha256)
+        assertEquals(duplicates[0].key, duplicates[1].key)
+        assertEquals(1, store.puts.count { it == duplicates[0].key })
+    }
+
+    @Test fun commitRechecksReusedReferencesOnly() = runBlocking<Unit> {
+        val inputs = listOf(settings(), source("upload/a.txt", "hello"))
+        val first = save(inputs)
+        store.statKeys.clear()
+        store.childListings.clear()
+        plan(inputs).use { second ->
+            assertEquals(0L, second.uploadBytes)
+            store.statKeys.clear()
+            store.childListings.clear()
+            engine().commit(second)
+        }
+        // 复用引用在发布前按父目录新鲜列举一次（防其它设备删除），不再逐对象 stat；本次上传的对象不重复检查。
+        assertTrue(store.statKeys.none { it.startsWith("v3/objects/") })
+        assertEquals(
+            first.files.map { it.key.substringBeforeLast('/') }.toSet(),
+            store.childListings.filter { it.startsWith("v3/objects/") }.toSet(),
+        )
+    }
 }
 
 internal class MemoryBackupStore : BackupObjectStore {
@@ -268,6 +318,10 @@ internal class MemoryBackupStore : BackupObjectStore {
     // 引擎对独立对象并行 stat/put/get；测试替身也必须按「并发安全」实现（真实 store 同约定）。
     val data = java.util.Collections.synchronizedMap(linkedMapOf<String, ByteArray>())
     val puts = java.util.Collections.synchronizedList(mutableListOf<String>())
+    /** 记录每次回源 stat 的键：用来断言 plan/commit 的 provider 往返次数不随对象数增长。 */
+    val statKeys = java.util.Collections.synchronizedList(mutableListOf<String>())
+    /** 记录每次目录列举的前缀：commit 的发布前复核应按父目录列举，而不是逐对象 stat。 */
+    val childListings = java.util.Collections.synchronizedList(mutableListOf<String>())
     val modified = java.util.Collections.synchronizedMap(linkedMapOf<String, java.time.Instant>())
     var failPut: String? = null
     var loseResponse: String? = null
@@ -282,12 +336,24 @@ internal class MemoryBackupStore : BackupObjectStore {
         lastModified = if (unknownMtime) null else modified[key],
     )
     override suspend fun stat(key: String): BackupStoredObject? {
+        statKeys += key
         if (failStat) throw java.io.IOException("query failed")
         return data[key]?.let { stored(key) }
     }
-    override suspend fun listChildren(prefix: String) = data.keys.filter {
-        it.startsWith(if (prefix.isEmpty()) "" else "$prefix/") && !it.removePrefix(if (prefix.isEmpty()) "" else "$prefix/").contains('/')
-    }.map { stored(it) }
+    override suspend fun listChildren(prefix: String): List<BackupStoredObject> {
+        childListings += prefix
+        val base = if (prefix.isEmpty()) "" else "$prefix/"
+        return data.keys.filter { it.startsWith(base) && !it.removePrefix(base).contains('/') }.map { stored(it) }
+    }
+    override suspend fun missingKeysFresh(keys: Collection<String>): List<String> {
+        val missing = mutableListOf<String>()
+        keys.groupBy { it.substringBeforeLast('/', "") }.forEach { (parent, groupKeys) ->
+            val base = if (parent.isEmpty()) "" else "$parent/"
+            val present = listChildren(parent).filter { !it.directory }.map { it.key.removePrefix(base) }.toSet()
+            groupKeys.forEach { if (it.removePrefix(base) !in present) missing += it }
+        }
+        return missing
+    }
     override suspend fun listAll(prefix: String) = data.keys.filter { it.startsWith("$prefix/") }.map { stored(it) }
     override suspend fun get(key: String, target: File, maxBytes: Long, onBytes: (Long) -> Unit) {
         val bytes = data[key] ?: throw java.io.FileNotFoundException(key)

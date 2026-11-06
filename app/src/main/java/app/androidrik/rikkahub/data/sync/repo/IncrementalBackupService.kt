@@ -55,6 +55,8 @@ class IncrementalBackupService(
     private val targetFile get() = File(stateDir, "local-target.json")
     private val retentionFile get() = File(stateDir, "snapshot-retention.json")
     private var cacheInitialized = false
+    /** 最近一次 LOCAL 操作创建的计数装饰器（仅 debug：用来量化 DocumentsProvider 往返次数）。 */
+    private var safAccess: CountingBackupDocumentAccess? = null
 
     /** 当前应用 DB schema 版本；UI 用于提示「旧版本快照将按当前结构恢复」。 */
     internal val currentSchemaVersion: Int get() = AppDatabase.SCHEMA_VERSION
@@ -126,17 +128,36 @@ class IncrementalBackupService(
             require(context.contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }) {
                 "文件夹授权已失效，请重新选择文件夹"
             }
-            SafBackupObjectStore(AndroidBackupDocumentAccess(context.contentResolver, uri), target.treeUri).also { store ->
+            val access = AndroidBackupDocumentAccess(context.contentResolver, uri)
+            // debug 下包裹计数装饰器：用 logcat 量化「一次操作里 provider 往返次数」，不改变行为语义。
+            val counting = if (BuildConfig.DEBUG) CountingBackupDocumentAccess(access) else null
+            safAccess = counting
+            SafBackupObjectStore(counting ?: access, target.treeUri).also { store ->
                 val info = engine().inspectRepository(store)
                 require(target.repoId == null || info?.repoId == target.repoId) { "备份仓库已被移动或替换，请重新关联" }
             }
         }
         BackupDestination.WEBDAV -> settings.settingsFlow.value.webDavConfig.let {
+            safAccess = null
             WebDavBackupObjectStore(WebDavClient(it, httpClient), "webdav:${it.url}:${it.path}:${it.username}")
         }
         BackupDestination.S3 -> settings.settingsFlow.value.s3Config.let {
+            safAccess = null
             S3BackupObjectStore(S3Client(it, httpClient), "s3:${it.endpoint}:${it.bucket}:${it.pathStyle}")
         }
+    }
+
+    /** 仅 debug：输出一次操作访问 SAF 的往返次数 / 读写字节 / 阶段耗时（`adb logcat -s IncrementalBackupSAF`）。 */
+    private fun logSafAccess(
+        operation: String,
+        startedAtMs: Long,
+        detail: String = "",
+        access: CountingBackupDocumentAccess? = null,
+    ) {
+        if (!BuildConfig.DEBUG) return
+        val stats = (access ?: safAccess)?.stats() ?: return
+        val elapsed = android.os.SystemClock.elapsedRealtime() - startedAtMs
+        Log.d("IncrementalBackupSAF", "$operation elapsedMs=$elapsed ${stats.summary()} $detail")
     }
 
     private fun deviceId(): String {
@@ -152,11 +173,15 @@ class IncrementalBackupService(
     }
 
     internal suspend fun list(destination: BackupDestination): List<BackupSnapshotManifest> = withContext(Dispatchers.IO) {
-        mutex.withLock { engine().list(store(destination)) }
+        mutex.withLock {
+            val started = android.os.SystemClock.elapsedRealtime()
+            try { engine().list(store(destination)) } finally { logSafAccess("list", started) }
+        }
     }
 
     internal suspend fun plan(destination: BackupDestination, onProgress: (BackupProgress) -> Unit): BackupSnapshotPlan {
         var captured: BackupSnapshotPlan? = null
+        val started = android.os.SystemClock.elapsedRealtime()
         try { return withContext(Dispatchers.IO) {
         mutex.withLock {
             DataOperationLock.runWaiting(DataOperation.BACKUP) {
@@ -204,19 +229,29 @@ class IncrementalBackupService(
         } } catch (failure: Throwable) {
             withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { captured?.close() }
             throw failure
+        } finally {
+            logSafAccess("plan", started, "uploadBytes=${captured?.uploadBytes ?: 0} reusedBytes=${captured?.reusedBytes ?: 0}")
         }
     }
 
     internal suspend fun commit(plan: BackupSnapshotPlan, onProgress: (BackupProgress) -> Unit): BackupSnapshotManifest = withContext(Dispatchers.IO) {
         mutex.withLock {
             DataOperationLock.runWaiting(DataOperation.BACKUP) {
-                val engine = engine(onProgress)
-                val result = engine.commit(plan)
-                localTarget()?.takeIf { it.treeUri == plan.store.destinationId }?.let { saveTarget(it.copy(repoId = result.repoId)) }
-                // 保留策略：提交成功后按「本设备最新 N 份」清理旧快照清单；对象留给手动 GC。
-                runCatching { engine.pruneSnapshots(plan.store, deviceId(), snapshotRetention()) }
-                    .onFailure { Log.w("IncrementalBackup", "prune snapshots failed", it) }
-                result
+                val started = android.os.SystemClock.elapsedRealtime()
+                // commit 复用 plan 的 store：直接取该 store 的计数装饰器，避免中间的 list 操作把字段换掉。
+                val access = (plan.store as? SafBackupObjectStore)?.countingAccess ?: safAccess
+                if (BuildConfig.DEBUG) access?.reset()
+                try {
+                    val engine = engine(onProgress)
+                    val result = engine.commit(plan)
+                    localTarget()?.takeIf { it.treeUri == plan.store.destinationId }?.let { saveTarget(it.copy(repoId = result.repoId)) }
+                    // 保留策略：提交成功后按「本设备最新 N 份」清理旧快照清单；对象留给手动 GC。
+                    runCatching { engine.pruneSnapshots(plan.store, deviceId(), snapshotRetention()) }
+                        .onFailure { Log.w("IncrementalBackup", "prune snapshots failed", it) }
+                    result
+                } finally {
+                    logSafAccess("commit", started, "uploadBytes=${plan.uploadBytes}", access)
+                }
             }
         }
     }
@@ -230,7 +265,9 @@ class IncrementalBackupService(
     internal suspend fun garbageCollect(destination: BackupDestination, onProgress: (BackupProgress) -> Unit = {}): ObjectGcResult = withContext(Dispatchers.IO) {
         mutex.withLock {
             DataOperationLock.runWaiting(DataOperation.STORAGE_CLEANUP) {
-                engine(onProgress).garbageCollect(store(destination), deviceId())
+                val started = android.os.SystemClock.elapsedRealtime()
+                try { engine(onProgress).garbageCollect(store(destination), deviceId()) }
+                finally { logSafAccess("gc", started) }
             }
         }
     }
