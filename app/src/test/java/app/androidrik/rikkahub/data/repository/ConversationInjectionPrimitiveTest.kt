@@ -34,6 +34,12 @@ class ConversationInjectionPrimitiveTest {
         "app/src/main/java/app/androidrik/rikkahub/data/repository/ConversationRepository.kt",
     ).readText().replace("\r\n", "\n")
 
+    /** 批次 9 起 mapper 是同包顶层函数，独立文件：ConversationEntityMapper.kt */
+    private fun mapperSource(): String = locate(
+        "src/main/java/app/androidrik/rikkahub/data/repository/ConversationEntityMapper.kt",
+        "app/src/main/java/app/androidrik/rikkahub/data/repository/ConversationEntityMapper.kt",
+    ).readText().replace("\r\n", "\n")
+
     /** 取某 DAO 方法上的 `@Query` SQL：把按 `+` 拼接的字符串字面量按出现顺序拼回来。 */
     private fun queryOf(source: String, functionName: String): String {
         val funAt = source.indexOf("fun $functionName(")
@@ -90,7 +96,12 @@ class ConversationInjectionPrimitiveTest {
 
     @Test
     fun `whole-object save and the single-column primitive share one encoding`() {
-        val mapper = functionBody(repositorySource(), "fun conversationToConversationEntity(")
+        val source = mapperSource()
+        val start = source.indexOf("fun conversationToConversationEntity(")
+        check(start >= 0) { "ConversationEntityMapper.kt 里找不到 conversationToConversationEntity" }
+        val end = source.indexOf("fun conversationEntityToConversation(", start)
+        check(end >= 0) { "ConversationEntityMapper.kt 里找不到 conversationEntityToConversation" }
+        val mapper = source.substring(start, end)
 
         assertTrue(
             "整对象保存必须用同一个编码器写 mode_injection_ids：$mapper",

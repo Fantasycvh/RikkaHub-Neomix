@@ -24,7 +24,8 @@ import org.junit.Test
 class LoadMessageNodesCancellationTest {
 
     private fun repoSource(): String {
-        val file = File("src/main/java/app/androidrik/rikkahub/data/repository/ConversationRepository.kt")
+        // 批次 9 起 loadMessageNodes 迁到 ConversationNodeStore.kt
+        val file = File("src/main/java/app/androidrik/rikkahub/data/repository/ConversationNodeStore.kt")
         assertTrue("源文件不存在：" + file.absolutePath, file.isFile)
         return file.readText()
     }
@@ -32,7 +33,7 @@ class LoadMessageNodesCancellationTest {
     /** 只取 loadMessageNodes 的函数体，避免文件里别处的 catch 顺序干扰判据。 */
     private fun loadMessageNodesBody(): String {
         val text = repoSource()
-        val start = text.indexOf("private suspend fun loadMessageNodes(")
+        val start = text.indexOf("suspend fun loadMessageNodes(")
         assertTrue("未找到 loadMessageNodes", start >= 0)
         val end = text.indexOf("repairCorruptedCandidates", start)
         return text.substring(start, if (end > start) end else text.length)
