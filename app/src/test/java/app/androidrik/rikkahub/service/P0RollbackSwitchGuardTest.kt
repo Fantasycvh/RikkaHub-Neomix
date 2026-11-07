@@ -58,9 +58,11 @@ class P0RollbackSwitchGuardTest {
             1,
             runner.countOccurrences("settings.dynamicRunGate"),
         )
+        // 2026-11-07 拆分后审批通知块在 SubagentApprovalNotifications.kt，回滚分支随迁
+        val approvalNotifications = source("src/main/java/app/androidrik/rikkahub/service/SubagentApprovalNotifications.kt")
         assertTrue(
             "审批通知回滚必须读 namespacedNotifications",
-            "settingsStore.settingsFlow.value.namespacedNotifications" in runner,
+            "settingsStore.settingsFlow.value.namespacedNotifications" in runner + approvalNotifications,
         )
         assertTrue(
             "取消级联回滚必须读 killShellTasksOnRunCancel",

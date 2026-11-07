@@ -97,17 +97,6 @@ import kotlin.uuid.Uuid
  */
 private const val TAG = "SubagentRunner"
 
-/**
- * 旧固定通知 id/requestCode（`namespacedNotifications` 关闭时回退用）。
- *
- * 默认走 [NotificationIds] 的按 runId 命名空间；保留这组常量只为 P0 回滚开关：
- * 回退后并行 run 会重新互相覆盖，行为与升级前一致。
- */
-private const val LEGACY_APPROVAL_NOTIFICATION_ID = 4242
-private const val LEGACY_APPROVAL_APPROVE_REQUEST_CODE = 4243
-private const val LEGACY_APPROVAL_DENY_REQUEST_CODE = 4244
-private const val LEGACY_APPROVAL_DETAIL_REQUEST_CODE = 4242
-
 /** 结果摘要的行内截断（完整文本在 transcript 末条消息里，摘要只服务列表显示）。 */
 private const val RESULT_SUMMARY_MAX_CHARS = 1000
 
@@ -121,6 +110,8 @@ class SubagentRunner(
     private val workspaceRepository: WorkspaceRepository,
 ) : SubagentDispatcher {
     private val runNotifications = RunNotifications(context)
+
+    private val approvalNotifications = SubagentApprovalNotifications(context, settingsStore, runNotifications)
 
     fun dismissCompletionNotification(runId: String) = runNotifications.cancel(runId)
 
@@ -760,7 +751,7 @@ class SubagentRunner(
                 withContext(NonCancellable) {
                     finishRun(runId, AgentRunEntity.STATUS_CANCELLED, resultSummary = null, error = null)
                     // 只撤**本 run** 的审批通知：固定 id 时代这里会把并行 run 的待批通知一起撤掉
-                    cancelApprovalNotification(runId.toString())
+                    approvalNotifications.cancelApprovalNotification(runId.toString())
                     // run 被取消后没人再轮询这些后台命令的结果，继续跑只是烧 CPU/网络；
                     // 与 cancelRun 的直杀互为兜底（覆盖超时/协程取消等旁路）。
                     killShellTasksOfRun(runId)
@@ -841,8 +832,8 @@ class SubagentRunner(
     ): Map<String, ToolApprovalState> {
         return awaitRunApproval(runId, label, pending, parentConversationId, background, APPROVAL_TIMEOUT_MS,
             routeAvailable = { runNotifications.approvalRouteAvailable() },
-            postNotification = { postApprovalNotification(runId, label, pending) },
-            cancelNotification = { cancelApprovalNotification(runId) })
+            postNotification = { approvalNotifications.postApprovalNotification(runId, label, pending) },
+            cancelNotification = { approvalNotifications.cancelApprovalNotification(runId) })
     }
 
     /**
@@ -858,126 +849,6 @@ class SubagentRunner(
     }
 
     /** 待批通知 id：默认按 runId 命名空间（并行不覆盖）；回滚开关关闭时回旧固定 4242。 */
-    private fun approvalNotificationId(runId: String): Int =
-        if (settingsStore.settingsFlow.value.namespacedNotifications) {
-            NotificationIds.subagentApproval(runId)
-        } else {
-            LEGACY_APPROVAL_NOTIFICATION_ID
-        }
-
-    /** 审批动作的 PendingIntent requestCode；回滚时回旧固定 4242/4243/4244。 */
-    private fun approvalRequestCode(
-        runId: String,
-        action: NotificationIds.ApprovalAction,
-    ): Int = if (settingsStore.settingsFlow.value.namespacedNotifications) {
-        NotificationIds.subagentApprovalRequestCode(runId, action)
-    } else {
-        when (action) {
-            NotificationIds.ApprovalAction.APPROVE -> LEGACY_APPROVAL_APPROVE_REQUEST_CODE
-            NotificationIds.ApprovalAction.DENY -> LEGACY_APPROVAL_DENY_REQUEST_CODE
-            NotificationIds.ApprovalAction.OPEN_DETAIL -> LEGACY_APPROVAL_DETAIL_REQUEST_CODE
-        }
-    }
-
-    private fun postApprovalNotification(
-        runId: String,
-        label: String,
-        pending: List<UIMessagePart.Tool>,
-    ): Boolean {
-        if (!runNotifications.approvalRouteAvailable()) return false
-        return runCatching {
-            context.sendNotification(
-                channelId = SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID,
-                // 按 runId 命名空间化：并行 run 各有各的通知条，不会互相覆盖；
-                // 同一 run 的重复投递仍是同一条（原地更新）
-                notificationId = approvalNotificationId(runId),
-            ) {
-                title = context.getString(
-                    R.string.subagent_approval_title,
-                    label.ifBlank { context.getString(R.string.subagent_page_title) },
-                )
-                content = pending.joinToString("\n") { approvalRequestSummary(it) }
-                useBigTextStyle = true
-                autoCancel = true
-                useDefaults = true
-                category = NotificationCompat.CATEGORY_REMINDER
-                contentIntent = runDetailPendingIntent(runId)
-                actions += NotificationAction(
-                    icon = R.drawable.ic_stat_rikkahub,
-                    title = context.getString(R.string.subagent_approval_approve),
-                    intent = approvalDecisionIntent(runId, pending, approved = true),
-                )
-                actions += NotificationAction(
-                    icon = R.drawable.ic_stat_rikkahub,
-                    title = context.getString(R.string.subagent_approval_deny),
-                    intent = approvalDecisionIntent(runId, pending, approved = false),
-                )
-            }
-        }.onFailure { Logging.log(TAG, "approval notification failed: $it") }.getOrDefault(false)
-    }
-
-    /**
-     * 撤掉某个 run 的待批通知。
-     *
-     * **必须按 runId 撤**：固定 id 时代任一 run 结束（含超时、取消）都会撤掉并行 run 的待批
-     * 通知——用户那边看起来"审批消失了"，而 run 其实还停在 `awaiting_approval` 上等 5 分钟。
-     */
-    private fun cancelApprovalNotification(runId: String) {
-        runCatching { context.cancelNotification(approvalNotificationId(runId)) }
-    }
-
-    /** 点通知主体 → 运行详情页（在那里能看到入参全文与轨迹）。 */
-    private fun runDetailPendingIntent(runId: String): PendingIntent {
-        val intent = Intent(context, app.androidrik.rikkahub.RouteActivity::class.java)
-            .putExtra("runId", runId)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        return PendingIntent.getActivity(
-            context,
-            // 每个 run 一个 requestCode：并行 run 详情页的 PendingIntent 互不覆盖
-            // （FLAG_UPDATE_CURRENT 会按 requestCode 覆写 extras）
-            approvalRequestCode(
-                runId,
-                NotificationIds.ApprovalAction.OPEN_DETAIL,
-            ),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
-    /**
-     * 通知按钮的 PendingIntent：**显式组件 + exported=false 的 Receiver**。
-     *
-     * requestCode 必须区分（批准所有 / 拒绝所有），否则 `FLAG_UPDATE_CURRENT` 会让后者覆盖前者
-     * （两个按钮变成同一个动作——这是 PendingIntent 的经典坑）。**同时还要按 runId 区分**：
-     * 固定 requestCode 下，后弹通知的 run 会把先弹的那个 run 的按钮动作整个覆写掉——
-     * 用户点的是 A run 的通知，批的却是 B run 的工具。
-     */
-    private fun approvalDecisionIntent(
-        runId: String,
-        pending: List<UIMessagePart.Tool>,
-        approved: Boolean,
-    ): PendingIntent {
-        val intent = Intent(context, SubagentApprovalReceiver::class.java)
-            .putStringArrayListExtra(
-                SubagentApprovalReceiver.EXTRA_TOOL_CALL_IDS,
-                ArrayList(pending.map { it.toolCallId }),
-            )
-            .putExtra(SubagentApprovalReceiver.EXTRA_APPROVED, approved)
-        return PendingIntent.getBroadcast(
-            context,
-            approvalRequestCode(
-                runId,
-                if (approved) {
-                    NotificationIds.ApprovalAction.APPROVE
-                } else {
-                    NotificationIds.ApprovalAction.DENY
-                },
-            ),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
-
     private suspend fun finishRun(runId: Uuid, status: String, resultSummary: String?, error: String?) {
         val changed = agentRunDAO.finishRun(
             id = runId.toString(),
