@@ -90,4 +90,63 @@ class WebViewJsSyntaxChecker(private val context: Context) : JsSyntaxChecker {
             view.destroy()
         }
     }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    override suspend fun evaluateTopLevel(source: String): String? = withContext(Dispatchers.Main) {
+        val view = WebView(context)
+        try {
+            view.settings.let { s ->
+                s.javaScriptEnabled = true
+                s.allowFileAccess = false
+                s.allowContentAccess = false
+                s.blockNetworkLoads = true
+                s.blockNetworkImage = true
+                s.domStorageEnabled = false
+                s.databaseEnabled = false
+                s.loadsImagesAutomatically = false
+                s.javaScriptCanOpenWindowsAutomatically = false
+                s.setSupportMultipleWindows(false)
+                s.cacheMode = WebSettings.LOAD_NO_CACHE
+                s.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            }
+            val pageLoaded = CompletableDeferred<Unit>()
+            view.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    pageLoaded.complete(Unit)
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean = true
+            }
+            view.loadDataWithBaseURL(null, "<html><body></body></html>", "text/html", "utf-8", null)
+            withTimeoutOrNull(LOAD_TIMEOUT_MS) { pageLoaded.await() }
+                ?: return@withContext "smoke 页面加载超时"
+
+            // 顶层求值：只加载函数定义、不调用任何钩子（网络/存储均不可用）；
+            // 原样内嵌源码——它是合法 JS 语句序列，语法错误已在 compile 项先行拦截
+            val fn = "__rikka_smoke_${seq.incrementAndGet()}"
+            val script = """
+                (function(){ try {
+                    $source;
+                    window.$fn = 'OK'; return 'OK';
+                } catch (e) { return 'ERR:' + (e && e.message || e); } })()
+            """.trimIndent()
+            val result = withTimeoutOrNull(COMPILE_TIMEOUT_MS) {
+                suspendCancellableCoroutine<String?> { cont ->
+                    view.evaluateJavascript(script) { value ->
+                        cont.resume(value?.trim()?.removeSurrounding("\""))
+                    }
+                }
+            } ?: return@withContext "smoke 求值超时"
+            when {
+                result == "OK" -> null
+                result == null -> "smoke 求值失败"
+                else -> result.removePrefix("ERR:")
+            }
+        } catch (e: Exception) {
+            "smoke 求值失败: ${e.message}"
+        } finally {
+            view.destroy()
+        }
+    }
 }

@@ -128,6 +128,7 @@ import app.androidrik.rikkahub.ui.pages.debug.DebugPage
 import app.androidrik.rikkahub.ui.pages.debug.PerfOverlay
 import app.androidrik.rikkahub.ui.pages.extensions.ExtensionsPage
 import app.androidrik.rikkahub.ui.pages.plugins.PluginDetailPage
+import app.androidrik.rikkahub.ui.pages.plugins.PluginEditorPage
 import app.androidrik.rikkahub.ui.pages.plugins.PluginsPage
 import app.androidrik.rikkahub.ui.pages.extensions.PromptPage
 import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsPage
@@ -876,6 +877,10 @@ open class RouteActivity : ComponentActivity() {
                                 PluginDetailPage(pluginId = key.pluginId)
                             }
 
+                            entry<Screen.PluginEditor> { key ->
+                                PluginEditorPage(pluginId = key.pluginId)
+                            }
+
                             entry<Screen.QuickMessages> {
                                 QuickMessagesPage()
                             }
@@ -1252,6 +1257,10 @@ sealed interface Screen : NavKey {
     /** 插件详情;插件自带配置界面在页内内嵌,不新增设置页路由。 */
     @Serializable
     data class PluginDetail(val pluginId: String) : Screen
+
+    /** JS 插件修订编辑器(仅 debug 构建的通道入口可达,见设计稿 §5.2)。 */
+    @Serializable
+    data class PluginEditor(val pluginId: String) : Screen
 
     @Serializable
     data object QuickMessages : Screen

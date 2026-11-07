@@ -21,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,8 @@ import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginInfo
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.plugin.js.JsPlugin
 import app.androidrik.rikkahub.data.plugin.js.JsPluginInstaller
@@ -159,7 +162,7 @@ fun PluginDetailPage(pluginId: String) {
                 }
             }
 
-            // JS 沙箱插件:清单信息 + 源码预览 + 卸载
+            // JS 沙箱插件:清单信息 + 源码预览 + 修订通道(debug) + 卸载
             if (plugin is JsPlugin) {
                 item("js_manifest") {
                     val manifest = plugin.definition.manifest
@@ -233,6 +236,10 @@ fun PluginDetailPage(pluginId: String) {
                     }
                 }
 
+                if (BuildConfig.DEBUG) {
+                    item("revisions") { RevisionSection(plugin.id) }
+                }
+
                 item("uninstall") {
                     val installer: JsPluginInstaller = koinInject()
                     UninstallButton(
@@ -240,6 +247,82 @@ fun PluginDetailPage(pluginId: String) {
                         onUninstall = { installer.uninstall(plugin.id) },
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 修订历史 + 编辑/回退入口（R2；仅 debug 构建渲染——通道 UI 的编译期门控，
+ * release 连代码都不进，见设计稿 §5.2）。文案走硬编码中文（开发者向 UI，不入 i18n）。
+ */
+@Composable
+private fun RevisionSection(pluginId: String) {
+    val installer: JsPluginInstaller = koinInject()
+    val appScope: AppScope = koinInject()
+    val toaster = LocalToaster.current
+    val context = LocalContext.current
+    val nav = LocalNavController.current
+    val state = remember(pluginId) { mutableStateOf<app.androidrik.rikkahub.data.plugin.revision.PluginRevisionState?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pluginId) {
+        state.value = installer.loadRevisions(pluginId)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("修订历史", style = MaterialTheme.typography.titleSmall)
+        val s = state.value
+        if (s == null) {
+            Text("无修订记录", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            s.draftSource?.let {
+                Text(
+                    "⚠ 有未提交的编辑草稿",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
+            s.revisions.asReversed().forEach { revision ->
+                val badge = when (revision.revisionNo) {
+                    s.activeRevisionNo -> "（当前生效）"
+                    s.lastGoodRevisionNo -> "（上一可用）"
+                    else -> ""
+                }
+                Text(
+                    "#${revision.revisionNo}$badge · ${revision.origin} · " +
+                        java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault())
+                            .format(java.util.Date(revision.createdAt)) +
+                        " · 预检${if (revision.precheck.passed) "✓" else "✗"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (revision.revisionNo == s.activeRevisionNo) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(enabled = !busy, onClick = { nav.navigate(Screen.PluginEditor(pluginId)) }) {
+                    Text("编辑修订")
+                }
+                TextButton(
+                    enabled = !busy && s.lastGoodRevisionNo != null,
+                    onClick = {
+                        busy = true
+                        appScope.launch {
+                            installer.revertToLastGood(pluginId)
+                                .onSuccess {
+                                    toaster.show(message = "已回退到上一可用版本", type = ToastType.Success)
+                                    state.value = installer.loadRevisions(pluginId)
+                                }
+                                .onFailure {
+                                    toaster.show(message = "回退失败: ${it.message}", type = ToastType.Error)
+                                }
+                            busy = false
+                        }
+                    },
+                ) { Text("回退到上一版") }
             }
         }
     }

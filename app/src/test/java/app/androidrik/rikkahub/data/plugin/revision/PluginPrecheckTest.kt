@@ -30,9 +30,13 @@ class PluginPrecheckTest {
 
     private fun precheck(
         syntaxError: String? = null,
+        smokeError: String? = null,
         existingToolNames: Set<String> = emptySet(),
     ) = PluginPrecheck(
-        syntaxChecker = { syntaxError },
+        syntaxChecker = object : JsSyntaxChecker {
+            override suspend fun compile(source: String): String? = syntaxError
+            override suspend fun evaluateTopLevel(source: String): String? = smokeError
+        },
         existingToolNames = { existingToolNames },
     )
 
@@ -101,5 +105,14 @@ class PluginPrecheckTest {
         assertTrue(report.profile.contains("plugin:sample.precheck 1tools"))
         // 预检从 manifest 静态构造工具（无审批闭包信息）→ 计 0 dyn；真实闭包在运行时装配
         assertTrue(report.profile.contains("appr=plugin-defined(0/1dyn)"))
+    }
+
+    @Test
+    fun `smoke failure blocks activation separately from syntax`() = kotlinx.coroutines.runBlocking {
+        val report = precheck(smokeError = "top-level threw").checkJs(definition())
+        assertFalse(report.passed)
+        assertEquals("top-level threw", report.items.first { it.name == "smoke" }.detail)
+        // syntax 项不受 smoke 影响
+        assertTrue(report.items.first { it.name == "syntax" }.passed)
     }
 }

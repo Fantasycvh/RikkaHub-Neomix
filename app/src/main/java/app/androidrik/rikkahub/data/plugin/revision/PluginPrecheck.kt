@@ -42,6 +42,15 @@ class PluginPrecheck(
             detail = syntaxError ?: "ok",
         )
 
+        // 4. smoke（R2 保守口径）：顶层求值——只加载函数定义、不调用钩子，
+        //    捕获「顶层即抛」的坏源码；网络/存储能力不授权，钩子本身不执行
+        val smokeError = syntaxChecker.evaluateTopLevel(definition.source)
+        items += PrecheckItemResult(
+            name = "smoke",
+            passed = smokeError == null,
+            detail = smokeError ?: "ok",
+        )
+
         // 3. 工具闸门 dry-run（P2a 纯函数）：JS 路径工具名经 pluginToolName 命名空间化，
         //    跨源重名结构性不可能；此处实际防的是段内重复（manifest.validate 已查声明名，
         //    这里用最终模型可见名再查一遍）与未来形态的跨段重名。
@@ -95,9 +104,17 @@ private fun ToolSegmentForPrecheck(definition: JsPluginDefinition) =
         },
     )
 
-/** JS 源码语法检查器；返回 null = 可编译，否则为错误文本。实现不得执行源码。 */
-fun interface JsSyntaxChecker {
+/** JS 源码语法检查器；返回 null = 通过，否则为错误文本。实现不得调用任何插件钩子。 */
+interface JsSyntaxChecker {
+    /** 编译检查（不执行源码）。 */
     suspend fun compile(source: String): String?
+
+    /**
+     * 顶层求值（R2 smoke）：加载源码定义函数，捕获**顶层**抛错；不调用任何钩子。
+     * 比编译多覆盖一层「顶层即抛」的坏源码，又零钩子副作用——网络型钩子（如
+     * github-zen-output）不会被假阴性拦下（设计稿 §九.3 按此保守口径收口）。
+     */
+    suspend fun evaluateTopLevel(source: String): String?
 }
 
 /** 预检拒绝异常：[report] 为完整报告，message 为面向用户的紧凑失败文本。 */

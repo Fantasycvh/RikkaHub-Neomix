@@ -82,6 +82,38 @@ class PluginRevisionTest {
         assertEquals("sample.demo.json", revisionFileName("sample.demo"))
         assertEquals("a_b_c.json", revisionFileName("a/b c"))
     }
+
+    // ---- R2：手动回退（双指针互换，不占 revisionNo） ----
+
+    @Test
+    fun `revert swaps active and last-good without new revision`() {
+        var state = PluginRevisionState(pluginId = "p")
+        state = recordActivatedRevision(state, revision(1))
+        state = recordActivatedRevision(state, revision(2))
+
+        val reverted = revertToLastGood(state)
+
+        assertEquals(1L, reverted.activeRevisionNo)
+        assertEquals(2L, reverted.lastGoodRevisionNo)
+        assertEquals(state.revisions, reverted.revisions) // 历史条目原样
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun `revert without last-good fails`() {
+        val state = recordActivatedRevision(PluginRevisionState(pluginId = "p"), revision(1))
+        revertToLastGood(state)
+    }
+
+    @Test
+    fun `revert twice returns to the newest revision`() {
+        var state = PluginRevisionState(pluginId = "p")
+        state = recordActivatedRevision(state, revision(1))
+        state = recordActivatedRevision(state, revision(2))
+        state = revertToLastGood(state)
+        state = revertToLastGood(state)
+        assertEquals(2L, state.activeRevisionNo)
+        assertEquals(1L, state.lastGoodRevisionNo)
+    }
 }
 
 class PluginRevisionStoreTest {

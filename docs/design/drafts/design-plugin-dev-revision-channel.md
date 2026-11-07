@@ -212,3 +212,38 @@ active --手动回退--> active(lastGood 复活为新 active, 旧 active 降入�
 备注：Gboard 中文布局在 URI 键盘下仍全角化标点（键盘布局行为，非输入类型可解）；英文布局
 `input text` 完全可靠。修订历史经 DataStore 直注的 v1 不入历史（通道只记自己激活的修订），
 符合设计。
+
+## 十二、R2 实施与真机走查记录（2026-11-07）
+
+未提交（待授权）；代码基线 `58cb6f94b`（R1）。
+
+### 12.1 交付
+
+- **整页编辑器**（`PluginEditorPage` + 路由 `Screen.PluginEditor`）：草稿优先加载（无草稿用
+  当前生效源码）；「存草稿」写 `draftSource`；「提交预检」= 解析清单 → 禁止改 id →
+  `installOrUpdate(origin=EDITOR)`；错误内联展示。整页 Column+verticalScroll+imePadding
+  （AGENTS TextField 宿主规范）。**仅 debug 构建可达**（入口与路由内容均在 `BuildConfig.DEBUG`
+  门控内）。
+- **详情页修订区**（`RevisionSection`，DEBUG 门控）：历史列表（active/lastGood 徽标、origin、
+  时间、预检✓✗、草稿警告）+「编辑修订」+「回退到上一版」（lastGood 为空时禁用）。
+- **回退**：`revertToLastGood` 纯函数（双指针互换、不占 revisionNo、历史原样）+ installer
+  实现（lastGood 源码重跑预检 → 按 R1 更新路径重载 → 指针落盘、清草稿；源码 id 一致性防御）。
+- **激活清草稿**：installOrUpdate 历史落盘时 `draftSource=null`。
+- **smoke（§四.4 保守落地）**：`JsSyntaxChecker` 增 `evaluateTopLevel`——预检 WebView 里
+  **只加载源码定义、不调用任何钩子**（网络/存储不可用），捕获顶层抛错；网络型钩子
+  （github-zen-output 类）零假阴性——§九.3 按此口径收口。预检现为 5 项。
+- **测试**：全量 JVM **3627 项 0 失败**（新增 4：回退指针互换 ×2、无 lastGood 失败 ×1、
+  smoke 独立失败 ×1；既有测试适配 checker 接口从 fun interface 到双方法 interface）。
+
+### 12.2 真机走查（PJX110，.perfp1）
+
+| 场景 | 结果 |
+|---|---|
+| 详情页修订区渲染（DEBUG 门控、空态） | ✓ |
+| 编辑器加载当前源码 → 提交 → 激活 #1（EDITOR） | ✓ |
+| 草稿注入 → 历史区「⚠ 有未提交的编辑草稿」→ 编辑器加载草稿 → 提交激活 #2 → 草稿清除 | ✓ |
+| 回退：`reverted js plugin active=#1`，指针互换（active=1/lastGood=2），历史 [1,2] 原样，UI 徽标刷新 | ✓ |
+| 错误内联（光标误插损坏清单 → 「清单解析失败: Unexpected JSON token at offset 594 … path $.tools[0]」） | ✓ 精确定位 |
+
+走查手记：编辑器内光标导航（KEYCODE_MOVE_END 是**行尾**非文档尾）曾两次损坏清单——错误
+内联立即指明 offset/path，符合「失败可见、可修」的设计预期；自动化应改走草稿注入而非键入。

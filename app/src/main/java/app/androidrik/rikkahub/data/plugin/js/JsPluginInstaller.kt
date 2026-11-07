@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.data.plugin.revision.PluginRevisionStore
 import app.androidrik.rikkahub.data.plugin.revision.PrecheckRejectedException
 import app.androidrik.rikkahub.data.plugin.revision.RevisionOrigin
 import app.androidrik.rikkahub.data.plugin.revision.recordActivatedRevision
+import app.androidrik.rikkahub.data.plugin.revision.revertToLastGood
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -147,8 +148,61 @@ class JsPluginInstaller(
                     createdAt = System.currentTimeMillis(),
                     precheck = report,
                 ),
-            ),
+            ).copy(draftSource = null), // 激活成功即清草稿
         )
+    }
+
+    /** 当前生效的 JS 源码（编辑器初始内容）；插件不存在时 null。 */
+    suspend fun currentSource(pluginId: String): String? =
+        store.read().firstOrNull { it.id == pluginId }?.source
+
+    /** 编辑器草稿读取（null = 无草稿）。 */
+    suspend fun loadDraft(pluginId: String): String? =
+        revisionStore?.load(pluginId)?.draftSource
+
+    /** 修订历史读取（未接线时 null——release 构建通道未启用）。 */
+    suspend fun loadRevisions(pluginId: String): app.androidrik.rikkahub.data.plugin.revision.PluginRevisionState? =
+        revisionStore?.load(pluginId)
+
+    /** 保存编辑器草稿（不触发预检/激活；激活成功后由调用方清除）。 */
+    suspend fun saveDraft(pluginId: String, source: String?) {
+        val revisions = revisionStore ?: return
+        val state = revisions.load(pluginId)
+        revisions.save(state.copy(draftSource = source))
+    }
+
+    /**
+     * 回退到 last-good（R2，设计稿 §3.2）：双指针互换（不占新 revisionNo），
+     * 用 last-good 修订的源码重建定义并走一次预检（历史通过≠现在通过，环境可能变了），
+     * 然后按 [installOrUpdate] 的更新路径重载。
+     */
+    suspend fun revertToLastGood(pluginId: String): Result<Unit> = runCatching {
+        val checker = requireNotNull(precheck) { "修订通道未接线（precheck 缺失）" }
+        val revisions = requireNotNull(revisionStore) { "修订通道未接线（revisionStore 缺失）" }
+        val state = revisions.load(pluginId)
+        val target = app.androidrik.rikkahub.data.plugin.revision.revertToLastGood(state)
+        val revision = target.revisions.first { it.revisionNo == target.lastGoodRevisionNo }
+        require(revision.kind == "js") { "未知修订载体: ${revision.kind}" }
+
+        val definition = JsPluginManifest.parse(revision.source).getOrThrow()
+        // id 一致性：修订历史属于该插件，源码 id 必须一致（防御历史文件被手改）
+        require(definition.id == pluginId) { "修订源码 id(${definition.id}) 与插件($pluginId) 不一致" }
+        val report = checker.checkJs(definition)
+        if (!report.passed) throw PrecheckRejectedException(report)
+
+        val existing = manager.plugins.value.firstOrNull { it.plugin.id == pluginId }
+        requireNotNull(existing) { "插件 $pluginId 未安装" }
+        val wasEnabled = existing.enabled
+        val current = store.read()
+        store.save(current.filterNot { it.id == pluginId } + definition)
+        manager.unregister(pluginId)
+        manager.register(newPlugin(definition))
+        manager.setApprovedCapabilities(pluginId, existing.grants)
+        if (!wasEnabled) manager.setEnabled(pluginId, false)
+
+        // 双指针互换后落盘（回退语义见 revertToLastGood 纯函数）；清掉草稿
+        revisions.save(target.copy(draftSource = null))
+        Log.i(TAG, "reverted js plugin: $pluginId active=#${target.activeRevisionNo}")
     }
 
     /** 卸载:先删持久化定义,再移出注册表(取消安全)。 */    suspend fun uninstall(pluginId: String): Result<Unit> = runCatching {

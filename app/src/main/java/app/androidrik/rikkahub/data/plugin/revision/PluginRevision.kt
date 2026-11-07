@@ -58,7 +58,7 @@ data class PluginRevision(
 
 /**
  * 插件的修订历史与双指针。active = 当前生效（与 PluginManager 激活实例对应）；
- * lastGood = 上一个成功服务的修订（回退目标）。
+ * lastGood = 上一个成功服务的修订（回退目标）；draftSource = 编辑器未提交的草稿（R2）。
  */
 @Serializable
 data class PluginRevisionState(
@@ -66,6 +66,7 @@ data class PluginRevisionState(
     val activeRevisionNo: Long? = null,
     val lastGoodRevisionNo: Long? = null,
     val revisions: List<PluginRevision> = emptyList(),
+    val draftSource: String? = null,
 )
 
 /** 修订历史上限（滚动丢弃最旧；active/lastGood 引用的条目不丢）。 */
@@ -106,3 +107,19 @@ fun recordActivatedRevision(
 /** 修订历史文件名净化：pluginId 受严格正则约束（允许点），此处再兜底一层（防御性，非安全边界）。 */
 fun revisionFileName(pluginId: String): String =
     pluginId.replace(Regex("[^a-zA-Z0-9._-]"), "_") + ".json"
+
+/**
+ * 手动回退（纯函数，单测锚定；设计稿 §3.2 状态机）：
+ * lastGood 复活为新 active，旧 active 降为 lastGood，历史条目原样保留——回退**不占用**
+ * 新 revisionNo（它不是新修订，只是双指针互换）。无 lastGood 时失败。
+ */
+fun revertToLastGood(state: PluginRevisionState): PluginRevisionState {
+    val target = state.lastGoodRevisionNo
+        ?: throw IllegalStateException("没有可回退的 last-good 修订")
+    val exists = state.revisions.any { it.revisionNo == target }
+    check(exists) { "last-good 修订 #$target 不在历史中" }
+    return state.copy(
+        activeRevisionNo = target,
+        lastGoodRevisionNo = state.activeRevisionNo,
+    )
+}
