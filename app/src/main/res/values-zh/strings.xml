@@ -1444,6 +1444,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_balance_api_path">余额 API 路径</string>
     <string name="setting_provider_page_quota_body">POST 请求体（JSON）</string>
   <string name="setting_provider_page_quota_body_hint">支持 {{baseUrl}} / {{apiKey}} 模板变量</string>
+  <string name="setting_display_page_top_bar_style_desc">「整条模糊」保持现状整条穿底；「浮动胶囊」把按钮装进胶囊、背景与输入栏同款并随滚动淡入，开启后整条效果让位。</string>
+  <string name="setting_display_page_top_bar_style_full_bar">整条模糊</string>
+  <string name="setting_display_page_top_bar_style_capsules">浮动胶囊</string>
 <string name="setting_provider_page_quota_url">额度查询 URL</string>
   <string name="setting_provider_page_balance_info">获取账户余额</string>
   <string name="setting_provider_page_balance_json_key">结果 JSON 键</string>

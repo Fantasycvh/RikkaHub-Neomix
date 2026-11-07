@@ -54,6 +54,7 @@ import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -522,6 +523,12 @@ private fun ChatPageContent(
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
+    // 顶栏胶囊档（上游 b40d7a273）：消息滚到标题栏下方才淡入胶囊背景，
+    // 空页或列表在顶部时按钮直接浮在背景上；previewMode（截图预览）不显示
+    val listScrolledUnderTopBar by remember(chatListState) {
+        derivedStateOf { chatListState.canScrollBackward }
+    }
+
     Surface(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
@@ -539,6 +546,7 @@ private fun ChatPageContent(
                     previewMode = previewMode,
                     hazeState = hazeState,
                     glassHazeState = glassHazeState,
+                    showCapsuleBackground = !previewMode && listScrolledUnderTopBar,
                     onNewChat = {
                         navigateToChatPage(navController)
                     },

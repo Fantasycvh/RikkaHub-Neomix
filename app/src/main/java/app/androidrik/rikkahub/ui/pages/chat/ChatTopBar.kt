@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -38,12 +39,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.datastore.TopBarChromeStyle
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.ai.ContextUsage
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.components.haze.TopBarCapsule
 import app.androidrik.rikkahub.ui.components.haze.liquidGlassChromeEffect
 import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.useEditState
@@ -112,6 +115,7 @@ internal fun TopBar(
     previewMode: Boolean,
     hazeState: HazeState,
     glassHazeState: HazeState,
+    showCapsuleBackground: Boolean,
     onClickMenu: () -> Unit,
     onNewChat: () -> Unit,
     onExport: () -> Unit,
@@ -123,14 +127,44 @@ internal fun TopBar(
     val titleState = useEditState<String> {
         onUpdateTitle(it)
     }
+    // 顶栏 chrome 两套共存（上游 b40d7a273）：CAPSULES 时整条效果让位给浮动胶囊
+    val capsuleMode = settings.displaySetting.topBarStyle == TopBarChromeStyle.CAPSULES
+
+    // 右侧操作按钮：FULL_BAR 直挂 actions，CAPSULES 由胶囊包裹（背景随滚动淡入）
+    val topBarActions: @Composable RowScope.() -> Unit = {
+        IconButton(onClick = { showTasks = true }) { Icon(Lucide.ListTree, stringResource(R.string.conversation_tasks_title)) }
+        IconButton(
+            onClick = {
+                onClickMenu()
+            }
+        ) {
+            Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
+        }
+
+        IconButton(
+            onClick = {
+                onExport()
+            }
+        ) {
+            Icon(HugeIcons.Share01, "Export Conversation")
+        }
+
+        IconButton(
+            onClick = {
+                onNewChat()
+            }
+        ) {
+            Icon(HugeIcons.MessageAdd01, "New Message")
+        }
+    }
 
     TopAppBar(
         modifier = Modifier.then(
             // 与输入栏同款机制（BackgroundEffectType BLUR/GLASS 二选一）：消费 hazeState
             // （背景 + 穿底内容）——列表经 contentPadding 从顶栏底下穿过，穿过的部分被
             // 实时模糊/玻璃化（上游截图同款效果）。顶栏是悬浮层，采样聊天内容不踩
-            // 「blur 容器含可滚动子节点」坑。
-            if (settings.displaySetting.enableTopBarBlur) Modifier.liquidGlassChromeEffect(
+            // 「blur 容器含可滚动子节点」坑。胶囊档不挂整条效果（按钮各自带胶囊背景）。
+            if (settings.displaySetting.enableTopBarBlur && !capsuleMode) Modifier.liquidGlassChromeEffect(
                 hazeState = hazeState,
                 effectType = settings.displaySetting.topBarEffectType,
                 readabilityMode = settings.displaySetting.liquidGlassReadabilityMode,
@@ -139,8 +173,21 @@ internal fun TopBar(
         colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
         navigationIcon = {
             if (!bigScreen) {
-                IconButton(onClick = onOpenDrawer) {
-                    Icon(HugeIcons.Menu03, "Messages")
+                if (capsuleMode) {
+                    TopBarCapsule(
+                        hazeState = hazeState,
+                        displaySetting = settings.displaySetting,
+                        showBackground = showCapsuleBackground,
+                        modifier = Modifier.padding(start = 8.dp, end = 4.dp),
+                    ) {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(HugeIcons.Menu03, "Messages")
+                        }
+                    }
+                } else {
+                    IconButton(onClick = onOpenDrawer) {
+                        Icon(HugeIcons.Menu03, "Messages")
+                    }
                 }
             }
         },
@@ -189,29 +236,16 @@ internal fun TopBar(
             }
         },
         actions = {
-            IconButton(onClick = { showTasks = true }) { Icon(Lucide.ListTree, stringResource(R.string.conversation_tasks_title)) }
-            IconButton(
-                onClick = {
-                    onClickMenu()
-                }
-            ) {
-                Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
-            }
-
-            IconButton(
-                onClick = {
-                    onExport()
-                }
-            ) {
-                Icon(HugeIcons.Share01, "Export Conversation")
-            }
-
-            IconButton(
-                onClick = {
-                    onNewChat()
-                }
-            ) {
-                Icon(HugeIcons.MessageAdd01, "New Message")
+            if (capsuleMode) {
+                TopBarCapsule(
+                    hazeState = hazeState,
+                    displaySetting = settings.displaySetting,
+                    showBackground = showCapsuleBackground,
+                    modifier = Modifier.padding(start = 4.dp, end = 8.dp),
+                    content = topBarActions,
+                )
+            } else {
+                topBarActions()
             }
         },
     )

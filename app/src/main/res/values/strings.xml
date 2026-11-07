@@ -3060,5 +3060,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="workspace_ssh_editor_jump_host_key_changed_title">Jump host key changed</string>
   <string name="setting_provider_page_quota_body">POST Body (JSON)</string>
   <string name="setting_provider_page_quota_body_hint">Supports {{baseUrl}} / {{apiKey}} template variables</string>
+  <string name="setting_display_page_top_bar_style_desc">Full-bar keeps the whole top bar frosted; Capsules float the buttons with an input-bar-matching background that fades in on scroll, replacing the full-bar effect.</string>
+  <string name="setting_display_page_top_bar_style_full_bar">Full-bar blur</string>
+  <string name="setting_display_page_top_bar_style_capsules">Capsules</string>
 </resources>
 

@@ -46,6 +46,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.BackgroundEffectType
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.datastore.LiquidGlassReadabilityMode
+import app.androidrik.rikkahub.data.datastore.TopBarChromeStyle
 import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
@@ -231,6 +232,33 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                                 selected = displaySetting.topBarEffectType,
                                 onSelect = { updateDisplaySetting(displaySetting.copy(topBarEffectType = it)) },
                             )
+                        }
+                    }
+                    // 顶栏样式二选一（上游 b40d7a273 两套共存）：整条模糊=现状；浮动胶囊=
+                    // 按钮各自带胶囊背景（效果跟随输入栏开关），开启后整条穿底让位
+                    if (displaySetting.enableTopBarBlur) {
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = stringResource(R.string.setting_display_page_top_bar_style_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                SegmentedPill(
+                                    options = TopBarChromeStyle.entries,
+                                    selectedOption = displaySetting.topBarStyle,
+                                    onOptionSelected = {
+                                        updateDisplaySetting(displaySetting.copy(topBarStyle = it))
+                                    },
+                                    optionToString = { style ->
+                                        when (style) {
+                                            TopBarChromeStyle.FULL_BAR -> stringResource(R.string.setting_display_page_top_bar_style_full_bar)
+                                            TopBarChromeStyle.CAPSULES -> stringResource(R.string.setting_display_page_top_bar_style_capsules)
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                     // 玻璃上文字可读性（对照 BiliPai LiquidGlassReadabilityMode）：任一效果开启时露出

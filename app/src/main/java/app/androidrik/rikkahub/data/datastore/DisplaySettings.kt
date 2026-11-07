@@ -51,6 +51,21 @@ enum class LiquidGlassReadabilityMode {
 }
 
 /**
+ * 顶栏样式二选一（上游 b40d7a273 顶栏浮动胶囊，本仓两套共存）：
+ * - FULL_BAR（默认）：整条 TopAppBar 挂穿底模糊（liquidGlassChromeEffect，现状）；
+ * - CAPSULES：TopAppBar 本身永远透明，菜单键与右侧操作键分别装进浮动胶囊
+ *   （ChatTopBarCapsule），胶囊背景效果与输入框同款（enableBlurEffect/inputEffectType），
+ *   仅当消息滚到标题栏下方时淡入。旧配置缺字段时默认 FULL_BAR，行为不变。
+ */
+@Serializable
+enum class TopBarChromeStyle {
+    @SerialName("full_bar")
+    FULL_BAR,
+    @SerialName("capsules")
+    CAPSULES,
+}
+
+/**
  * 聊天页头像装饰框预设（轻量个性化，橘瓣灵感；见 design-light-personalization.md）。
  * 纯 Canvas 绘制、随主题取色，作用于聊天页用户/助手双侧头像。
  */
@@ -179,6 +194,8 @@ data class DisplaySetting(
     val listGlassEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     val enableTopBarBlur: Boolean = false,
     val topBarEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
+    /** 顶栏 chrome 样式：整条穿底模糊（现状）或浮动胶囊（上游 b40d7a273，两套共存）。 */
+    val topBarStyle: TopBarChromeStyle = TopBarChromeStyle.FULL_BAR,
     val liquidGlassReadabilityMode: LiquidGlassReadabilityMode = LiquidGlassReadabilityMode.AUTO,
     val chatFontFamily: ChatFontFamily = ChatFontFamily.DEFAULT,
     val chatCustomFontPath: String = "",
