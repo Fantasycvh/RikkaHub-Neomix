@@ -34,8 +34,9 @@ data class UsageWindow(
  *
  * 账号类的查询写死在各自的 Provider 里、不让用户配置，账号凭据就不会被发往自定义地址。
  *
- * [url] 和 [headers] 的值可以引用 [VARIABLES] 里的变量，写作 `{{apiKey}}`；
- * 查询结果按 [resultPath] 从响应 JSON 里取值。
+ * [url]、[headers] 的值和 [body] 可以引用 [VARIABLES] 里的变量，写作 `{{apiKey}}`；
+ * [body] 只在 [method] 为 POST 时发送，按 JSON 发出（部分中转站的余额接口要 POST 带 body，
+ * 上游 6328f4a8d）。查询结果按 [resultPath] 从响应 JSON 里取值。
  *
  * **[sources] / [expression]** 是本仓对上游的扩展（对齐上游 #2186 的同时保住本仓
  * `BalanceOption` 的多接口能力）：`sources` 非空时按多接口模式逐个抓取、把各自
@@ -46,9 +47,12 @@ data class UsageWindow(
 @Serializable
 data class QuotaQuery(
     val enabled: Boolean = false,
+    val method: QuotaQueryMethod = QuotaQueryMethod.GET,
     val url: String = "{{baseUrl}}/credits",
     /** 鉴权头也在这里配置，默认值按提供商类型给 */
     val headers: List<CustomHeader> = listOf(CustomHeader("Authorization", "Bearer {{apiKey}}")),
+    /** POST 请求体（JSON），支持模板变量；仅单接口模式发送 */
+    val body: String = "",
     val resultPath: String = "data.total_usage",
     /** 多接口模式：各数据源（本仓扩展，默认空 = 单接口模式） */
     val sources: List<QuotaSource> = emptyList(),
@@ -63,6 +67,12 @@ data class QuotaQuery(
 
         val VARIABLES = listOf(VARIABLE_BASE_URL, VARIABLE_API_KEY)
     }
+}
+
+@Serializable
+enum class QuotaQueryMethod {
+    GET,
+    POST,
 }
 
 /**

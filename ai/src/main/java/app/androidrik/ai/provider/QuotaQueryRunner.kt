@@ -13,12 +13,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.Locale
 
 /**
- * 执行 API Key 类提供商的自定义额度查询（GET），没有开启时返回 null。
+ * 执行 API Key 类提供商的自定义额度查询（单接口模式支持 GET/POST），没有开启时返回 null。
  *
  * 两种模式（见 [QuotaQuery]）：
  * - **单接口模式**（[QuotaQuery.sources] 为空）：请求 [QuotaQuery.url]，按
@@ -52,7 +54,14 @@ suspend fun OkHttpClient.runQuotaQuery(
         val request = Request.Builder()
             .url(render(query.url.trim()))
             .quotaHeaders(setting, query, ::render)
-            .get()
+            .apply {
+                when (query.method) {
+                    QuotaQueryMethod.GET -> get()
+                    QuotaQueryMethod.POST ->
+                        // body 同样走模板渲染，按 JSON 发出（上游 6328f4a8d）
+                        post(render(query.body).toRequestBody("application/json".toMediaType()))
+                }
+            }
             .build()
         val body = execute(request)
         val bodyJson = json.parseToJsonElement(body).jsonObjectOrNull

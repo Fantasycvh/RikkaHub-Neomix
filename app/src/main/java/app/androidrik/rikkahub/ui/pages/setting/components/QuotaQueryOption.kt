@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.QuotaQuery
+import app.androidrik.ai.provider.QuotaQueryMethod
 import app.androidrik.ai.provider.QuotaSource
 import app.androidrik.common.http.isJsonExprValid
 import app.androidrik.rikkahub.R
@@ -200,6 +201,19 @@ fun SettingProviderQuotaQuery(
                         textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
                     )
                 } else {
+                    // 请求方法（上游 6328f4a8d）：部分中转站余额接口要 POST 带 JSON body
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = quotaQuery.method == QuotaQueryMethod.GET,
+                            onClick = { onEdit(quotaQuery.copy(method = QuotaQueryMethod.GET)) },
+                            label = { Text("GET") },
+                        )
+                        FilterChip(
+                            selected = quotaQuery.method == QuotaQueryMethod.POST,
+                            onClick = { onEdit(quotaQuery.copy(method = QuotaQueryMethod.POST)) },
+                            label = { Text("POST") },
+                        )
+                    }
                     OutlinedTextField(
                         value = quotaQuery.url,
                         onValueChange = { onEdit(quotaQuery.copy(url = it)) },
@@ -208,6 +222,19 @@ fun SettingProviderQuotaQuery(
                         modifier = Modifier.fillMaxWidth(),
                         textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
                     )
+                    if (quotaQuery.method == QuotaQueryMethod.POST) {
+                        OutlinedTextField(
+                            value = quotaQuery.body,
+                            onValueChange = { onEdit(quotaQuery.copy(body = it)) },
+                            label = { Text(stringResource(R.string.setting_provider_page_quota_body)) },
+                            supportingText = {
+                                Text(stringResource(R.string.setting_provider_page_quota_body_hint))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = JetbrainsMono),
+                        )
+                    }
                     OutlinedTextField(
                         value = quotaQuery.resultPath,
                         onValueChange = { onEdit(quotaQuery.copy(resultPath = it)) },

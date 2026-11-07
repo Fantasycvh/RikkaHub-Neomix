@@ -262,17 +262,17 @@
   <string name="backup_page_import_cherry_studio_desc">Import Cherry Studio provider configurations</string>
   <string name="backup_page_import_desc">Import local backup file</string>
   <string name="backup_page_status">Backup Status</string>
- <string name="backup_page_import_export">Local</string>
- <string name="backup_page_import_export_title">Local Backup and Import</string>
- <string name="backup_page_import_export_desc">Export all data as a ZIP, or import a backup file from local storage</string>
- <string name="backup_page_section_methods">Backup Methods</string>
- <string name="backup_page_section_automation">Automation</string>
- <string name="backup_page_section_experimental">Experimental</string>
- <string name="backup_page_webdav_desc">Upload backups to WebDAV and restore from the cloud</string>
- <string name="backup_page_s3_desc">Upload backups to an S3-compatible object storage</string>
- <string name="backup_page_reminder_desc">Get reminded when it has been a while since your last backup</string>
- <string name="backup_page_snapshot_title">Incremental Backup (Experimental)</string>
- <string name="backup_page_snapshot_desc">Snapshot-based incremental repository: restore points, ZIP export and object cleanup</string>
+  <string name="backup_page_import_export">Local</string>
+  <string name="backup_page_import_export_title">Local Backup and Import</string>
+  <string name="backup_page_import_export_desc">Export all data as a ZIP, or import a backup file from local storage</string>
+  <string name="backup_page_section_methods">Backup Methods</string>
+  <string name="backup_page_section_automation">Automation</string>
+  <string name="backup_page_section_experimental">Experimental</string>
+  <string name="backup_page_webdav_desc">Upload backups to WebDAV and restore from the cloud</string>
+  <string name="backup_page_s3_desc">Upload backups to an S3-compatible object storage</string>
+  <string name="backup_page_reminder_desc">Get reminded when it has been a while since your last backup</string>
+  <string name="backup_page_snapshot_title">Incremental Backup (Experimental)</string>
+  <string name="backup_page_snapshot_desc">Snapshot-based incremental repository: restore points, ZIP export and object cleanup</string>
   <string name="backup_page_import_conversation">Conversation (JSON)</string>
   <string name="backup_page_import_conversation_desc">Import a conversation archive exported from this app (.zip)</string>
   <string name="backup_page_import_invalid_file">Not a valid conversation export file</string>
@@ -3058,5 +3058,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="workspace_ssh_editor_jump_auth">Jump host authentication</string>
   <string name="workspace_ssh_editor_jump_host_key">Jump host key</string>
   <string name="workspace_ssh_editor_jump_host_key_changed_title">Jump host key changed</string>
+  <string name="setting_provider_page_quota_body">POST Body (JSON)</string>
+  <string name="setting_provider_page_quota_body_hint">Supports {{baseUrl}} / {{apiKey}} template variables</string>
 </resources>
 

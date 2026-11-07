@@ -1399,7 +1399,9 @@
   <string name="setting_provider_page_api_path">API 路徑</string>
   <string name="setting_provider_page_avaliable_models">可用模型</string>
   <string name="setting_provider_page_balance_api_path">餘額 API 路徑</string>
-  <string name="setting_provider_page_quota_url">額度查詢 URL</string>
+    <string name="setting_provider_page_quota_body">POST 請求體（JSON）</string>
+  <string name="setting_provider_page_quota_body_hint">支援 {{baseUrl}} / {{apiKey}} 樣板變數</string>
+<string name="setting_provider_page_quota_url">額度查詢 URL</string>
   <string name="setting_provider_page_balance_info">取得帳戶餘額</string>
   <string name="setting_provider_page_balance_json_key">結果 JSON 鍵值</string>
   <string name="setting_provider_page_balance_expression">計算表達式</string>
