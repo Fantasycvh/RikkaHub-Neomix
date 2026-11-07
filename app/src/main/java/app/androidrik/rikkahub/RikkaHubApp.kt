@@ -61,6 +61,7 @@ import app.androidrik.rikkahub.data.storage.StorageUsageManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.remote.ModelsDevUpdater
 import app.androidrik.rikkahub.data.plugin.installBuiltInPlugins
+import app.androidrik.rikkahub.ui.components.message.tools.installPluginToolUIBridge
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.service.MediaCreationService
 import app.androidrik.rikkahub.service.WebServerService
@@ -431,6 +432,7 @@ class RikkaHubApp : Application() {
         get<PluginManager>().also { manager ->
             manager.start()
             get<AppScope>().launch {
+                installPluginToolUIBridge(manager)
                 installBuiltInPlugins(manager)
                 // 已安装的 JSON 规则插件物化回注册表(与内置插件同一套状态与开关)
                 runCatching {

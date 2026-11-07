@@ -6,11 +6,8 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.api.RikkaPlugin
-import app.androidrik.plugin.manager.PluginLifecycleObserver
 import app.androidrik.plugin.manager.PluginManager
-import app.androidrik.plugin.manager.PluginResources
 import app.androidrik.rikkahub.data.ai.transformers.TransformerContext
-import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRegistry
 
 private const val TAG = "BuiltInPlugins"
 
@@ -25,29 +22,13 @@ val builtInPlugins: List<RikkaPlugin> = listOf(
 )
 
 /**
- * 插件生命周期观察者:把插件自带的工具 UI 渲染器挂到 [ToolUIRegistry]。
- *
- * 之所以由宿主做(而不是插件在 onEnable 里直接注册):插件 API 不依赖宿主 UI 模块,
- * 注册时机与注销时机应由宿主统一保证——禁用后残留的渲染器会让"已关闭的插件"继续影响界面。
- */
-private object PluginToolUIObserver : PluginLifecycleObserver {
-    override suspend fun onPluginEnabled(plugin: RikkaPlugin, resources: PluginResources) {
-        if (plugin is PluginToolUIRendererProvider) {
-            plugin.toolRenderers.forEach { renderer ->
-                resources.register { ToolUIRegistry.register(renderer) }
-            }
-        }
-    }
-}
-
-/**
  * 安装内置插件。
  *
  * 在 Application 启动时调用;内部先等待 [PluginManager.awaitReady],
  * 避免"注册早于持久化状态加载"导致启用状态被默认值覆盖。
  */
 suspend fun installBuiltInPlugins(manager: PluginManager) {
-    manager.addObserver(PluginToolUIObserver)
+    // 工具 UI 桥接已迁至 ui 侧（installPluginToolUIBridge，批次 11 消 data→ui 依赖），组合根并排装配
     manager.awaitReady()
     builtInPlugins.forEach { plugin ->
         runCatching { manager.register(plugin) }

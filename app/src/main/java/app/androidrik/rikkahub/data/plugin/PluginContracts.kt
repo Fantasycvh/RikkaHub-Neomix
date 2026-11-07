@@ -4,7 +4,6 @@ import app.androidrik.ai.core.Tool
 import app.androidrik.plugin.api.RikkaPlugin
 import app.androidrik.rikkahub.data.ai.transformers.InputMessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
-import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRenderer
 
 /**
  * 宿主侧能力契约。
@@ -15,7 +14,7 @@ import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRenderer
  * - [PluginInputTransformer] → TransformerChainRegistry 输入管线(`PROMPT_TRANSFORM`)
  * - [PluginOutputTransformer] → TransformerChainRegistry 输出管线(`OUTPUT_TRANSFORM`)
  * - [PluginToolProvider] → ChatToolFactory 工具装配点(`TOOL_REGISTER`)
- * - [PluginToolUIRendererProvider] → ToolUIRegistry(启用时注册、禁用时注销)
+ * - [PluginToolUIRendererProvider](已随批次 11 迁至 ui 侧 PluginToolUIBridge.kt) → ToolUIRegistry(启用时注册、禁用时注销)
  *
  * 能力校验在装配/调用边界完成(见 TransformerChainRegistry / ChatToolFactory),不依赖安装期一次性检查。
  */
@@ -31,7 +30,3 @@ interface PluginToolProvider : RikkaPlugin {
     fun tools(): List<Tool>
 }
 
-interface PluginToolUIRendererProvider : RikkaPlugin {
-    /** 本插件的工具 UI 渲染器;由宿主观察者按启用状态注册/注销。 */
-    val toolRenderers: List<ToolUIRenderer>
-}
