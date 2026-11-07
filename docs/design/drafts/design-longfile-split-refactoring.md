@@ -195,7 +195,7 @@
 ## 5. 建议执行顺序
 
 ```
-批次 1  Export.kt 六分                （耦合最小，练手验证流程）
+批次 1  Export.kt 六分                （✅ 2026-11-07 完成：393e3a791 拆分 + 2e4012bd2 死代码清理；单测绿、IME 审计 A=0；真机待过导出四格式）
 批次 2  ChatServiceModels + SubagentRunner 三块 + GenerationHandler 纯函数三块
 批次 3  RouteActivity 三刀（Screen 同包）
 批次 4  PreferencesStore 非 store 部分
