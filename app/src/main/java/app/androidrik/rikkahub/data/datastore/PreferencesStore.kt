@@ -91,9 +91,6 @@ import app.androidrik.rikkahub.data.model.asSinglePreset
 import app.androidrik.rikkahub.data.model.QuickMessage
 import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.data.sync.s3.S3Config
-import app.androidrik.rikkahub.ui.theme.CustomTheme
-import app.androidrik.rikkahub.ui.theme.PresetThemes
-import app.androidrik.rikkahub.ui.theme.ThemeRoleOverrides
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.utils.toMutableStateFlow
 import app.androidrik.search.SearchCommonOptions
@@ -547,7 +544,7 @@ class SettingsStore(
                 assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
                 dynamicColor = preferences[DYNAMIC_COLOR] != false,
                 dynamicColorSeedColor = preferences[DYNAMIC_COLOR_SEED]?.takeIf { it.isNotBlank() }?.toLongOrNull(),
-                themeId = preferences[THEME_ID] ?: PresetThemes[0].id,
+                themeId = preferences[THEME_ID] ?: DEFAULT_THEME_ID,
                 customThemes = preferences[CUSTOM_THEMES]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),

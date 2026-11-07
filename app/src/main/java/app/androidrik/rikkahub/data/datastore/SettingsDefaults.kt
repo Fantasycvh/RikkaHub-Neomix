@@ -118,3 +118,6 @@ const val DEFAULT_WORKSPACE_TURN_BUDGET_CHARS = 256 * 1024
 const val DEFAULT_WORKSPACE_TURN_MAX_STEPS = 64
 const val DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS = 2
 const val DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES = 30
+
+/** 默认预设主题 id（= ui 侧 SakuraThemePreset 的 id）。批次 11 起 data 层不再引用 ui.theme 的 PresetThemes 取默认值，预设清单仍是 ui 的展示概念；持久化默认值只需这个稳定字符串。 */
+const val DEFAULT_THEME_ID = "sakura"

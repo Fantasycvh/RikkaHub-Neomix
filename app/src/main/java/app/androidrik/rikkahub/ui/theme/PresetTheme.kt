@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.theme
 
 import androidx.compose.material3.ColorScheme
+import app.androidrik.rikkahub.data.model.CustomTheme
 import androidx.compose.runtime.Composable
 import app.androidrik.rikkahub.ui.theme.presets.AutumnThemePreset
 import app.androidrik.rikkahub.ui.theme.presets.BlackThemePreset

@@ -1,4 +1,4 @@
-package app.androidrik.rikkahub.ui.theme
+package app.androidrik.rikkahub.data.model
 
 import androidx.compose.material3.ColorScheme
 import dynamiccolor.ColorSpecs

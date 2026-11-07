@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.data.datastore
 
 import app.androidrik.rikkahub.data.model.Avatar
-import app.androidrik.rikkahub.ui.theme.ThemeRoleOverrides
+import app.androidrik.rikkahub.data.model.ThemeRoleOverrides
 import kotlin.uuid.Uuid
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -196,7 +196,7 @@ data class DisplaySetting(
      */
     val launcherAliasId: String = "",
     /**
-     * 角色覆写（全局层，对照 BiliPai ThemeRoleOverrides；见 `ui/theme/ThemeRoleOverride.kt`）。
+     * 角色覆写（全局层，对照 BiliPai ThemeRoleOverrides；见 `data/model/ThemeRoleOverrides.kt`（渲染应用在 ui/theme））。
      * enabled=false（默认）零行为变化；开启后叠加在任意色源之上。存这里而非 Settings 顶层：
      * 复用 display_setting 单 JSON key 不加键，且天然可进主题外观快照（design-custom-theme.md §4.2）。
      */

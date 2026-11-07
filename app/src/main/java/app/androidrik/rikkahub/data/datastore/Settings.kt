@@ -33,8 +33,7 @@ import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.data.model.asSinglePreset
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.s3.S3Config
-import app.androidrik.rikkahub.ui.theme.CustomTheme
-import app.androidrik.rikkahub.ui.theme.PresetThemes
+import app.androidrik.rikkahub.data.model.CustomTheme
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.search.SearchCommonOptions
 import app.androidrik.search.SearchServiceOptions
@@ -59,7 +58,7 @@ data class Settings(
     val dynamicColor: Boolean = true,
     /** 动态取色种子色（ARGB）；null = 跟随壁纸。仅 dynamicColor 且 Android 12+ 时生效。 */
     val dynamicColorSeedColor: Long? = null,
-    val themeId: String = PresetThemes[0].id,
+    val themeId: String = DEFAULT_THEME_ID,
     val customThemes: List<CustomTheme> = emptyList(),
     val developerMode: Boolean = false,
     val displaySetting: DisplaySetting = DisplaySetting(),
