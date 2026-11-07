@@ -173,9 +173,30 @@
 2. tier 排序域（isTierMaterialized/applyManualOrder/decideTierMove/materializeTier/resetTierOrder，与 DAO sort-order 物化强耦合）自成 `ConversationOrderingManager`。
 3. **两套分页并存**（Pager Flow + 手动 offset page）是历史包袱，重构时是统一时机，但 AgentRunsVM/ChatDrawerVM 等调用方都要过一遍。
 
-### 3.3 GenerationHandler 内部
+### 3.3 GenerationHandler 内部（2026-11-07 批次 10 分析后改形）
 
-工具执行分支抽 `ToolExecutionEngine`（`commitToolResult` 的 NonCancellable 同步回调时序不得变）；`translateText` 抽 `TranslationGenerator`；`withGenerationRetry` 抽 `GenerationRetryPolicy`。**runLoop（~670 行）拆分前置条件**：先把 20+ 个共享 `var` 局部状态收敛成 `LoopState` 值对象，否则半拆留下悬空状态。
+**原案（LoopState 先行 → runLoop 拆 ToolExecutionEngine）已否决**。理由：runLoop 实际只有
+7 个共享 `var` + 2 个可变集合（台账旧基线的「20+」高估），LoopState 收敛 ≈ 在最敏感的 647 行里
+做 ~40 处机械改写、零行为收益；而 runLoop 是 `flow{}` 内嵌局部函数、11 处 `emit()` 全捕获发射
+作用域——本文件注释记载了两次发射路径改造实测失败（NonCancellable 包 emit → Flow invariant；
+channelFlow → 缓冲值被取消的 collector 永不取走）。`commitToolResult` 的 NonCancellable 同步回调
+时序（停止生成丢工具结果，上游三修复之一，GenerationToolLoopTest 有回滚即红的钉子）与
+4 套「注入提示再 continue」补救机制的顺序耦合（loopGuard.reset() 位置是 2026-10-31 用户决议）
+都属「动一行、真机才现形」的高危区。**runLoop 与发射路径逐字不动。**
+
+**改形后的薄批次（只做真实收益项）**：
+1. `GenerationRetryPolicy.kt` ← withGenerationRetry（~68 行，自包含；辅助谓词已在
+   GenerationErrorPolicy.kt）；顶层 internal + 显式 context 参数（R.string 重试提示）。
+2. `TranslationGenerator.kt` ← translateText + MAX_TRANSLATE_CHARS（~100 行，叶子功能，
+   唯一外部调用方 ChatService，不经 generateInternal）；GenerationHandler 保留公开委托。
+3. `ToolOutputBudget.kt` ← 预算三件 toolOutputBudget/enforceContextBudget/maybeTruncateToolOutput
+   （~150 行）+ 闸 B 常量随迁；顶层 internal、context 参数化，runLoop/generateInternal 调用点
+   只加实参。
+
+预计 1872→~1250 行。守护测试核对结论：6 个 grep 本文件的守护测试（LoopGateWiring/
+RuleReminder（含位置序断言）/ThinkingDegeneration/MemoryConsolidation/MemoryAnchor/
+RequestMessagePipeline）的断言目标全部落在留守区，预计零改动。若后续确有功能性需求
+（如新的循环级护栏）再评估 runLoop 拆分，须以「整段循环体行为测试先行」为前置。
 
 ### 3.4 WorkspaceDetailPage 导出管线
 
@@ -260,7 +281,10 @@
         全量 3117 单测绿；真机验证 ✅：冷启动 0 FATAL，历史会话打开（8 nodes/56ms 埋点
         正常）、芯片直发消息完整生成（38 tok/107.6 tok/s）、force-stop 重启后消息全量
         持久化——load/save/检查点三条持久化路径均实证）
-批次 10 GenerationHandler 内部（LoopState 先行）→ 视收益决定是否继续
+批次 10 GenerationHandler 内部（2026-11-07 改形：原「LoopState 先行 → 拆 runLoop」否决——
+        LoopState 是负收益机械改写，runLoop 发射路径/取消安全时序是文档化事故高危区；
+        改做薄批次：GenerationRetryPolicy + TranslationGenerator + ToolOutputBudget 三外迁，
+        runLoop 逐字不动。方案细节与风险论证见 §3.3）
 ```
 
 每批次：单测 → audit_ime_trap.py → 编译 → 真机过被拆页面 → 独立提交（先 build 再 commit，防 6421e9b81/5fb0b6031 式漏提交编译不过）。

@@ -32,7 +32,6 @@ import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.core.accumulateRound
 import app.androidrik.ai.core.merge
 import app.androidrik.ai.provider.ApiKeyEntry
-import app.androidrik.ai.provider.CustomBody
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
@@ -43,7 +42,6 @@ import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.rikkahub.data.ai.tools.local.TODO_TOOL_NAME
 import app.androidrik.rikkahub.data.ai.tools.local.hasUnfinishedItems
 import app.androidrik.rikkahub.data.ai.tools.local.latestTodoPlan
-import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.ai.ui.isOutputLimitTruncation
 import app.androidrik.ai.ui.isContentFilterTruncation
 import app.androidrik.ai.ui.isEmptyUIMessage
@@ -57,7 +55,6 @@ import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
 import app.androidrik.rikkahub.data.ai.transformers.InputMessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
-import app.androidrik.rikkahub.data.files.FileFolders
 import java.io.File
 import app.androidrik.rikkahub.data.ai.transformers.balancedForRequest
 import app.androidrik.rikkahub.data.ai.transformers.onGenerationFinish
@@ -72,24 +69,14 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.ai.util.ToolSchemaSize
-import app.androidrik.rikkahub.utils.applyPlaceholders
-import app.androidrik.rikkahub.utils.estimateTokenCount
 import app.androidrik.rikkahub.utils.estimateTokens
-import app.androidrik.rikkahub.utils.effectiveContextLength
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "GenerationHandler"
-private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
 
-// 上下文闸 B：请求前紧急卸载 + 硬限（design-tool-context-gate §5，阈值比 Yuihub 的 0.90/0.97 收紧）。
-// 占用 ≥85% 时把旧工具结果卸载到文件留 2K 预览；卸完仍 ≥90% 判定硬限。
-// （闸 A 的限幅常量与纯函数核、硬限信号 ContextGateHardStop 在 ToolOutputContextGate.kt）
-private const val CONTEXT_EMERGENCY_RATIO = 0.85f
-private const val CONTEXT_HARD_RATIO = 0.90f
-private const val EMERGENCY_TOOL_PREVIEW_CHARS = 2 * 1024
-private const val CONTEXT_GUARD_KEEP_RECENT = 4
+// 上下文闸 B 的常量与三件执行体随批次 10 迁至 ToolOutputBudget.kt（闸 A 在 ToolOutputContextGate.kt）
 
 /**
  * 空工具输出的占位文本（见 [finalizeToolOutput]）。
@@ -102,9 +89,7 @@ private const val CONTEXT_GUARD_KEEP_RECENT = 4
  */
 internal const val EMPTY_TOOL_OUTPUT = "(no output)"
 
-// 搜索结果的体积由用户设置的结果数决定，且结果列表 UI 与引用跳转都依赖完整的 JSON 结构，不参与截断。
-// 豁免只在基础档生效：分级收缩档（16K/8K）下窗口优先级高于豁免（design-tool-context-gate §3）。
-private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web")
+// 搜索结果不参与截断的豁免清单随批次 10 迁至 ToolOutputBudget.kt（maybeTruncateToolOutput 同迁）
 
 /**
  * 空回复补救提示：模型只输出思考、无可见正文也无工具调用时，向随后一次请求追加此提示
@@ -128,8 +113,6 @@ internal const val CONTINUE_TRUNCATED_HINT =
 private const val VISIBLE_ANSWER_RECOVERY_HINT =
     "Your previous response produced no visible output for the user (reasoning only). " +
         "Provide your visible answer now."
-/** 翻译输入最大字符数：超长翻译文本曾 API 413 */
-private const val MAX_TRANSLATE_CHARS = 200_000
 
 /**
  * 工具调用指纹，用于识别同一批里的**重复调用**（相同工具 + 等价参数）。
@@ -267,6 +250,8 @@ class GenerationHandler(
     /** 每次 provider 请求写一行用量流水（见 [UsageRecorder]） */
     private val usageRecorder: UsageRecorder,
 ) {
+    // 批次 10 拆出的翻译生成器（translateText 公开签名不变，委托过去；ChatService 调用面不动）
+    private val translationGenerator = TranslationGenerator(context, providerManager, usageRecorder)
     /**
      * @param messages 会话**全量**消息（与 messageNodes 对齐），既是回写基线，也是发送上下文的来源
      * @param compressionWindow 压缩发送窗口的**可重算**描述（检查点 + 边界下标）；null = 无压缩，
@@ -943,6 +928,7 @@ class GenerationHandler(
                             // 空输出补占位：否则 isExecuted 仍为假 ⇒ 下一轮又被选出来重复执行
                             val output = finalizeToolOutput(
                                 maybeTruncateToolOutput(
+                                    context,
                                     tool,
                                     result,
                                     maxChars = outputBudget,
@@ -1079,85 +1065,6 @@ class GenerationHandler(
         }
     }.flowOn(Dispatchers.IO)
 
-    /**
-     * 生成失败自动重试。
-     *
-     * 配置解析优先级：per-provider [ProviderSetting.retryOption]（非 null 时完全覆盖）→
-     * 全局 [Settings.retrySetting]。未启用或间隔序列为空时直接执行，零开销。
-     *
-     * 语义：delaysSeconds 长度 = 重试次数（不含首次请求），值 = 每次重试前的等待秒数。
-     * 仅对「可重试错误」（网络异常/限流/服务端错误）重试；用户取消（CancellationException）
-     * 与不可重试错误（鉴权失败、参数错误等）立即上抛。重试等待状态通过
-     * [processingStatus] 反馈到 UI。
-     */
-    private suspend fun <T> withGenerationRetry(
-        providerSetting: ProviderSetting,
-        settings: Settings,
-        processingStatus: MutableStateFlow<String?>?,
-        maxRetries: Int? = null,
-        action: suspend (ProviderSetting) -> T,
-    ): T {
-        val plan = providerSetting.retryOption ?: settings.retrySetting
-        if (!plan.enabled || plan.delaysSeconds.isEmpty()) return action(providerSetting)
-        // 重试预算：有 fallback 模型时压缩（快速失败切备用，避免长延迟重试拖慢恢复）
-        val retryBudget = maxRetries?.coerceAtMost(plan.delaysSeconds.size) ?: plan.delaysSeconds.size
-
-        var currentSetting = providerSetting
-        var retryIndex = -1 // 已执行的重试序号；首次请求前为 -1
-        while (true) {
-            try {
-                return action(currentSetting)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: GenerationPartialFailureException) {
-                // #1812：半截输出失败不进重试循环——已流式内容有计费价值，
-                // 清空重发必然丢失；直接上抛由 ChatService 保留为草稿
-                throw e
-            } catch (e: Throwable) {
-                val next = retryIndex + 1
-                // 鉴权失败（401/403）或账户限流（429，多账户场景换 key 可避开）且还有其他 key：
-                // 立即换 key 重试，不等延迟。OrderKeyRoulette 固定取首个 key，故轮转 =
-                // 从瞬态副本去掉刚失败的首个 key（不落盘），下次请求自然用下一个；
-                // 每次换 key 消耗一个 key，耗尽后 hasMultipleEnabledKeys=false → 走正常路径上抛，
-                // 不会死循环。安全保证：#1812 分流——流式半截 429 已抛
-                // GenerationPartialFailureException 被上方 rethrow（保留草稿不换 key），
-                // 能走到这里的一定是零输出，换 key 无计费损失。
-                if (isKeySwitchingError(e) && hasMultipleEnabledKeys(currentSetting)) {
-                    val rotated = rotateProviderKeys(currentSetting)
-                    if (rotated == null) throw e // 理论不可达（hasMultipleEnabledKeys 已保证 ≥2 个）
-                    retryIndex = next
-                    currentSetting = rotated
-                    Log.w(
-                        TAG,
-                        "key error, switching key (${splitEffectiveKeys(rotated.effectiveApiKeys).size} key(s) left) " +
-                            "and retrying: ${e.message}"
-                    )
-                    continue
-                }
-                if (next >= retryBudget || !isRetryableGenerationError(e)) throw e
-                retryIndex = next
-                val waitSec = plan.delaysSeconds[retryIndex].coerceAtLeast(0)
-                Log.w(
-                    TAG,
-                    "generation failed, retry ${retryIndex + 1}/$retryBudget in ${waitSec}s: ${e.message}"
-                )
-                if (processingStatus != null) {
-                    processingStatus.value = context.getString(
-                        R.string.generation_retry_waiting,
-                        retryIndex + 1,
-                        retryBudget,
-                        waitSec,
-                    )
-                }
-                try {
-                    delay(waitSec * 1000L)
-                } finally {
-                    if (processingStatus != null) processingStatus.value = null
-                }
-            }
-        }
-    }
-
     private suspend fun generateInternal(
         assistant: Assistant,
         settings: Settings,
@@ -1259,7 +1166,7 @@ class GenerationHandler(
         // 85% 触发卸载；卸完仍 ≥90% 抛 [ContextGateHardStop]，由步骤循环转成优雅停止
         // （不采 Yuihub 的 throw 直达失败——本仓护栏家族一律优雅停止）。
         // 无工具的请求（标题/翻译）没有 Tool part，算法自然空转，无需特判。
-        val gatedMessages = enforceContextBudget(internalMessages, model)
+        val gatedMessages = enforceContextBudget(context, internalMessages, model)
         if (assistant.enableMemory && !memoryDisabled) {
             val plan = assembly.memoryPlan
             Log.i(TAG, "memory.inject budget=${plan.budgetTokens} estimated=${plan.totalEstimatedTokens} " +
@@ -1316,6 +1223,7 @@ class GenerationHandler(
         )
         if (stream) {
             withGenerationRetry(
+                context,
                 providerSetting = provider,
                 settings = settings,
                 processingStatus = processingStatus,
@@ -1427,6 +1335,7 @@ class GenerationHandler(
             }
         } else {
             withGenerationRetry(
+                context,
                 providerSetting = provider,
                 settings = settings,
                 processingStatus = processingStatus,
@@ -1494,254 +1403,19 @@ class GenerationHandler(
         return dropLast(1) + last.copy(finishReason = reason, finishIncomplete = incomplete)
     }
 
-    /**
-     * 上下文闸 A：per-call 动态限幅（design-tool-context-gate §4，Yuihub 3.0.0 `toolOutputBudget`）。
-     *
-     * 按当前消息列表占模型窗口的比率分三档：基础 32K / ≥65% 收 16K / ≥80% 收 8K。
-     * 只做本地估算（`estimateTokenCount`），无锚点——保守方向是少给预算，可接受。
-     */
-    private fun toolOutputBudget(messages: List<UIMessage>, model: Model): Int =
-        toolOutputBudgetFor(estimateTokenCount(messages), model.effectiveContextLength())
 
     /**
-     * 上下文闸 B：请求前紧急卸载（design-tool-context-gate §5，Yuihub 3.0.0 `enforceContextBudget` 的投影版）。
-     *
-     * 占用 ≥85% 时从最旧向新把工具结果全文卸载到 `tool_outputs/guard-<id>.txt`、
-     * part 替换为「卸载标记 + resultId + 恢复指引 + 2K 预览」，保留最近
-     * [CONTEXT_GUARD_KEEP_RECENT] 条消息不动（新近结果是模型正在用的）；
-     * 每卸载一条重算估算，达标即停。卸完仍 ≥90% 抛 [ContextGateHardStop]。
-     *
-     * 幂等：guard 文件按 toolCallId 命名、内容不可变，已存在即跳过写入；
-     * 已是投影（卸载标记 / 既有截断标记）的 part 不再处理。
-     * 快速路径（≤85%）每请求只多一次本地估算。
+     * 翻译生成（批次 10 拆出，见 [TranslationGenerator]）：公开签名不变，
+     * 唯一外部调用方 ChatService 经此委托。
      */
-    private suspend fun enforceContextBudget(
-        messages: List<UIMessage>,
-        model: Model,
-    ): List<UIMessage> {
-        val window = model.effectiveContextLength().coerceAtLeast(1)
-        val softLimit = (window * CONTEXT_EMERGENCY_RATIO).toInt()
-        val hardLimit = (window * CONTEXT_HARD_RATIO).toInt()
-        var current = messages
-        var estimated = estimateTokenCount(current)
-        if (estimated <= softLimit) return messages
-
-        val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
-        var changed = false
-        val keepFrom = (current.size - CONTEXT_GUARD_KEEP_RECENT).coerceAtLeast(0)
-        for (index in 0 until keepFrom) {
-            val message = current[index]
-            var messageChanged = false
-            val parts = message.parts.map { part ->
-                if (part !is UIMessagePart.Tool || part.output.isEmpty()) return@map part
-                val textParts = part.output.filterIsInstance<UIMessagePart.Text>()
-                val fullText = textParts.joinToString("\n") { it.text }
-                if (fullText.length <= EMERGENCY_TOOL_PREVIEW_CHARS ||
-                    fullText.contains("[Context guard: output offloaded]") ||
-                    fullText.contains("[Tool output truncated:")
-                ) {
-                    return@map part
-                }
-                val safeId = part.toolCallId.replace(Regex("[^A-Za-z0-9._-]"), "_")
-                val fileName = "guard-$safeId.txt"
-                val outputFile = File(outputDir, fileName)
-                if (!outputFile.exists() || outputFile.readText() != fullText) {
-                    withContext(Dispatchers.IO) {
-                        outputFile.writeText(fullText)
-                    }
-                }
-                messageChanged = true
-                val nonText = part.output.filter { it !is UIMessagePart.Text }
-                part.copy(
-                    output = listOf(
-                        UIMessagePart.Text(
-                            buildString {
-                                appendLine("[Context guard: output offloaded]")
-                                appendLine("resultId: guard-$safeId")
-                                appendLine("Full output saved to: /tool_outputs/$fileName")
-                                appendLine(
-                                    "Read only the needed range with workspace_read_file " +
-                                        "(or shell cat/grep if bound), instead of re-running the tool."
-                                )
-                                appendLine()
-                                append(fullText.take(EMERGENCY_TOOL_PREVIEW_CHARS))
-                            }
-                        )
-                    ) + nonText
-                )
-            }
-            if (messageChanged) {
-                current = current.toMutableList().also { it[index] = message.copy(parts = parts) }
-                changed = true
-                estimated = estimateTokenCount(current)
-                if (estimated <= softLimit) break
-            }
-        }
-        if (estimated > hardLimit) {
-            Log.w(TAG, "enforceContextBudget: hard limit after offloading ($estimated / $window)")
-            throw ContextGateHardStop(estimated, window)
-        }
-        if (changed) {
-            Log.i(TAG, "enforceContextBudget: offloaded old tool outputs, $estimated / $window tokens")
-        }
-        return if (changed) current else messages
-    }
-
-    private fun maybeTruncateToolOutput(
-        tool: UIMessagePart.Tool,
-        output: List<UIMessagePart>,
-        maxChars: Int,
-        workspaceBound: Boolean,
-        hasShellAccess: Boolean,
-    ): List<UIMessagePart> {
-        // 截断**恒生效**（原 `|| !hasShellAccess` 短路已废除，design-tool-context-gate §3）：
-        // 无恢复通道时宁可给「缩窄重跑」提示，也不能让 30K+ 输出无界进历史
-        if (tool.toolName in TOOLS_WITHOUT_OUTPUT_TRUNCATION && maxChars >= MAX_TOOL_OUTPUT_CHARS) return output
-
-        val toolCallId = tool.toolCallId
-        val textParts = output.filterIsInstance<UIMessagePart.Text>()
-        val nonTextParts = output.filter { it !is UIMessagePart.Text }
-        val totalChars = textParts.sumOf { it.text.length }
-
-        if (totalChars <= maxChars) return output
-
-        Log.i(TAG, "maybeTruncateToolOutput: truncating tool $toolCallId output ($totalChars chars, budget $maxChars)")
-
-        val fullText = textParts.joinToString("\n") { it.text }
-        val preview = fullText.take(TOOL_OUTPUT_PREVIEW_CHARS)
-
-        // [FIX] toolCallId 由模型提供（外部可控），直接拼文件名可含 "/" 或 "../" →
-        // 逃逸 tool_outputs 目录写入 app 私有目录其他位置（移植自 rikkahub-turbo a9449cc）。
-        val safeFileName = toolCallId.replace(Regex("[^A-Za-z0-9_-]"), "_")
-        val fileName = "$safeFileName.txt"
-        val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
-        val outputFile = File(outputDir, fileName)
-        outputFile.writeText(fullText)
-        // 投影无损回环校验（华灯投影原则）：外部全文是模型恢复上下文的**唯一**来源，
-        // 写坏（磁盘满/静默截断）必须当场报错——绝不能让「预览说存了、文件却是残的」。
-        require(outputFile.readText() == fullText) {
-            "Tool output projection write failed (lossless check): $fileName"
-        }
-
-        // 恢复指引按会话真实能力三分支（§4）：有 workspace 用分页读（比整段 cat 省）；
-        // 只有 shell 才指引 cat/grep；两者皆无时诚实告知重跑，不给假指引
-        val recovery = when {
-            workspaceBound ->
-                "Use workspace_read_file(path=\"/tool_outputs/$fileName\", offset=1, limit=200) " +
-                    "to read only the needed range instead of re-running the tool."
-            hasShellAccess ->
-                "Use shell to read: `cat /tool_outputs/$fileName`\n" +
-                    "Use shell to search: `grep \"pattern\" /tool_outputs/$fileName`"
-            else ->
-                "The output is too large to include in context and this session has no file-reading " +
-                    "tool. Re-run the tool with narrower arguments to get a smaller result."
-        }
-
-        return listOf(
-            UIMessagePart.Text(
-                buildString {
-                    appendLine("[Tool output truncated: $totalChars characters total]")
-                    appendLine("Full output saved to: /tool_outputs/$fileName")
-                    append(recovery)
-                    appendLine()
-                    append(preview)
-                }
-            )
-        ) + nonTextParts
-    }
-
     fun translateText(
         settings: Settings,
         sourceText: String,
         targetLanguage: Locale,
         onStreamUpdate: ((String) -> Unit)? = null
-    ): Flow<String> = flow {
-        // 翻译模型未配置（落值 UUID 解析不到）时回落到聊天模型（Miffan 同款兜底），
-        // 否则划词弹窗/翻译页在只配了聊天模型的用户那里直接报错
-        val model = settings.providers.findModelById(settings.translateModeId)
-            ?: settings.providers.findModelById(settings.chatModelId)
-            ?: error("Translation model not found")
-        val provider = model.findProvider(settings.providers)
-            ?: error("Translation provider not found")
-
-        // 翻译同样走 provider 出口：包一层流水记录，统计页才能看到「翻译花了多少」
-        val providerHandler = usageRecorder.wrap(
-            providerManager.getProviderByType(provider),
-            UsageTag(UsageSource.TRANSLATION),
-        )
-
-        if (!ModelRegistry.QWEN_MT.match(model.modelId)) {
-            // Use regular translation with prompt
-            val prompt = settings.translatePrompt.applyPlaceholders(
-                "source_text" to sourceText.take(MAX_TRANSLATE_CHARS),
-                "target_lang" to targetLanguage.toString(),
-            )
-
-            var messages = listOf(UIMessage.user(prompt))
-            var translatedText = ""
-
-            withGenerationRetry(provider, settings, null) { provider ->
-                val snapshot = messages
-                // 重试会从头重放，处理器必须按尝试重建（保留跨尝试状态会让 open part 错位）
-                val chunkHandler = StreamChunkHandler(model = model)
-                try {
-                    providerHandler.streamText(
-                        providerSetting = provider,
-                        messages = messages,
-                        params = TextGenerationParams(
-                            model = model,
-                            reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
-                        ),
-                    ).collect { chunk ->
-                        messages = chunkHandler.handle(messages, chunk)
-                        translatedText = messages.lastOrNull()?.toText() ?: ""
-
-                        if (translatedText.isNotBlank()) {
-                            onStreamUpdate?.invoke(translatedText)
-                            emit(translatedText)
-                        }
-                    }
-                } catch (e: Throwable) {
-                    if (e is CancellationException) throw e
-                    messages = snapshot
-                    throw e
-                }
-            }
-        } else {
-            // Use Qwen MT model with special translation options
-            val messages = listOf(UIMessage.user(sourceText))
-            val result = withGenerationRetry(provider, settings, null) { provider ->
-                providerHandler.generateText(
-                    providerSetting = provider,
-                    messages = messages,
-                    params = TextGenerationParams(
-                        model = model,
-                        temperature = 0.3f,
-                        topP = 0.95f,
-                        customBody = listOf(
-                            CustomBody(
-                                key = "translation_options",
-                                value = buildJsonObject {
-                                    put("source_lang", JsonPrimitive("auto"))
-                                    put(
-                                        "target_lang",
-                                        JsonPrimitive(targetLanguage.getDisplayLanguage(Locale.ENGLISH))
-                                    )
-                                }
-                            )
-                        )
-                    ),
-                )
-            }
-            val translatedText = result.message.toText()
-
-            if (translatedText.isNotBlank()) {
-                onStreamUpdate?.invoke(translatedText)
-                emit(translatedText)
-            }
-        }
-    }.flowOn(Dispatchers.IO)
+    ): Flow<String> = translationGenerator.translateText(settings, sourceText, targetLanguage, onStreamUpdate)
 }
+
 
 /**
  * #1812：半截输出失败信号——以异常为载体把「已流式合并的半截消息」交给上层落草稿。
