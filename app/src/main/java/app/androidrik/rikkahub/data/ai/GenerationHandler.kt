@@ -81,26 +81,15 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "GenerationHandler"
-private const val MAX_TOOL_OUTPUT_CHARS = 32 * 1024
 private const val TOOL_OUTPUT_PREVIEW_CHARS = 4 * 1024
-
-// 上下文闸 A：per-call 动态限幅的收缩档（design-tool-context-gate §4）。
-// 窗口占用 ≥65% 收到 16K、≥80% 收到 8K；基础档维持 32K 不变。
-private const val TOOL_OUTPUT_MID_CHARS = 16 * 1024
-private const val TOOL_OUTPUT_MIN_CHARS = 8 * 1024
 
 // 上下文闸 B：请求前紧急卸载 + 硬限（design-tool-context-gate §5，阈值比 Yuihub 的 0.90/0.97 收紧）。
 // 占用 ≥85% 时把旧工具结果卸载到文件留 2K 预览；卸完仍 ≥90% 判定硬限。
+// （闸 A 的限幅常量与纯函数核、硬限信号 ContextGateHardStop 在 ToolOutputContextGate.kt）
 private const val CONTEXT_EMERGENCY_RATIO = 0.85f
 private const val CONTEXT_HARD_RATIO = 0.90f
 private const val EMERGENCY_TOOL_PREVIEW_CHARS = 2 * 1024
 private const val CONTEXT_GUARD_KEEP_RECENT = 4
-
-/** 上下文闸 B 的硬限信号：卸载后仍超 90%。由 [GenerationHandler.enforceContextBudget] 抛出，调用方转成优雅停止。 */
-internal class ContextGateHardStop(
-    val usedTokens: Int,
-    val windowTokens: Int,
-) : IllegalStateException("Context window budget exceeded after offloading old tool outputs: $usedTokens / $windowTokens")
 
 /**
  * 空工具输出的占位文本（见 [finalizeToolOutput]）。
@@ -116,16 +105,6 @@ internal const val EMPTY_TOOL_OUTPUT = "(no output)"
 // 搜索结果的体积由用户设置的结果数决定，且结果列表 UI 与引用跳转都依赖完整的 JSON 结构，不参与截断。
 // 豁免只在基础档生效：分级收缩档（16K/8K）下窗口优先级高于豁免（design-tool-context-gate §3）。
 private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web")
-
-/** 上下文闸 A 的纯函数核（边界测试直接打这个，不用拉起整条生成流）。 */
-internal fun toolOutputBudgetFor(estimatedTokens: Int, window: Int): Int {
-    val ratio = estimatedTokens.toFloat() / window.coerceAtLeast(1)
-    return when {
-        ratio >= 0.80f -> TOOL_OUTPUT_MIN_CHARS
-        ratio >= 0.65f -> TOOL_OUTPUT_MID_CHARS
-        else -> MAX_TOOL_OUTPUT_CHARS
-    }
-}
 
 /**
  * 空回复补救提示：模型只输出思考、无可见正文也无工具调用时，向随后一次请求追加此提示
@@ -264,78 +243,6 @@ internal fun applyToolOutput(
         if (part is UIMessagePart.Tool && part.toolCallId == result.toolCallId) result else part
     }
     return messages.dropLast(1) + lastMessage.copy(parts = updatedParts)
-}
-
-@Serializable
-sealed interface GenerationChunk {
-    data class Messages(
-        val messages: List<UIMessage>
-    ) : GenerationChunk
-
-    /**
-     * 需要让用户看到、但**不属于对话内容**的提示（如工具调用失控护栏停止本轮）。
-     *
-     * 为什么不写进消息：提示是给用户看的，写进消息会被持久化、并在下一轮作为上下文发给模型，
-     * 变成「自己教自己」的噪音。走独立 chunk，由上层转成用户可见的提示。
-     */
-    data class Notice(
-        val notice: GenerationNotice,
-    ) : GenerationChunk
-}
-
-/** [GenerationChunk.Notice] 的载荷。 */
-@Serializable
-sealed interface GenerationNotice {
-    /** 同一工具同参数反复调用，已提前结束本轮（见 [ToolCallLoopGuard]）。 */
-    data class ToolLoopStopped(
-        val toolName: String,
-        val repeats: Int,
-    ) : GenerationNotice
-
-    /**
-     * workspace（rootfs）工具的单轮总预算耗尽，已提前结束本轮（见 [WorkspaceTurnBudget]）。
-     * 堵的是 LoopGuard 防不住的形态：每步换参数的 workspace 调用，累计输出/步数无上限。
-     */
-    data class WorkspaceBudgetExhausted(
-        val usedChars: Long,
-        val budgetChars: Long,
-        val steps: Int,
-        val by: WorkspaceTurnBudget.ExceedReason,
-    ) : GenerationNotice
-
-    /**
-     * 无头 run 的重复拒绝达阈值（见 [DenialGuard]）——模型被策略拒绝后换着方式反复撞，
-     * 继续跑只会到空响应；提前结束，run 以 `failed(permission_denied)` 收尾。
-     */
-    data class TooManyDenials(
-        val denials: Int,
-    ) : GenerationNotice
-
-    /**
-     * 上下文预算耗尽（设计 §十二）：轨迹把窗口吃到"剩下的不够产出一轮回答"，
-     * 优雅停止本轮（已产生的工具结果照常回填）。
-     *
-     * 与 [WorkspaceBudgetExhausted] 的区别：那个计「工具输出堆了多少」，
-     * 这个计「窗口还剩多少」——前者是成本/体量，后者是硬墙（撞上去 provider 直接报错）。
-     */
-    data class ContextBudgetExhausted(
-        val usedTokens: Int,
-        val windowTokens: Int,
-    ) : GenerationNotice
-
-    /**
-     * **思考退化**（零工具调用的失控形态）——连续纯思考/复述上一步，或单次调用内逐字重复，
-     * 已提前结束本轮（见 [ThinkingDegenerationGuard]）。
-     *
-     * @param cutRule 调用内断流命中的规则；null = 只是调用边界上的计数达阈值
-     * @param repeated 断流时的重复次数（相同 delta 次数）或周期长度
-     */
-    data class ThinkingDegenerationStopped(
-        val stalledCalls: Int,
-        val restated: Boolean,
-        val cutRule: ThinkingDegenerationGuard.Rule?,
-        val repeated: Int,
-    ) : GenerationNotice
 }
 
 /** 无头 run 的策略拒绝文本（拒绝文本契约 §9.2.1：策略终态、明说勿重试）。 */
@@ -1933,125 +1840,6 @@ internal fun isPartialOutput(
         if (part is UIMessagePart.Text) part.text.length else 0
     }
     return visibleChars >= minChars
-}
-
-/**
- * 判断生成错误是否值得自动重试：
- * - 网络层异常（超时/DNS/连接失败/TLS 等 IOException 家族）→ 重试
- * - 响应解析失败（中转站返回 HTML 错误页等非 JSON 内容）→ 重试
- * - HTTP 408/425/429/5xx → 重试；401/403（鉴权）、400（参数）、404（模型不存在）→ 不重试
- *
- * provider 层抛的是字符串异常（如 "Failed to get response: 429 ..."），状态码从 message 提取。
- * **内容风控拦截不重试**：同样内容重发同样被拦（见 [CONTENT_BLOCKED_MARKERS]）。
- */
-internal fun isRetryableGenerationError(t: Throwable): Boolean {
-    // 内容风控/违禁词：确定性失败，须用户改内容——优先于网络/状态码判定（重发同样被拦）
-    if (t.matchesAnyMarker(CONTENT_BLOCKED_MARKERS)) return false
-    if (t is java.io.IOException) return true
-    if (t is kotlinx.serialization.SerializationException) return true
-    // 额度耗尽是确定性失败：余额不会自恢复，等待无意义——快速失败走换 key / fallback
-    if (t.matchesAnyMarker(QUOTA_EXHAUSTED_MARKERS)) return false
-    // 限流：等窗口重置可解（无状态码的 SSE 流内限流错误在此兜底）
-    if (t.matchesAnyMarker(RATE_LIMITED_MARKERS)) return true
-    val code = findHttpStatusCode(t.message) ?: return false
-    return code == 408 || code == 425 || code == 429 || code in 500..599
-}
-
-/**
- * 换 key 可解决的错误：401/403（鉴权/凭证失效）+ 429（账户级限流，多账户场景换 key 可避开），
- * 以及无状态码的 SSE 流内错误文本兜底（中转站 200 + error 事件）——额度耗尽/限流都是账户级问题。
- * 到此处的一定是零输出（流式半截 429 已被 #1812 分流拦截），换 key 无计费损失。
- *
- * **例外（内容风控拦截）**：网关按内容判定违禁并返回 403 时，问题在**请求内容**而非凭证——
- * 所有 key 都会撞同一道防火墙，换 key 必然全败且把额度/时间白耗在轮换上。故先行排除（见
- * [CONTENT_BLOCKED_MARKERS]）。这类错误也不重试（同样内容同样被拦）。
- */
-internal fun isKeySwitchingError(t: Throwable): Boolean {
-    if (t.matchesAnyMarker(CONTENT_BLOCKED_MARKERS)) return false
-    val code = findHttpStatusCode(t.message)
-    if (code == 401 || code == 403 || code == 429) return true
-    return t.matchesAnyMarker(QUOTA_EXHAUSTED_MARKERS) || t.matchesAnyMarker(RATE_LIMITED_MARKERS)
-}
-
-/**
- * 内容风控/违禁词拦截特征：网关按**内容**拒绝，与凭证无关。
- *
- * 实测样例（中转站/网关 403）：「触发网站风控违禁词，无法调用模型：内容命中网关内容防火墙规则
- * [关键词：...]，已被拦截。请修改内容后重试。」——**换 key 无用**（同一防火墙）、**重试无用**
- * （同样内容同样被拦），只能由用户改内容。若不加此判据，会被 403 规则误判为凭证失效而轮换所有 key。
- *
- * 注意：网关多按**子串**匹配（如 `sb`、`sm`、`anal` 会命中 `val sb = StringBuilder()`、`analyze`
- * 等普通标识符），故用户侧报错常显「莫名其妙」；这是网关行为，客户端无法规避，只能如实归类。
- */
-private val CONTENT_BLOCKED_MARKERS = listOf(
-    // 中文网关/中转站（"风控" 是内容风控惯用词）
-    "风控", "违禁词", "内容防火墙", "已被拦截", "命中网关", "请修改内容后重试",
-    // 国际厂商内容策略
-    "content policy", "content_policy_violation", "content filter", "content moderation",
-    "moderation_blocked", "safety system", "flagged by", "responsible ai",
-)
-
-/** 账户额度耗尽特征：等待无用（余额不自恢复），换 key（换账户）或 fallback 模型可解 */
-private val QUOTA_EXHAUSTED_MARKERS = listOf(
-    "quota is not enough",       // new-api 系中转站（实测复制样例）
-    "insufficient quota",        // OpenAI 官方系
-    "insufficient_quota",
-    "exceeded your current quota",
-    "quota exceeded",
-    "余额不足", "额度不足",
-)
-
-/** 限流特征（TPM/RPM/速率）：等窗口重置或换 key（换账户）可解；锚定写法防 "tpm-mini" 之类误伤 */
-private val RATE_LIMITED_MARKERS = listOf(
-    "rate limit", "rate_limit", "ratelimit",
-    "too many requests",
-    "tpm/rpm", "exceeds tpm", "exceeds rpm", "tpm limit", "rpm limit",
-    "请求过于频繁", "触发限流",
-)
-
-private fun Throwable.matchesAnyMarker(markers: List<String>): Boolean {
-    val message = this.message?.lowercase() ?: return false
-    return markers.any { it in message }
-}
-
-/** 该提供商是否配置了多个可用 key（enabled 过滤后） */
-internal fun hasMultipleEnabledKeys(providerSetting: ProviderSetting): Boolean {
-    // 账号类没有 API Key 轮询
-    val keys = (providerSetting as? ProviderSetting.ApiKey)?.apiKeys ?: return false
-    return keys.count { it.enabled && it.key.isNotBlank() } > 1
-}
-
-/**
- * 换 key 重试的轮转：去掉首个生效 key（OrderKeyRoulette 固定取首个 = 刚失败的那个），
- * 剩余 key 写回瞬态副本（apiKeys + 旧 apiKey 字段同时覆盖，兼容旧字符串多 key）。
- * 副本仅用于本次重试循环内传给 provider，不落盘。只剩 ≤1 个 key 时返回 null（无可切换）。
- */
-internal fun rotateProviderKeys(setting: ProviderSetting): ProviderSetting? {
-    val keys = splitEffectiveKeys(setting.effectiveApiKeys)
-    if (keys.size <= 1) return null
-    val remaining = keys.drop(1)
-    val entries = remaining.map { ApiKeyEntry(it) }
-    val legacy = remaining.joinToString("\n")
-    val apiKeySetting = setting as? ProviderSetting.ApiKey ?: return null
-    return when (apiKeySetting) {
-        is ProviderSetting.OpenAI -> apiKeySetting.copy(apiKeys = entries, apiKey = legacy)
-        is ProviderSetting.Google -> apiKeySetting.copy(apiKeys = entries, apiKey = legacy)
-        is ProviderSetting.Claude -> apiKeySetting.copy(apiKeys = entries, apiKey = legacy)
-    }
-}
-
-/** 拆分 effectiveApiKeys 字符串（与 KeyRoulette.splitKey 同规则：空白/逗号分隔 + 去重） */
-internal fun splitEffectiveKeys(keys: String): List<String> =
-    keys.split("[\\s,]+".toRegex()).map { it.trim() }.filter { it.isNotBlank() }.distinct()
-
-/** 从错误 message 提取 HTTP 状态码：优先 "code/status: NNN" 形态，回退到首个独立的 3 位数字。 */
-private fun findHttpStatusCode(message: String?): Int? {
-    if (message == null) return null
-    val prefixed = Regex("""(?:code|status|HTTP)[\s:=]*(\d{3})""", RegexOption.IGNORE_CASE)
-        .find(message)?.groupValues?.get(1)?.toIntOrNull()
-    if (prefixed != null) return prefixed
-    // 回退：形如 ": 429"、">502"、"#401" 的独立三位数（覆盖中转站 HTML 错误页正文与搜索服务 "#${code}" 形态）
-    return Regex("""[\s:>(#](\d{3})\b""").find(message)?.groupValues?.get(1)?.toIntOrNull()
 }
 
 /**
