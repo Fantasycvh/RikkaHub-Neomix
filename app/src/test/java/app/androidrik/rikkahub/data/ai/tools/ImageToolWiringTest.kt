@@ -37,7 +37,7 @@ class ImageToolWiringTest {
             factory.contains(gate),
         )
         val gateAt = factory.indexOf(gate)
-        val segmentAt = factory.indexOf("ToolSegment(\n                \"image\"", gateAt)
+        val segmentAt = factory.indexOf("ToolSegment(\n                ToolSource.Image", gateAt)
         assertTrue(
             "生图工具段必须落在门控之内（否则等于没门控）",
             segmentAt > gateAt,

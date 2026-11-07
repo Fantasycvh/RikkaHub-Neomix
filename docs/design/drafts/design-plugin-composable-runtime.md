@@ -1,6 +1,6 @@
 # 可组合插件运行时设计：借鉴 DeepSeek Harness
 
-> 状态：**rev2，P1 整期验收完成（2026-11-07：人工验收+性能对照+决策门记录均关闭）；§十六 为 P2 启动准备（仅文档，未实施）**。
+> 状态：**rev2，P1 整期验收完成（2026-11-07）；P2a 已实施（§十七，2026-11-07，未提交待授权）**。
 > P1 决策门：**放行第二层（动态运行时）**，见 §16.6——P2（工具统一）仍按 §16.3 先行，
 > 第二层在 P2 完成后另立设计批次。2026-11-06 P2 四项设计拍板见 §16.4，拆分见 §16.3。
 > 2026-11-04 进展见 §十二至§十五；P1c 获「本地提交」授权，实施与证据一并归档，推送未授权。
@@ -1065,3 +1065,37 @@ MCP 段之间无重名检查，§三.2「同一作用域内重复工具名直接
 - **试点开关**：`USE_REGISTERED_TRANSFORMER_ASSEMBLY` 旧序分支的删除不受本结论影响——
   按 §六 迁移规则「替代路径完成验收、回滚窗口结束后删除」执行（性能对照已完成，回滚窗口
   起算日 2026-11-06）；继续第二层更无理由保留永久双轨。
+
+## 十七、P2a 实施记录：来源标识、重名闸门与诊断（2026-11-07）
+
+按 §16.3 拍板后拆分实施本批；本轮未提交（待授权）。代码基线 `144c3fd57`。
+
+### 17.1 交付内容
+
+- **来源标识类型化（拍板 3）**：新增 `data/ai/tools/ToolSource.kt`——sealed 类型枚举作单一真源，
+  固定来源 12 个为 data object，参数化来源（`McpServer(serverName)` / `Plugin(pluginId)`）为
+  data class（enum 常量无法携带运行时参数，此为「类型化枚举」的 Kotlin 等价落地）。
+  [ToolSource.segmentName] 序列化值与历史段名字符串**逐字符相同**，由单测
+  `tool source segment names are frozen contracts` 逐项锚定。消费点全部切换：
+  [ToolSegment.source] 类型改 ToolSource、信封 `CAPABILITY_SOURCE_SEGMENTS`/workspace 剔除、
+  派发上下文、schema 诊断均引用同一处，消除散落字面量。
+- **跨段重名闸门（拍板 1）**：纯函数 `acceptPluginToolSegments`——插件工具与内置/MCP 段、
+  先前已接受插件段同名，或插件段**内部**重名 ⇒ **该插件段整体拒绝装配**（不做前缀改名，
+  模型可见名一律不变）。ChatService 主装配路径经 `onPluginToolsRejected` 回调落用户可见
+  错误（标题「插件工具名称冲突，该插件的工具本轮未启用」+ 冲突明细）；预览/子代理路径
+  传 null 只记日志。`createTools`/`createToolSegments` 收 internal（仅 app 模块消费）。
+- **诊断补维度（拍板 4）**：`logSchemaBreakdown` 每段追加 `appr=`（按**引用**识别默认闭包
+  ——ai 模块新增规范实例 `TOOL_NO_APPROVAL` 作为 `Tool.needsApproval` 默认值；字面量
+  `{ false }` 宁可多报 dyn 不漏报）与 `to=`（段内最大外层上限秒数 + `+Nself` 自管超时计数）。
+  logcat 一行可回答三问：从哪来（段名）、要不要审批（appr）、超时多少（to）。
+
+### 17.2 验证与边界
+
+- 测试：tools 包 **229 项 0 失败**（新增 7 项：段名锚定 ×1、闸门行为 ×3、审批/超时画像 ×2、
+  既有迁移）；关联套件（transformers/plugin/Token/PromptInspection + ai 模块）合计
+  **778 项 0 失败 0 错误**；app+ai 编译通过，`git diff --check` 干净。
+- 未做真机验证（闸门无既有触发者：当前样例插件工具名 `note` 无冲突；真机路径留待
+  P2a+P2b 一起走查）。行为面：无插件冲突时与改动前**逐字节等价**（段名、顺序、审批闭包、
+  超时全部不变）。
+- 回滚：删除 ToolSource.kt、`acceptPluginToolSegments`/画像函数与两处回调接线即回滚；
+  `TOOL_NO_APPROVAL` 保留无害。

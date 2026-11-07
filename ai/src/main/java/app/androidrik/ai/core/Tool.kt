@@ -11,13 +11,23 @@ import app.androidrik.ai.ui.UIMessagePart
 /** 工具执行的默认**外层**上限（见 [Tool.executionTimeoutMillis]）。 */
 const val DEFAULT_TOOL_EXECUTION_TIMEOUT_MS = 60_000L
 
+/**
+ * 审批「**恒不拦**」的规范实例；[Tool.needsApproval] 的默认值即它。
+ *
+ * 存在意义是让「这个工具没配审批闭包」变得**机器可判**（按引用比较）——装配诊断
+ * （P2a，设计稿 §16.3）要回答「这个工具要不要审批」，而审批闭包无法内省；
+ * 约定「未配置 = 引用本实例」后，`tool.needsApproval !== TOOL_NO_APPROVAL` 即「有动态审批」。
+ * 逻辑等价的字面量 `{ false }` 不参与该判定（宁可多报 dyn，不漏报）。
+ */
+val TOOL_NO_APPROVAL: (JsonElement) -> Boolean = { false }
+
 @Serializable
 data class Tool(
     val name: String,
     val description: String,
     val parameters: () -> InputSchema? = { null },
     val systemPrompt: (model: Model, messages: List<UIMessage>) -> String = { _, _ -> "" },
-    val needsApproval: (JsonElement) -> Boolean = { false },
+    val needsApproval: (JsonElement) -> Boolean = TOOL_NO_APPROVAL,
     /**
      * 本次调用的**外层执行上限**（毫秒）；`null` = 该工具**自管超时**，外层不介入。
      *

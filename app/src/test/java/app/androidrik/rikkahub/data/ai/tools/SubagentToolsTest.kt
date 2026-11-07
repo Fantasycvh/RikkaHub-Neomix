@@ -32,16 +32,16 @@ class SubagentToolsTest {
 
     private fun tool(name: String) = Tool(name = name, description = "", execute = { emptyList() })
 
-    private fun segment(source: String, vararg names: String) =
+    private fun segment(source: ToolSource, vararg names: String) =
         ToolSegment(source = source, tools = names.map { tool(it) })
 
     private val segments = listOf(
-        segment("search", "search_web", "scrape_web"),
-        segment("local", "get_time_info"),
-        segment("workspace", "workspace_read_file"),
-        segment("skill-install", "install_skill"),
-        segment("mcp:calendar", "mcp_calendar_create_event"),
-        segment("subagent", SUBAGENT_DISPATCH_TOOL_NAME),
+        segment(ToolSource.Search, "search_web", "scrape_web"),
+        segment(ToolSource.Local, "get_time_info"),
+        segment(ToolSource.Workspace, "workspace_read_file"),
+        segment(ToolSource.SkillInstall, "install_skill"),
+        segment(ToolSource.McpServer("calendar"), "mcp_calendar_create_event"),
+        segment(ToolSource.Subagent, SUBAGENT_DISPATCH_TOOL_NAME),
     )
 
     private fun preset(
@@ -154,15 +154,15 @@ class SubagentToolsTest {
 
     @Test
     fun `headless tools exclude ask user even when explicitly allowed`() {
-        val segments = listOf(segment("workspace", "ask_user", "workspace_read_file"))
+        val segments = listOf(segment(ToolSource.Workspace, "ask_user", "workspace_read_file"))
         assertFalse("ask_user" in runToolCatalog(segments))
         assertFalse("ask_user" in resolveSubagentEnvelope(segments, setOf("ask_user", "workspace_read_file")))
     }
 
     @Test
     fun `child envelope is the intersection with the assembled parent tools`() {
-        val segments = listOf(segment("workspace", "workspace_read_file", "workspace_write_file"),
-            segment("plugin:x", "external_write"))
+        val segments = listOf(segment(ToolSource.Workspace, "workspace_read_file", "workspace_write_file"),
+            segment(ToolSource.Plugin("x"), "external_write"))
         assertEquals(setOf("workspace_read_file"), resolveSubagentEnvelope(segments, null, setOf("workspace_read_file")))
         assertEquals(emptySet<String>(), resolveSubagentEnvelope(segments, setOf("external_write"), setOf("workspace_read_file")))
         assertEquals(emptySet<String>(), resolveSubagentEnvelope(segments, null, emptySet()))
@@ -173,7 +173,7 @@ class SubagentToolsTest {
     fun `same tool names cannot grant a different workspace`() {
         val parent = Uuid.random()
         val child = Uuid.random()
-        val segments = listOf(segment("workspace", "workspace_read_file"), segment("search", "search_web"))
+        val segments = listOf(segment(ToolSource.Workspace, "workspace_read_file"), segment(ToolSource.Search, "search_web"))
         val parentTools = setOf("workspace_read_file", "search_web")
         assertEquals(setOf("search_web"), resolveSubagentEnvelope(segments, null, parentTools, child, parent))
         assertEquals(parentTools, resolveSubagentEnvelope(segments, null, parentTools, parent, parent))

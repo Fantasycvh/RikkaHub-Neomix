@@ -1839,6 +1839,14 @@ class ChatService(
                 // 后台任务归属 = 本轮 scope（本轮被取消时按它精确收掉这一轮起的进程）
                 turnOwner = app.androidrik.workspace.ExecutionScope.parse(session.backgroundTaskOwner),
                 memoryDisabled = conversation.memoryDisabled,
+                // 插件工具与内置/MCP 段重名 → 该插件段拒绝装配（P2a 拍板 1），这里落成用户可见错误
+                onPluginToolsRejected = { pluginId, conflicting ->
+                    addError(
+                        IllegalStateException("plugin=$pluginId tools=$conflicting"),
+                        conversationId,
+                        title = "插件工具名称冲突，该插件的工具本轮未启用",
+                    )
+                },
             )
             Log.i(
                 TAG,

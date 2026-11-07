@@ -9,6 +9,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import android.util.Log
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
+import app.androidrik.ai.core.TOOL_NO_APPROVAL
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
@@ -109,7 +110,7 @@ class ChatToolFactory(
      * 顺序保持迁移前不变（记忆工具在前，随后搜索/本地/对话/工作区/技能/子代理/MCP）——
      * Claude 的 `promptCaching` 会把缓存断点打在**最后一个**工具上，顺序变动会移动断点位置。
      */
-    suspend fun createTools(
+    internal suspend fun createTools(
         settings: Settings,
         assistant: Assistant,
         model: Model,
@@ -128,6 +129,8 @@ class ChatToolFactory(
         turnOwner: ExecutionScope? = null,
         /** 会话级「不使用记忆」（隐身对话）：为真时不装配记忆工具，见 [createToolSegments] */
         memoryDisabled: Boolean = false,
+        /** 插件工具与既有段重名时的用户可见报错通道；null = 只记日志（预览/子代理路径） */
+        onPluginToolsRejected: PluginToolsRejectedListener? = null,
     ): List<Tool> = createToolSegments(
         settings = settings,
         assistant = assistant,
@@ -136,6 +139,7 @@ class ChatToolFactory(
         conversationId = conversationId,
         turnOwner = turnOwner,
         memoryDisabled = memoryDisabled,
+        onPluginToolsRejected = onPluginToolsRejected,
     )
         .flatMap { it.tools }
 
@@ -174,6 +178,8 @@ class ChatToolFactory(
          * 模型仍可 `memory_read` 把记忆逐条读回来，开关等于装饰。
          */
         memoryDisabled: Boolean = false,
+        /** 插件工具跨段重名的报错通道（P2a 拍板 1）；见 [createPluginToolSegments] */
+        onPluginToolsRejected: PluginToolsRejectedListener? = null,
     ): List<ToolSegment> {
         val segments = mutableListOf<ToolSegment>()
 
@@ -183,7 +189,7 @@ class ChatToolFactory(
         if (assistant.enableMemory && !memoryDisabled) {
             val memoryAssistantId = assistant.memoryId()
             segments += ToolSegment(
-                "memory",
+                ToolSource.Memory,
                 buildMemoryTools(
                     json = json,
                     onCreation = { content, importance, description ->
@@ -235,10 +241,10 @@ class ChatToolFactory(
         }
 
         if (shouldUseExternalWebSearch(assistant, model)) {
-            segments += ToolSegment("search", createSearchTools(settings).toList())
+            segments += ToolSegment(ToolSource.Search, createSearchTools(settings).toList())
         }
 
-        segments += ToolSegment("local", localTools.getTools(assistant.localTools))
+        segments += ToolSegment(ToolSource.Local, localTools.getTools(assistant.localTools))
 
         // 会话内生图（上游 #2123）。**门控 = 配置里能解析出生图模型**：没配就一个 token 都不付
         // （工具 schema 每次请求都要下发），也避免出现"一调用就报错"的工具——沿用本文件
@@ -246,7 +252,7 @@ class ChatToolFactory(
         // 用设置里的生图模型（不是当前 chat 模型），故 chat 模型不支持生图也能用。
         if (settings.resolveImageGenerationModel() != null) {
             segments += ToolSegment(
-                "image",
+                ToolSource.Image,
                 createImageTools(
                     assistant = assistant,
                     generate = { prompt, num, size ->
@@ -260,26 +266,26 @@ class ChatToolFactory(
         // 关（默认）= 工具不装配，模型看不到也碰不到定时任务。动作层审批在工具内按 action 分档。
         if (assistant.taskManageEnabled) {
             segments += ToolSegment(
-                "task_manage",
+                ToolSource.TaskManage,
                 listOf(buildTaskManageTool(assistant, conversationId)),
             )
         }
 
         if (assistant.enableRecentChatsReference) {
-            segments += ToolSegment("conversation", createConversationTools(conversationRepository, assistant.id))
+            segments += ToolSegment(ToolSource.Conversation, createConversationTools(conversationRepository, assistant.id))
         }
 
         segments += ToolSegment(
-            "workspace",
+            ToolSource.Workspace,
             createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, turnOwner),
         )
 
         // 动态添加 Skill（上游 #1031）：AI 可从 GitHub 安装 / 把对话经验保存为技能。始终注册（不依赖已启用技能）。
-        segments += ToolSegment("skill-install", createSkillInstallTools(SkillInstaller(skillManager)))
+        segments += ToolSegment(ToolSource.SkillInstall, createSkillInstallTools(SkillInstaller(skillManager)))
 
         if (assistant.enabledSkills.isNotEmpty()) {
             segments += ToolSegment(
-                "skills",
+                ToolSource.Skills,
                 createSkillTools(
                     enabledSkills = assistant.enabledSkills,
                     allSkills = skillManager.listSkills(),
@@ -292,7 +298,7 @@ class ChatToolFactory(
             val knowledgeBases = ragRepository.getKnowledgeBases(assistant.enabledKnowledgeBaseIds)
             if (knowledgeBases.isNotEmpty()) {
                 segments += ToolSegment(
-                    "knowledge",
+                    ToolSource.Knowledge,
                     listOf(createKnowledgeBaseTool(ragRepository, knowledgeBases)),
                 )
             }
@@ -305,7 +311,7 @@ class ChatToolFactory(
         if (settings.enableSubagentDispatch && subagentPresets.isNotEmpty()) {
             subagentDispatcher()?.let { dispatcher ->
                 segments += ToolSegment(
-                    "subagent",
+                    ToolSource.Subagent,
                     createSubagentTools(
                         presets = subagentPresets.map { it.copy(modelId = it.modelId ?: model.id) },
                         enableBackgroundSubagent = settings.enableBackgroundSubagent,
@@ -313,7 +319,7 @@ class ChatToolFactory(
                         parentConversationId = conversationId,
                         dispatchContext = {
                             SubagentDispatchContext(
-                                parentToolEnvelope = segments.filter { it.source != "subagent" }
+                                parentToolEnvelope = segments.filter { it.source != ToolSource.Subagent }
                                     .flatMap { it.tools }.map { it.name }.toSet(),
                                 scopeToken = turnOwner?.wire,
                                 parentWorkspaceId = assistant.workspaceId,
@@ -375,13 +381,13 @@ class ChatToolFactory(
         (split.native + promoted)
             .groupBy { it.serverName }
             .forEach { (serverName, entries) ->
-                segments += ToolSegment("mcp:$serverName", entries.map { it.nativeTool })
+                segments += ToolSegment(ToolSource.McpServer(serverName), entries.map { it.nativeTool })
             }
 
         // 折叠档：get_tool_map（有什么、参数长什么样）+ mcp_tool_call（桥，JSON 串传参）
         if (dynamicLoading && collapsed.isNotEmpty()) {
             segments += ToolSegment(
-                "mcp-dynamic",
+                ToolSource.McpDynamic,
                 listOf(
                     Tool(
                         name = "get_tool_map",
@@ -391,7 +397,7 @@ class ChatToolFactory(
                             Call `mcp_tool_call` with a name from this map to execute one.
                         """.trimIndent(),
                         parameters = { InputSchema.Obj(properties = buildJsonObject { }) },
-                        needsApproval = { false },
+                        needsApproval = TOOL_NO_APPROVAL,
                         execute = {
                             listOf(
                                 UIMessagePart.Text(buildToolMapPayload(collapsed))
@@ -454,8 +460,12 @@ class ChatToolFactory(
             )
         }
 
-        // 插件工具段:模型侧看到的就是普通工具,来源记为 plugin:<id>(schema 诊断按段统计)
-        segments += createPluginToolSegments()
+        // 插件工具段:模型侧看到的就是普通工具,来源记为 plugin:<id>(schema 诊断按段统计)。
+        // 重名闸门(P2a 拍板 1):与内置/MCP/其他插件段同名 → 该插件段整体拒绝装配并报错。
+        segments += createPluginToolSegments(
+            existingSegments = segments.toList(),
+            onPluginToolsRejected = onPluginToolsRejected,
+        )
 
         logSchemaBreakdown(segments, settings, model)
         return segments
@@ -466,18 +476,38 @@ class ChatToolFactory(
      *
      * 门槛:插件已启用 + 持有 [PluginCapability.TOOL_REGISTER] + 实现 [PluginToolProvider]。
      * 能力在**装配点**校验,撤销能力后下一次装配即消失(不必等插件重启)。
+     *
+     * **跨段重名闸门**（P2a 拍板 1）：插件工具与内置/MCP 段或其他插件段同名（含插件段内
+     * 自身重名）时，**该插件段整体拒绝装配**——模型可见名一律不变，不做命名空间前缀改名
+     * （隐性改名会牵动历史按名寻址）。判定是纯函数 [acceptPluginToolSegments]（可单测），
+     * 这里只负责收集插件段并落日志/回调；[onPluginToolsRejected] 由调用方（ChatService）
+     * 转成用户可见错误，预览/子代理路径传 null = 只记日志。
      */
-    private fun createPluginToolSegments(): List<ToolSegment> =
-        pluginManager.plugins.value
+    private fun createPluginToolSegments(
+        existingSegments: List<ToolSegment>,
+        onPluginToolsRejected: PluginToolsRejectedListener?,
+    ): List<ToolSegment> {
+        val pluginSegments = pluginManager.plugins.value
             .filter { it.enabled && it.hasCapability(PluginCapability.TOOL_REGISTER) }
             .mapNotNull { info ->
                 val provider = info.plugin as? PluginToolProvider ?: return@mapNotNull null
                 val tools = provider.tools()
-                if (tools.isEmpty()) null else ToolSegment("plugin:${info.plugin.id}", tools)
+                if (tools.isEmpty()) null else ToolSegment(ToolSource.Plugin(info.plugin.id), tools)
             }
+        val (accepted, rejected) = acceptPluginToolSegments(existingSegments, pluginSegments)
+        rejected.forEach { (pluginId, conflicting) ->
+            Log.w(TAG, "plugin tools rejected (name conflict): plugin=$pluginId tools=$conflicting")
+            onPluginToolsRejected?.invoke(pluginId, conflicting)
+        }
+        return accepted
+    }
 
     /**
-     * 打印各来源工具的 schema 体积（每回合一次）。
+     * 打印各来源工具的 schema 体积与审批/超时画像（每回合一次；P2a 补来源/审批/超时维度）。
+     *
+     * 目标是让 logcat 能回答三个问题：这个工具**从哪来**（[ToolSource.segmentName]）、
+     * **要不要审批**（[approvalSummary]，按引用识别默认闭包）、**超时多少**
+     * （[timeoutSummary]，含自管超时计数）。
      *
      * 用 `Log.i` 而非 `Logging.log()`：后者进内存环形缓冲（上限 100 条），会被高频日志冲掉；
      * 这类诊断信息走 logcat 即可，也不需要落盘开关配合。
@@ -497,7 +527,8 @@ class ChatToolFactory(
                 .filter { it.tools.isNotEmpty() }
                 .joinToString(separator = " | ") { seg ->
                     val tok = ToolSchemaSize.estimate(seg.tools, providerType, json)
-                    "${seg.source} ${seg.tools.size}/${tok}t"
+                    "${seg.source.segmentName} ${seg.tools.size}/${tok}t" +
+                        " appr=${approvalSummary(seg.tools)} to=${timeoutSummary(seg.tools)}"
                 }
             val totalTokens = ToolSchemaSize.estimate(
                 segments.flatMap { it.tools }, providerType, json,
@@ -535,8 +566,69 @@ class ChatToolFactory(
  * 一段同来源的工具。
  *
  * **顶层而非嵌套**：子代理的信封解析（`resolveSubagentEnvelope` / `runToolCatalog`）需要按
- * 段名判断"这个工具来自哪个开关控制的来源"，那是纯函数、放在工具包顶层；嵌套在
+ * 来源判断"这个工具来自哪个开关控制的来源"，那是纯函数、放在工具包顶层；嵌套在
  * [ChatToolFactory] 里的话，每个签名都得写成 `ChatToolFactory.ToolSegment`，且纯函数测试
- * 要连带拖上工厂（含 Android 依赖）。段名因此是**对外契约**，见 [createToolSegments]。
+ * 要连带拖上工厂（含 Android 依赖）。来源的**段名是对外契约**，见 [ToolSource.segmentName]
+ * 与 [createToolSegments]。
  */
-internal data class ToolSegment(val source: String, val tools: List<Tool>)
+internal data class ToolSegment(val source: ToolSource, val tools: List<Tool>)
+
+/** 插件工具段因跨段重名被拒绝装配的通知（P2a 拍板 1）；第二参为冲突工具名。 */
+internal typealias PluginToolsRejectedListener = (pluginId: String, conflictingNames: Set<String>) -> Unit
+
+/** 一次拒绝的判定结果：[pluginId] 与它名下**冲突**的工具名（不含未冲突的）。 */
+internal data class RejectedPluginTools(val pluginId: String, val conflictingNames: Set<String>)
+
+/**
+ * 插件段重名闸门的**纯判定**（P2a 拍板 1，单测直接覆盖）。
+ *
+ * 规则：插件工具名与 [existingSegments]（内置 + MCP）任一工具同名、与先前已接受的插件段同名、
+ * 或**本段内部**重名 ⇒ 整段拒绝；否则整段接受并把工具名并入已见集合（后续插件段以它为对照）。
+ * 「整段」而非「逐个剔除」：部分接受会让同一插件的工具集处于半生效状态，行为最难推理。
+ */
+internal fun acceptPluginToolSegments(
+    existingSegments: List<ToolSegment>,
+    pluginSegments: List<ToolSegment>,
+): Pair<List<ToolSegment>, List<RejectedPluginTools>> {
+    val seen = existingSegments.flatMapTo(mutableSetOf()) { seg -> seg.tools.map { it.name } }
+    val accepted = mutableListOf<ToolSegment>()
+    val rejected = mutableListOf<RejectedPluginTools>()
+    for (segment in pluginSegments) {
+        val pluginId = (segment.source as? ToolSource.Plugin)?.pluginId ?: continue
+        val names = segment.tools.map { it.name }
+        val conflicting = names.filterTo(sortedSetOf()) { it in seen } +
+            names.groupBy { it }.filterValues { it.size > 1 }.keys
+        if (conflicting.isNotEmpty()) {
+            rejected += RejectedPluginTools(pluginId, conflicting)
+        } else {
+            seen += names
+            accepted += segment
+        }
+    }
+    return accepted to rejected
+}
+
+/**
+ * 审批画像摘要：「恒不拦」或「N/总数 有动态审批」。
+ * 按**引用**识别默认闭包（[TOOL_NO_APPROVAL]）；逻辑等价的字面量 `{ false }` 会计入 dyn——
+ * 宁可多报，不漏报。
+ */
+internal fun approvalSummary(tools: List<Tool>): String {
+    val dynamic = tools.count { it.needsApproval !== TOOL_NO_APPROVAL }
+    return if (dynamic == 0) "none" else "$dynamic/${tools.size}dyn"
+}
+
+/**
+ * 超时画像摘要：全部自管（`executionTimeoutMillis == null`）报 `self`；否则报**最大**外层
+ * 上限（秒），后缀 `+Nself` 标注段内自管个数——自管超时清单此前只存在于注释约定
+ * （设计稿 §16.2 ③），这里让它进机器可读输出。
+ */
+internal fun timeoutSummary(tools: List<Tool>): String {
+    val selfManaged = tools.count { it.executionTimeoutMillis == null }
+    val maxMillis = tools.mapNotNull { it.executionTimeoutMillis }.maxOrNull()
+    return when {
+        maxMillis == null -> "self"
+        selfManaged == 0 -> "${maxMillis / 1000}s"
+        else -> "${maxMillis / 1000}s+${selfManaged}self"
+    }
+}

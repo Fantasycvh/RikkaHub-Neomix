@@ -28,7 +28,7 @@ const val SUBAGENT_DISPATCH_TOOL_NAME = "dispatch_subagent"
  * `allowedTools == null`（"按能力开关"）时只放这两个来源的工具——
  * **MCP / 技能安装这类无条件装配的工具不在其中**（见该函数的取舍说明）。
  */
-private val CAPABILITY_SOURCE_SEGMENTS = setOf("search", "workspace")
+private val CAPABILITY_SOURCE_SEGMENTS = setOf(ToolSource.Search, ToolSource.Workspace)
 
 /**
  * 派发结果（工具与运行器之间的 DTO）。
@@ -112,7 +112,7 @@ internal fun resolveSubagentEnvelope(
     parentWorkspaceId: kotlin.uuid.Uuid? = null,
 ): Set<String> {
     val scopedSegments = if (parentToolEnvelope != null && requestedWorkspaceId != parentWorkspaceId)
-        segments.filterNot { it.source == "workspace" } else segments
+        segments.filterNot { it.source == ToolSource.Workspace } else segments
     val byCapability = scopedSegments
         .filter { it.source in CAPABILITY_SOURCE_SEGMENTS }
         .flatMapTo(mutableSetOf()) { segment -> segment.tools.map { it.name } }
