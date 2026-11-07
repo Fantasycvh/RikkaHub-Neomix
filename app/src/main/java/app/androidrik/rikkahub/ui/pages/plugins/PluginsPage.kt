@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.plugins
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -46,6 +48,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.plugin.js.JsPluginDefinition
 import app.androidrik.rikkahub.data.plugin.js.JsPluginInstaller
+
 import app.androidrik.rikkahub.data.plugin.js.hookNames
 import app.androidrik.rikkahub.data.plugin.rules.JsonRuleDefinition
 import app.androidrik.rikkahub.data.plugin.rules.RulePluginInstaller
@@ -56,8 +59,12 @@ import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
 import com.dokar.sonner.ToastType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
+/** SAF 文件导入的大小上限（与 JsPluginInstaller 的 URL 抓取上限同口径）。 */
+private const val MAX_IMPORT_FILE_BYTES = 512 * 1024
+
 
 /**
  * 插件中心。
@@ -304,6 +311,40 @@ private fun <T> ImportSourceDialog(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // SAF 文件导入（R3 增补）：读设备内 json/js 文本填进正文框，复用既有解析→能力确认链路；
+    // ACTION_OPEN_DOCUMENT 经 ContentResolver 读取，不需要任何存储权限
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            loading = true
+            error = null
+            scope.launch {
+                try {
+                    val text = context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val bytes = stream.readBytes()
+                        if (bytes.size > MAX_IMPORT_FILE_BYTES) {
+                            error = "文件超过 ${MAX_IMPORT_FILE_BYTES / 1024} KB 上限"
+                            null
+                        } else {
+                            String(bytes, Charsets.UTF_8)
+                        }
+                    }
+                    if (text != null) {
+                        bodyText = text
+                        parseText(text)
+                            .onSuccess(onParsed)
+                            .onFailure { error = it.message }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    error = "读取文件失败: ${e.message}"
+                } finally {
+                    loading = false
+                }
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -334,6 +375,12 @@ private fun <T> ImportSourceDialog(
                     enabled = !loading,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                TextButton(
+                    enabled = !loading,
+                    onClick = { filePicker.launch(arrayOf("*/*")) },
+                ) {
+                    Text("从文件选择…")
+                }
                 error?.let {
                     Text(text = it, color = MaterialTheme.colorScheme.error)
                 }

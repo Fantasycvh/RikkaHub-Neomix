@@ -276,3 +276,10 @@ active --手动回退--> active(lastGood 复活为新 active, 旧 active 降入�
 
 修订通道三期至此全部落地（R1 预检+代次切换、R2 编辑器+回退、R3 inbox+规则插件）；
 §九 开放问题全部收口（smoke 口径 §十二、inbox 轮询时机=onResume 单次扫描+防抖）。
+
+## 十四、SAF 文件导入增补（2026-11-07，随 R3 提交）
+
+`ImportSourceDialog` 增「从文件选择…」入口（JS 与 JSON 规则共用）：`ActivityResultContracts.OpenDocument`
+（SAF，ContentResolver 读取，零存储权限）→ 文本填入正文框 → 直接走既有 parseText → 能力确认 →
+installOrUpdate 链路。上限 512 KB（与 URL 抓取同口径）；JVM 回归全绿（3629 项），SAF 交互本身
+复用系统文件选择器，解析与激活路径均为此前真机已验证代码。
