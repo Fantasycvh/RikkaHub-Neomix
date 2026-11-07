@@ -195,14 +195,23 @@
 ## 5. 建议执行顺序
 
 ```
-批次 1  Export.kt 六分                （✅ 2026-11-07 完成：393e3a791 拆分 + 2e4012bd2 死代码清理；单测绿、IME 审计 A=0；真机待过导出四格式）
+批次 1  Export.kt 六分                （✅ 2026-11-07 完成：393e3a791 拆分 + 2e4012bd2 死代码清理；单测绿、IME 审计 A=0）
+        真机验证（✅ 2026-11-07，PJX110/debug 包）：冷启动 0 FATAL；导出四格式全通过
+        （JSON zip 落留存区、Markdown/HTML 内容核对、PNG 离屏渲染逐项核对：双模型标签/
+        深度思考块时长/打断横幅/水印）；deliver 分享面板、SAF 另存路径、生成被打断横幅、
+        分支 3/3、重新生成入口均正常。过程插曲：①「connection closed」×2 为提供商不稳定
+        （用户手测另一提供商正常，非代码回归）；②一次「双层画面+CPU 15%」为自动化点击
+        打错层的现场（share 对话框/SAF 层叠），人工恢复后 HTML/PNG 重跑即成功——教训：
+        share/SAF 弹层会让缓存坐标全部失效，每次点击前必须重新 dump）
 批次 2  ChatServiceModels + SubagentRunner 三块 + GenerationHandler 纯函数三块
         （✅ 2026-11-07 完成：1bf982141 ChatServiceModels（源码守护测试改读新文件）、
         5c67a5192 SubagentRunOutcome、a5846b877 SubagentApprovalNotifications、
         c1527cb9e RunProgressTracker、75d63304e GenerationHandler 三块；
-        全量 3117 单测绿。发现的守护测试族：PromptInspectionWiringSourceGuard/
-        ThinkingDegenerationWiring/P0RollbackSwitchGuard 均按源文件 grep 断言，
-        拆分后须同步改读迁移文件——守护意图不变）
+        全量 3117 单测绿。真机验证 ✅ 同日：发送守卫/完整生成（思考块+上下文占用+tok/s）/
+        用户停止→半截内容保留+打断横幅（persistStoppedGeneration/NonCancellable 路径）/
+        思考链渲染/PlanBar/ScrollJumperBar 均正常。发现的守护测试族：
+        PromptInspectionWiringSourceGuard/ThinkingDegenerationWiring/P0RollbackSwitchGuard
+        均按源文件 grep 断言，拆分后须同步改读迁移文件——守护意图不变）
 批次 3  RouteActivity 三刀（Screen 同包）
 批次 3  RouteActivity 三刀（Screen 同包）
 批次 4  PreferencesStore 非 store 部分
