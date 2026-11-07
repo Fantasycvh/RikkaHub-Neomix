@@ -340,3 +340,35 @@
 7. **MediaCreationComposer / SettingThemePage / AssistantMemoryPage** —— 各有一个不可动状态块或需先抽状态类
 8. **外围轻拆**：ModelList（三件）、ChatMessage（两刀）、SettingPreferencesUIPage/GeneralPage、StatsPage、PromptInspectPage
 9. **明确不拆**：ChatCompletionsAPI.streamText、ModelRegistry、RikkaHubApp.postReadyInit、WorkspaceRepository 整类、FilesManager 类本体、GoogleSans、MessagePartsBlock 整体
+
+---
+
+## 8. 架构级补遗（第三轮，2026-11-07）
+
+> 结论：**文件级分析到此为止，不再追加逐文件轮次**（收益递减 + 行号随演进漂移，行动方案以批次开工时的实时代码为准）。但架构级补一小轮有价值，以下三点已核实。
+
+### 8.1 分层倒挂清单（data → ui 反向依赖，5 处实证）
+
+| 位置 | 依赖内容 | 严重度 | 处置 |
+|---|---|---|---|
+| `data/datastore/PreferencesStore.kt:94-96` | `ui.theme.CustomTheme/PresetThemes/ThemeRoleOverrides` | **高** | 主题数据模型住在 ui 层被 data 层反向引用——与批次 4（PreferencesStore 拆分）联动：把主题模型移到 `data/model/` 或独立 `theme/model` 包，ui 层只留渲染 |
+| `data/plugin/PluginContracts.kt:7` | `ui.components.message.tools.ToolUIRenderer` | **高** | 插件契约接口依赖 UI 组件包——接口应下沉到 plugin 或 ai 层（与插件运行时线协调，避免冲突） |
+| `data/plugin/BuiltInPlugins.kt:13` | `ToolUIRegistry` | 中 | 同上，随 PluginContracts 一起整理 |
+| `data/ai/tools/ChatToolFactory.kt:4` | `ui.components.message.tools.getStringContent` | 中 | 工具函数从 UI 包下沉到 data/ai 层 |
+| `data/datastore/DefaultProviders.kt:14` | `ui.components.richtext.MarkdownBlock` | 低（待查） | data 层 import Compose 组件本身可疑，开工时先确认是否预览专用残留 |
+
+utils 层反向依赖 1 处：`utils/ContextCapacity.kt` → data.ai/data.repository——ContextCapacity 实为业务组件而非 utils，可在批次 7 顺带归位（搬去 `data/ai/` 或组件层）。
+
+### 8.2 ViewModel 层健康（无需专门轮次）
+
+Top：MediaCreationVM 720 / ChatVM 694 / BackupVM 670 / WorkspaceDetailVM 585。无千行怪物，体量与职责匹配（备份/聊天本来就是重业务）。唯一建议：批次 7 拆 MediaCreationComposer 时顺手看 MediaCreationVM 是否有可下沉到 data 层的逻辑，不单独立项。
+
+### 8.3 跨文件重复模式（批次顺带项，不单独立项）
+
+- **分享 Intent（ACTION_SEND）8 处散布**：ChatMessageEditedFiles / WorkspaceToolUIs / ImagePreviewDialog / Export / WorkspaceDetailPage / LogPage / MediaCreationCommon / ShortcutHandlerActivity——可收敛为 utils 分享封装（Export 拆分批次已有 shareFile/shareFiles，可顺势上提复用）
+- **DragOrderState 拖拽三件套 9 处使用**：防抽搐模式（先本地后落盘）已统一，但样板代码仍每处手写——收敛成 rememberDragOrderState 封装属可选优化，非必需
+- **FileProvider intent 三连**（ChatMessage 媒体四分支内）：批次 7 拆 MediaParts 时顺带收敛（台账 §7.4 已记）
+
+### 8.4 最终判断
+
+到此**分析完备**，不再有第三轮逐文件盘点。剩余工作全部转入执行态：按 §5 批次推进，每批次开工时重新核对行号与引用面（本台账行号基于 e9041d57d 基线，随演进失效属正常，架构结论与契约红线长期有效）。分层倒挂（§8.1）建议插在批次 4 与批次 7 之间或作为独立小批次处理。
