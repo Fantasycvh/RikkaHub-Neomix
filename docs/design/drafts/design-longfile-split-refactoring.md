@@ -222,6 +222,12 @@
         注册的是空表 → 启动即崩 Unknown screen。教训：**配对括号截取必须按深度计数，
         不能用固定锚点**；编译通过≠路由注册正确，导航层拆分必须真机冷启动验证）
 批次 4  PreferencesStore 非 store 部分
+        （✅ 2026-11-07 完成：1903→1170 行，Settings.kt(327)/DisplaySettings.kt(260)/
+        SettingsExtensions.kt(113)/SettingsDefaults.kt(120)；留守 SettingsStore 本体 +
+        readRemovedIds/writeRemovedIds。@Serializable 形状逐字未动。真机验证 ✅：冷启动
+        0 FATAL + 颜色模式切换→重启持久化→恢复。守护测试同步：RuleReminder/
+        TitleSettingWiringTest 的 Settings 字段断言改读 Settings.kt）
+批次 5  SettingProviderDetailPage Model tab
 批次 5  SettingProviderDetailPage Model tab
 批次 6  PromptPage 四分 + WorkspaceDetailPage Basic tab
 批次 7  ChatPage/ChatDrawer/ChatInput 子组件
