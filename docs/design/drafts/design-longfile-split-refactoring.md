@@ -36,7 +36,7 @@
 | 1135 | `ui/components/ai/ChatInput.kt` | 输入栏 | 一（外围）→ **TextInputRow 硬约束不拆** |
 | 1126 | `service/SubagentRunner.kt` | 子代理运行器 | 一（纯函数/通知/进度） |
 
-其余 900~1100 行段（SettingThemePage、SettingPreferencesUIPage、SettingSpeechPage、ConversationRepository、WorkspaceRepository、WorkspaceTools、FilesManager、ModelList、ProviderConfigure、SettingSearchDetailPage、StatsPage、Assistant.kt、ChatMessage、PromptInspector、RikkaHubApp、GoogleSans、ImgGenPage、ModelRegistry、GoogleProvider、PromptInspectPage、IncrementalBackupEngine、WorkspaceToolUIs、BuiltinToolUIs、ResponseAPI、ChatCompletionsAPI、AssistantMemoryPage、AssistantPromptPage、SettingProviderModelPage 等）——本次未逐个深读，按本台账模式逐个评估后再动。
+其余 900~1100 行段中 28 个已于第二轮补齐分析（见 §7）；仍待评估的仅剩：ConversationRepository（§3.2 已有方案）、SettingSearchDetailPage.kt（926）、ImgGenPage.kt（888）、WorkspaceRepository 之外的少量零散文件——按本台账模板逐个套用即可。
 
 已排除：`material3/material-color-utilities`（vendored 上游库，不拆）；`src/test` 下大文件（测试内聚是优点，不拆）。
 
@@ -261,10 +261,82 @@
 30. **文案/lint**：`%1$d` 缺实参崩溃已有守卫测试（83c955b13）；`stringResource` 混用处是将来 i18n 漏网点（搬代码时不要顺手把硬编码中文改成 stringResource 或反之——保持原样，避免批次 diff 失焦）。
 31. **日志脱敏**：0706147f2/e3c33743c/c1c40a54c5——搬错误上报/日志路径时脱敏逻辑跟代码走。
 
+### F. 第二轮盘点（§7）新增发现
+
+32. **死代码先清点再动手**：GoogleSans.kt（883 行）是**运行时死代码**（唯一引用在 Type.kt:17-78 的注释块里）；ResponseAPI.kt:91/94 两个 private 常量无引用；ChatDrawer `formatDrawerFileSize` 无调用者。清理与搬移**分开提交**，勿混入拆分 PR。
+33. **注释串位/Kdoc 错挂**（BuiltinToolUIs 321-328 两段注释归属错位）：搬移时「顺手修正」要谨慎，先确认归属再动。
+34. **LazyColumn item 顺序即契约**：PromptInspectPage `segmentOffset = 4` 依赖前 4 个 `item{}` 的固定顺序（L111-113 注释），重排 item 会**静默破坏目录跳转**（同源历史：361b9d7e4 拖拽下标错位）。
+35. **R8 keep 规则与拆分同步**：ModelRegistry 若拆，proguard 规则须同一 PR（299ac7824 类名混淆前科）。
+36. **AppScope 吞异常有时是特性**：FilesManager `trackManagedFile`/`deleteChatFiles` 的 best-effort 登记（L808 注释）——「统一 scope」式抽取会把特性变成缺陷。
+37. **settingsFlowRaw.first() vs settingsFlow.value**：DataStore 未加载时后者是 dummy 设置（RikkaHubApp L637-641、L795-797 两处注释）——搬初始化代码时不得换用 `.value`。
+
 ---
 
-## 7. 未深入分析的文件（后续补充）
+## 7. 补充分析（28 个文件，第二轮）
 
-SettingMcpPage.kt（1331）、MediaCreationComposer.kt（1241）、TTSProviderConfigure.kt（1204）、AssistantMemoryPage.kt（1291）、AssistantPromptPage.kt（1182）、SettingThemePage.kt（1140）、SettingPreferencesUIPage/GeneralPage、SettingSpeechPage.kt（1096）、IncrementalBackupEngine.kt（1050）、WorkspaceToolUIs/BuiltinToolUIs（~1000）、WorkspaceRepository/WorkspaceTools（~1045）、FilesManager.kt（990）、ModelList.kt（937）、ProviderConfigure.kt（935）、StatsPage.kt（922）、Assistant.kt（915）、ChatMessage.kt（914）、PromptInspector.kt（910）、RikkaHubApp.kt（907）、GoogleSans.kt（883）、ModelRegistry.kt（872）、GoogleProvider.kt（844）、PromptInspectPage.kt（811）、ai 模块 ResponseAPI.kt（1068）/ChatCompletionsAPI.kt（997）。
+> 评估模板与第一轮相同。结论速览：**值得拆 15 个、轻拆/只拆外围 6 个、明确不拆 7 个**。所有拆分均遵守 §0/§2/§6 红线（private→internal、真机注释随行、TextField 宿主不变）。
 
-评估模板：顶层声明清单 → 内聚子域 → 共享状态/契约 → 按第一梯队模式产出拆分表。
+### 7.1 设置页面群
+
+| 文件 | 现行数 | 拆后主文件 | 拆分表 | 风险 |
+|---|---|---|---|---|
+| TTSProviderConfigure.kt | 1204 | ~250 | →`TTSProviderConfigureOpenAICompatible.kt`（OpenAI/Gemini/Groq/xAI/MiMo/MiniMax ~450）+ `TTSProviderConfigureOther.kt`（Qwen/ElevenLabs/FishAudio/Step ~560） | 极低：11 个 provider 块零耦合，纯机械；`onValueChange` 回传完整 copy 的约定各块一致；R8 类名兜底注释（L69）留入口 |
+| SettingSpeechPage.kt | 1096 | ~250 | →`TTSProviderListPanel.kt`（List+Speed+Add+Item ~450）+ `ASRProviderListPanel.kt`（~390） | 低：兜底不变式（ensureFallbackTtsEnabled L408-416）、删除墓碑（L448-453）、拖拽三件套（L356）整块随迁；TTS/ASR sheet 同构可后续抽公共 ProviderEditSheet（第二步，先纯搬运） |
+| SettingMcpPage.kt | 1331 | ~380 | →`components/McpServerConfigSheet.kt`（Modal+表单+isValidMcpName ~590）+ `McpToolsConfigure.kt`（~165）+ `McpImportSheet.kt`（纯函数+Modal ~100） | 低：全显式参数接缝最干净；headers 表单是 ModalBottomSheet 宿主整块走，不得拆成单字段塞回 Lazy item |
+| SettingThemePage.kt | 1140 | ~330 | →`ColorPickerRow.kt` 公共组件（**internal 且被 SettingPreferencesThemePage.kt:159 消费**，+3 个 HSL 纯函数 ~165）+ `CustomThemeEditSheet.kt`（~340）+ `ThemeRoleOverridesEditor.kt`（角色覆写整域 ~255） | 中低：**transform 语义 onChange 契约**（L681-683 注释，整对象写丢更新的真机教训 L277-280）必须原样保留签名与注释；RoleSlotRow 的 commit-only-valid 模式（L882-885）整块走 |
+| SettingPreferencesUIPage.kt | 1097 | ~750 | →`utils/ChatFontManager.kt`（3 个字体 IO 函数+常量 ~110）+ `components/DisplaySchemePreviews.kt`（Preview+DeleteDialog+label ~130） | 低（削边角）：主痛点是 835 行单函数；若再拆 A/B/C 三组须先把 `displaySetting`/`updateDisplaySetting` 闭包参数化（~60 处引用），单独立项 |
+| SettingPreferencesGeneralPage.kt | 890 | ~520 | →`components/GuardrailsSettingGroup.kt`（~240）+ `components/KeepAliveSettingGroup.kt`（~75） | 极低：两组已自包含（自带 VM/SharedPreferences），改 private→internal 即可；B 组重试的「仅合法值落盘」文本态（L361-368）作为 Group 整体走 |
+
+### 7.2 助手/媒体/统计页面群
+
+| 文件 | 现行数 | 拆后主文件 | 拆分表 | 风险 |
+|---|---|---|---|---|
+| AssistantPromptPage.kt | 1182 | ~380 | →`AssistantPromptTemplateCard.kt`（模板+预览 ~210）+ `AssistantRegexEditor.kt`（~350）+ `AssistantCardPartsCard.kt`（4 组件 ~250） | 低：全 props 通信无咬合；宿主是整页 verticalScroll Column，拆出后仍渲染同一 Column 即合规 |
+| MediaCreationComposer.kt | 1241 | ~460 | →`MediaCreationParamsSheet.kt`（9 组件+**ComposerSheet 宿主同行** ~420）+ `MediaCreationModelSheet.kt`（~110）+ `MediaCreationAssetPickerSheet.kt`（~250） | 低：**L147-169 launcher+importRole 状态块不可动**（L153 注释：系统相册返回时面板已关的竞态修复）；ParamsSheet 的 TextField 宿主是 ComposerSheet，必须同行搬 |
+| AssistantMemoryPage.kt | 1291 | ~400 | →`AssistantMemoryDialogs.kt`（4 个 AlertDialog+DueDateEditor ~450）+ `AssistantMemoryConsolidation.kt`（做梦/整理域+**先抽 ConsolidationUiState 状态类** ~350） | 中：唯一真咬合——selectedProposals↔confirmProposals↔勾选行↔弹窗双向咬合，且 CardGroup DSL 非 composable 作用域（L257 注释）；L867 真机注释（建议被截断）随勾选行走；`memoryKindLabel`（internal，被 MemoryRecoveryDialog 引用）移入 MemoryKindFilter.kt |
+| StatsPage.kt | 922 | ~420（或不拆） | →`StatsHeatmap.kt`（~215）+ `StatsUsageChart.kt`（~290）；排行卡可留 | 低：零咬合零真机注释，但领域统一、紧迫性最低——「顺手可做」级 |
+| PromptInspectPage.kt | 811 | ~400 | →`PromptInspectDiagnosticCards.kt`（三诊断卡 ~200）+ `PromptInspectSegmentCard.kt`（~215） | 低：**segmentOffset=4 是壳与目录跳转的下标算术契约，item 顺序不可重排**（L111-113）；L419-420 `%1$d` 崩溃注释（StringFormatArgsGuardTest 钉住）随卡走；SegmentCard 折叠双源持久化不可拆散 |
+
+### 7.3 数据/服务层
+
+| 文件 | 现行数 | 结论 | 拆分表 | 风险 |
+|---|---|---|---|---|
+| WorkspaceTools.kt | 1045 | **值得拆** | →`WorkspaceRootfsIo.kt`（rootfs shell IO+路径助手+requireNotBinary ~240）+ `WorkspaceBackgroundTools.kt`（shell/后台任务 4 工具 ~330）+ `WorkspaceFileTools.kt`（读/写/改/展示 4 工具 ~430）+ 入口保留 ~110 | 低：无共享可变状态；**read/write/edit 三兄弟必须同文件**（mtime 闭环 + binary 守卫共用）；`statEntryCommand` NUL 分隔 wire 协议与解码端整体随迁 |
+| IncrementalBackupEngine.kt | 1050 | **值得拆** | →`IncrementalBackupGc.kt`（GC+拆包+改写修复+租约四函数 ~430）+ `IncrementalBackupSnapshotReader.kt`（读侧 ~200）+ 保留 plan/commit/assemble ~420 | 低：类几乎无实例状态（仅 cache/json/progress）；**NonCancellable 释放租约的 finally 随 GC 主体走**（L667）；fail-stop 契约（list 宽容 vs snapshotsStrict 严格，L554-559）同层可见 |
+| PromptInspector.kt | 910 | 值得拆（中收益） | →`PromptSegmentModel.kt`（模型域 ~240）+ `PromptSegmentProjection.kt`（投影纯函数+分类 ~330）+ 保留 inspectPrompt/refineTokens ~340 | 低：全部纯函数 JVM 单测友好；**与实发同参契约**（L331-339，MemoryAnchorWiringTest 守卫）不可借机改签名；`require(messageSegments.isNotEmpty())` 投影无损守卫随迁 |
+| FilesManager.kt | 990 | 只搬顶层模型 | →`FileFolders.kt`（object+SyncResult+ManagedFileOperationResult+runManagedFileOperations+saveUpload* ~180，被 25+ 文件引用）；可选 `ImageExportShare.kt`（~200，FileProvider 范围注释随迁）；**类本体不拆** | 低/中：**AppScope 吞异常是特性**（trackManagedFile best-effort 登记，L808）——拆类换 scope 语义即变契约；孤儿防护（落库失败删文件）、#2127 目录语义长注释随 FileFolders 走 |
+| WorkspaceRepository.kt | 1046 | **整类不拆** | 只抽 →`WorkspaceSshConfigCodec.kt`（toSettings+toConnectionConfig+decryptSecret ~130，凭据加密契约自成一体）；可选 `WorkspaceExportGateway.kt`（~170，中风险） | —：`backendOf/readFromBackend/withBackend` 是全文件骨架（可中断读 vs 不可中断写的成对设计，L933-944），拆类=复制骨架或加 facade，反而增加咬合面；installRootfs 的 NonCancellable 状态回滚（L219-228）不动 |
+| RikkaHubApp.kt | 907 | **基本不拆** | 只搬 →`NotificationChannels.kt`（7 个渠道常量+createNotificationChannel ~100）；可选 AppScope.kt（~15） | —：postReadyInit 明确不拆——「故意裸协程哨兵」「故意 settingsFlowRaw」「故意同步」三种反直觉契约全是注释级资产，抽 Initializer 类必丢；boot 重入闸/awaitBootReady/ensureKoinStarted 唯一入口不动 |
+
+### 7.4 UI 组件群
+
+| 文件 | 现行数 | 结论 | 拆分表 | 风险 |
+|---|---|---|---|---|
+| WorkspaceToolUIs.kt | 1049 | **值得拆（最干净）** | →`WorkspaceFileToolUIs.kt`（Edit/Read/Write+摘要预览 ~620）+ `WorkspaceShellToolUIs.kt`（~180）+ `WorkspacePresentFileToolUI.kt`（~195）+ `WorkspaceBackgroundTaskToolUIs.kt`（~175）；JSON 扩展提公共 `ToolUIJsonExt.kt`（~15） | 极低：object 按 toolName 注册进 ToolUIRegistry，搬移不影响注册；`ExistingFileState` 被 Edit/Write 共用随文件域走；真机注释（断行防撑爆 L608、TIMED_OUT L1043、cutsChain L699）随各自 object 走 |
+| BuiltinToolUIs.kt | 999 | **值得拆** | →`MemoryToolUI.kt`（~130，CAS revision key 注释随行）+ `WebSearchToolUIs.kt`（+两个 Preview ~300）+ `DeviceToolUIs.kt`（屏幕时间/日历/时间 ~280）+ `MiscToolUIs.kt`（轻摘要 7 件 ~230） | 极低：各 object 独立零共享；顺带修复 321-328 Kdoc 错挂（§6-F.33）；SearchWebPreview 位置 key 不顺手「补」key |
+| ModelList.kt（选择器） | 937 | 只拆外围 | →`ModelTags.kt`（3 个 Tag，public 对外 API，~90）+ `ModelListState.kt`（~85）+ `ModelItem.kt`（~95）；**420 行列表主体整块保留** | 低：主体内「位置三表一致性」（selectedModelPosition/providerPositions/items 读同一份 visibleModelsByProvider，L397-398 注释）不可拆；与 SettingProviderDetailPage 内私有 ModelList 是**同名不同物**（管理列表 vs 选择器 sheet），勿混淆合并 |
+| ProviderConfigure.kt | 935 | **值得拆（有单测红利）** | →`ProviderUrlConversion.kt`（convertTo+reset+URL 纯函数 ~135，可上 JVM 单测）+ `ProviderApiKeysEditor.kt`（~130 整块）+ `ProviderAccountSection.kt`（~195）；保留入口+三家表单 ~470 | 低：ApiKeysEditor 是全文件约束最密处——item key 用 ApiKeyEntry.id 的历史 bug 注释（L861-866）、heightIn 防无限高度（L857-859）、拖拽本地顺序（L846-849）全部随迁；Account 区 supportingContent 槽位注释（L649-650）随块走；同包搬移调用方零改动 |
+| ChatMessage.kt | 914 | 保守拆两刀 | →`ChatMessageBanners.kt`（两条横幅 ~75）+ `ChatMessageMediaParts.kt`（Video/Audio/Image/Document 四分支 ~150，顺带收敛三处 FileProvider intent 重复）；主体保留 ~690；**第一步先做同文件函数化**（文本气泡三分支+引文列表，降 ~120 行） | 低：MessagePartsBlock 不整体搬——ProvideTextStyle 契约（fontSizeRatio L164-170）、整轮折叠 key 语义（L508 注释）、#1929 remember 而非 rememberSaveable（L173-175，TransactionTooLargeException）咬合紧；已是 13 个伴生文件的前轮拆分产物 |
+| GoogleSans.kt | 883 | **不拆（死代码）** | 无拆分表。真实问题：30 个 FontFamily val 是同一模板复制且**全仓无运行时引用**（唯一消费在 Type.kt 注释块） | —：处置三选一（需用户拍板）——① 删除文件+`R.font.google_sans_flex` 资源（省 APK 体积）② 私有 builder 函数压缩 883→~150 ③ 保持现状。均与拆分无关 |
+
+### 7.5 ai 模块 + Assistant 模型
+
+| 文件 | 现行数 | 结论 | 拆分表 | 风险 |
+|---|---|---|---|---|
+| Assistant.kt | 915 | **最值得拆（第二轮冠军）** | 同包五分（import 零变更、序列化形状不变）：`AssistantCard.kt`（CardSlot+buildCardSystemPrompt 等 ~180）+ `AssistantMemory.kt`（~80）+ `AssistantRegex.kt`（regexCache+replaceRegexes 同走 ~70）+ `PromptInjection.kt`（sealed 族+Lorebook/Preset ~230）+ `WorldInfoTrigger.kt`（触发/预算纯函数 ~170）；保留主类 ~230 | 低：唯一纪律——逐字节保留字段声明/@Transient/@SerialName，不借机「清理」契约注释（AssistantMemory 遥测字段 @Transient 的「绝不能让模型看到」语义）；CardSlot defaultOrder 有特征测试锁顺序 |
+| ResponseAPI.kt | 1068 | 值得拆（中收益） | →`ResponseCapabilities.kt`（能力+服务端工具映射 ~130）+ `ResponseRequestBuilder.kt`（请求体+消息转换 ~460，**原类留同签名委托**保住 7 个测试文件）+ `ResponseParser.kt`（~150）；保留 Endpoint+传输壳 ~330 | 中（C 块）：addAssistantItems（c7ff737e4 reasoning 回填 400）与 buildMessages（b5b57c41e system 降级）是修复现场，**原样搬家不改逻辑**；streamText 的「失败先发 usage / onClosed 不补 Finish」三条跨文件语义契约整块不动；死常量清理独立 PR |
+| GoogleProvider.kt | 844 | 值得拆（三家同模式） | →`google/GoogleRequestBuilder.kt`（~220）+ `google/GoogleContentsConverter.kt`（~200）+ `google/GoogleResponseParser.kt`（~140）；保留传输/鉴权/catalog 壳 ~290 | 中低：buildContents 的 system 降级（b5b57c41e 修复点 L637-640）与 $ref 媒体挂载协议不动；**建议与 ResponseAPI/ChatCompletionsAPI 采用同一「transport 壳/request builder/parser」模式，一次 PR 机械搬移**，避免三家结构不对称 |
+| ChatCompletionsAPI.kt | 997 | 只拆两小块 | →`ChatCompletionReasoningDialects.kt`（12 家 host reasoning 方言 when ~160）+ `ChatCompletionsResponseParser.kt`（parseMessage 等 ~150，类上留 internal 委托）；保留 ~690 | —：**streamText 明确不拆**——自学习重发（learn 先于重算的顺序即契约，L168-172）+ 连接跟踪闭包状态是两次历史修复的现场；解码器/回填/连接管理此前已拆出，剩余是拼接层 |
+| ModelRegistry.kt | 872 | **倾向不拆** | 若强拆：厂商数据文件 4-5 个（各 defineModel 改 internal）+ 引擎/聚合/访问器保留 ~210，proguard 同 PR | —：纯数据表导航负担低；三重脆弱点——R8 keep 前科（299ac7824）、ALL_MODELS 聚合顺序参与 matchScore 平局、GEMINI_4「冻结声明」注释（L170-181「别当遗漏去修」）；ModelRegistryTest/CatalogTest 可钉回归但收益仍低于风险 |
+
+### 7.6 第二轮总排序（按可行性/收益比）
+
+1. **Assistant.kt** 五分 —— 同包零 import 变更，纯机械
+2. **WorkspaceToolUIs / BuiltinToolUIs** 四分 —— object 注册机制免疫搬移
+3. **TTSProviderConfigure** 两分 —— 11 块零耦合，全场最容易
+4. **WorkspaceTools** 三分 —— 按工具族分文件，契约全是常量/纯函数形态
+5. **AssistantPromptPage / ProviderConfigure / SettingMcpPage / SettingSpeechPage** —— 接缝干净
+6. **PromptInspector / IncrementalBackupEngine** —— 无实例状态，NonCancellable/契约注释随迁
+7. **MediaCreationComposer / SettingThemePage / AssistantMemoryPage** —— 各有一个不可动状态块或需先抽状态类
+8. **外围轻拆**：ModelList（三件）、ChatMessage（两刀）、SettingPreferencesUIPage/GeneralPage、StatsPage、PromptInspectPage
+9. **明确不拆**：ChatCompletionsAPI.streamText、ModelRegistry、RikkaHubApp.postReadyInit、WorkspaceRepository 整类、FilesManager 类本体、GoogleSans、MessagePartsBlock 整体
