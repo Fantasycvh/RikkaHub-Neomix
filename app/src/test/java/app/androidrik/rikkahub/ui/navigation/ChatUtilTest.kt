@@ -1,4 +1,4 @@
-package app.androidrik.rikkahub.utils
+package app.androidrik.rikkahub.ui.navigation
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

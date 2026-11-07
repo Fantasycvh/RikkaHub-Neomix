@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import app.androidrik.rikkahub.utils.formatContextLength
-import app.androidrik.rikkahub.utils.computeContextCapacity
+import app.androidrik.rikkahub.data.ai.computeContextCapacity
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
-import app.androidrik.rikkahub.utils.ContextCapacity
+import app.androidrik.rikkahub.data.ai.ContextCapacity
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.size
@@ -132,9 +132,9 @@ import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.utils.base64Decode
-import app.androidrik.rikkahub.utils.isAllowedFileType
+import app.androidrik.rikkahub.ui.navigation.isAllowedFileType
 import app.androidrik.rikkahub.Screen
-import app.androidrik.rikkahub.utils.navigateToChatPage
+import app.androidrik.rikkahub.ui.navigation.navigateToChatPage
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf

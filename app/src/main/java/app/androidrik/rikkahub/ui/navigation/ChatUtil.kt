@@ -1,10 +1,11 @@
-package app.androidrik.rikkahub.utils
+package app.androidrik.rikkahub.ui.navigation
 
 import android.content.Context
 import android.net.Uri
 import android.util.Log
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.utils.writeClipboardText
 import app.androidrik.rikkahub.ui.context.Navigator
 import kotlin.uuid.Uuid
 

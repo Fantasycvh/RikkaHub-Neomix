@@ -100,7 +100,7 @@ import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.readBooleanPreference
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.modifier.onClick
-import app.androidrik.rikkahub.utils.navigateToChatPage
+import app.androidrik.rikkahub.ui.navigation.navigateToChatPage
 import app.androidrik.rikkahub.utils.toDp
 import app.androidrik.workspace.WorkspaceFileEntry
 import org.koin.androidx.compose.koinViewModel

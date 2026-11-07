@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.utils.base64Encode
-import app.androidrik.rikkahub.utils.navigateToChatPage
+import app.androidrik.rikkahub.ui.navigation.navigateToChatPage
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.parameter.parametersOf

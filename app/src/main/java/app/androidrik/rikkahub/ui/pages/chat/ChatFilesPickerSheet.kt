@@ -30,7 +30,7 @@ import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberPermissionState
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
-import app.androidrik.rikkahub.utils.isAllowedFileType
+import app.androidrik.rikkahub.ui.navigation.isAllowedFileType
 import com.dokar.sonner.ToastType
 import org.koin.compose.koinInject
 import java.io.File

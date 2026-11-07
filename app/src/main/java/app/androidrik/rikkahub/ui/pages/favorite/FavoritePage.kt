@@ -60,7 +60,7 @@ import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
-import app.androidrik.rikkahub.utils.navigateToChatPage
+import app.androidrik.rikkahub.ui.navigation.navigateToChatPage
 import app.androidrik.rikkahub.utils.toLocalDateTime
 import org.koin.androidx.compose.koinViewModel
 import java.time.Instant

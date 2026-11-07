@@ -54,7 +54,7 @@ import app.androidrik.rikkahub.data.db.fts.MessageSearchSort
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
-import app.androidrik.rikkahub.utils.navigateToChatPage
+import app.androidrik.rikkahub.ui.navigation.navigateToChatPage
 import app.androidrik.rikkahub.utils.plus
 import app.androidrik.rikkahub.utils.toLocalDateTime
 import org.koin.androidx.compose.koinViewModel

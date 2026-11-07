@@ -34,7 +34,7 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Copy01
 import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.utils.copyMessageToClipboard
+import app.androidrik.rikkahub.ui.navigation.copyMessageToClipboard
 
 @Composable
 fun ChatMessageCopySheet(

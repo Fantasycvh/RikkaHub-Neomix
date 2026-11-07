@@ -3,7 +3,7 @@ package app.androidrik.rikkahub.ui.pages.share.handler
 import android.content.Intent
 import android.net.Uri
 import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.rikkahub.utils.isAllowedFileType
+import app.androidrik.rikkahub.ui.navigation.isAllowedFileType
 import kotlinx.coroutines.CancellationException
 
 /** Stream extras and ClipData may overlap; only content URIs carry Android read grants. */

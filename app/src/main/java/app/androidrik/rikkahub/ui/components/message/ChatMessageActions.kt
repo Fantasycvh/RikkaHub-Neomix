@@ -68,7 +68,7 @@ import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalTTSState
-import app.androidrik.rikkahub.utils.copyMessageToClipboard
+import app.androidrik.rikkahub.ui.navigation.copyMessageToClipboard
 import app.androidrik.rikkahub.utils.extractQuotedContentAsText
 import app.androidrik.rikkahub.utils.removeBracketedContent
 import app.androidrik.rikkahub.utils.toLocalString
