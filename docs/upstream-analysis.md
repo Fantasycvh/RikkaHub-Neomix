@@ -1766,6 +1766,11 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - `3d0a8ee91` feat(provider)：余额查询 POST+JSON（`6328f4a8d`）——`QuotaQuery` 增 `method`/`body`（旧配置默认 GET 兼容），单接口分支按 method 发请求、body 走模板渲染；多接口模式（本仓扩展）保持 GET 暂不扩展；编辑器加 GET/POST 切换与 body 输入，2 键 ×3 locale；`QuotaQueryRunnerTest` 补 POST 断言，`:ai:testDebugUnitTest` 过。
 - `da59ed184` feat(chat)：顶栏胶囊两套共存（`b40d7a273`）——`topBarStyle`（FULL_BAR 默认/CAPSULES，缺字段回退现状）、`TopBarCapsule` 组件（背景复用 `chatInputBackgroundEffect`）、TopBar/ChatPage 接线（`canScrollBackward` 派生淡入、previewMode 不显示）、设置页 SegmentedPill + 3 键 ×3 locale；**haze 维持 2.0.1**。IME 审计 A=0/A'=0/B=4。**待用户真机验证**（胶囊档视觉、淡入手感、与背景图/玻璃可读性模式的组合表现）。
 
+**装机验证追加修复（`cbf5d5553`，第 4 项验证引出的真机排查）：**
+
+- 用户报告 TikZ 测试对话整幅显示源码。逐级定位（拉库取原始消息 → 临时日志上真机）：bettertext v0.1.5 无关；聊天路径**漏接 `LatexEnvironments.normalize`**（此前只在导出路径 MarkdownHtml 生效，BetterText 迁移时聊天侧丢了这步，裸 `\begin{tikzpicture}` 不进 mathBlock）；命中后仍有第二级根因：Tectonic 编译报 Undefined control sequence——模型写 `\sout{...}`（ulem 宏），bundle 157 个 sty 无 ulem/soul → 按命令名字面检测注入 `calc + \providecommand` 等价实现（rule 叠文本，\widthof 取宽）。两级修复后真机渲染通过（用户确认）。
+- 方法论沉淀：adb `input tap` 坐标必须按**设备物理分辨率**（本机 1264x2780）换算——截图在展示层被缩放（908px 宽），按缩略图坐标点按全部偏移 ~39%。
+
 **核对后改判等价（未移植）：**
 
 - `ae599e8d7`：本仓 `MediaEncodingCache`（Yuihub 移植，内存 LRU 8MB）已覆盖「历史图片每轮重编码」热路径；上游是磁盘持久层（256MB，冷启动收益），属增强项非缺口，挂账。
@@ -1780,6 +1785,12 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - 孤儿进程：本仓 `ProcessSignals`（/proc 命令行标记定位 + 自底向上杀整棵树，真机实测记录在档）强于上游 TracerPid+SIGQUIT 方案。
 - 前台保活：本仓 v1 设计明确不做（进程死=任务死），属设计取舍非缺口。
 - **唯一实质缺口＝任务完成后主动通知模型**（上游 Notice/收件箱协议改造：`UIMessagePart.Notice` + `expandNotices` + MessageQueue→ConversationInbox + 压缩/记忆/导出 skip 规则 + i18n）。嫁接到本仓 MessageQueue/生成循环是协议级专项，**挂账待用户排期**；未实施期间本仓模型需自行轮询 `workspace_task_status`。
+
+**2026-11-07 联合评估补记（草稿，未实施）**：用户要求与随机触发/记忆同步一起评估，方案见
+[任务完成通知与主动同步整合稿](design/drafts/design-task-notice-inbox-and-proactive-sync.md)。
+建议先复用本仓 notice 事务投递模式、保留用户队列，补 shell 终态路由与空闲续跑；步骤间 Notice
+part 展开后置。随机调度独立实施，子代理默认不续跑；旧随机稿“普通定时记忆审批现状即通”
+已按源码修正，需 scheduled 注入审批桥，headless 当前无记忆能力。以上为建议，待实施排期。
 
 ### 借鉴项目动态（本轮附带，未逐条评估）
 
