@@ -31,6 +31,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -219,7 +221,9 @@ fun PluginsPage() {
                 pendingJs = null
                 busy = true
                 appScope.launch {
-                    val result = jsInstaller.install(definition, approved)
+                    // 修订通道 R1：同 id 导入 = 提交一次修订（预检→代次切换→历史落盘）；
+                    // 预检失败时旧定义继续服务，失败文本为逐项预检报告
+                    val result = jsInstaller.installOrUpdate(definition, approved)
                     busy = false
                     result
                         .onSuccess {
@@ -314,6 +318,8 @@ private fun <T> ImportSourceDialog(
                     label = { Text(urlLabel) },
                     singleLine = true,
                     enabled = !loading,
+                    // URL 键盘：Gboard 中文布局会把 ":" "/" 智能标点成全角，纯文本框必炸
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(

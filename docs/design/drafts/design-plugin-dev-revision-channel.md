@@ -158,3 +158,57 @@ active --手动回退--> active(lastGood 复活为新 active, 旧 active 降入�
 3. **预检 smoke 的输入样例**：`target` 有钩子的插件用什么输入做 smoke（建议：空输入 + 各钩子
    的最简 payload；有副作用的钩子如 OUTPUT 改写只验证不抛错不外呼）。
 4. **ADB inbox 的轮询时机**：前台 `onResume` 扫一次（简单、足够开发者用）vs 常驻监听——建议前者。
+
+## 十、R1 实施记录（2026-11-07）
+
+未提交（待授权）；代码基线 `2b5b50610`。新增 `data/plugin/revision/` 包：
+
+- **模型与纯函数**（`PluginRevision.kt`）：RevisionOrigin / PrecheckItemResult / PrecheckReport
+  （含 `failureText()` 用户可见紧凑文本）/ PluginRevision / PluginRevisionState；
+  `recordActivatedRevision` 纯函数实现双指针推进 + revisionNo 单调分配 + 上限 10 条滚动丢弃
+  （active/lastGood 引用条目绝不丢，极端情况允许超限 ≤2 条）；`revisionFileName` 净化。
+- **历史存储**（`PluginRevisionStore.kt`）：`files/plugin_revisions/<id>.json`，tmp+rename 原子写，
+  坏文件按空历史兜底；构造改为接收 `File` 基目录（JVM 可测）。目录登记
+  `FileFolders.PLUGIN_REVISIONS` + `BackupFolderRegistry` 豁免（理由入档）。
+- **预检器**（`PluginPrecheck.kt`）：§四 1/2/3/5 四项（smoke 留 R2+）；语法检查经
+  `JsSyntaxChecker` 接口注入，Android 实现 `WebViewJsSyntaxChecker`——镜像 JsPluginRuntime 的
+  沙箱设置与「载空白页等 onPageFinished 再求值」约定，`new Function(<源码>)` 编译不执行；
+  画像用 P2b 的 `approvalDiagnostic`/`timeoutSummary`（预检静态构造的工具无闭包信息，
+  appr 计 0 dyn——真实闭包在运行时装配，报告口径已在测试注释说明）。
+- **代次切换**（`JsPluginInstaller.installOrUpdate`）：预检 → 新 id 走既有 install；已有 id 走
+  「落盘新定义 → unregister+register（新 Activation）→ 保留既有授权（`existing.grants`）与
+  启停态」。新修订声明了既有授权未覆盖的必需能力时拒绝（R1 不重弹授权框，提示卸载重装）。
+  激活成功后修订历史才落盘。既有 `install()` 不动（保留「已存在请先删除」语义给直接调用方）。
+- **接线**：AppModule 提供 Store/Checker/Precheck 并注入 installer；PluginsPage 导入改调
+  `installOrUpdate`（预检失败文本走既有错误 Toast 展示）。
+- **验证**：全量 JVM 套件（app+ai）**3623 项 0 失败 0 错误**（新增 14 项：双指针/滚动/修订号
+  ×5、文件名 ×1、store 往返/坏文件兜底 ×3、预检编排 ×5）；`BackupCoverageTest` 护栏随
+  新目录登记通过。真机走查（同 id 导入→预检报告可见→新回合生效→运行中不偷换）待做。
+- **偏离说明**：§3.2 状态机的「draft 停留」未持久化——R1 导入路径预检失败即返回报告不落盘，
+  draft 持久化随 R2 编辑器引入；预检第 4 项（钩子 smoke）按 R1 范围表未实现。
+
+## 十一、R1 真机走查记录（2026-11-07，PJX110）
+
+环境：`.perfp1` 隔离包 + 智谱 glm-4.7；v1 基线经 DataStore 注入，v2/v3 经**真实 UI 导入流程**
+（URL fetch 走 `adb reverse` + PC 侧 HTTP 服务）。走查驱动了两次构建修复。
+
+| 场景 | 结果 |
+|---|---|
+| A. 同 id 导入 v2（健康修订） | 预检 3 项全绿 → 能力确认 → `updated js plugin (new revision)` → 修订历史落盘（active=1，origin=IMPORT，profile 含画像）→ **新回合装配 2/169t**（v2 双工具生效）|
+| B. 导入 v3（语法错误） | 预检拦截 → 失败 toast → **历史不动（revisions 仍 [1]）**、无激活日志、页面仍显示 v2（旧定义继续服务）✓ |
+| 授权保持 | 更新后详情页：注册工具=已授权（schema 2tools 实证）；本地存储=已撤销为批准框未勾选的正确结果，非缺陷 |
+| 未自动化 | 「运行中回合不偷换」——语义由 P1a 代次机制 + 主设计稿场景 3 单测覆盖，真机人工时机难构造，留 R2 编辑器批次顺带观察 |
+
+走查抓出的三个问题（均已修复）：
+
+1. **`WebViewJsSyntaxChecker` 主线程死等（致命）**：`CountDownLatch.await` 在 Main 上阻塞，
+   `evaluateJavascript` 回调同样需要主线程 → 必然 3s 超时、预检必失败。改为
+   `suspendCancellableCoroutine` + `withTimeoutOrNull`（真机 A 场景 syntax 项转绿证实）。
+2. **修订目录双重拼接**：DI 传 `files/plugin_revisions` 而存储又拼 `FOLDER_NAME` →
+   `plugin_revisions/plugin_revisions/`。DI 改传 `filesDir`。
+3. **导入 URL 框缺 `KeyboardType.Uri`**：Gboard 中文布局把 `:` `/` 智能标点成全角导致 URL 必坏，
+   纯文本框无法自动导入。加 `KeyboardOptions(keyboardType = KeyboardType.Uri)`（产品改进）。
+
+备注：Gboard 中文布局在 URI 键盘下仍全角化标点（键盘布局行为，非输入类型可解）；英文布局
+`input text` 完全可靠。修订历史经 DataStore 直注的 v1 不入历史（通道只记自己激活的修订），
+符合设计。

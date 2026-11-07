@@ -116,6 +116,26 @@ val appModule = module {
     }
 
     single {
+        app.androidrik.rikkahub.data.plugin.revision.PluginRevisionStore(
+            baseDir = get<android.content.Context>().filesDir,
+            json = get(),
+        )
+    }
+
+    single<app.androidrik.rikkahub.data.plugin.revision.JsSyntaxChecker> {
+        app.androidrik.rikkahub.data.plugin.revision.WebViewJsSyntaxChecker(context = get())
+    }
+
+    single {
+        app.androidrik.rikkahub.data.plugin.revision.PluginPrecheck(
+            syntaxChecker = get(),
+            // R1：跨段重名对照集留空（JS 工具名经 pluginToolName 命名空间化，跨源重名
+            // 结构性不可能）；将来接入受信任 Provider 时改从装配面快照取
+            existingToolNames = { emptySet() },
+        )
+    }
+
+    single {
         app.androidrik.rikkahub.data.plugin.js.JsPluginInstaller(
             context = get(),
             okHttpClient = get(),
@@ -123,6 +143,8 @@ val appModule = module {
             manager = get(),
             gateway = get(),
             keyValueStore = get(),
+            precheck = get(),
+            revisionStore = get(),
         )
     }
 

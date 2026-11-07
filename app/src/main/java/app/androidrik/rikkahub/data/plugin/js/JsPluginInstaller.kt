@@ -5,6 +5,12 @@ import android.util.Log
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.data.plugin.net.PluginHttpGateway
+import app.androidrik.rikkahub.data.plugin.revision.PluginPrecheck
+import app.androidrik.rikkahub.data.plugin.revision.PluginRevision
+import app.androidrik.rikkahub.data.plugin.revision.PluginRevisionStore
+import app.androidrik.rikkahub.data.plugin.revision.PrecheckRejectedException
+import app.androidrik.rikkahub.data.plugin.revision.RevisionOrigin
+import app.androidrik.rikkahub.data.plugin.revision.recordActivatedRevision
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -25,6 +31,9 @@ class JsPluginInstaller(
     private val manager: PluginManager,
     private val gateway: PluginHttpGateway,
     private val keyValueStore: PluginKeyValueStore,
+    /** 修订通道（R1）：预检器 + 历史存储；生效定义本体的读写仍在 [store]/[manager]。 */
+    private val precheck: PluginPrecheck? = null,
+    private val revisionStore: PluginRevisionStore? = null,
 ) {
     /** 从 URL 抓取(必须 http/https);限制 512 KB,避免拉一个巨文件卡住安装。 */
     suspend fun fetch(url: String): Result<JsPluginDefinition> = withContext(Dispatchers.IO) {
@@ -83,8 +92,66 @@ class JsPluginInstaller(
         Log.i(TAG, "installed js plugin: ${definition.id} capabilities=$declared")
     }
 
-    /** 卸载:先删持久化定义,再移出注册表(取消安全)。 */
-    suspend fun uninstall(pluginId: String): Result<Unit> = runCatching {
+    /**
+     * 安装或更新（修订通道 R1，设计稿 §四/§五.3）：
+     * 先预检（不过 → [PrecheckRejectedException]，旧定义与修订双指针都不动，last-good 继续服务），
+     * 再分派：
+     * - 新 id：走 [install] 并记首条修订。
+     * - 已存在 id：**代次切换**——unregister + register 产生新 Activation（P1a 代次保证旧实例
+     *   句柄/回调不能修改或撤销新实例的注册）；保留既有授权与启停态；新修订声明了既有授权
+     *   未覆盖的必需能力时拒绝（R1 不重弹授权框，改授权走卸载重装）。
+     * 激活成功后修订历史才落盘（active/last-good 双指针推进，revisionNo = 历史 + 1）。
+     */
+    suspend fun installOrUpdate(
+        definition: JsPluginDefinition,
+        approvedCapabilities: Set<PluginCapability>,
+        origin: RevisionOrigin = RevisionOrigin.IMPORT,
+    ): Result<Unit> = runCatching {
+        val checker = requireNotNull(precheck) { "修订通道未接线（precheck 缺失）" }
+        val revisions = requireNotNull(revisionStore) { "修订通道未接线（revisionStore 缺失）" }
+
+        val report = checker.checkJs(definition)
+        if (!report.passed) throw PrecheckRejectedException(report)
+
+        val existing = manager.plugins.value.firstOrNull { it.plugin.id == definition.id }
+        if (existing == null) {
+            install(definition, approvedCapabilities).getOrThrow()
+        } else {
+            val declared = definition.manifest.capabilities
+            val mandatory = declared - setOf(PluginCapability.NETWORK, PluginCapability.STORAGE)
+            require(mandatory.all { it in existing.grants }) {
+                "新修订声明了未授权能力: ${mandatory - existing.grants}（请先卸载再导入以重新授权）"
+            }
+            val wasEnabled = existing.enabled
+            // 先落盘定义再重载（取消安全，同 install 的顺序）
+            val current = store.read()
+            store.save(current.filterNot { it.id == definition.id } + definition)
+            manager.unregister(definition.id)
+            manager.register(newPlugin(definition))
+            manager.setApprovedCapabilities(definition.id, existing.grants)
+            if (!wasEnabled) manager.setEnabled(definition.id, false)
+            Log.i(TAG, "updated js plugin (new revision): ${definition.id} enabled=$wasEnabled")
+        }
+
+        val state = revisions.load(definition.id)
+        val revisionNo = (state.revisions.maxOfOrNull { it.revisionNo } ?: 0L) + 1
+        revisions.save(
+            recordActivatedRevision(
+                state,
+                PluginRevision(
+                    pluginId = definition.id,
+                    revisionNo = revisionNo,
+                    kind = "js",
+                    source = definition.source,
+                    origin = origin,
+                    createdAt = System.currentTimeMillis(),
+                    precheck = report,
+                ),
+            ),
+        )
+    }
+
+    /** 卸载:先删持久化定义,再移出注册表(取消安全)。 */    suspend fun uninstall(pluginId: String): Result<Unit> = runCatching {
         val current = store.read()
         store.save(current.filterNot { it.id == pluginId })
         manager.unregister(pluginId)

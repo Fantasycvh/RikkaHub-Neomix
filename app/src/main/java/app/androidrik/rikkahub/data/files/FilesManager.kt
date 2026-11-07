@@ -886,6 +886,7 @@ object FileFolders {
     const val FONTS = "fonts"
     const val TOOL_OUTPUTS = "tool_outputs"
     const val LOGS = "logs"
+    const val PLUGIN_REVISIONS = "plugin_revisions"
 
     /**
      * 用户配置的头像（助手头像 + 用户头像）。

@@ -99,6 +99,12 @@ internal val BACKUP_FOLDER_SPECS: List<BackupFolderSpec> = listOf(
         recursive = false,
         excludedReason = "本地增量备份索引（哈希缓存/快照状态），可由源文件重算，不进备份",
     ),
+    BackupFolderSpec(
+        FileFolders.PLUGIN_REVISIONS,
+        recursive = false,
+        excludedReason = "插件修订历史（开发者通道，design-plugin-dev-revision-channel §1.2：" +
+            "初版不入备份，重装即丢历史；生效定义本体在 DataStore，随既有路径走）",
+    ),
 )
 
 /** `FILES` 项覆盖的用户数据目录（打包 / 空间预检 / 恢复分派共用）。 */
