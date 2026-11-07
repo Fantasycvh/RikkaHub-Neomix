@@ -197,6 +197,13 @@
 ```
 批次 1  Export.kt 六分                （✅ 2026-11-07 完成：393e3a791 拆分 + 2e4012bd2 死代码清理；单测绿、IME 审计 A=0；真机待过导出四格式）
 批次 2  ChatServiceModels + SubagentRunner 三块 + GenerationHandler 纯函数三块
+        （✅ 2026-11-07 完成：1bf982141 ChatServiceModels（源码守护测试改读新文件）、
+        5c67a5192 SubagentRunOutcome、a5846b877 SubagentApprovalNotifications、
+        c1527cb9e RunProgressTracker、75d63304e GenerationHandler 三块；
+        全量 3117 单测绿。发现的守护测试族：PromptInspectionWiringSourceGuard/
+        ThinkingDegenerationWiring/P0RollbackSwitchGuard 均按源文件 grep 断言，
+        拆分后须同步改读迁移文件——守护意图不变）
+批次 3  RouteActivity 三刀（Screen 同包）
 批次 3  RouteActivity 三刀（Screen 同包）
 批次 4  PreferencesStore 非 store 部分
 批次 5  SettingProviderDetailPage Model tab
@@ -269,6 +276,7 @@
 35. **R8 keep 规则与拆分同步**：ModelRegistry 若拆，proguard 规则须同一 PR（299ac7824 类名混淆前科）。
 36. **AppScope 吞异常有时是特性**：FilesManager `trackManagedFile`/`deleteChatFiles` 的 best-effort 登记（L808 注释）——「统一 scope」式抽取会把特性变成缺陷。
 37. **settingsFlowRaw.first() vs settingsFlow.value**：DataStore 未加载时后者是 dummy 设置（RikkaHubApp L637-641、L795-797 两处注释）——搬初始化代码时不得换用 `.value`。
+38. **源码守护测试族（批次 1-2 实证）**：`PromptInspectionWiringSourceGuardTest`/`ThinkingDegenerationWiringTest`/`P0RollbackSwitchGuardTest` 等直接读源文件文本 grep 断言——被拆符号迁移后**测试必须同步改读新文件**（守护意图不变），否则单测红；且这类失败只在 testDebugUnitTest 出现、编译不报。**每个子块提交前必须跑全量单测，不能只看编译绿**。
 
 ---
 
