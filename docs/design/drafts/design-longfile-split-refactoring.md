@@ -227,12 +227,39 @@
         readRemovedIds/writeRemovedIds。@Serializable 形状逐字未动。真机验证 ✅：冷启动
         0 FATAL + 颜色模式切换→重启持久化→恢复。守护测试同步：RuleReminder/
         TitleSettingWiringTest 的 Settings 字段断言改读 Settings.kt）
-批次 5  SettingProviderDetailPage Model tab
-批次 5  SettingProviderDetailPage Model tab
+批次 5  SettingProviderDetailPage 三分
+        （✅ 2026-11-07 完成：f9b4d37d0——2026 行拆出 Model tab 整条链（ModelListPage 928/
+        ModelSettingsForm 673/SettingProviderDetailPage 514）。全量单测绿；真机验证 ✅：
+        提供商列表/模型表单/嵌套 sheet 开合正常。坑：AnimatedVisibility(expanded) 会位移
+        按钮，自动化点击必须用当次 dump 的实时坐标，不能用上一屏缓存）
 批次 6  PromptPage 四分 + WorkspaceDetailPage Basic tab
-批次 7  ChatPage/ChatDrawer/ChatInput 子组件
-批次 8  ChatService 控制器下沉（ErrorReporter → PromptInspection → Mutation/MessageOps/Aux → SessionRegistry）
-批次 9  ConversationRepository Mapper/Checkpoint/Ordering
+        （✅ 2026-11-07 完成：239d533f7——PromptPage 删除，PresetPage(517)/PresetDetailPage(649)/
+        LorebookPage(1019)/PromptShared(174)；WorkspaceDetailPage(921)+WorkspaceBasicTab(743)。
+        全量单测绿；真机验证 ✅：预设/世界书/工作区基础 tab 均正常）
+批次 7  ChatPage/ChatDrawer/ChatInput 九件子组件
+        （✅ 2026-11-07 完成：9f52b2613——ChatPage(926)+ChatTopBar(255)/ChatFilesPickerSheet(216)/
+        ChatContextSheetHost(96)；ChatDrawer(803)+DrawerChrome(237)/DrawerFolderUi(203)/
+        DrawerFilesPanel(179)；ChatInput(844)+ChatInputCompletions(170)/
+        ChatInputFullScreenEditor(97)/ContextUsageRingButton(126)。全量单测绿；
+        真机验证 ✅：发送/生成/停止/抽屉/输入栏均正常）
+批次 8  ChatService 控制器下沉
+        （✅ 第一波 2026-11-07 完成：29d1930a8——ChatErrorReporter(61) +
+        PromptInspectionController(302)，ChatService 3256→2917 行，公开委托保留
+        （ChatVM 调用面不变）。多轮返工教训见 §6.38 后补条目。**第二波暂缓**：
+        ConversationMutationService/MessageOpsService/AuxGenerationService/SessionRegistry
+        与 sessions/callback 环高度耦合，收益风险比转负，留待 ChatService 下次功能性
+        改动时顺带，不再单独立批）
+批次 9  ConversationRepository 三分
+        （✅ 2026-11-07 完成：df1830991——1090→816 行；ConversationEntityMapper(121，
+        两 mapper + summary 映射 + encodeConversationInjectionIds 下沉为同包顶层 internal，
+        原为公开成员但无外部调用者)/CompressionCheckpointStore(65，仓库保留公开委托——
+        ChatService/BackupVM 在用)/ConversationNodeStore(182，页隔离恢复 + CancellationException
+        排序语义逐字迁移，SEP 与耗时埋点 TAG 随迁保持 logcat 诊断连续性)。Koin 不动
+        （仓库内部组装两个 store）。守护测试同步改读新文件：ConversationInjectionPrimitiveTest
+        （mapper 移址）、LoadMessageNodesCancellationTest（catch 顺序判据迁至 NodeStore）。
+        全量 3117 单测绿；真机验证 ✅：冷启动 0 FATAL，历史会话打开（8 nodes/56ms 埋点
+        正常）、芯片直发消息完整生成（38 tok/107.6 tok/s）、force-stop 重启后消息全量
+        持久化——load/save/检查点三条持久化路径均实证）
 批次 10 GenerationHandler 内部（LoopState 先行）→ 视收益决定是否继续
 ```
 
