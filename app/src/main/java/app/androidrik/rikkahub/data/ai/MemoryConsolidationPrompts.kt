@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.ai.core.MessageRole
-import app.androidrik.ai.ui.isSubagentNotice
+import app.androidrik.ai.ui.isExternalNotice
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.AssistantMemory
@@ -402,7 +402,8 @@ internal fun buildConsolidationTranscript(
 
 /** `[2026-01-01 10:05] user: 正文`；非文本内容折叠成占位符，工具调用/思考/导入压缩检查点不进整理输入。 */
 private fun UIMessage.transcriptLine(): String? {
-    if (isSubagentNotice || (role != MessageRole.USER && role != MessageRole.ASSISTANT)) return null
+    if (annotations.any { it is app.androidrik.ai.ui.UIMessageAnnotation.ScheduledTrigger }) return null
+    if (isExternalNotice || (role != MessageRole.USER && role != MessageRole.ASSISTANT)) return null
     // 导入的原版检查点是摘要而非对话正文：进整理输入会让记忆从「二手摘要」再蒸馏一次。
     if (isContextCheckpoint) return null
     val body = parts.mapNotNull { part ->

@@ -6,7 +6,7 @@ import io.pebbletemplates.pebble.template.PebbleTemplate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.ui.isSubagentNotice
+import app.androidrik.ai.ui.isExternalNotice
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.utils.toLocalDate
@@ -65,7 +65,7 @@ internal fun applyTemplates(
     systemTemplate: PebbleTemplate?,
     timeZone: TimeZone = TimeZone.currentSystemDefault(),
 ): List<UIMessage> = messages.map { message ->
-    if (message.isSubagentNotice) return@map message
+    if (message.isExternalNotice) return@map message
     val template = if (message.isSynthetic) {
         systemTemplate ?: return@map message
     } else {

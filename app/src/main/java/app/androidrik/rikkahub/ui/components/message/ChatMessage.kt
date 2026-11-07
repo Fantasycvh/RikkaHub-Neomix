@@ -145,14 +145,15 @@ fun ChatMessage(
 ) {
     val message = node.messages[node.safeSelectIndex]
     val notice = message.annotations.filterIsInstance<UIMessageAnnotation.SubagentNotice>().firstOrNull()
-    if (notice != null) {
+    val externalNotice = message.annotations.filterIsInstance<UIMessageAnnotation.ExternalNotice>().firstOrNull()
+    if (notice != null || externalNotice != null) {
         Surface(
             modifier = modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.secondaryContainer,
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.subagent_notice_title, notice.runIds.size), style = MaterialTheme.typography.titleSmall)
+                Text(if (externalNotice != null) "后台命令结果" else stringResource(R.string.subagent_notice_title, notice!!.runIds.size), style = MaterialTheme.typography.titleSmall)
                 SelectionContainer {
                     Text(message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text },
                         style = MaterialTheme.typography.bodySmall)

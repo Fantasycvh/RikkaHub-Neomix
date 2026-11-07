@@ -112,6 +112,7 @@ suspend fun createWorkspaceTools(
      * null = 不归属（预览等）。
      */
     turnOwner: ExecutionScope? = null,
+    noticeTarget: app.androidrik.workspace.WorkspaceTaskNoticeTarget? = null,
 ): List<Tool> {
     if (workspaceId.isNullOrBlank()) return emptyList()
     val layout = workspaceRepository.layout(workspaceId) ?: return emptyList()
@@ -140,7 +141,7 @@ suspend fun createWorkspaceTools(
         }
         add(createShellTool(workspaceId, layout, ::needsApproval, workspaceRepository, shellCwd, capabilities.rootfs))
         if (capabilities.backgroundTasks) {
-            add(createRunBackgroundTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd, turnOwner))
+            add(createRunBackgroundTool(workspaceId, ::needsApproval, workspaceRepository, shellCwd, turnOwner, noticeTarget))
             add(createTaskStatusTool(workspaceId, ::needsApproval, workspaceRepository))
             add(createKillTaskTool(workspaceId, ::needsApproval, workspaceRepository))
         }
@@ -578,6 +579,7 @@ private fun createRunBackgroundTool(
     workspaceRepository: WorkspaceRepository,
     defaultCwd: String? = null,
     turnOwner: ExecutionScope? = null,
+    noticeTarget: app.androidrik.workspace.WorkspaceTaskNoticeTarget? = null,
 ) = Tool(
     name = "workspace_run_background",
     description = buildString {
@@ -619,11 +621,12 @@ private fun createRunBackgroundTool(
         val command = params.string("command") ?: error("command is required")
         val cwd = (params.string("cwd") ?: defaultCwd.orEmpty())
             .removePrefix("/workspace/").removePrefix("/workspace")
-        val task = workspaceRepository.startBackgroundCommand(workspaceId, command, cwd, owner = turnOwner)
+        val task = workspaceRepository.startBackgroundCommand(workspaceId, command, cwd, owner = turnOwner, noticeTarget = noticeTarget)
         listOf(
             UIMessagePart.Text(
                 buildJsonObject {
                     put("taskId", task.id)
+                    task.noticeEventId?.let { put("completionEventId", it) }
                     put("status", task.status.name)
                     put("command", task.command.abbreviateForContext(COMMAND_PREVIEW_CHARS))
                     if (task.cwd.isNotBlank()) put("cwd", task.cwd)
@@ -634,7 +637,7 @@ private fun createRunBackgroundTool(
                     } else {
                         put(
                             "note",
-                            "Running in the background. Poll workspace_task_status(taskId=\"${task.id}\") " +
+                            "Running in the background. Completion is delivered automatically when enabled. Poll workspace_task_status(taskId=\"${task.id}\") " +
                                 "for its output tail and exit code.",
                         )
                     }

@@ -355,12 +355,18 @@ class WorkspaceManager(
      *   [killBackgroundTasksByScope] 在本轮被打断时精确收掉这一轮起的任务。语义见
      *   [WorkspaceTaskRegistry.start]。
      */
+    val pendingTaskTerminals: kotlinx.coroutines.flow.Flow<List<WorkspaceTaskTerminal>>
+        get() = backgroundTaskRegistry?.pendingTerminals ?: kotlinx.coroutines.flow.flowOf(emptyList())
+
+    fun acknowledgeTaskTerminal(id: String) { backgroundTaskRegistry?.acknowledgeTerminal(id) }
+
     fun startBackgroundCommand(
         root: String,
         command: String,
         cwd: String = "",
         shellCompatibilityMode: Boolean = false,
         owner: ExecutionScope? = null,
+        noticeTarget: WorkspaceTaskNoticeTarget? = null,
     ): WorkspaceTaskSnapshot {
         require(command.isNotBlank()) { "Command is required" }
         val registry = requireNotNull(backgroundTaskRegistry) {
@@ -392,6 +398,7 @@ class WorkspaceManager(
                 context,
                 owner = owner,
                 onFinished = leased?.let { held -> { held.close() } },
+                noticeTarget = noticeTarget,
             )
         } catch (error: Throwable) {
             // start 在「登记任务」之前就可能抛错（并发上限等），此时回调永远不会被调用

@@ -70,6 +70,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         FolderEntity::class,
         CompressionCheckpointEntity::class,
         AgentRunEntity::class,
+        app.androidrik.rikkahub.data.db.entity.ExternalNoticeEntity::class,
         KnowledgeBaseEntity::class,
         KnowledgeBaseDocumentEntity::class,
         KnowledgeEmbeddingEntity::class,
@@ -86,7 +87,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 60,
+    version = 61,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -191,6 +192,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // `Map<messageId, ExportDisplayConfig>` 的 JSON；**可空纯列** ⇒ 免 spec、无需回填：
         // null/`{}` = 没有覆盖，行为与改动前一致）。见 Conversation.exportDisplayOverrides 的 kdoc。
         AutoMigration(from = 59, to = 60),
+        AutoMigration(from = 60, to = 61),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -216,6 +218,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDAO
 
     abstract fun compressionCheckpointDao(): CompressionCheckpointDAO
+
+    abstract fun externalNoticeDao(): app.androidrik.rikkahub.data.db.dao.ExternalNoticeDAO
 
     abstract fun agentRunDao(): AgentRunDAO
 
@@ -246,7 +250,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 60
+        const val SCHEMA_VERSION = 61
     }
 }
 

@@ -235,6 +235,50 @@ class ChatService(
         sessions.clear()
     }
 
+    private val workspaceNoticeInbox = WorkspaceNoticeInbox(
+        database, workspaceRepository.observePendingTaskTerminals(), workspaceRepository::acknowledgeTaskTerminal,
+        conversationRepo, settingsStore.settingsFlow,
+        loadSession = { id -> if (ensureConversationLoaded(id)) getOrCreateSession(id) else null },
+        remainingTokens = { session ->
+            val settings = settingsStore.settingsFlow.value
+            val conversation = session.state.value
+            val assistant = settings.getAssistantById(conversation.assistantId)
+            val model = settings.findModelById(assistant?.chatModelId ?: settings.chatModelId)
+            val limit = model?.effectiveContextLength(settings.contextLengthOverride)
+                ?: settings.contextLengthOverride ?: DEFAULT_CONTEXT_LENGTH
+            limit - maxOf(conversation.estimateWindowTokens(model),
+                app.androidrik.rikkahub.utils.estimateTokenCount(conversation.requestWindowMessages()))
+        },
+        startContinuation = ::startWorkspaceContinuation,
+    )
+
+    private fun startWorkspaceContinuation(session: ConversationSession, root: String, ids: List<String>): Boolean =
+        synchronized(session) {
+            if (session.getJob() != null || session.processingStatus.value != null ||
+                session.messageQueue.state.value.paused || session.messageQueue.state.value.messages.isNotEmpty() ||
+                session.state.value.currentMessages.any { m -> m.parts.any { it is UIMessagePart.Tool && it.isPending } }
+            ) return@synchronized false
+            auxJobs.cancelAll(session.id)
+            session.beginNewTurn()
+            session.externalNoticeRootScope = root
+            val job = appScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                val before = errors.value.count { it.conversationId == session.id }
+                try {
+                    database.externalNoticeDao().wake(ids, "started")
+                    handleMessageComplete(session.id)
+                    val failed = errors.value.count { it.conversationId == session.id } > before
+                    val waiting = session.state.value.currentMessages.any { m -> m.parts.any { it is UIMessagePart.Tool && it.isPending } }
+                    database.externalNoticeDao().wake(ids, when { failed -> "failed"; waiting -> "waiting_approval"; else -> "completed" })
+                } catch (e: Throwable) {
+                    withContext(NonCancellable) { database.externalNoticeDao().wake(ids, "failed") }
+                    throw e
+                }
+            }
+            session.setJob(job)
+            job.start()
+            true
+        }
+
     private val noticeRequests = Channel<Unit>(Channel.CONFLATED)
     private var noticeDeliveryJob: Job? = null
     private val noticeDelivery = NoticeDelivery(
@@ -249,6 +293,7 @@ class ChatService(
     @Synchronized
     fun startNoticeDelivery() {
         if (noticeDeliveryJob?.isActive == true) return
+        workspaceNoticeInbox.start(appScope)
         noticeDeliveryJob = appScope.launch {
             launch {
                 combine(settingsStore.settingsFlow, database.agentRunDao().observePendingDeliveries()) { settings, runs ->
@@ -256,7 +301,7 @@ class ChatService(
                 }.collect { (enabled, _) -> if (enabled) noticeRequests.trySend(Unit) }
             }
             for (event in noticeRequests) {
-                try { noticeDelivery.flush() }
+                try { noticeDelivery.flush(); workspaceNoticeInbox.request() }
                 catch (error: CancellationException) { throw error }
                 catch (error: Throwable) { Log.e(TAG, "Notice delivery flush failed", error) }
             }
@@ -805,9 +850,10 @@ class ChatService(
                 // 用默认理由（UserCancelled）——这类残留不是插队造成的。
                 finishInterruptedPendingTools(conversationId, InterruptReason.UserCancelled)
 
+                val settings = awaitSettings()
+                workspaceNoticeInbox.beforeUser(session)
                 val currentConversation = session.state.value
                 // 冷启动（尤其后台进程刚被拉起）时 settingsFlow 仍是 dummy：用 awaitSettings 等真实配置
-                val settings = awaitSettings()
                 val assistant = settings.getAssistantById(currentConversation.assistantId)
                     ?: settings.getCurrentAssistant()
                 val processedContent = preprocessUserInputParts(content, assistant)
@@ -816,6 +862,7 @@ class ChatService(
                 val newConversation = currentConversation.copy(
                     messageNodes = currentConversation.messageNodes + UIMessage(
                         role = MessageRole.USER,
+                        isSynthetic = queued.annotations.any { it is UIMessageAnnotation.ScheduledTrigger },
                         parts = processedContent,
                         // #1906：引用随队列项一起落地成注解（展开成请求文本在 QuoteTransformer）
                         annotations = queued.annotations,
@@ -827,6 +874,7 @@ class ChatService(
                 // 开始补全
                 if (answer) {
                     handleMessageComplete(conversationId)
+                    if (queued.turnOwner?.startsWith("sched:") == true) bridgeScheduledMemoryApprovals(session, queued.turnOwner)
                 }
 
                 _generationDoneFlow.emit(conversationId)
@@ -859,6 +907,56 @@ class ChatService(
         }
         session.setJob(job)
         return job
+    }
+
+    private suspend fun bridgeScheduledMemoryApprovals(session: ConversationSession, owner: String) {
+        val notifications = RunNotifications(context)
+        val approvals = SubagentApprovalNotifications(context, settingsStore, notifications)
+        val started = SystemClock.elapsedRealtime()
+        app.androidrik.rikkahub.data.task.bridgeScheduledMemoryApprovals(
+            pending = {
+                if (session.backgroundTaskOwner != owner) emptyList()
+                else app.androidrik.rikkahub.data.task.pendingScheduledMemoryTools(session.state.value.currentMessages)
+            },
+            decide = { tools ->
+                val early = tools.mapNotNull { tool -> session.scheduledMemoryDecisions[tool.toolCallId]?.let {
+                    tool.toolCallId to if (it) ToolApprovalState.Approved else ToolApprovalState.Denied(app.androidrik.rikkahub.data.ai.USER_DENIED_REASON)
+                } }.toMap()
+                val waiting = tools.filterNot { it.toolCallId in early }
+                try {
+                early + if (waiting.isEmpty()) emptyMap() else app.androidrik.rikkahub.data.task.awaitRunApproval(
+                    owner, "定时任务记忆写入", waiting, session.id.toString(), true,
+                    (SubagentRunner.APPROVAL_TIMEOUT_MS - (SystemClock.elapsedRealtime() - started)).coerceAtLeast(1L),
+                    routeAvailable = notifications::approvalRouteAvailable,
+                    postNotification = {
+                        waiting.forEach { tool -> session.scheduledMemoryDecisions[tool.toolCallId]?.let {
+                            app.androidrik.rikkahub.data.ai.SubagentApprovalQueue.resolve(tool.toolCallId, it)
+                        } }
+                        approvals.postApprovalNotification(owner, "定时任务记忆写入", waiting, session.id.toString())
+                    },
+                    cancelNotification = { approvals.cancelApprovalNotification(owner) },
+                )
+                } catch (e: CancellationException) {
+                    // Scheduled cancellation must release pending tools without pausing unrelated user input.
+                    withContext(NonCancellable) {
+                        if (session.backgroundTaskOwner == owner) finishInterruptedPendingTools(session.id, InterruptReason.UserCancelled)
+                    }
+                    throw e
+                }
+            },
+            apply = { decisions ->
+                if (session.backgroundTaskOwner == owner) {
+                    val current = session.state.value
+                    val pendingIds = app.androidrik.rikkahub.data.task.pendingScheduledMemoryTools(current.currentMessages).map { it.toolCallId }.toSet()
+                    val safe = decisions.filterKeys { it in pendingIds }
+                    saveConversation(session.id, current.updateCurrentMessages(
+                        app.androidrik.rikkahub.data.ai.applyApprovalDecisions(current.currentMessages, safe)))
+                }
+            },
+            resume = { if (session.backgroundTaskOwner == owner) handleMessageComplete(session.id) },
+            onLimit = { addError(IllegalStateException("Scheduled memory approval limit reached"), session.id,
+                title = context.getString(R.string.error_title_generation)) },
+        )
     }
 
     private fun preprocessUserInputParts(parts: List<UIMessagePart>, assistant: Assistant): List<UIMessagePart> {
@@ -1051,6 +1149,14 @@ class ChatService(
         skip: Boolean = false,
     ) {
         val session = getOrCreateSession(conversationId)
+        val scheduledMemory = session.backgroundTaskOwner.startsWith("sched:") && session.getJob() != null &&
+            app.androidrik.rikkahub.data.task.pendingScheduledMemoryTools(session.state.value.currentMessages).any { it.toolCallId == toolCallId }
+        if (scheduledMemory && answer == null) {
+            // Covers clicks arriving before notification registration as well as concurrent notification/UI decisions.
+            val decision = session.scheduledMemoryDecisions.putIfAbsent(toolCallId, approved && !skip) ?: (approved && !skip)
+            app.androidrik.rikkahub.data.ai.SubagentApprovalQueue.resolve(toolCallId, decision)
+            return
+        }
         val previousJob = session.getJob()
 
         val job = appScope.launch {
@@ -1323,6 +1429,15 @@ class ChatService(
                 conversationId = conversationId.toString(),
                 // 后台任务归属 = 本轮 scope（本轮被取消时按它精确收掉这一轮起的进程）
                 turnOwner = app.androidrik.workspace.ExecutionScope.parse(session.backgroundTaskOwner),
+                workspaceNoticeTarget = if (settings.workspaceTaskNoticeEnabled && assistant.workspaceId != null) {
+                    conversation.currentMessages.lastOrNull { it.role == MessageRole.USER }?.let { anchor ->
+                        app.androidrik.workspace.WorkspaceTaskNoticeTarget(
+                            conversationId.toString(), conversation.assistantId.toString(), assistant.workspaceId.toString(),
+                            anchor.id.toString(), session.externalNoticeRootScope ?: session.backgroundTaskOwner,
+                            session.externalNoticeRootScope == null && session.backgroundTaskOwner.startsWith("turn:"),
+                        )
+                    }
+                } else null,
                 memoryDisabled = conversation.memoryDisabled,
                 // 插件工具与内置/MCP 段重名 → 该插件段拒绝装配（P2a 拍板 1），这里落成用户可见错误
                 onPluginToolsRejected = { pluginId, conflicting ->
@@ -1487,7 +1602,9 @@ class ChatService(
                         }
                     }
 
-                    is GenerationChunk.Notice -> when (val notice = chunk.notice) {
+                    is GenerationChunk.Notice -> {
+                        workspaceNoticeInbox.suppress(session.externalNoticeRootScope ?: session.backgroundTaskOwner)
+                        when (val notice = chunk.notice) {
                         // 工具调用失控：本轮已**正常结束**（内容会照常落库），这里只补一条用户可见提示，
                         // 让「为什么突然停了」有解释。用 addError 而非写进对话：后者会被持久化并在
                         // 下一轮当上下文发给模型，变成自己教自己的噪音。
@@ -1563,6 +1680,7 @@ class ChatService(
                                 title = context.getString(R.string.agent_run_error_context_budget),
                             )
                         }
+                        }
                     }
                 }
                 } finally {
@@ -1577,6 +1695,9 @@ class ChatService(
                 }
             }
         }.onFailure {
+            sessions[conversationId]?.let { session ->
+                workspaceNoticeInbox.suppress(session.externalNoticeRootScope ?: session.backgroundTaskOwner)
+            }
             // 兜底取消 Live Update 通知（生成开始前失败时 onCompletion 不会执行）
             appEventBus.tryEmit(AppEvent.ChatGenerationEnded(conversationId, senderName, null))
 
@@ -2674,6 +2795,7 @@ class ChatService(
         }
 
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+        workspaceNoticeInbox.request()
     }
 
     suspend fun deleteMessage(
@@ -2813,6 +2935,7 @@ class ChatService(
      * 「进程已启动、工具结果还没回填就被取消」这个靠 taskId 覆盖不到的窗口。
      */
     private fun killBackgroundTasksOfCancelledTurn(owner: String) {
+        workspaceNoticeInbox.suppress(owner)
         // 回调层仍传 wire 字符串（ConversationSession 还承载 forced turn owner 的历史格式），
         // 到控制面边界才还原成 ExecutionScope；解析失败=无归属，宁可不动手。
         val scope = app.androidrik.workspace.ExecutionScope.parse(owner) ?: return
@@ -2854,6 +2977,8 @@ class ChatService(
         val session = sessions[conversationId] ?: return
         // 「停在工具审批上」也是被打断的一轮，但它**没有活跃 Job**（等用户决定时生成协程已经
         // 正常结束）⇒ 取消回调不会触发。这个状态要在收尾之前判定，收尾之后就看不到了。
+        val stoppedRoot = session.externalNoticeRootScope ?: session.backgroundTaskOwner
+        workspaceNoticeInbox.suppress(stoppedRoot)
         val awaitingApproval = hasPendingToolApproval(conversationId)
         val jobs = synchronized(session) {
             // 停止 = 用户介入，队列有意暂停（「继续发送」按钮兜底）。此前这个暂停靠
@@ -2862,6 +2987,7 @@ class ChatService(
             session.messageQueue.pause()
             session.cancelJobs()
         }
+        workspaceNoticeInbox.suppressAndPersist(stoppedRoot)
         if (jobs.isNotEmpty()) {
             jobs.forEach { it.join() }
         }

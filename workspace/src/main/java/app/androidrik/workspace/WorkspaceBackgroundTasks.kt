@@ -255,6 +255,7 @@ data class WorkspaceTaskSnapshot(
     val stderrLogPath: String? = null,
     /** Immutable ownership snapshot for the conversation task tree. */
     val owner: String? = null,
+    val noticeEventId: String? = null,
 ) {
     val isRunning: Boolean get() = status == WorkspaceTaskStatus.RUNNING
 
@@ -352,6 +353,8 @@ class WorkspaceTaskRegistry(
         val stderr: TailBuffer,
         /** 启动方 scope（P3）；null = 无归属。 */
         val scope: ExecutionScope? = null,
+        val noticeTarget: WorkspaceTaskNoticeTarget? = null,
+        val noticeId: String = UUID.randomUUID().toString(),
     ) {
         @Volatile
         var status: WorkspaceTaskStatus = WorkspaceTaskStatus.RUNNING
@@ -386,6 +389,22 @@ class WorkspaceTaskRegistry(
 
     private val lock = Any()
     private val tasks = LinkedHashMap<String, Entry>()
+    private val terminalOutbox = LinkedHashMap<String, WorkspaceTaskTerminal>()
+    private val _pendingTerminals = MutableStateFlow<List<WorkspaceTaskTerminal>>(emptyList())
+    val pendingTerminals: StateFlow<List<WorkspaceTaskTerminal>> = _pendingTerminals.asStateFlow()
+
+    fun acknowledgeTerminal(id: String) = synchronized(lock) {
+        terminalOutbox.remove(id)
+        _pendingTerminals.value = terminalOutbox.values.toList()
+        evictFinishedLocked()
+        publishSnapshotsLocked()
+    }
+
+    private fun retainTerminalLocked(entry: Entry) {
+        val target = entry.noticeTarget ?: return
+        terminalOutbox.putIfAbsent(entry.noticeId, WorkspaceTaskTerminal(entry.noticeId, target, snapshotOf(entry)))
+        _pendingTerminals.value = terminalOutbox.values.toList()
+    }
 
     private val _snapshots = MutableStateFlow<List<WorkspaceTaskSnapshot>>(emptyList())
 
@@ -414,6 +433,7 @@ class WorkspaceTaskRegistry(
         context: WorkspaceShellContext,
         owner: ExecutionScope? = null,
         onFinished: (() -> Unit)? = null,
+        noticeTarget: WorkspaceTaskNoticeTarget? = null,
     ): WorkspaceTaskSnapshot {
         // 释放回调必须**恰好**调用一次：成功路径由 reaper 线程 finally 调用，启动失败路径在返回前
         // 调用（两条路径互斥，这里再用 AtomicBoolean 兜底重复/并发调用）。
@@ -426,6 +446,9 @@ class WorkspaceTaskRegistry(
         val entry: Entry
         synchronized(lock) {
             evictFinishedLocked()
+            check(noticeTarget == null || terminalOutbox.size < 128) {
+                "Background task result inbox is full; pending results must be saved before starting more tasks."
+            }
             val running = tasks.values.count { it.status == WorkspaceTaskStatus.RUNNING }
             check(running < maxConcurrent) {
                 "Background task limit reached ($running running, max $maxConcurrent). " +
@@ -444,6 +467,7 @@ class WorkspaceTaskRegistry(
                 stdout = TailBuffer(tailChars),
                 stderr = TailBuffer(tailChars),
                 scope = owner,
+                noticeTarget = noticeTarget,
             ).apply {
                 logFiles = taskLogsFor(context.filesDir, id)
             }
@@ -470,7 +494,7 @@ class WorkspaceTaskRegistry(
             entry.finishedAtMillis = now()
             // 启动失败路径没有 reaper 线程，置终态之后必须在这里回调释放任务资源
             notifyFinished()
-            synchronized(lock) { publishSnapshotsLocked() }
+            synchronized(lock) { retainTerminalLocked(entry); publishSnapshotsLocked() }
             return snapshotOf(entry)
         }
 
@@ -616,6 +640,7 @@ class WorkspaceTaskRegistry(
                 }
                 // 结束即淘汰：只在 start() 里淘汰会有一段时间超限（连续完成的旧任务还留着占内存）
                 synchronized(lock) {
+                    retainTerminalLocked(entry)
                     evictFinishedLocked()
                     publishSnapshotsLocked()
                 }
@@ -633,7 +658,7 @@ class WorkspaceTaskRegistry(
     /** 淘汰最旧的已结束任务，保证任务表不会无限增长（运行中的任务永不淘汰）。 */
     private fun evictFinishedLocked() {
         val finished = tasks.values
-            .filter { it.status != WorkspaceTaskStatus.RUNNING }
+            .filter { it.status != WorkspaceTaskStatus.RUNNING && it.noticeId !in terminalOutbox }
             .sortedBy { it.finishedAtMillis ?: it.startedAtMillis }
         val excess = finished.size - maxFinished
         if (excess > 0) {
@@ -681,6 +706,7 @@ class WorkspaceTaskRegistry(
             stdoutLogPath = entry.stdoutLogPath,
             stderrLogPath = entry.stderrLogPath,
             owner = entry.scope?.wire,
+            noticeEventId = if (entry.noticeTarget != null) entry.noticeId else null,
         )
     }
 }

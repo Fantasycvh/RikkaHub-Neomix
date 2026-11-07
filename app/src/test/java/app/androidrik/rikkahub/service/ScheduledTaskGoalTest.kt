@@ -12,6 +12,14 @@ import org.junit.Test
  * prompt 在体，中间空行分隔。
  */
 class ScheduledTaskGoalTest {
+    @Test fun `memory guidance is explicit opt in and follows goal before prompt`() {
+        val result = buildTaskPrompt("task body", true, "goal", memoryAvailable = true)
+        org.junit.Assert.assertTrue(result.startsWith("## 长期目标\ngoal\n\n## Memory"))
+        org.junit.Assert.assertTrue(result.endsWith("\n\ntask body"))
+        org.junit.Assert.assertTrue(result.contains("not a new user statement"))
+        org.junit.Assert.assertFalse(buildTaskPrompt("body", false, null).contains("memory_tool"))
+    }
+
 
     @Test
     fun `goal prepended when withGoal and goal present`() {

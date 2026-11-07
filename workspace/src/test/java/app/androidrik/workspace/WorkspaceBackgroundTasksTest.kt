@@ -555,6 +555,67 @@ class WorkspaceBackgroundTasksTest {
         assertEquals(File(taskLogDir(tempFolder.root), "abc123.stderr.log"), logs.stderr)
     }
 
+    private val noticeTarget = WorkspaceTaskNoticeTarget("conversation", "assistant", "workspace", "anchor", "turn:root", true)
+
+    @Test fun `failed launch is retained until durable acknowledgement even with zero finished capacity`() {
+        val launcher = FakeLauncher().apply { failWith = "could not launch" }
+        val registry = WorkspaceTaskRegistry(launcher, maxFinished = 0)
+        val task = registry.start(context("fail"), noticeTarget = noticeTarget)
+        val event = registry.pendingTerminals.value.single()
+        assertEquals(task.noticeEventId, event.id)
+        assertEquals(WorkspaceTaskStatus.FAILED, event.task.status)
+        assertEquals("could not launch", event.task.stderr)
+        assertNotNull(registry.snapshot(task.id))
+        registry.acknowledgeTerminal(event.id)
+        registry.acknowledgeTerminal(event.id)
+        assertTrue(registry.pendingTerminals.value.isEmpty())
+        assertNull(registry.snapshot(task.id))
+        assertTrue(registry.snapshotFlow.value.isEmpty())
+    }
+
+    @Test fun `fast completions are not conflated or evicted before acknowledgement`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher, maxFinished = 0)
+        repeat(25) {
+            val finished = CountDownLatch(1)
+            registry.start(context("echo result"), noticeTarget = noticeTarget, onFinished = { finished.countDown() })
+            launcher.startedProcesses.last().finish(it)
+            assertTrue(finished.await(2, TimeUnit.SECONDS))
+        }
+        assertEquals(25, registry.pendingTerminals.value.size)
+        assertEquals((0..24).toList(), registry.pendingTerminals.value.map { it.task.exitCode })
+        assertEquals(25, registry.list().size)
+        val ids = registry.pendingTerminals.value.map { it.id }
+        assertEquals(25, ids.toSet().size)
+        ids.forEach(registry::acknowledgeTerminal)
+        assertTrue(registry.list().isEmpty())
+    }
+
+    @Test fun `short task id reuse does not reuse completion event identity`() {
+        val launcher = FakeLauncher().apply { failWith = "failed" }
+        val registry = WorkspaceTaskRegistry(launcher, maxFinished = 0, newId = { "reused" })
+        val first = registry.start(context("one"), noticeTarget = noticeTarget)
+        registry.acknowledgeTerminal(registry.pendingTerminals.value.single().id)
+        val second = registry.start(context("two"), noticeTarget = noticeTarget)
+        assertEquals(first.id, second.id)
+        assertTrue(first.noticeEventId != second.noticeEventId)
+    }
+
+    @Test fun `unacknowledged outbox applies backpressure before launching more processes`() {
+        val launcher = FakeLauncher().apply { failWith = "failed" }
+        val registry = WorkspaceTaskRegistry(launcher, maxFinished = 0)
+        repeat(128) { registry.start(context("fail"), noticeTarget = noticeTarget) }
+        try {
+            registry.start(context("overflow"), noticeTarget = noticeTarget)
+            fail("should reject an overflowing inbox")
+        } catch (expected: IllegalStateException) {
+            assertTrue(expected.message!!.contains("inbox is full"))
+        }
+        registry.acknowledgeTerminal(registry.pendingTerminals.value.first().id)
+        registry.start(context("has capacity"), noticeTarget = noticeTarget)
+        assertEquals(128, registry.pendingTerminals.value.size)
+    }
+
     // ---------- helpers ----------
 
     private fun context(command: String, root: String = "demo") = WorkspaceShellContext(

@@ -13,6 +13,7 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.datastore.getAssistantById
+import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.ai.DeliverableChecker
 import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.ai.forcePassNote
@@ -312,7 +313,13 @@ class ScheduledTaskRunner(
         // 目标语义（purrcat A4.2）：withGoal 且会话 goal 非空 → 头部拼「长期目标」，
         // 多次自唤醒围绕同一目标；goal 为空按普通 prompt 走，不报错（§六.2）。
         // 会话已由 ensureConversationLoaded 载入，直接读内存态的 goal。
-        val conversationGoal = chatService.getConversationFlow(conversationId).value.goal
+        val taskConversation = chatService.getConversationFlow(conversationId).value
+        val conversationGoal = taskConversation.goal
+        val taskAssistant = settingsStore.settingsFlow.value.getAssistantById(taskConversation.assistantId)
+        val taskSettings = settingsStore.settingsFlow.value
+        val taskModel = taskSettings.findModelById(taskAssistant?.chatModelId ?: taskSettings.chatModelId)
+        val memoryAvailable = taskAssistant?.enableMemory == true && !taskConversation.memoryDisabled &&
+            taskModel?.abilities?.contains(app.androidrik.ai.provider.ModelAbility.TOOL) == true
         // 收尾闸门（purrcat A1，design-deliverable-gate.md §三.2）：任务声明了交付物
         // （deliverables 非空）才挂闸；null = 行为与过去逐位一致。
         val loopGate = buildTaskLoopGate(task, conversationId)
@@ -321,7 +328,8 @@ class ScheduledTaskRunner(
         val turnOwner = scheduledRunTurnOwner(runId)
         chatService.sendMessage(
             conversationId,
-            listOf(UIMessagePart.Text(buildTaskPrompt(task.prompt, task.withGoal, conversationGoal))),
+            listOf(UIMessagePart.Text(buildTaskPrompt(task.prompt, task.withGoal, conversationGoal, memoryAvailable))),
+            annotations = listOf(app.androidrik.ai.ui.UIMessageAnnotation.ScheduledTrigger(runId)),
             loopGate = loopGate,
             turnOwner = turnOwner,
         )
@@ -378,6 +386,11 @@ class ScheduledTaskRunner(
             return finishCancelled(task, runId)
         }
 
+        if (!reachedEnd) {
+            chatService.removeQueuedMessagesOfTurn(conversationId, turnOwner)
+            val ownJob = chatService.getGenerationJobStateFlow(conversationId).first()
+            if (chatService.getTurnOwner(conversationId) == turnOwner) ownJob?.cancel()
+        }
         val quiesced = reachedEnd
         val hasNewError = chatService.errors.value.count { it.conversationId == conversationId } > errorsBefore
         val producedReply = assistantMessageCount(conversationId) > assistantCountBefore
@@ -663,7 +676,8 @@ internal fun pickAutoCleanupTargets(
  * `withGoal = true` 且会话目标非空 → `## 长期目标\n{goal}\n\n{prompt}`；
  * 开关没开、或会话没写目标（含 NEW_EACH_RUN 每轮新建的空会话）→ 原样返回，不报错。
  */
-internal fun buildTaskPrompt(prompt: String, withGoal: Boolean, goal: String?): String {
-    if (!withGoal || goal.isNullOrBlank()) return prompt
-    return "## 长期目标\n$goal\n\n$prompt"
-}
+internal fun buildTaskPrompt(prompt: String, withGoal: Boolean, goal: String?, memoryAvailable: Boolean = false): String = buildList {
+    if (withGoal && !goal.isNullOrBlank()) add("## 长期目标\n$goal")
+    if (memoryAvailable) add("## Memory\nThis is a preconfigured scheduled task, not a new user statement. Use memory_tool only for sourced stable facts, explicit user preferences, or verified task results. Do not store your guesses, greetings, invented user circumstances or raw logs as facts. Existing write approvals still apply; a generated message alone does not mean memory was saved.")
+    add(prompt)
+}.joinToString("\n\n")

@@ -127,6 +127,7 @@ class ChatToolFactory(
          * 换新（新一轮用户消息 / 重新生成 / 继续生成）。工具层拿不到轮次概念，只能被喂。
          */
         turnOwner: ExecutionScope? = null,
+        workspaceNoticeTarget: app.androidrik.workspace.WorkspaceTaskNoticeTarget? = null,
         /** 会话级「不使用记忆」（隐身对话）：为真时不装配记忆工具，见 [createToolSegments] */
         memoryDisabled: Boolean = false,
         /** 插件工具与既有段重名时的用户可见报错通道；null = 只记日志（预览/子代理路径） */
@@ -138,6 +139,7 @@ class ChatToolFactory(
         workspaceCwd = workspaceCwd,
         conversationId = conversationId,
         turnOwner = turnOwner,
+        workspaceNoticeTarget = workspaceNoticeTarget,
         memoryDisabled = memoryDisabled,
         onPluginToolsRejected = onPluginToolsRejected,
     )
@@ -172,6 +174,7 @@ class ChatToolFactory(
          * 派发上下文，供取消时按 scope 精确/级联收掉。为 null 的装配方（预览）起的任务没有归属。
          */
         turnOwner: ExecutionScope? = null,
+        workspaceNoticeTarget: app.androidrik.workspace.WorkspaceTaskNoticeTarget? = null,
         /**
          * 会话级「不使用记忆」（隐身对话；见 `docs/design/design-memory-discipline.md` §4.4）。
          * 为真时**不装配记忆工具**——它和「不注入记忆」是同一件事的两半：只关注入的话，
@@ -277,7 +280,7 @@ class ChatToolFactory(
 
         segments += ToolSegment(
             ToolSource.Workspace,
-            createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, turnOwner),
+            createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, turnOwner, workspaceNoticeTarget),
         )
 
         // 动态添加 Skill（上游 #1031）：AI 可从 GitHub 安装 / 把对话经验保存为技能。始终注册（不依赖已启用技能）。
@@ -549,6 +552,7 @@ class ChatToolFactory(
         workspaceId: String?,
         cwd: String? = null,
         turnOwner: ExecutionScope? = null,
+        workspaceNoticeTarget: app.androidrik.workspace.WorkspaceTaskNoticeTarget? = null,
     ): List<Tool> {
         if (workspaceId.isNullOrBlank()) return emptyList()
         val workspace = workspaceRepository.getById(workspaceId) ?: return emptyList()
@@ -559,7 +563,7 @@ class ChatToolFactory(
             )
             return emptyList()
         }
-        return createWorkspaceTools(workspaceId, workspaceRepository, cwd, turnOwner)
+        return createWorkspaceTools(workspaceId, workspaceRepository, cwd, turnOwner, workspaceNoticeTarget)
     }
 }
 

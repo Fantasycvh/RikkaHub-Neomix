@@ -28,6 +28,21 @@ import kotlin.uuid.Uuid
  * 单轮超预算也不许让某个会话永远轮不到、没有正文的轮次也要跨过去（否则它每 2 分钟被扫一次）。
  */
 class MemoryConsolidationPromptsTest {
+    @Test fun `scheduled preset and raw workspace output are not new user facts`() {
+        val trigger = UIMessage.user("SCHEDULED_PRESET_NOT_USER_FACT").copy(isSynthetic = true,
+            annotations = listOf(app.androidrik.ai.ui.UIMessageAnnotation.ScheduledTrigger("run")))
+        val notice = UIMessage(role = MessageRole.SYSTEM, isSynthetic = true,
+            parts = listOf(UIMessagePart.Text("RAW_SHELL_OUTPUT_NOT_USER_FACT")),
+            annotations = listOf(app.androidrik.ai.ui.UIMessageAnnotation.ExternalNotice(listOf("event"), "workspace", listOf("task"))))
+        val conversation = Conversation.ofId(Uuid.random(), Uuid.random()).copy(messageNodes = listOf(
+            MessageNode(messages = listOf(UIMessage.user("actual user fact"))),
+            MessageNode(messages = listOf(trigger)), MessageNode(messages = listOf(notice))))
+        val result = buildConsolidationTranscript(listOf(conversation), emptyMap())
+        assertTrue(result.text.contains("actual user fact"))
+        assertFalse(result.text.contains("SCHEDULED_PRESET_NOT_USER_FACT"))
+        assertFalse(result.text.contains("RAW_SHELL_OUTPUT_NOT_USER_FACT"))
+    }
+
     @Test fun `user carrier notice never becomes user intent in memory consolidation`() {
         val notice = UIMessage(role = MessageRole.USER, isSynthetic = true,
             parts = listOf(UIMessagePart.Text("EXTERNAL_RESULT_MUST_NOT_BECOME_MEMORY")),

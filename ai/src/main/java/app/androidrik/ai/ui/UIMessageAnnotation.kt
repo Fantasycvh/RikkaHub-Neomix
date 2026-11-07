@@ -8,6 +8,19 @@ import kotlin.uuid.Uuid
 
 @Serializable
 sealed class UIMessageAnnotation {
+    /** Preconfigured scheduled instruction, not a new statement from the user. */
+    @Serializable
+    @SerialName("scheduled_trigger")
+    data class ScheduledTrigger(val runId: String) : UIMessageAnnotation()
+
+    @Serializable
+    @SerialName("external_notice")
+    data class ExternalNotice(
+        val eventIds: List<String>,
+        val source: String,
+        val sourceIds: List<String>,
+    ) : UIMessageAnnotation()
+
     /** 后台 run 的外部结果；不是用户发言，不触发父生成。 */
     @Serializable
     @SerialName("subagent_notice")

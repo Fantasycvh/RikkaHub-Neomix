@@ -34,6 +34,7 @@ data class SchedulePayload(
      * 有效时刻 = 主时刻 ∪ 本集合，去重升序；空 = 单时刻（老数据无此字段，行为不变）。
      */
     val extraMinutesOfDay: List<Int> = emptyList(),
+    val randomWindow: RandomWindow? = null,
 ) {
     /** DAILY 的全部时刻（当天分钟数，去重升序；含越界防御） */
     val dailyMinutes: List<Int>
@@ -46,7 +47,11 @@ data class SchedulePayload(
 
     companion object {
         fun decode(json: String): SchedulePayload =
-            runCatching { JsonInstant.decodeFromString<SchedulePayload>(json) }.getOrDefault(SchedulePayload())
+            runCatching { JsonInstant.decodeFromString<SchedulePayload>(json) }.getOrElse {
+                // A damaged random schedule must not silently turn into a fixed 08:00 schedule.
+                require(!json.contains("\"randomWindow\"")) { "Invalid random schedule payload" }
+                SchedulePayload()
+            }
     }
 }
 
@@ -76,7 +81,9 @@ object ScheduleMath {
         scheduledAt: Long,
         now: Long,
         zone: ZoneId = ZoneId.systemDefault(),
-    ): Long? = when (type) {
+    ): Long? {
+        validateRandomWindow(type, payload)
+        return when (type) {
         ScheduleType.ONCE -> null
         ScheduleType.INTERVAL -> {
             val interval = payload.intervalMinutes.coerceAtLeast(15) * 60_000L
@@ -109,6 +116,8 @@ object ScheduleMath {
             }
             now + 31L * 24 * 60 * 60_000L
         }
+    }
+
     }
 
     private inline fun advanceWallClock(
@@ -155,6 +164,11 @@ object ScheduleMath {
     }
 
     private fun nextSlotOfDay(day: ZonedDateTime, payload: SchedulePayload, after: Long): Long? {
+        payload.randomWindow?.let { window ->
+            return window.minutesOn(day.toLocalDate()).map { minute ->
+                day.toLocalDate().atTime(minute / 60, minute % 60).atZone(day.zone).toInstant().toEpochMilli()
+            }.distinct().sorted().firstOrNull { it > after }
+        }
         for (minute in payload.dailyMinutes) {
             val slot = day.withHour(minute / 60).withMinute(minute % 60).withSecond(0).withNano(0)
             val millis = slot.toInstant().toEpochMilli()
@@ -173,7 +187,9 @@ object ScheduleMath {
         payload: SchedulePayload,
         from: Long,
         zone: ZoneId = ZoneId.systemDefault(),
-    ): Long = when (type) {
+    ): Long {
+        validateRandomWindow(type, payload)
+        return when (type) {
         ScheduleType.ONCE -> payload.runAt
         ScheduleType.INTERVAL -> from + payload.intervalMinutes.coerceAtLeast(15) * 60_000L
         ScheduleType.DAILY -> {
@@ -206,6 +222,8 @@ object ScheduleMath {
         }
     }
 
+    }
+
     private fun Long.toSlot(payload: SchedulePayload, zone: ZoneId): ZonedDateTime =
         Instant.ofEpochMilli(this).atZone(zone)
             .withHour(payload.hour.coerceIn(0, 23))
@@ -229,6 +247,13 @@ object ScheduleMath {
             late <= graceMs -> MissDecision.RUN
             policy == MissPolicy.RUN_LATE -> MissDecision.RUN_LATE_FORCED
             else -> MissDecision.SKIP
+        }
+    }
+
+    private fun validateRandomWindow(type: ScheduleType, payload: SchedulePayload) {
+        payload.randomWindow?.let {
+            require(type == ScheduleType.DAILY) { "Random windows are only supported for DAILY schedules" }
+            it.validate()
         }
     }
 

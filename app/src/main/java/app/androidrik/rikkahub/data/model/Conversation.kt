@@ -5,7 +5,7 @@ import androidx.core.net.toUri
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import app.androidrik.ai.core.MessageRole
-import app.androidrik.ai.ui.isSubagentNotice
+import app.androidrik.ai.ui.isExternalNotice
 import app.androidrik.ai.ui.semanticRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.finishReasoning
@@ -260,7 +260,7 @@ data class Conversation(
             if (boundaryIndex !in messages.indices) return messages
             // 外部结果不经摘要改写；压缩越过它时仍保留原文供主模型使用。
             return listOf(checkpointMessage) +
-                messages.take(boundaryIndex + 1).filter { it.isSubagentNotice } +
+                messages.take(boundaryIndex + 1).filter { it.isExternalNotice } +
                 messages.drop(boundaryIndex + 1)
         }
     }

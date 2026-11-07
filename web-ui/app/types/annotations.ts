@@ -13,4 +13,13 @@ export interface SubagentNoticeAnnotation {
   runIds: string[];
 }
 
-export type UIMessageAnnotation = UrlCitationAnnotation | SubagentNoticeAnnotation;
+export interface ExternalNoticeAnnotation {
+  type: "external_notice";
+  eventIds: string[];
+  source: string;
+  sourceIds: string[];
+}
+
+export interface ScheduledTriggerAnnotation { type: "scheduled_trigger"; runId: string; }
+
+export type UIMessageAnnotation = UrlCitationAnnotation | SubagentNoticeAnnotation | ExternalNoticeAnnotation | ScheduledTriggerAnnotation;

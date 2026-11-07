@@ -1,9 +1,10 @@
 # 定时任务随机触发 + 主动消息记忆同步（design-scheduled-random-trigger-and-memory-sync）
 
-> 状态：**rev 2——草稿，未实现；2026-11-07 已联合 Notice/收件箱复核**。
+> 状态：**rev 3——2026-11-08 已实施首期随机调度、记忆引导与 scheduled memory_tool 审批桥；设备验收未完成**。
+> 实施范围与验证见 [实施记录](../verification/task-notice-inbox-2026-11-08.md)，仍未提交/推送。
 > 最新建议见 [任务完成通知、收件箱与主动同步整合评估](design-task-notice-inbox-and-proactive-sync.md)。
 > 本稿保留原始分叉与设计过程；随机种子/边界、后台审批、headless 能力与实施分期以整合稿为准，
-> 均为建议，尚未拍板。原先“沿用通知审批即零开发”和整体 2～4 天估时不再适用于整项。
+> 用户已要求按整合稿开始实施；下文保留原始设计记录。原先“沿用通知审批即零开发”和整体 2～4 天估时不再适用于整项。
 > 挂靠 `design-scheduled-ai-tasks.md`（已发布的定时任务特性线，beta.13 / DB v56）的增量稿，
 > 与 `design-proactive-task-management.md`（隐形会话 + AI 管理任务）并列；不改动那条线的
 > 已定案语义，只在其上叠两层能力：

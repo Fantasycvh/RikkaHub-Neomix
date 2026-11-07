@@ -55,6 +55,23 @@ class ScheduledTaskFormState {
     var title by mutableStateOf("")
     var prompt by mutableStateOf("")
     var type by mutableStateOf(ScheduleType.DAILY)
+    var randomDaily by mutableStateOf(false)
+    var randomEndHourText by mutableStateOf("23")
+    var randomEndMinuteText by mutableStateOf("0")
+    var randomCountText by mutableStateOf("3")
+    var randomAlgorithmVersion by mutableStateOf(1)
+    var randomSeed by mutableStateOf(java.util.UUID.randomUUID().mostSignificantBits)
+    private val activeRandom: Boolean get() = type == ScheduleType.DAILY && randomDaily
+    private fun randomWindow(): app.androidrik.rikkahub.data.scheduled.RandomWindow? {
+        if (!activeRandom) return null
+        val h = hourText.toIntOrNull()?.takeIf { it in 0..23 } ?: return null
+        val m = minuteText.toIntOrNull()?.takeIf { it in 0..59 } ?: return null
+        val eh = randomEndHourText.toIntOrNull()?.takeIf { it in 0..24 } ?: return null
+        val em = randomEndMinuteText.toIntOrNull()?.takeIf { it in 0..59 } ?: return null
+        val count = randomCountText.toIntOrNull() ?: return null
+        return app.androidrik.rikkahub.data.scheduled.RandomWindow(h * 60 + m, eh * 60 + em, count, randomSeed, randomAlgorithmVersion)
+            .takeIf { runCatching { it.validate() }.isSuccess }
+    }
     var hourText by mutableStateOf("8")
     var minuteText by mutableStateOf("0")
     var dayOfWeek by mutableIntStateOf(1)
@@ -105,7 +122,7 @@ class ScheduledTaskFormState {
         get() = title.isNotBlank() && prompt.isNotBlank() && hour != null && minute != null &&
             (type != ScheduleType.INTERVAL || interval != null) &&
             (type != ScheduleType.ONCE || runAtDate != null) &&
-            (type != ScheduleType.DAILY || parsedExtraMinutes != null) &&
+            (type != ScheduleType.DAILY || if (activeRandom) randomWindow() != null else parsedExtraMinutes != null) &&
             (type != ScheduleType.MONTHLY || dayOfMonth != null) &&
             keepLast != null
 
@@ -121,16 +138,25 @@ class ScheduledTaskFormState {
             ?.toInstant()
             ?.toEpochMilli()
             ?: 0L,
-        extraMinutesOfDay = if (type == ScheduleType.DAILY) parsedExtraMinutes.orEmpty() else emptyList(),
+        extraMinutesOfDay = if (type == ScheduleType.DAILY && !activeRandom) parsedExtraMinutes.orEmpty() else emptyList(),
+        randomWindow = randomWindow(),
     )
 
     fun loadFrom(entity: ScheduledTaskEntity) {
         val payload = SchedulePayload.decode(entity.schedulePayload)
+        randomDaily = payload.randomWindow != null
+        payload.randomWindow?.let { window ->
+            randomSeed = window.seed
+            randomAlgorithmVersion = window.algorithmVersion
+            randomEndHourText = (window.endMinute / 60).toString()
+            randomEndMinuteText = (window.endMinute % 60).toString()
+            randomCountText = window.slotsPerDay.toString()
+        }
         title = entity.title
         prompt = entity.prompt
         type = runCatching { ScheduleType.valueOf(entity.scheduleType) }.getOrDefault(ScheduleType.DAILY)
-        hourText = payload.hour.toString()
-        minuteText = payload.minute.toString()
+        hourText = (payload.randomWindow?.startMinute?.div(60) ?: payload.hour).toString()
+        minuteText = (payload.randomWindow?.startMinute?.rem(60) ?: payload.minute).toString()
         dayOfWeek = payload.dayOfWeek
         dayOfMonthText = payload.dayOfMonth.toString()
         intervalText = payload.intervalMinutes.toString()
@@ -270,6 +296,12 @@ fun ScheduledTaskFormFields(
 
             else -> Unit
         }
+        if (state.type == ScheduleType.DAILY) {
+            FormItem(label = { Text("每日随机时间窗") }) {
+                Switch(state.randomDaily, { state.randomDaily = it })
+                if (state.randomDaily) Text("起点含、终点不含；窗口不跨零点。系统可能延迟执行，错过时不会集中补齐当天次数。")
+            }
+        }
         // ONCE/DAILY/WEEKLY 都要时刻；INTERVAL 只看间隔
         if (state.type != ScheduleType.INTERVAL) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -304,7 +336,24 @@ fun ScheduledTaskFormFields(
             }
         }
         // DAILY 多时段（P2）：主时刻之外的追加时刻，一行一组、随时删
-        if (state.type == ScheduleType.DAILY) {
+        if (state.type == ScheduleType.DAILY && state.randomDaily) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(state.randomEndHourText,
+                    { state.randomEndHourText = it.filter(Char::isDigit).take(2) },
+                    label = { Text("窗口终点（时）") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                OutlinedTextField(state.randomEndMinuteText,
+                    { state.randomEndMinuteText = it.filter(Char::isDigit).take(2) },
+                    label = { Text("窗口终点（分）") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+                OutlinedTextField(state.randomCountText,
+                    { state.randomCountText = it.filter(Char::isDigit).take(2) },
+                    label = { Text("每日次数") }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
+            }
+            Text("上方时、分为窗口起点；次数 1–20，且不超过窗口分钟数。建议窗口长度至少为次数 × 30 分钟。")
+        }
+        if (state.type == ScheduleType.DAILY && !state.randomDaily) {
             state.extraTimes.forEachIndexed { index, pair ->
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -393,6 +442,7 @@ fun ScheduledTaskFormFields(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        Text("记忆跟随助手与会话设置。普通执行的记忆写入沿用审批，可从通知或会话卡片批准；headless 执行不支持记忆同步。提示词只作引导，未保存到记忆的内容仍可能随自动清理消失。")
         // 交付物契约（design-deliverable-gate.md）：每行一个相对 workspace 根的路径；
         // 留空 = 不设闸（默认）。放在表单尾部：它是进阶字段，不是排周期的必经之路。
         OutlinedTextField(

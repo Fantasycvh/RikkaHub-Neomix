@@ -80,7 +80,7 @@ fun buildTaskManageTool(
             Manage the scheduled tasks (cron-like AI tasks) that belong to YOU (the current assistant).
             Actions: "list" (your tasks with status), "create" (schedule a recurring task for yourself),
             "enable"/"disable", "delete" (only tasks you created).
-            Created tasks run headless in a hidden conversation; results arrive as notifications.
+            Created tasks run in a hidden conversation through the scheduled execution pipeline; results arrive as notifications.
             Use "list" before "create" to avoid duplicates.
         """.trimIndent(),
         parameters = {
@@ -117,6 +117,15 @@ fun buildTaskManageTool(
                     })
                     put("minute", buildJsonObject {
                         put("type", "integer"); put("description", "0-59 (create, except INTERVAL)")
+                    })
+                    put("random_start_minute", buildJsonObject {
+                        put("type", "integer"); put("description", "DAILY random window start, 0-1439. Supply with random_end_minute and random_slots; fixed hour/minute ignored.")
+                    })
+                    put("random_end_minute", buildJsonObject {
+                        put("type", "integer"); put("description", "Exclusive end on same day, 1-1440, greater than start.")
+                    })
+                    put("random_slots", buildJsonObject {
+                        put("type", "integer"); put("description", "Daily samples without replacement, 1-20 and at most the window length in minutes.")
                     })
                     put("day_of_week", buildJsonObject {
                         put("type", "integer"); put("description", "1=Monday..7=Sunday (WEEKLY)")
@@ -168,6 +177,7 @@ fun buildTaskManageTool(
                                 put("id", task.id)
                                 put("title", task.title)
                                 put("schedule_type", task.scheduleType)
+                                put("schedule_payload", task.schedulePayload)
                                 put("enabled", task.enabled)
                                 put("next_run_at", task.nextRunAt)
                                 put("last_status", task.lastStatus)
@@ -245,7 +255,9 @@ private fun validateCreateParams(params: kotlinx.serialization.json.JsonObject):
     }
     val scheduleType = runCatching { ScheduleType.valueOf(type) }.getOrNull()
         ?: return """{"ok":false,"error":"bad_schedule_type"}"""
-    if (scheduleType != ScheduleType.INTERVAL) {
+    val random = runCatching { taskRandomWindow(params) }
+    if (random.isFailure) return """{"ok":false,"error":"bad_random_window"}"""
+    if (scheduleType != ScheduleType.INTERVAL && random.getOrNull() == null) {
         if (hour == null || hour !in 0..23 || minute == null || minute !in 0..59) {
             return """{"ok":false,"error":"bad_time"}"""
         }
@@ -285,6 +297,7 @@ private suspend fun createTask(
             }
             ?: 0L,
         extraMinutesOfDay = emptyList(),
+        randomWindow = taskRandomWindow(params, java.util.UUID.randomUUID().mostSignificantBits),
     )
     val missPolicy = params["miss_policy"]?.jsonPrimitive?.contentOrNullSafe()
         ?.let { runCatching { MissPolicy.valueOf(it) }.getOrNull() } ?: MissPolicy.RUN_LATE
@@ -349,4 +362,13 @@ private fun notifyAction(context: Context, action: String, taskTitle: String) {
             category = NotificationCompat.CATEGORY_MESSAGE
         }
     }
+}
+
+/** Same shape validation as the form and ScheduleMath; the persisted seed is generated only on create. */
+internal fun taskRandomWindow(params: kotlinx.serialization.json.JsonObject, seed: Long = 0L): app.androidrik.rikkahub.data.scheduled.RandomWindow? {
+    val names = listOf("random_start_minute", "random_end_minute", "random_slots")
+    if (names.none { it in params }) return null
+    require(params["schedule_type"]?.jsonPrimitive?.content == "DAILY") { "Random window requires DAILY" }
+    val values = names.map { requireNotNull(params[it]?.jsonPrimitive?.intOrNull) { "All random window fields are required" } }
+    return app.androidrik.rikkahub.data.scheduled.RandomWindow(values[0], values[1], values[2], seed).also { it.validate() }
 }

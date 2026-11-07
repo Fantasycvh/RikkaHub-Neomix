@@ -684,6 +684,7 @@ class WorkspaceRepository(
         command: String,
         cwd: String = "",
         owner: app.androidrik.workspace.ExecutionScope? = null,
+        noticeTarget: app.androidrik.workspace.WorkspaceTaskNoticeTarget? = null,
     ): WorkspaceTaskSnapshot = withContext(Dispatchers.IO) {
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         require(workspace.capabilities().backgroundTasks) {
@@ -694,6 +695,7 @@ class WorkspaceRepository(
             workspace.root, command, cwd,
             shellCompatibilityMode = workspace.shellCompatibilityMode,
             owner = owner,
+            noticeTarget = noticeTarget,
         )
     }
 
@@ -704,6 +706,9 @@ class WorkspaceRepository(
      * 这里不再加一层轮询；任务卡自带 `root`，需要工作区名字时由 UI 侧按 root 映射。
      * 未配置后台启动器时是空流（不会抛错，任务中心照常显示另外两段）。
      */
+    fun observePendingTaskTerminals() = manager.pendingTaskTerminals
+    fun acknowledgeTaskTerminal(id: String) = manager.acknowledgeTaskTerminal(id)
+
     fun observeBackgroundTasks(): Flow<List<WorkspaceTaskSnapshot>> =
         manager.backgroundTaskSnapshots
 

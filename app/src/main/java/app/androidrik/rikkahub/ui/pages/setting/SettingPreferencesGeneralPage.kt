@@ -778,6 +778,13 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
             },
         )
         item(
+            headlineContent = { Text("后台命令完成后自动处理") },
+            supportingContent = { Text("聊天中新启动的后台命令结束后，送回结果并请求模型继续处理，可能产生额外费用。停止或暂停会阻止续跑；定时任务的命令仅投递结果。") },
+            trailingContent = {
+                Switch(settings.workspaceTaskNoticeEnabled, { vm.updateSettings(settings.copy(workspaceTaskNoticeEnabled = it)) })
+            },
+        )
+        item(
             headlineContent = { Text(stringResource(R.string.setting_page_scheduled_headless)) },
             supportingContent = { Text(stringResource(R.string.setting_page_scheduled_headless_desc)) },
             trailingContent = {

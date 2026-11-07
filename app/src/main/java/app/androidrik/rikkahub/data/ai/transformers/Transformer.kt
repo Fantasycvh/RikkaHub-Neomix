@@ -4,7 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.messagesForRequest
-import app.androidrik.ai.ui.isSubagentNotice
+import app.androidrik.ai.ui.isExternalNotice
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
@@ -148,7 +148,7 @@ private suspend fun List<UIMessage>.transformsCollectingVolatileSpans(
     collectAnnotations: Boolean = true,
 ): TransformedMessages {
     val inputChain = transformers.any { it is InputMessageTransformer }
-    val notices = if (inputChain) filter { it.isSubagentNotice }.associateBy { it.id } else emptyMap()
+    val notices = if (inputChain) filter { it.isExternalNotice }.associateBy { it.id } else emptyMap()
     var result = this
     var spans: List<List<IntRange>> = List(result.size) { emptyList() }
     transformers.forEachIndexed { index, transformer ->

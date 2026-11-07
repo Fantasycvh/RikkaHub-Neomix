@@ -282,6 +282,9 @@ private fun scheduleDescription(task: ScheduledTaskEntity): String {
             stringResource(R.string.scheduled_task_type_once) + " · " + formatDateTime(payload.runAt)
 
         ScheduleType.DAILY -> {
+            payload.randomWindow?.let { window ->
+                return "每天随机 · ${formatTime(window.startMinute / 60, window.startMinute % 60)}–${if (window.endMinute == 1440) "24:00" else formatTime(window.endMinute / 60, window.endMinute % 60)} · ${window.slotsPerDay} 次"
+            }
             // 多时段（P2）：展示全部时刻（去重升序），单时刻时与旧形态一致
             stringResource(R.string.scheduled_task_type_daily) + " · " +
                 payload.dailyMinutes.joinToString(" / ") { formatTime(it / 60, it % 60) }

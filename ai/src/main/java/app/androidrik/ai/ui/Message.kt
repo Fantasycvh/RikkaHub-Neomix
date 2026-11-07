@@ -770,14 +770,17 @@ private fun normalizeFinishReason(finishReason: String?): String? = finishReason
 val UIMessage.isSubagentNotice: Boolean
     get() = annotations.any { it is UIMessageAnnotation.SubagentNotice }
 
-fun List<UIMessage>.messagesForAuxGeneration(): List<UIMessage> = filterNot { it.isSubagentNotice }
+val UIMessage.isExternalNotice: Boolean
+    get() = isSubagentNotice || annotations.any { it is UIMessageAnnotation.ExternalNotice }
+
+fun List<UIMessage>.messagesForAuxGeneration(): List<UIMessage> = filterNot { it.isExternalNotice }
 
 /** USER 仅是兼容载体；注解决定语义角色，用户意图/导出应共用此判定。 */
-val UIMessage.semanticRole: MessageRole get() = if (isSubagentNotice) MessageRole.SYSTEM else role
+val UIMessage.semanticRole: MessageRole get() = if (isExternalNotice) MessageRole.SYSTEM else role
 
 /** 中部 SYSTEM 无法渲染/发送时的回退载体，保留 USER 但明确 framing。 */
 fun List<UIMessage>.messagesForRequest(): List<UIMessage> = map { message ->
-    if (!message.isSubagentNotice || message.role != MessageRole.USER) message else {
+    if (!message.isExternalNotice || message.role != MessageRole.USER) message else {
         message.copy(parts = message.parts.map { part ->
             if (part !is UIMessagePart.Text || part.text.startsWith("<system-reminder>\n")) part else
                 part.copy(text = "<system-reminder>\n${part.text}\n</system-reminder>")

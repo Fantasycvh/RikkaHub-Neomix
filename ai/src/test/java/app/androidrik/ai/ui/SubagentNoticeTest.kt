@@ -6,6 +6,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SubagentNoticeTest {
+    @Test fun `workspace notices roundtrip with sources and share external semantic filters`() {
+        val annotation = UIMessageAnnotation.ExternalNotice(listOf("event"), "workspace", listOf("task"))
+        val encoded = Json.encodeToString(UIMessageAnnotation.serializer(), annotation)
+        assertEquals(annotation, Json.decodeFromString(UIMessageAnnotation.serializer(), encoded))
+        val message = UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Text("result")), annotations = listOf(annotation))
+        assertTrue(message.isExternalNotice)
+        assertFalse(message.isSubagentNotice)
+        assertEquals(MessageRole.SYSTEM, message.semanticRole)
+        assertTrue(listOf(message).messagesForAuxGeneration().isEmpty())
+        assertEquals(listOf(message), listOf(message).messagesForRequest())
+    }
+
     @Test fun `user carrier is framed once on request copies and keeps system semantics`() {
         val notice = UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("external value")),
             annotations = listOf(UIMessageAnnotation.SubagentNotice(listOf("a"))))

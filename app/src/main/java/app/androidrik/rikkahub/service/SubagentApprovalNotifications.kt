@@ -61,6 +61,7 @@ internal class SubagentApprovalNotifications(
         runId: String,
         label: String,
         pending: List<UIMessagePart.Tool>,
+        conversationId: String? = null,
     ): Boolean {
         if (!runNotifications.approvalRouteAvailable()) return false
         return runCatching {
@@ -79,7 +80,7 @@ internal class SubagentApprovalNotifications(
                 autoCancel = true
                 useDefaults = true
                 category = NotificationCompat.CATEGORY_REMINDER
-                contentIntent = runDetailPendingIntent(runId)
+                contentIntent = runDetailPendingIntent(runId, conversationId)
                 actions += NotificationAction(
                     icon = R.drawable.ic_stat_rikkahub,
                     title = context.getString(R.string.subagent_approval_approve),
@@ -105,10 +106,14 @@ internal class SubagentApprovalNotifications(
     }
 
     /** 点通知主体 → 运行详情页（在那里能看到入参全文与轨迹）。 */
-    private fun runDetailPendingIntent(runId: String): PendingIntent {
+    private fun runDetailPendingIntent(runId: String, conversationId: String?): PendingIntent {
         val intent = Intent(context, app.androidrik.rikkahub.RouteActivity::class.java)
             .putExtra("runId", runId)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        if (conversationId != null) {
+            intent.removeExtra("runId")
+            intent.putExtra("conversationId", conversationId)
+        }
         return PendingIntent.getActivity(
             context,
             // 每个 run 一个 requestCode：并行 run 详情页的 PendingIntent 互不覆盖
