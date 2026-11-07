@@ -5,7 +5,6 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import app.androidrik.rikkahub.ui.pages.share.handler.readSharedUris
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -23,31 +22,22 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Button
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -57,7 +47,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -68,20 +57,8 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
-import coil3.ImageLoader
-import coil3.compose.setSingletonImageLoaderFactory
-import coil3.gif.AnimatedImageDecoder
-import coil3.gif.GifDecoder
-import coil3.network.cachecontrol.CacheControlCacheStrategy
-import coil3.network.okhttp.OkHttpNetworkFetcherFactory
-import coil3.request.crossfade
-import coil3.svg.SvgDecoder
 import com.dokar.sonner.Toaster
 import com.dokar.sonner.rememberToasterState
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import kotlinx.serialization.Serializable
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.DatabaseMigrationTracker
@@ -104,12 +81,29 @@ import app.androidrik.rikkahub.ui.hooks.readBooleanPreference
 import app.androidrik.rikkahub.ui.hooks.readStringPreference
 import app.androidrik.rikkahub.ui.hooks.rememberCustomAsrState
 import app.androidrik.rikkahub.ui.hooks.rememberCustomTtsState
+import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartGate
+import app.androidrik.rikkahub.ui.pages.backup.components.SearchIndexRebuildBanner
+import app.androidrik.rikkahub.ui.pages.debug.PerfOverlay
+import app.androidrik.rikkahub.ui.theme.LocalDarkMode
+import app.androidrik.rikkahub.ui.theme.RikkahubTheme
+import app.androidrik.rikkahub.utils.CrashHandler
+import app.androidrik.rikkahub.utils.LauncherAlias
+import app.androidrik.rikkahub.utils.openUsageAccessSettings
+import okhttp3.OkHttpClient
+import org.koin.android.ext.android.inject
+import org.koin.compose.koinInject
+import kotlin.uuid.Uuid
+
+import androidx.core.net.toUri
+import androidx.navigation3.runtime.NavEntry
+import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunDetailPage
+import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsPage
 import app.androidrik.rikkahub.ui.pages.assistant.AssistantPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantBasicPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantDetailPage
-import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantKnowledgeBasePage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantExtensionsPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantImagePage
+import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantKnowledgeBasePage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantLocalToolPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantMcpPage
 import app.androidrik.rikkahub.ui.pages.assistant.detail.AssistantMemoryPage
@@ -121,79 +115,64 @@ import app.androidrik.rikkahub.ui.pages.backup.BackupReminderPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupS3Page
 import app.androidrik.rikkahub.ui.pages.backup.BackupSnapshotPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupWebDavPage
-import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartGate
-import app.androidrik.rikkahub.ui.pages.backup.components.SearchIndexRebuildBanner
 import app.androidrik.rikkahub.ui.pages.chat.ChatPage
 import app.androidrik.rikkahub.ui.pages.debug.DebugPage
-import app.androidrik.rikkahub.ui.pages.debug.PerfOverlay
 import app.androidrik.rikkahub.ui.pages.extensions.ExtensionsPage
-import app.androidrik.rikkahub.ui.pages.plugins.PluginDetailPage
-import app.androidrik.rikkahub.ui.pages.plugins.PluginEditorPage
-import app.androidrik.rikkahub.ui.pages.plugins.PluginsPage
 import app.androidrik.rikkahub.ui.pages.extensions.PromptPage
-import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunsPage
-import app.androidrik.rikkahub.ui.pages.agentrun.AgentRunDetailPage
-import app.androidrik.rikkahub.ui.pages.taskcenter.TaskCenterPage
-import app.androidrik.rikkahub.ui.pages.subagent.SubagentPresetsPage
 import app.androidrik.rikkahub.ui.pages.extensions.QuickMessagesPage
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillDetailPage
 import app.androidrik.rikkahub.ui.pages.extensions.skills.SkillsPage
-import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspacePage
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceDetailPage
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceFileEditorPage
+import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspacePage
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceSshEditorPage
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceTerminalPage
-import app.androidrik.workspace.WorkspaceStorageArea
 import app.androidrik.rikkahub.ui.pages.favorite.FavoritePage
 import app.androidrik.rikkahub.ui.pages.history.HistoryPage
 import app.androidrik.rikkahub.ui.pages.imggen.ImageGenPage
 import app.androidrik.rikkahub.ui.pages.log.LogPage
 import app.androidrik.rikkahub.ui.pages.mediacreation.MediaCreationPage
 import app.androidrik.rikkahub.ui.pages.mediacreation.MediaCreationSessionsPage
+import app.androidrik.rikkahub.ui.pages.plugins.PluginDetailPage
+import app.androidrik.rikkahub.ui.pages.plugins.PluginEditorPage
+import app.androidrik.rikkahub.ui.pages.plugins.PluginsPage
 import app.androidrik.rikkahub.ui.pages.promptinspect.PromptInspectPage
 import app.androidrik.rikkahub.ui.pages.search.SearchPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingAboutPage
-import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskCreatePage
-import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskDetailPage
-import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskRunsPage
-import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTasksPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesThemePage
-import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNotificationPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesGeneralPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesAppIdentityPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesUIPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNetworkPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingFilesPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingStoragePage
-import app.androidrik.rikkahub.ui.pages.setting.SettingMcpPage
-import app.androidrik.rikkahub.ui.pages.setting.SettingMediaPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingKnowledgeBaseDetailPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingKnowledgeBasePage
+import app.androidrik.rikkahub.ui.pages.setting.SettingMcpPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingMediaPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingModelPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesAppIdentityPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesGeneralPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNetworkPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesNotificationPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesThemePage
+import app.androidrik.rikkahub.ui.pages.setting.SettingPreferencesUIPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingProviderDetailPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingProviderPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingSearchDetailPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingSearchPage
-import app.androidrik.rikkahub.ui.pages.setting.search.SettingGlobalSearchPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingSpeechPage
+import app.androidrik.rikkahub.ui.pages.setting.SettingStoragePage
+import app.androidrik.rikkahub.ui.pages.setting.SettingThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingWebPage
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskCreatePage
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskDetailPage
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskRunsPage
+import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTasksPage
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingGlobalSearchPage
 import app.androidrik.rikkahub.ui.pages.share.handler.ShareHandlerPage
 import app.androidrik.rikkahub.ui.pages.stats.StatsPage
+import app.androidrik.rikkahub.ui.pages.subagent.SubagentPresetsPage
+import app.androidrik.rikkahub.ui.pages.taskcenter.TaskCenterPage
 import app.androidrik.rikkahub.ui.pages.translator.TranslatorPage
 import app.androidrik.rikkahub.ui.pages.webview.WebViewPage
-import app.androidrik.rikkahub.ui.theme.LocalDarkMode
-import app.androidrik.rikkahub.ui.theme.RikkahubTheme
-import app.androidrik.rikkahub.utils.CrashHandler
-import app.androidrik.rikkahub.utils.LauncherAlias
-import app.androidrik.rikkahub.utils.openUsageAccessSettings
-import okhttp3.OkHttpClient
-import org.koin.android.ext.android.inject
-import org.koin.compose.koinInject
-import kotlin.uuid.Uuid
-
+import app.androidrik.workspace.WorkspaceStorageArea
 private const val TAG = "RouteActivity"
 private const val ACTION_TRANSLATE = "app.androidrik.rikkahub.action.TRANSLATE"
 private const val ACTION_IMAGE_GEN = "app.androidrik.rikkahub.action.IMAGE_GEN"
@@ -277,7 +256,7 @@ open class RouteActivity : ComponentActivity() {
                 // 本进程不重启就会继续在旧库上写、写入在下次启动被覆盖（审计 #16）。
                 // 闸门放根 UI 外层，用户离开备份页也无法绕过。
                 StartupState.Ready -> RikkahubTheme {
-                    RestoreRestartGate { SearchIndexRebuildBanner { AppStartupGateContent() } }
+                    RestoreRestartGate { SearchIndexRebuildBanner { AppStartupGateContent(okHttpClient) { AppRoutes() } } }
                     // 降级告知 / 恢复提示（design-db-downgrade-rebuild.md §4.5/§5）
                     DowngradeDialogs(startupApp)
                 }
@@ -285,154 +264,6 @@ open class RouteActivity : ComponentActivity() {
                 is StartupState.Failed -> StartupFailedScreen(state) { startupApp.retryPendingRestore() }
             }
         }
-    }
-
-    @Composable
-    private fun AppStartupGateContent() {        setSingletonImageLoaderFactory { context ->
-            ImageLoader.Builder(context)
-                .crossfade(true)
-                .components {
-                    add(
-                        OkHttpNetworkFetcherFactory(
-                            callFactory = { okHttpClient },
-                            cacheStrategy = { CacheControlCacheStrategy() },
-                        )
-                    )
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        add(AnimatedImageDecoder.Factory())
-                    } else {
-                        add(GifDecoder.Factory())
-                    }
-                    add(SvgDecoder.Factory(scaleToDensity = true))
-                }
-                .build()
-        }
-        AppRoutes()
-        app.androidrik.rikkahub.ui.pages.agentrun.SubagentApprovalDialog()
-    }
-
-    /** Restoring 阻塞屏：换库 + Koin 完成前的全屏转圈。基础 Material 主题（不走 Koin）。 */
-    @Composable
-    private fun StartupBlockingScreen() {
-        GateTheme {
-            Box(
-                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator()
-                    Text(
-                        text = stringResource(R.string.startup_restore_running),
-                        modifier = Modifier.padding(top = 16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-        }
-    }
-
-    /**
-     * 降级隔离的两个弹窗（design-db-downgrade-rebuild.md §4.5/§5，2026-10-31 拍板：弹窗需要）：
-     * 1. [RikkaHubApp.DowngradeState.quarantined] 非空 = 本次启动发生了隔离 → 一次性告知（不可点外关闭）；
-     * 2. 否则有可恢复隔离件 → 恢复提示：确认则 stage + 走 RestoreRestartGate 强制重启，
-     *    「不再提示」写 dismissed.marker，备份页常驻入口仍可见（拍板：双入口）。
-     */
-    @Composable
-    private fun DowngradeDialogs(startupApp: RikkaHubApp) {
-        val state by startupApp.downgradeState.collectAsState()
-        val scope = rememberCoroutineScope()
-
-        val quarantined = state.quarantined
-        if (quarantined != null) {
-            AlertDialog(
-                onDismissRequest = {},
-                title = { Text("数据库已重建") },
-                text = {
-                    Text(
-                        "检测到数据库来自更新版本的应用（schema v${quarantined.schemaVersion}），" +
-                            "本版本无法打开。已重建空白数据库，原数据已备份在本地；升级回对应版本后，" +
-                            "可在「设置 → 备份 → 降级数据恢复」中找回。",
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = { startupApp.acknowledgeDowngradeNotice() }) {
-                        Text("知道了")
-                    }
-                },
-            )
-            return
-        }
-
-        val entry = state.recoverable.firstOrNull() ?: return
-        val backupDate = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-            .format(Date(entry.marker.quarantinedAt))
-        // 失败信息内联展示（本层在 Toaster provider 之外；弹窗失败不关，内联比 toast 直观）
-        var restoreError by remember { mutableStateOf<String?>(null) }
-        AlertDialog(
-            onDismissRequest = {},
-            title = { Text("发现降级前的数据备份") },
-            text = {
-                Text(
-                    "检测到 $backupDate 备份的数据（schema v${entry.marker.schemaVersion}）。\n\n" +
-                        "恢复将覆盖当前全部数据，重启后生效。" +
-                        (restoreError?.let { "\n\n失败：$it" } ?: ""),
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        startupApp.restoreDowngradeEntry(entry).onFailure { e ->
-                            restoreError = e.message ?: "未知错误"
-                        }
-                    }
-                }) { Text("恢复并重启") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    scope.launch { startupApp.dismissDowngradeEntry(entry) }
-                }) { Text("不再提示") }
-            },
-        )
-    }
-
-    /** Failed 阻塞屏：applyIfPending 可重试；Koin/Room 失败只能重启进程。 */
-    @Composable
-    private fun StartupFailedScreen(state: StartupState.Failed, onRetry: () -> Unit) {
-        GateTheme {
-            Box(
-                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.padding(horizontal = 32.dp),
-                ) {
-                    Text(
-                        text = if (state.canRetry) {
-                            stringResource(R.string.startup_restore_failed, state.message)
-                        } else {
-                            stringResource(R.string.startup_restore_failed_exit, state.message)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    if (state.canRetry) {
-                        Button(onClick = onRetry) {
-                            Text(stringResource(R.string.startup_restore_retry))
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /** Koin 之外的兜底主题：仅随系统深浅色取默认配色，不解析任何 Koin 依赖。 */
-    @Composable
-    private fun GateTheme(content: @Composable () -> Unit) {
-        MaterialTheme(
-            colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(),
-            content = content,
-        )
     }
 
     private fun disableNavigationBarContrast() {
@@ -645,341 +476,7 @@ open class RouteActivity : ComponentActivity() {
                             slideInHorizontally { -it / 2 } + scaleIn(initialScale = 0.7f) + fadeIn() togetherWith
                                 slideOutHorizontally { it }
                         },
-                        entryProvider = entryProvider {
-                            entry<Screen.Chat>(
-                                metadata = NavDisplay.transitionSpec { fadeIn() togetherWith fadeOut() }
-                                    + NavDisplay.popTransitionSpec { fadeIn() togetherWith fadeOut() }
-                            ) { key ->
-                                ChatPage(
-                                    id = Uuid.parse(key.id),
-                                    text = key.text,
-                                    files = key.files.map { it.toUri() },
-                                    nodeId = key.nodeId?.let { Uuid.parse(it) },
-                                )
-                            }
-
-                            entry<Screen.ShareHandler> { key ->
-                                ShareHandlerPage(
-                                    text = key.text,
-                                    files = (listOfNotNull(key.streamUri) + key.streamUris).distinct()
-                                )
-                            }
-
-                            entry<Screen.History> {
-                                HistoryPage()
-                            }
-
-                            entry<Screen.Favorite> {
-                                FavoritePage()
-                            }
-
-                            entry<Screen.Assistant> {
-                                AssistantPage()
-                            }
-
-                            entry<Screen.AssistantDetail> { key ->
-                                AssistantDetailPage(key.id)
-                            }
-
-                            entry<Screen.AssistantBasic> { key ->
-                                AssistantBasicPage(key.id)
-                            }
-
-                            entry<Screen.AssistantPrompt> { key ->
-                                AssistantPromptPage(key.id)
-                            }
-
-                            entry<Screen.AssistantMemory> { key ->
-                                AssistantMemoryPage(key.id)
-                            }
-
-                            entry<Screen.AssistantRequest> { key ->
-                                AssistantRequestPage(key.id)
-                            }
-
-                            entry<Screen.AssistantMcp> { key ->
-                                AssistantMcpPage(key.id)
-                            }
-
-                            entry<Screen.AssistantLocalTool> { key ->
-                                AssistantLocalToolPage(key.id)
-                            }
-                            entry<Screen.AssistantImage> { key ->
-                                AssistantImagePage(key.id)
-                            }
-
-                            entry<Screen.AssistantInjections> { key ->
-                                AssistantExtensionsPage(key.id)
-                            }
-
-                            entry<Screen.Translator> {
-                                TranslatorPage()
-                            }
-
-                            entry<Screen.Setting> {
-                                SettingPage()
-                            }
-
-                            entry<Screen.Backup> {
-                                BackupPage()
-                            }
-
-                            // 备份二级入口页里的具体功能页（三级）：原来的顶栏 tab 拆成独立路由。
-                            entry<Screen.BackupImportExport> {
-                                BackupImportExportPage()
-                            }
-
-                            entry<Screen.BackupWebDav> {
-                                BackupWebDavPage()
-                            }
-
-                            entry<Screen.BackupS3> {
-                                BackupS3Page()
-                            }
-
-                            entry<Screen.BackupReminder> {
-                                BackupReminderPage()
-                            }
-
-                            entry<Screen.BackupSnapshot> {
-                                BackupSnapshotPage()
-                            }
-
-                            entry<Screen.ImageGen> {
-                                ImageGenPage()
-                            }
-
-                            entry<Screen.MediaCreationSessions> {
-                                MediaCreationSessionsPage()
-                            }
-
-                            entry<Screen.MediaCreation> { key ->
-                                MediaCreationPage(key.sessionId)
-                            }
-
-                            entry<Screen.WebView> { key ->
-                                WebViewPage(key.url, key.contentId)
-                            }
-
-                            entry<Screen.SettingTheme> {
-                                SettingThemePage()
-                            }
-
-                            entry<Screen.SettingPreferences> {
-                                SettingPreferencesPage()
-                            }
-
-                            entry<Screen.SettingPreferencesTheme> {
-                                SettingPreferencesThemePage()
-                            }
-
-                            entry<Screen.SettingPreferencesNotification> {
-                                SettingPreferencesNotificationPage()
-                            }
-
-                            entry<Screen.SettingPreferencesGeneral> {
-                                SettingPreferencesGeneralPage()
-                            }
-
-                            entry<Screen.SettingPreferencesUI> {
-                                SettingPreferencesUIPage()
-                            }
-
-                            entry<Screen.SettingPreferencesAppIdentity> {
-                                SettingPreferencesAppIdentityPage()
-                            }
-
-                            entry<Screen.SettingPreferencesNetwork> {
-                                SettingPreferencesNetworkPage()
-                            }
-                            entry<Screen.SettingProvider> {
-                                SettingProviderPage()
-                            }
-
-                            entry<Screen.SettingProviderDetail> { key ->
-                                val id = Uuid.parse(key.providerId)
-                                SettingProviderDetailPage(id = id)
-                            }
-
-                            entry<Screen.SettingModels> {
-                                SettingModelPage()
-                            }
-
-                            entry<Screen.SettingAbout> {
-                                SettingAboutPage()
-                            }
-
-                            entry<Screen.SettingSearch> {
-                                SettingSearchPage()
-                            }
-
-                            entry<Screen.SettingGlobalSearch> {
-                                SettingGlobalSearchPage()
-                            }
-
-                            entry<Screen.SettingSearchDetail> { key ->
-                                val id = Uuid.parse(key.serviceId)
-                                SettingSearchDetailPage(id)
-                            }
-
-                            entry<Screen.SettingKnowledgeBase> {
-                                SettingKnowledgeBasePage()
-                            }
-
-                            entry<Screen.SettingKnowledgeBaseDetail> { key ->
-                                SettingKnowledgeBaseDetailPage(key.kbId)
-                            }
-
-                            entry<Screen.AssistantKnowledgeBase> { key ->
-                                val id = Uuid.parse(key.assistantId)
-                                AssistantKnowledgeBasePage(id)
-                            }
-
-                            entry<Screen.SettingSpeech> {
-                                SettingSpeechPage()
-                            }
-
-                            entry<Screen.SettingScheduledTasks> {
-                                ScheduledTasksPage()
-                            }
-
-                            entry<Screen.SettingScheduledTaskDetail> { key ->
-                                ScheduledTaskDetailPage(taskId = key.taskId)
-                            }
-                            entry<Screen.SettingScheduledTaskRuns> { key ->
-                                ScheduledTaskRunsPage(taskId = key.taskId)
-                            }
-                            entry<Screen.SettingScheduledTaskCreate> { key ->
-                                ScheduledTaskCreatePage(prefillConversationId = key.conversationId)
-                            }
-
-                            entry<Screen.SettingMedia> {
-                                SettingMediaPage()
-                            }
-
-                            entry<Screen.SettingMcp> {
-                                SettingMcpPage()
-                            }
-
-                            entry<Screen.SettingFiles> {
-                                SettingFilesPage()
-                            }
-
-                            entry<Screen.SettingStorage> {
-                                SettingStoragePage()
-                            }
-
-                            entry<Screen.SettingWeb> {
-                                SettingWebPage()
-                            }
-
-                            entry<Screen.Debug> {
-                                DebugPage()
-                            }
-
-                            entry<Screen.Log> {
-                                LogPage()
-                            }
-
-                            entry<Screen.PromptInspect> { key ->
-                                PromptInspectPage(conversationId = key.conversationId)
-                            }
-
-                            entry<Screen.Extensions> {
-                                ExtensionsPage()
-                            }
-
-                            entry<Screen.Plugins> {
-                                PluginsPage()
-                            }
-
-                            entry<Screen.PluginDetail> { key ->
-                                PluginDetailPage(pluginId = key.pluginId)
-                            }
-
-                            entry<Screen.PluginEditor> { key ->
-                                PluginEditorPage(pluginId = key.pluginId)
-                            }
-
-                            entry<Screen.QuickMessages> {
-                                QuickMessagesPage()
-                            }
-
-                            entry<Screen.Prompts> {
-                                PromptPage()
-                            }
-
-                            entry<Screen.Worldbooks> {
-                                PromptPage(initialWorldbooks = true)
-                            }
-
-                            entry<Screen.PromptEntryTarget> { key ->
-                                PromptPage(
-                                    initialWorldbooks = key.lorebook,
-                                    initialContainerId = key.containerId,
-                                    initialEntryId = key.entryId,
-                                )
-                            }
-
-                            entry<Screen.Skills> {
-                                SkillsPage()
-                            }
-
-                            entry<Screen.AgentRuns> {
-                                AgentRunsPage()
-                            }
-
-                            // 任务中心（P0）：三段合一的只读聚合 + 取消/批准入口
-                            entry<Screen.TaskCenter> {
-                                TaskCenterPage()
-                            }
-
-                            entry<Screen.AgentRunDetail> { key ->
-                                AgentRunDetailPage(runId = key.runId)
-                            }
-
-                            // 子代理预设（「按名称调度的模型 + 提示词」组合，设计 §十）——
-                            // 与账本列表分开：那是"跑过的记录"，这是"可派的组合"
-                            entry<Screen.SubagentPresets> {
-                                SubagentPresetsPage()
-                            }
-
-                            entry<Screen.Workspaces> {
-                                WorkspacePage()
-                            }
-
-                            entry<Screen.WorkspaceDetail> { key ->
-                                WorkspaceDetailPage(key.id)
-                            }
-
-                            entry<Screen.WorkspaceTerminal> { key ->
-                                WorkspaceTerminalPage(key.id)
-                            }
-
-                            entry<Screen.WorkspaceSshEditor> { key ->
-                                WorkspaceSshEditorPage(key.id)
-                            }
-
-                            entry<Screen.WorkspaceFileEditor> { key ->
-                                WorkspaceFileEditorPage(
-                                    id = key.id,
-                                    area = WorkspaceStorageArea.valueOf(key.area),
-                                    path = key.path,
-                                )
-                            }
-
-                            entry<Screen.SkillDetail> { key ->
-                                SkillDetailPage(skillName = key.skillName)
-                            }
-
-                            entry<Screen.MessageSearch> {
-                                SearchPage()
-                            }
-
-                            entry<Screen.Stats> {
-                                StatsPage()
-                            }
-                        }
+                        entryProvider = appEntryProvider(),
                     )
                     // 性能采样浮层：覆盖所有 App 页面（Debug 页自身除外，避免与 Perf 页重复），
                     // 采样进行中才显示，点 × 原地停止。
@@ -1033,319 +530,4 @@ open class RouteActivity : ComponentActivity() {
             }
         }
     }
-}
-
-/**
- * 桌面「名称 + 图标」预置入口（utils/LauncherAlias.kt 切换）。
- *
- * 必须是**真实 Activity**（RouteActivity 子类）而不是 activity-alias：
- * ColorOS/HyperOS 一类 ROM 的组件开关 hook 会对 alias 做「组件是否存在」校验，
- * alias 不在 activity 表里 ⇒ setComponentEnabledSetting 被拒（实测崩溃
- * IllegalArgumentException "Component class does not exist"，后台静默丢弃同理）；
- * 真实 Activity 放行（对齐 legado-with-MD3 的 Launcher0~6 做法）。
- * 静态快捷方式声明挂在 RouteActivity（默认入口）上，切走后长按不可见属预期。
- */
-class LauncherRikkaHubActivity : RouteActivity()
-
-class LauncherChatActivity : RouteActivity()
-
-class LauncherNotesActivity : RouteActivity()
-
-class LauncherAssistantActivity : RouteActivity()
-
-/**
- * 桌面快捷方式的固定入口：**永不参与预置启停**（始终 enabled）。
- * 快捷方式若直接指向 [RouteActivity]，切换预置后 RouteActivity 会被禁用 ⇒
- * 点快捷方式无法启动（实测）。由本类转发到当前启用的入口 Activity。
- */
-class ShortcutEntryActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val entryClass = runCatching {
-            Class.forName(LauncherAlias.variantOf(LauncherAlias.enabledVariantId(this)).activityClass)
-        }.getOrNull() ?: RouteActivity::class.java
-        startActivity(
-            Intent(this, entryClass).apply {
-                action = Intent.ACTION_MAIN
-                if (getIntent()?.extras != null) putExtras(getIntent()!!.extras!!)
-            }
-        )
-        finish()
-    }
-}
-
-sealed interface Screen : NavKey {
-    @Serializable
-    data class Chat(
-        val id: String,
-        val text: String? = null,
-        val files: List<String> = emptyList(),
-        val nodeId: String? = null,
-        /**
-         * 仅用于兼容旧版小窗交接保存的导航状态；小窗功能已移除，不再写入或读取。
-         * 保留字段可避免升级后恢复旧返回栈时因未知字段反序列化失败。
-         */
-        val appendDraft: Boolean = false,
-    ) : Screen
-
-    @Serializable
-    data class ShareHandler(
-        val text: String,
-        val streamUri: String? = null, // Legacy saved navigation state.
-        val streamUris: List<String> = emptyList(),
-    ) : Screen
-
-    @Serializable
-    data object History : Screen
-
-    @Serializable
-    data object Favorite : Screen
-
-    @Serializable
-    data object Assistant : Screen
-
-    @Serializable
-    data class AssistantDetail(val id: String) : Screen
-
-    @Serializable
-    data class AssistantBasic(val id: String) : Screen
-
-    @Serializable
-    data class AssistantPrompt(val id: String) : Screen
-
-    @Serializable
-    data class AssistantMemory(val id: String) : Screen
-
-    @Serializable
-    data class AssistantRequest(val id: String) : Screen
-
-    @Serializable
-    data class AssistantMcp(val id: String) : Screen
-
-    @Serializable
-    data class AssistantLocalTool(val id: String) : Screen
-
-    @Serializable
-    /** 生图（上游 #2123）：单独一类——它既不是记忆也不是本地工具 */
-    data class AssistantImage(val id: String) : Screen
-
-    @Serializable
-    data class AssistantInjections(val id: String) : Screen
-
-    @Serializable
-    data object Translator : Screen
-
-    @Serializable
-    data object Setting : Screen
-
-    @Serializable
-    data object Backup : Screen
-
-    /** 备份页（二级列表）里的各功能详情页（三级）。 */
-    @Serializable
-    data object BackupImportExport : Screen
-
-    @Serializable
-    data object BackupWebDav : Screen
-
-    @Serializable
-    data object BackupS3 : Screen
-
-    @Serializable
-    data object BackupReminder : Screen
-
-    @Serializable
-    data object BackupSnapshot : Screen
-
-    @Serializable
-    data object ImageGen : Screen
-
-    @Serializable
-    data object MediaCreationSessions : Screen
-
-    @Serializable
-    data class MediaCreation(val sessionId: String) : Screen
-
-    @Serializable
-    data class WebView(val url: String = "", val contentId: String = "") : Screen
-
-    @Serializable
-    data object SettingTheme : Screen
-
-    @Serializable
-    data object SettingPreferences : Screen
-
-    @Serializable
-    data object SettingPreferencesTheme : Screen
-
-    @Serializable
-    data object SettingPreferencesNotification : Screen
-
-    @Serializable
-    data object SettingPreferencesGeneral : Screen
-
-    @Serializable
-    data object SettingPreferencesUI : Screen
-
-    @Serializable
-    data object SettingPreferencesAppIdentity : Screen
-
-    @Serializable
-    data object SettingPreferencesNetwork : Screen
-
-    @Serializable
-    data object SettingProvider : Screen
-
-    @Serializable
-    data class SettingProviderDetail(val providerId: String) : Screen
-
-    @Serializable
-    data object SettingModels : Screen
-
-    @Serializable
-    data object SettingAbout : Screen
-
-    @Serializable
-    data object SettingSearch : Screen
-
-    /** 设置页全局搜索（跨所有设置页搜具体设置项） */
-    @Serializable
-    data object SettingGlobalSearch : Screen
-
-    /** 知识库管理（RAG-as-tool）：列表 + 详情（编辑/文档/索引） */
-    @Serializable
-    data object SettingKnowledgeBase : Screen
-
-    @Serializable
-    data class SettingKnowledgeBaseDetail(val kbId: String) : Screen
-
-    /** 助手绑定知识库（决定 search_knowledge_base 工具检索哪些库） */
-    @Serializable
-    data class AssistantKnowledgeBase(val assistantId: String) : Screen
-
-    @Serializable
-    data class SettingSearchDetail(val serviceId: String) : Screen
-
-    @Serializable
-    data object SettingSpeech : Screen
-
-    @Serializable
-    data object SettingScheduledTasks : Screen
-
-    @Serializable
-    data class SettingScheduledTaskDetail(val taskId: String) : Screen
-
-    /** 任务运行历史二级页（P3）：详情页的「运行历史」入口进这里 */
-    @Serializable
-    data class SettingScheduledTaskRuns(val taskId: String) : Screen
-
-    @Serializable
-    data class SettingScheduledTaskCreate(val conversationId: String? = null) : Screen
-
-    @Serializable
-    data object SettingMedia : Screen
-
-    @Serializable
-    data object SettingMcp : Screen
-
-    @Serializable
-    data object SettingFiles : Screen
-
-    @Serializable
-    data object SettingStorage : Screen
-
-    @Serializable
-    data object SettingWeb : Screen
-
-    @Serializable
-    data object Debug : Screen
-
-    @Serializable
-    data object Log : Screen
-
-    /** 拼装后提示词预览（只读，见 `docs/peer-apps-benchmark.md` §6.7 ③）；带会话 id 故为 data class。 */
-    @Serializable
-    data class PromptInspect(val conversationId: String) : Screen
-
-    @Serializable
-    data object Extensions : Screen
-
-    /** 插件中心(内置插件列表 + 启用开关 + 能力声明)。 */
-    @Serializable
-    data object Plugins : Screen
-
-    /** 插件详情;插件自带配置界面在页内内嵌,不新增设置页路由。 */
-    @Serializable
-    data class PluginDetail(val pluginId: String) : Screen
-
-    /** JS 插件修订编辑器(仅 debug 构建的通道入口可达,见设计稿 §5.2)。 */
-    @Serializable
-    data class PluginEditor(val pluginId: String) : Screen
-
-    @Serializable
-    data object QuickMessages : Screen
-
-    @Serializable
-    data object Prompts : Screen
-
-    /**
-     * Tier 4：从拼装预览的某个注入段跳到**产出它的条目**编辑处。
-     *
-     * 为什么单独一条路由而不是给 [Prompts] 加可空参数：`Screen` 是 Navigation 的类型化路由，
-     * 给既有 route 加参数会改变其签名（影响深链与返回栈恢复）；独立路由让「带目标的跳转」
-     * 与「普通进入」互不干扰，语义也更清楚。
-     */
-    @Serializable
-    data class PromptEntryTarget(
-        val containerId: String,
-        val entryId: String,
-        val lorebook: Boolean,
-    ) : Screen
-
-    @Serializable
-    data object Worldbooks : Screen
-
-    @Serializable
-    data object Skills : Screen
-
-    /** 无头 agent run 的账本列表（设计见 docs/design/design-subagent-context.md §9.3/9.4）。 */
-    @Serializable
-    data object AgentRuns : Screen
-
-    /** 任务中心（P0）：agent run / 后台命令 / 定时任务三段合一，见 design-agent-task-runtime §5.5。 */
-    @Serializable
-    data object TaskCenter : Screen
-
-    /** 单个 run 的详情（状态 + 轨迹回放）。 */
-    @Serializable
-    data class AgentRunDetail(val runId: String) : Screen
-
-    /** 子代理预设管理（「按名称调度的模型 + 提示词」组合，设计 §十）。 */
-    @Serializable
-    data object SubagentPresets : Screen
-
-
-    @Serializable
-    data object Workspaces : Screen
-
-    @Serializable
-    data class WorkspaceDetail(val id: String) : Screen
-
-    @Serializable
-    data class WorkspaceTerminal(val id: String) : Screen
-
-    @Serializable
-    data class WorkspaceSshEditor(val id: String? = null) : Screen
-
-    @Serializable
-    data class WorkspaceFileEditor(val id: String, val area: String, val path: String) : Screen
-
-    @Serializable
-    data class SkillDetail(val skillName: String) : Screen
-
-    @Serializable
-    data object MessageSearch : Screen
-
-    @Serializable
-    data object Stats : Screen
 }
