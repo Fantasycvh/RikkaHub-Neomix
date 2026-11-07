@@ -71,12 +71,11 @@ class PromptInspectionWiringSourceGuardTest {
 
     @Test
     fun `dispatcher helper wraps the block in a real background dispatcher`() {
-        val source = chatServiceSource()
+        val source = chatServiceModelsSource()
         val start = source.indexOf("internal suspend fun <T> withPromptInspectionDispatcher(")
         assertTrue("找不到 withPromptInspectionDispatcher 定义", start >= 0)
-        val classAt = source.indexOf("class ChatService(")
-        assertTrue("withPromptInspectionDispatcher 必须在 ChatService 类声明之前（顶层 helper）", classAt > start)
-        val helper = source.substring(start, classAt)
+        // 文件尾截取（helper 已是 ChatServiceModels.kt 的最后一个顶层声明）
+        val helper = source.substring(start)
 
         assertTrue(
             "helper 必须默认真切到后台 dispatcher（Default/IO）；默认 Main 等于没修",
@@ -157,10 +156,19 @@ class DraftPersistenceWiringSourceGuardTest {
 /**
  * 读取 ChatService.kt（Gradle 单测工作目录可能是模块根，也可能是仓库根——两种都试）。
  */
-private fun chatServiceSource(): String {
+private fun chatServiceSource(): String = serviceSource("ChatService.kt")
+
+/**
+ * 读取 ChatServiceModels.kt（withPromptInspectionDispatcher 所在文件；
+ * 2026-11-07 拆分后 helper 从 ChatService.kt 迁入，守护断言跟随源文件）。
+ */
+private fun chatServiceModelsSource(): String = serviceSource("ChatServiceModels.kt")
+
+/** 按文件名读取 service 包源码（Gradle 单测工作目录可能是模块根，也可能是仓库根——两种都试）。 */
+private fun serviceSource(name: String): String {
     val file = listOf(
-        "src/main/java/app/androidrik/rikkahub/service/ChatService.kt",
-        "app/src/main/java/app/androidrik/rikkahub/service/ChatService.kt",
+        "src/main/java/app/androidrik/rikkahub/service/$name",
+        "app/src/main/java/app/androidrik/rikkahub/service/$name",
     ).map(::File).firstOrNull { it.exists() }
         ?: error("找不到 ChatService.kt（工作目录=${File(".").absolutePath}）")
     return file.readText().replace("\r\n", "\n")
