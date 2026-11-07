@@ -585,35 +585,3 @@ fun ChatExportSheet(
         )
     }
 }
-
-private fun shareFile(context: Context, uri: Uri, mimeType: String) {
-    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-        type = mimeType
-        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(
-        android.content.Intent.createChooser(
-            intent,
-            context.getString(R.string.chat_page_export_share_via)
-        )
-    )
-}
-
-/** 多文件一起分享：长对话分页导出多张 PNG 时一次带全部 */
-private fun shareFiles(context: Context, uris: List<Uri>, mimeType: String) {
-    val intent = android.content.Intent(android.content.Intent.ACTION_SEND_MULTIPLE).apply {
-        type = mimeType
-        putParcelableArrayListExtra(
-            android.content.Intent.EXTRA_STREAM,
-            ArrayList(uris)
-        )
-        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(
-        android.content.Intent.createChooser(
-            intent,
-            context.getString(R.string.chat_page_export_share_via)
-        )
-    )
-}
