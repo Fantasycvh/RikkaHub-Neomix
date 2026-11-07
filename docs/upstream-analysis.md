@@ -2,7 +2,7 @@
 
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.14 (316)`（预发布，2026-10-31 发）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
 
-> **同步点（2026-11-07 更新）**：已评估到上游 **`fe5a28f9a`**（2026-11-07，上游 HEAD，已发 `3.1.2`），`903e058b9` 之后共 **25 提交**（逐条见「2026-11-07 同步评估」）；issue 扫描到 **#2304**。**吸收候选 P1 两条**：bettertext 一并 bump 到 v0.1.5（`dfbe9a082`+`50bbc99bb`，得 #2285/#2301 两修复）、`3733bac8f` 的 DAO/仓库部分（**核对本仓存在 #2299 同构孤儿收藏 bug**）；**等价两条**：`e011970cb`（跳板机，本仓 11-03 已领先落地）、`dba9fa574`（收藏去重，`800f9bbcf` 覆盖）；**`4ebfde221`+`27ef05ede`（shell 后台运行）已合入主线，从分支观察升级为吸收候选**（体量大需专项批次）；`b40d7a273` 顶栏浮动胶囊**方案定案「两套共存加开关」但本轮暂不实施**（用户拍板），haze 维持 2.0.1 不跟升 2.1.0。用户另拍板：`bbae6d3a7`+`6687f636c` 推荐提供商弹窗线不跟，`c512338d5` deps update 稍后。
+> **同步点（2026-11-07 更新）**：已评估到上游 **`fe5a28f9a`**（2026-11-07，上游 HEAD，已发 `3.1.2`），`903e058b9` 之后共 **25 提交**（逐条见「2026-11-07 同步评估」）；issue 扫描到 **#2304**。**当日已吸收落地**：bettertext bump v0.1.5（#2285/#2301）、`3733bac8f` DAO/仓库部分（本仓确认 #2299 同构孤儿收藏 bug 后修复）、`6328f4a8d` 余额查询 POST+JSON、`b40d7a273` 顶栏胶囊（方案定案「两套共存加开关」，haze 维持 2.0.1）；**等价五条**：`e011970cb`（跳板机）、`dba9fa574`（收藏去重）、`ae599e8d7`（图片压缩缓存，本仓 MediaEncodingCache 覆盖热路径）、`e85c1d901`（压缩直填，NumericDialogField 领先）、`88dee920c`（世界书拖拽，本仓整页领先）；**大体等价**：`4ebfde221`+`27ef05ede`（后台任务三件套/任务中心/进程树杀本仓均已领先，唯一缺口「任务完成主动通知模型」挂账待专项批次）。用户拍板不跟：`bbae6d3a7`+`6687f636c` 推荐提供商弹窗线；`c512338d5` deps update 稍后。详见文末实施记录。
 
 > **同步点（2026-11-03 更新）**：已评估到上游 **`903e058b9`**，`a5db9c9b7` 之后共 **3 提交**；issue 扫描到 **#2290**。按用户指定分四批落地：收藏重复 key 防崩、设置页局域网权限入口、OCR 配置失效明确报错、多关键词模型搜索。`20e9ddcc5`（配色库去 submodule）暂缓；后台 shell PR #2268 仍未合并，继续专项观察。详见文末「2026-11-03 同步评估与四批吸收」。
 
@@ -1753,6 +1753,33 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - #2298 批量删除多轮聊天记录；#2296 消息下方显示完整用量统计；#2294 压缩范围预览与压缩记录展示优化。
 - #2297 压缩保留消息数手动输入——上游已由 `e85c1d901` 实现但 issue 未关。
 - **#2271（Mistral 422 reasoning_content）仍 open**，本仓同构风险在档未动（沿用 10-31 记录）。
+
+### 2026-11-07 实施记录（用户指定「开始实施」，分批本地提交）
+
+> 评估与实施同日完成。判定在实施中**逐条与本仓分叉核对**，四条 P2 候选经核对改判等价——「评估表预判」与「动手前实核」的差距再次印证先核分叉的必要性。
+
+**已落地（本地提交，未推送）：**
+
+- `1c45d8988` docs：本轮评估台账。
+- `9e1baaaab` chore(deps)：bettertext v0.1.3→v0.1.5（`50bbc99bb`+`dfbe9a082`，#2285/#2301 两修复一步到位）；`:app:compileDebugKotlin` 过。
+- `99355884b` fix(favorite)：#2299 同构修复——DAO 增 `deleteNodeFavoritesOfConversation`/`deleteByRefKeys`；`deleteConversation` 同事务清节点收藏；`saveConversation` 以内存态 previous/current 节点差集清理移除节点的收藏（本仓所有删除路径汇聚于此，比上游 sync-loop 钩子更集中）；撤销恢复语义与上游一致（收藏随移除清理）。
+- `3d0a8ee91` feat(provider)：余额查询 POST+JSON（`6328f4a8d`）——`QuotaQuery` 增 `method`/`body`（旧配置默认 GET 兼容），单接口分支按 method 发请求、body 走模板渲染；多接口模式（本仓扩展）保持 GET 暂不扩展；编辑器加 GET/POST 切换与 body 输入，2 键 ×3 locale；`QuotaQueryRunnerTest` 补 POST 断言，`:ai:testDebugUnitTest` 过。
+- `da59ed184` feat(chat)：顶栏胶囊两套共存（`b40d7a273`）——`topBarStyle`（FULL_BAR 默认/CAPSULES，缺字段回退现状）、`TopBarCapsule` 组件（背景复用 `chatInputBackgroundEffect`）、TopBar/ChatPage 接线（`canScrollBackward` 派生淡入、previewMode 不显示）、设置页 SegmentedPill + 3 键 ×3 locale；**haze 维持 2.0.1**。IME 审计 A=0/A'=0/B=4。**待用户真机验证**（胶囊档视觉、淡入手感、与背景图/玻璃可读性模式的组合表现）。
+
+**核对后改判等价（未移植）：**
+
+- `ae599e8d7`：本仓 `MediaEncodingCache`（Yuihub 移植，内存 LRU 8MB）已覆盖「历史图片每轮重编码」热路径；上游是磁盘持久层（256MB，冷启动收益），属增强项非缺口，挂账。
+- `e85c1d901`：本仓压缩对话框 `NumericDialogField` 本就直填数字（且另有保留比例字段，超集）。
+- `88dee920c`：本仓世界书整页重构自带 `rememberReorderableLazyListState` 拖拽。
+- `dba9fa574`：`800f9bbcf` 覆盖（11-03 已判定）。
+
+**大体等价判定（`4ebfde221`+`27ef05ede`，缺口挂账）：**
+
+- 后台运行：本仓 `workspace_run_background`/`workspace_task_status`/`workspace_kill_task` 三件套（peer-apps-benchmark 出身）+ TailBuffer + 30min 寿命 + 4 并发闸，与上游「run_in_background 参数 + shell_output/shell_kill」路线不同、能力对等。
+- 用户面板：本仓任务中心（TaskCenter 聚合 `observeBackgroundTasks` + kill 转发 + shell 任务卡）对位上游 BackgroundTasksSheet。
+- 孤儿进程：本仓 `ProcessSignals`（/proc 命令行标记定位 + 自底向上杀整棵树，真机实测记录在档）强于上游 TracerPid+SIGQUIT 方案。
+- 前台保活：本仓 v1 设计明确不做（进程死=任务死），属设计取舍非缺口。
+- **唯一实质缺口＝任务完成后主动通知模型**（上游 Notice/收件箱协议改造：`UIMessagePart.Notice` + `expandNotices` + MessageQueue→ConversationInbox + 压缩/记忆/导出 skip 规则 + i18n）。嫁接到本仓 MessageQueue/生成循环是协议级专项，**挂账待用户排期**；未实施期间本仓模型需自行轮询 `workspace_task_status`。
 
 ### 借鉴项目动态（本轮附带，未逐条评估）
 
