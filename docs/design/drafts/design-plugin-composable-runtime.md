@@ -1010,11 +1010,14 @@ P2 仍按本节拆分实施，第二层另立批次。
 **跨段工具名冲突未检测**：唯一去重在 MCP 净化名（`usedNames`，`:339`）；`plugin:<id>` 段与内置段、
 MCP 段之间无重名检查，§三.2「同一作用域内重复工具名直接报冲突」尚未落实。
 
-**命名现状盘点（2026-11-06，P2a 冲突策略的输入）**：内置工具 21 个，全部 snake_case 且多数带域
-前缀（`workspace_*` 9 个、`*_skill` 3 个、`memory_tool`、`search_web`、`task_manage`、`get_tool_map`、
-`mcp_tool_call` 等）；MCP 净化名仅在段内 `usedNames` 去重；JS 插件样例
-（`docs/samples/js-plugins/notebook-tool.js`）工具名为**裸短名** `note`，无前缀、注册无校验——
-插件注册 `search_web` 即与内置段静默重名，冲突风险真实存在。
+**命名现状盘点（2026-11-06 初稿，2026-11-07 真机走查后修正）**：内置工具 21 个，全部 snake_case
+且多数带域前缀（`workspace_*` 9 个、`*_skill` 3 个、`memory_tool`、`search_web`、`task_manage`、
+`get_tool_map`、`mcp_tool_call` 等）；MCP 净化名仅在段内 `usedNames` 去重。~~JS 插件工具为裸短名、
+冲突风险真实~~（**修正**：初稿只读了 manifest，漏查转换链——`pluginToolName`
+（`JsToolDefinition.kt:39`）把 JS 工具名命名空间化为 `rikka_<sha256(pluginId) 前 8 位>_<name>`
+且声明名受严格正则约束，**JS 路径结构性不可能与内置重名**；重名闸门的真实暴露面是**受信任
+Kotlin `PluginToolProvider`**——它直接返回任意 `Tool` 名、无前缀。闸门保留，价值面据此修正，
+实测见 §18.5。）
 
 ### 16.3 P2 拆分草案与退出条件（2026-11-06 拍板后修订）
 
@@ -1152,3 +1155,21 @@ MCP 段之间无重名检查，§三.2「同一作用域内重复工具名直接
 - 全量 JVM 套件（app + ai）：**3609 项 0 失败 0 错误**；本批新增测试：基线策略全覆盖 ×1、
   诊断语义（含 `!` 异常标记）×1。
 - 回滚：删除 `ApprovalBaselines.kt` 并把诊断行退回纯实测计数即回滚，无数据/配置迁移。
+
+### 18.5 真机走查（2026-11-07，PJX110）
+
+- **装机**：master（`e19052bc6`）构建两包装机——`.debug` v320 覆盖安装（用户主包，数据不动，
+  供人工日常验证）；`.perfp1` 隔离包（构建期临时改后缀、装后立即还原工作树）用于自动化走查。
+- **注入**：`js_plugins` DataStore 注入两个 JS 插件——冲突探针（`sample.conflict_tool`，
+  声明与内置同名的 `install_skill`）与对照样例（`sample.notebook_tool`，`note`）。
+- **实测结果**：
+  - 诊断行实机样貌：`tool schema total=5 tools ≈557 tokens (shape=OpenAI) → local 1/58t
+    appr=dynamic(0/1dyn) to=60s | skill-install 2/324t appr=none to=60s |
+    plugin:sample.conflict_tool 1/49t appr=plugin-defined(1/1dyn) to=9s |
+    plugin:sample.notebook_tool 1/126t appr=plugin-defined(1/1dyn) to=9s`
+    ——三问（来源/审批/超时）一行可答，基线表与实测一致（skill-install 基线 none 实测 none ✓）。
+  - **闸门零误报**：探针插件未被拒绝——因 JS 路径工具名被 `pluginToolName` 命名空间化
+    （见 §16.2 修正），结构上无重名可言；据此把 §16.2 初稿的「冲突风险真实」判断修正为
+    「暴露面 = 受信任 Kotlin Provider」。闸门的整段拒绝+用户可见报错路径由 JVM 单测锚定
+    （现有仓库无受信任 Provider 实现，真机触发无入口）。
+  - 生成全链路正常（GLM-4.7 流式回复），无 FATAL、无假阳性错误卡片；走查后测试插件已清除。
