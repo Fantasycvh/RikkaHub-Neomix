@@ -169,9 +169,16 @@ fun MarkdownBlock(
 
     val merged = LocalTextStyle.current.merge(style)
     val resolved = merged.copy(color = merged.color.takeOrElse { LocalContentColor.current })
-    // BetterText 的 GFM block math 遇到空行会结束公式块；模型常在 $$…$$ 里用空行分隔
-    // \node/\draw，导致整块不渲染。渲染前折叠公式块内空行（跳过代码围栏）。
-    val normalizedContent = remember(content) { normalizeDisplayMath(content) }
+    // 渲染前两步归一化（顺序敏感）：
+    // 1. LatexEnvironments.normalize 给裸的 \begin{tikzpicture}/\begin{align} 等补 $$ 定界符
+    //    （与导出路径 MarkdownHtml.preProcess 同步；BetterText 迁移时聊天路径漏了这步，
+    //    裸环境直接以普通段落显示源码）；
+    // 2. normalizeDisplayMath 折叠 $$…$$ 内空行——BetterText 的 GFM block math 遇空行会
+    //    结束公式块，模型常在块内用空行分隔 \node/\draw。必须后跑，否则刚补上的 $$ 块
+    //    内部仍是带空行的原样。
+    val normalizedContent = remember(content) {
+        normalizeDisplayMath(LatexEnvironments.normalize(content))
+    }
     // 插槽里的组件（代码块、表格工具栏等）用 Material 的 Text，让它们也拿到正文样式
     ProvideTextStyle(resolved) {
         BetterMarkdown(

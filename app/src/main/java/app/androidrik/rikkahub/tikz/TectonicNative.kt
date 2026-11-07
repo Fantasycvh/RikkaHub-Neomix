@@ -151,6 +151,17 @@ object TectonicNative {
             append("\\PreviewEnvironment{tikzcd}\n")
             hexColorDefs.forEach { append(it + "\n") }
             append("\\usetikzlibrary{positioning,arrows.meta,calc,shapes.geometric}\n")
+            // 删除线兜底：bundle 无 ulem.sty/soul.sty（157 个 sty 已核对），模型画「删除线示例」
+            // 常写 \sout{...}（ulem 宏），缺宏 = Undefined control sequence = 整图回退源码
+            //（实测「行内公司与删除线渲染测试」一幅全源码）。按命令名字面检测注入（精确，
+            // 不存在 amsmath 那种白名单漏宏面）；ulem 的 \sout 与 soul 的 \st 都用
+            // 「定宽 rule 叠在文本上」的等价实现，宽度取 calc 的 \widthof（calc.sty 已内置）。
+            // providecommand：未来 bundle 若补 ulem 不会与之冲突。
+            if (trimmed.contains("\\sout") || trimmed.contains("\\st{")) {
+                append("\\usepackage{calc}\n")
+                append("\\providecommand{\\sout}[1]{\\rlap{\\rule[0.45ex]{\\widthof{#1}}{0.8pt}}#1}\n")
+                append("\\providecommand{\\st}[1]{\\sout{#1}}\n")
+            }
             // 按内容检测加载额外宏包（bundle v3+ 均内置）：
             // - tikzcd 交换图：tikz-cd
             // - pgfplots：\begin{axis}（曲线/散点/饼图），缺则 axis 未注册编译失败
