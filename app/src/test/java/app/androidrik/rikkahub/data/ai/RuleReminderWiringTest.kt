@@ -194,7 +194,8 @@ class RuleReminderWiringTest {
     /** 用户明确要求默认开；这条断言防的是"某次改动顺手把它关了"。 */
     @Test
     fun `reminder defaults to on`() {
-        val src = source("app/androidrik/rikkahub/data/datastore/PreferencesStore.kt")
+        // 2026-11-07 拆分后 Settings 聚合根在 Settings.kt，守护改读迁移文件（意图不变）
+        val src = source("app/androidrik/rikkahub/data/datastore/Settings.kt")
         assertTrue("设置项默认值应为 true", src.contains("val ruleReminderEnabled: Boolean = true"))
         assertTrue(
             "会话默认值应为 true（未配置时也要生效）",

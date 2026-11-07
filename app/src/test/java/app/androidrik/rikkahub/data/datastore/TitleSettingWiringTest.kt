@@ -29,9 +29,11 @@ class TitleSettingWiringTest {
             "缺少写回：关掉后重启会变回开",
             store.contains("preferences[ENABLE_AUTO_TITLE] = settings.enableAutoTitle"),
         )
+        // 2026-11-07 拆分后 Settings 聚合根在 Settings.kt，字段守护改读迁移文件（意图不变）
         assertTrue(
             "Settings 里必须存在该字段且默认 true（老用户行为零变化）",
-            store.contains("val enableAutoTitle: Boolean = true,"),
+            read("app/androidrik/rikkahub/data/datastore/Settings.kt")
+                .contains("val enableAutoTitle: Boolean = true,"),
         )
     }
 
