@@ -214,6 +214,13 @@
         均按源文件 grep 断言，拆分后须同步改读迁移文件——守护意图不变）
 批次 3  RouteActivity 三刀（Screen 同包）
 批次 3  RouteActivity 三刀（Screen 同包）
+        （✅ 2026-11-07 完成：af508ce5b——1352→533 行，Screen.kt(280)/AppNavHost.kt(429)/
+        StartupGate.kt(195)/LauncherActivities.kt(45)。真机验证 ✅：冷启动 0 FATAL +
+        抽屉→设置→偏好设置→返回路由链路。§2.2 的「entryProvider 需整块搬不可截半」
+        **诊断有误**：nav3 1.2.0 的 entryProvider 提取到顶层函数本身可行（无组合上下文
+        约束）；初版崩溃真因是切片偏移产生**嵌套双重 entryProvider {**——编译合法但
+        注册的是空表 → 启动即崩 Unknown screen。教训：**配对括号截取必须按深度计数，
+        不能用固定锚点**；编译通过≠路由注册正确，导航层拆分必须真机冷启动验证）
 批次 4  PreferencesStore 非 store 部分
 批次 5  SettingProviderDetailPage Model tab
 批次 6  PromptPage 四分 + WorkspaceDetailPage Basic tab
