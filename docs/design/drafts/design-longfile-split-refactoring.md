@@ -283,8 +283,15 @@ RequestMessagePipeline）的断言目标全部落在留守区，预计零改动�
         持久化——load/save/检查点三条持久化路径均实证）
 批次 10 GenerationHandler 内部（2026-11-07 改形：原「LoopState 先行 → 拆 runLoop」否决——
         LoopState 是负收益机械改写，runLoop 发射路径/取消安全时序是文档化事故高危区；
-        改做薄批次：GenerationRetryPolicy + TranslationGenerator + ToolOutputBudget 三外迁，
-        runLoop 逐字不动。方案细节与风险论证见 §3.3）
+        改做薄批次，方案细节与风险论证见 §3.3）
+        （✅ 2026-11-07 完成：24bf9d1b3——1872→1546 行；GenerationRetryPolicy(94，
+        withGenerationRetry 顶层化 + 显式 context 参数)/TranslationGenerator(132，
+        translateText 叶子外迁 + 公开委托)/ToolOutputBudget(182，预算三件 + 闸 B 常量随迁)。
+        runLoop/generateText/generateInternal 逐字不动；6 个 grep 本文件的守护测试断言目标
+        全在留守区，零改动（预测兑现）。全量 3117 单测绿。真机验证 ✅：冷启动 0 FATAL +
+        翻译链（AI翻译页 knowledge→知识，走新委托，历史落库）+ 生成链（54 tok/94.7 tok/s）
+        + 停止（生成被打断横幅 + 半截保留）。**10 批次计划至此全部收官**——剩余项均已
+        明确处置：批次 8 第二波暂缓、runLoop 拆分仅在出现功能性需求时以行为测试先行重评）
 ```
 
 每批次：单测 → audit_ime_trap.py → 编译 → 真机过被拆页面 → 独立提交（先 build 再 commit，防 6421e9b81/5fb0b6031 式漏提交编译不过）。
