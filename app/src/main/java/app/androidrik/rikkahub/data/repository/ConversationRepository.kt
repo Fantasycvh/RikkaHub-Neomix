@@ -15,6 +15,7 @@ import app.androidrik.rikkahub.data.db.fts.MessageSearchSort
 import app.androidrik.rikkahub.data.db.dao.CompressionCheckpointDAO
 import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
+import app.androidrik.rikkahub.data.favorite.NodeFavoriteAdapter
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
@@ -538,8 +539,11 @@ class ConversationRepository(
         } else {
             conversation
         }
-        messageFtsManager.deleteConversation(conversation.id.toString())
+        val conversationId = conversation.id.toString()
+        messageFtsManager.deleteConversation(conversationId)
         database.withTransaction {
+            // 收藏表和会话没有外键，节点收藏要单独删（#2299 同构）
+            favoriteDAO.deleteNodeFavoritesOfConversation(conversationId)
             // message_node 会通过 CASCADE 自动删除
             conversationDAO.delete(
                 conversationToConversationEntity(conversation)
@@ -554,6 +558,14 @@ class ConversationRepository(
 
     suspend fun deleteConversationFiles(conversation: Conversation) {
         filesManager.deleteChatFiles(conversation.files)
+    }
+
+    /** 删除这些节点的收藏，节点从会话里移除后调用（#2299 同构） */
+    suspend fun deleteNodeFavorites(conversationId: Uuid, nodeIds: Collection<Uuid>) {
+        nodeIds
+            .map { NodeFavoriteAdapter.buildRefKey(conversationId.toString(), it.toString()) }
+            .chunked(500)
+            .forEach { favoriteDAO.deleteByRefKeys(it) }
     }
 
     suspend fun searchMessages(

@@ -2470,6 +2470,19 @@ class ChatService(
         }
 
         val updatedConversation = conversation.copy()
+
+        // 节点移除时清理对应收藏（#2299 同构，上游 3733bac8f）：用内存态 previous/current
+        // 差集，删消息、压缩截断、重新生成截断等所有经 saveConversation 的移除路径都覆盖。
+        // 重新生成的撤销恢复虽会把节点写回，但收藏已随移除清理（上游同语义）。
+        val previousNodes = getConversationFlow(conversationId).value.messageNodes
+        if (previousNodes.isNotEmpty()) {
+            val currentNodeIds = conversation.messageNodes.mapTo(HashSet()) { it.id }
+            val removedNodeIds = previousNodes.map { it.id }.filterNot { it in currentNodeIds }
+            if (removedNodeIds.isNotEmpty()) {
+                conversationRepo.deleteNodeFavorites(conversation.id, removedNodeIds)
+            }
+        }
+
         updateConversation(conversationId, updatedConversation)
 
         if (!exists) {
