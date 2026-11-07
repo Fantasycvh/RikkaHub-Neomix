@@ -26,8 +26,8 @@ android {
         applicationId = if (backupIsolatedTests) "app.androidrik.rikkahub.backupverification" else "app.androidrik.rikkahub"
         minSdk = 26
         targetSdk = 37
-        versionCode = 320
-        versionName = "1.0.28-beta.17"
+        versionCode = 321
+        versionName = "1.0.28-beta.18"
 
         // Database/storage tests can opt out of production Application/DI/background initialization.
         // The regular UI test runner remains the default.
