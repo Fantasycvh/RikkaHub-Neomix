@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import app.androidrik.rikkahub.data.files.EXPORT_TEMP_PREFIX
 import app.androidrik.rikkahub.data.files.exportRetentionCutoff
 import app.androidrik.rikkahub.data.files.isExportExpired
@@ -162,6 +163,18 @@ class RikkaHubApp : Application() {
         }
         return true
     }
+
+    /**
+     * 等待 boot Ready（换库 + startKoin 都完成）；超时返回 false——调用方应放弃本轮，
+     * 留给下次 onResume 重试。**任何在 Ready 前就要解析 Koin 的路径都必须先过这里**：
+     * boot 在 IO 上异步执行，Activity 的 onResume 可能抢在 startKoin 之前
+     * （R3 真机实证：早期 inject<AppScope> 对未启动的空根作用域抛 NoDefinitionFound，
+     * 经 CrashHandler 记录后下次启动进安全模式）。
+     */
+    suspend fun awaitBootReady(timeoutMs: Long = 10_000L): Boolean =
+        withTimeoutOrNull(timeoutMs) {
+            startupState.first { it is StartupState.Ready }
+        } != null
 
     private suspend fun doBoot() {
         val dbFile = getDatabasePath(AppDatabase.NAME)

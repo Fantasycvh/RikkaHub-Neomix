@@ -216,13 +216,15 @@ open class RouteActivity : ComponentActivity() {
     /**
      * ADB inbox 快速通道（R3，设计稿 §5.1）：前台恢复时扫描一次
      * `files/plugin_revisions/inbox/`；仅 debug 构建编译进包（release 无此代码路径）。
-     * 经 lifecycleScope + GlobalContext 延迟解析（AppScope 的 Activity 侧 inject 在
-     * onResume 早期不可用——真机走查实证 NoDefinitionFoundException）。
+     * 必须先 [RikkaHubApp.awaitBootReady]——boot 异步在 IO 上执行，onResume 可能抢在
+     * startKoin 之前（R3 真机实证：早期 inject 对未启动的空根作用域直接抛）。
      */
     override fun onResume() {
         super.onResume()
         if (BuildConfig.DEBUG) {
             lifecycleScope.launch {
+                val app = application as? RikkaHubApp ?: return@launch
+                if (!app.awaitBootReady()) return@launch // 本轮放弃，下次 onResume 重扫
                 val inbox = org.koin.core.context.GlobalContext.get()
                     .get<app.androidrik.rikkahub.data.plugin.revision.PluginRevisionInbox>()
                 runCatching { inbox.scanAndProcess() }

@@ -274,6 +274,15 @@ active --手动回退--> active(lastGood 复活为新 active, 旧 active 降入�
 | push rule-v2.json（规则同 id 更新） | ✓ `updated rule plugin`，历史 [(1,ADB),(2,ADB)] active=2 |
 | 走查抓出问题 | onResume 早期 `by inject<AppScope>()` 抛 NoDefinitionFoundException → CrashHandler 记录 → 应用进安全模式；改为 lifecycleScope + GlobalContext 延迟解析后恢复。教训：**Activity 侧 `by inject` 不要碰 Compose 层才解析的类型**（AppScope 定义存在但早期解析不可用，机制待查，先记录现象） |
 
+**机制已查清（2026-11-07 补充）**：不是「AppScope 定义缺失」，是 **boot 时序竞态**。`RikkaHubApp.boot()`
+把 `startKoin` 推迟到 `doBoot()`（Dispatchers.IO **异步**执行：换库隔离 → startKoin → Ready），
+而 Activity 的 onResume 在主线程上可能抢在 startKoin 之前——此时 `inject<AppScope>()` 对
+**尚未启动的空根作用域**解析即抛。R3 的 onResume 钩子是 RouteActivity 里第一个「Ready 前就要
+解析 Koin」的代码，撞开了这个一直存在的窗口（内容页本有 StartupState 非 Ready 全屏阻塞的闸，
+钩子绕过了它）。修复：`RikkaHubApp.awaitBootReady(timeout)`（startupState.first Ready，
+超时放弃留待下次 onResume），扫描在 Ready 后才解析+执行。真机复现原崩溃完全条件（冷启动 +
+inbox 文件在场）验证：0 FATAL、扫描成功、inbox 清空。
+
 修订通道三期至此全部落地（R1 预检+代次切换、R2 编辑器+回退、R3 inbox+规则插件）；
 §九 开放问题全部收口（smoke 口径 §十二、inbox 轮询时机=onResume 单次扫描+防抖）。
 
