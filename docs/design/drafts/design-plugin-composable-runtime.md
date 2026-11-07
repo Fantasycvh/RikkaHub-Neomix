@@ -1,6 +1,6 @@
 # 可组合插件运行时设计：借鉴 DeepSeek Harness
 
-> 状态：**rev2，P1 整期验收完成（2026-11-07）；P2a 已实施（§十七，2026-11-07，未提交待授权）**。
+> 状态：**rev2，P1 整期验收完成（2026-11-07）；P2a/P2b 已实施（§十七/§十八，2026-11-07；P2a 已提交 `98752ef66`，P2b 未提交待授权）**。
 > P1 决策门：**放行第二层（动态运行时）**，见 §16.6——P2（工具统一）仍按 §16.3 先行，
 > 第二层在 P2 完成后另立设计批次。2026-11-06 P2 四项设计拍板见 §16.4，拆分见 §16.3。
 > 2026-11-04 进展见 §十二至§十五；P1c 获「本地提交」授权，实施与证据一并归档，推送未授权。
@@ -1099,3 +1099,56 @@ MCP 段之间无重名检查，§三.2「同一作用域内重复工具名直接
   超时全部不变）。
 - 回滚：删除 ToolSource.kt、`acceptPluginToolSegments`/画像函数与两处回调接线即回滚；
   `TOOL_NO_APPROVAL` 保留无害。
+
+## 十八、P2b 实施记录：审批基线表与展示对齐（2026-11-07）
+
+本批未提交（待授权）；代码基线 `98752ef66`（P2a）。
+
+### 18.1 「来源 → 审批基线」表（代码内单一真源 `ApprovalBaselines.kt`，exhaustive when 全覆盖）
+
+| 来源 | 策略 | 依据 |
+|---|---|---|
+| memory | dynamic | 按 action 分档：create 独立开关；edit/delete/complete/drop 跟随 modify；read/search 恒不拦 |
+| search | none | 搜索只读 |
+| local | dynamic | calendar/ask_user 恒拦，其余（时间/剪贴板/TTS/截屏）不拦 |
+| image | dynamic | 跟随 assistant.imageGenApproval |
+| task_manage | dynamic | 按动作分档 taskManageNeedsApproval |
+| conversation | none | 会话检索/读取只读 |
+| workspace | dynamic | 按工具名分档；workspace_task_status 只读不拦，workspace_shell 恒拦 |
+| skill-install | none | 现状不拦（SkillInstaller 自身校验）；改默认拦截属行为变更，走独立授权 |
+| skills | none | 技能内容只读 |
+| knowledge | none | 知识库检索只读 |
+| subagent | dynamic | 按预设 requireApproval 分档 |
+| mcp-dynamic | follows-target | mcp_tool_call 跟随被调工具（折叠不得成为审批绕行） |
+| mcp:* | provider | 透传 MCP server 的 tool.needsApproval |
+| plugin:* | plugin-defined | 受信任插件自定闭包；宿主执行边界/超时不放宽 |
+
+**自管超时清单**（`to=` 维度机器可读，历史靠注释约定）：`workspace_shell` 615s（命令上限
+600s+缓冲）、`dispatch_subagent` null（runner 看门狗自管，预设上限 7200s）；MCP 全部 180s
+（非自管）；其余默认 60s（`DEFAULT_TOOL_EXECUTION_TIMEOUT_MS`）。
+
+### 18.2 审批执行点与宿主边界审查
+
+- 判定路径不变：`GenerationHandler.markPendingApprovals` 在每次工具调用前对 `needsApproval`
+  逐次求值（恒开审批诊断行），插件闭包仍受信任；宿主外层超时（`withTimeout` + 错误输出）、
+  工具结果配平、门控/预算/LoopGate 保持宿主强制，插件审批闭包**不放宽**任何宿主边界。
+- 诊断新增 `approvalDiagnostic`：基线为 `none` 的段实测到动态闭包 → `none(Ndyn!)` 异常信号
+  （抓「不该有审批的来源配了闭包」与「误用字面量 `{ false }` 而非规范实例」两种漂移）。
+- 本批**零行为变更**：基线表只描述现状；如要把某来源改成默认拦截（如 skill-install），
+  属拍板 2 明示的独立授权事项。
+
+### 18.3 历史展示兜底对齐审查（结论：已同源，无需改动）
+
+§16.2 ④ 曾记「内置工具渲染散在 ChatMessageTools 等处，与插件 UI 机制不同源」——本次复核
+**推翻该判断**：内置渲染器（MemoryToolUI、SearchWebToolUI、workspace 全套等 20+ 个）与插件
+动态注册的渲染器同走 `ToolUIRegistry.renderers`/`contributions`，`resolve(toolName)` 缺失时
+统一落 `DefaultToolUIRenderer`（通用标题/图标 + JSON 详情，同一 `ToolUIRenderer` 接口）；
+读取方按 `tool.toolName` + 注册表 version 重组（P1a 的实例代次绑定防跨代泄漏）。历史工具
+结果按名寻址的契约由 P2a 的段名/工具名锚定测试间接钉住。**兜底路径与内置渲染已对齐，
+本批不改 UI。**
+
+### 18.4 验证
+
+- 全量 JVM 套件（app + ai）：**3609 项 0 失败 0 错误**；本批新增测试：基线策略全覆盖 ×1、
+  诊断语义（含 `!` 异常标记）×1。
+- 回滚：删除 `ApprovalBaselines.kt` 并把诊断行退回纯实测计数即回滚，无数据/配置迁移。

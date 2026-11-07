@@ -527,8 +527,9 @@ class ChatToolFactory(
                 .filter { it.tools.isNotEmpty() }
                 .joinToString(separator = " | ") { seg ->
                     val tok = ToolSchemaSize.estimate(seg.tools, providerType, json)
+                    val appr = approvalDiagnostic(approvalBaseline(seg.source), seg.tools)
                     "${seg.source.segmentName} ${seg.tools.size}/${tok}t" +
-                        " appr=${approvalSummary(seg.tools)} to=${timeoutSummary(seg.tools)}"
+                        " appr=$appr to=${timeoutSummary(seg.tools)}"
                 }
             val totalTokens = ToolSchemaSize.estimate(
                 segments.flatMap { it.tools }, providerType, json,
@@ -606,16 +607,6 @@ internal fun acceptPluginToolSegments(
         }
     }
     return accepted to rejected
-}
-
-/**
- * 审批画像摘要：「恒不拦」或「N/总数 有动态审批」。
- * 按**引用**识别默认闭包（[TOOL_NO_APPROVAL]）；逻辑等价的字面量 `{ false }` 会计入 dyn——
- * 宁可多报，不漏报。
- */
-internal fun approvalSummary(tools: List<Tool>): String {
-    val dynamic = tools.count { it.needsApproval !== TOOL_NO_APPROVAL }
-    return if (dynamic == 0) "none" else "$dynamic/${tools.size}dyn"
 }
 
 /**

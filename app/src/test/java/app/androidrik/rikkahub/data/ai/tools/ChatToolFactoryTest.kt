@@ -114,18 +114,44 @@ class ChatToolFactoryTest {
         assertEquals(listOf(RejectedPluginTools("p1", setOf("note"))), rejected)
     }
 
-    // ---- P2a：审批/超时画像（诊断三问之二：要不要审批、超时多少） ----
+    // ---- P2a/P2b：审批/超时画像（诊断三问之二：要不要审批、超时多少） ----
 
     @Test
-    fun `approval summary distinguishes default from dynamic closures`() {
-        val allDefault = listOf(Tool("a", "", execute = { emptyList() }))
-        assertEquals("none", approvalSummary(allDefault))
+    fun `approval baselines cover every source with stable policies`() {
+        // 拍板 2：基线只描述现状，关键取值漂移即测试失败
+        assertEquals(ApprovalPolicy.DYNAMIC, approvalBaseline(ToolSource.Memory).policy)
+        assertEquals(ApprovalPolicy.NONE, approvalBaseline(ToolSource.Search).policy)
+        assertEquals(ApprovalPolicy.DYNAMIC, approvalBaseline(ToolSource.Local).policy)
+        assertEquals(ApprovalPolicy.DYNAMIC, approvalBaseline(ToolSource.Image).policy)
+        assertEquals(ApprovalPolicy.DYNAMIC, approvalBaseline(ToolSource.TaskManage).policy)
+        assertEquals(ApprovalPolicy.NONE, approvalBaseline(ToolSource.Conversation).policy)
+        assertEquals(ApprovalPolicy.DYNAMIC, approvalBaseline(ToolSource.Workspace).policy)
+        assertEquals(ApprovalPolicy.NONE, approvalBaseline(ToolSource.SkillInstall).policy)
+        assertEquals(ApprovalPolicy.NONE, approvalBaseline(ToolSource.Skills).policy)
+        assertEquals(ApprovalPolicy.NONE, approvalBaseline(ToolSource.Knowledge).policy)
+        assertEquals(ApprovalPolicy.DYNAMIC, approvalBaseline(ToolSource.Subagent).policy)
+        assertEquals(ApprovalPolicy.FOLLOWS_TARGET, approvalBaseline(ToolSource.McpDynamic).policy)
+        assertEquals(ApprovalPolicy.PROVIDER, approvalBaseline(ToolSource.McpServer("s")).policy)
+        assertEquals(ApprovalPolicy.PLUGIN_DEFINED, approvalBaseline(ToolSource.Plugin("p")).policy)
+    }
+
+    @Test
+    fun `approval diagnostic flags closures on none-baseline sources`() {
+        val plain = Tool("a", "", execute = { emptyList() })
+        assertEquals("none", approvalDiagnostic(approvalBaseline(ToolSource.Search), listOf(plain)))
 
         val withDynamic = listOf(
-            Tool("a", "", execute = { emptyList() }),
+            plain,
             Tool("b", "", needsApproval = { true }, execute = { emptyList() }),
         )
-        assertEquals("1/2dyn", approvalSummary(withDynamic))
+        assertEquals(
+            "dynamic(1/2dyn)",
+            approvalDiagnostic(approvalBaseline(ToolSource.Image), withDynamic),
+        )
+
+        // 基线为 NONE 的来源测得闭包 → 异常信号（可能有人配了不该配的审批）
+        val flagged = listOf(Tool("x", "", needsApproval = { true }, execute = { emptyList() }))
+        assertEquals("none(1dyn!)", approvalDiagnostic(approvalBaseline(ToolSource.Search), flagged))
     }
 
     @Test
