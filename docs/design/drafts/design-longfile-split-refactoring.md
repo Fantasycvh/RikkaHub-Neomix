@@ -446,6 +446,14 @@ RequestMessagePipeline）的断言目标全部落在留守区，预计零改动�
 | `data/datastore/DefaultProviders.kt:14` | `ui.components.richtext.MarkdownBlock` | 低（待查） | data 层 import Compose 组件本身可疑，开工时先确认是否预览专用残留 |
 
 utils 层反向依赖 1 处：`utils/ContextCapacity.kt` → data.ai/data.repository——ContextCapacity 实为业务组件而非 utils，可在批次 7 顺带归位（搬去 `data/ai/` 或组件层）。
+**批次 11 实施结果（2026-11-07，全部本地提交）**：
+- #4 getStringContent → utils/Json.kt（data/ui 双向引用的中立层）；#6 ContextCapacity → data/ai（含测试与三调用方）
+- #2+#3 合并处置：PluginToolUIRendererProvider 契约 + PluginToolUIObserver 桥接**反向迁移到 ui 侧**（PluginToolUIBridge.kt）——渲染器注册本质是「UI 向插件系统订阅」，反转方向后 data/plugin 零 ui import；组合根并排装配
+- #1 CustomTheme/ThemeRoleOverrides 系列迁 data/model（@Serializable 字段类型回归 data；generateColorScheme 依赖 vendored MCU 库随迁；PresetTheme.name 是 @Composable 概念按原判留 ui）；PreferencesStore 默认主题改 SettingsDefaults.DEFAULT_THEME_ID（与 ui 预设清单解耦的稳定字符串）；JSON 形状零变化
+- 新增发现并处置：utils/ChatUtil.kt（navigateToChatPage/剪贴板/MIME 校验，调用方全在 ui）→ ui/navigation
+- **#5 判定为已知例外不再处理**：DefaultProviders 的 Composable import 根因是 ai 模块 ProviderSetting.description 本身就是 @Composable 字段（上游继承设计），修它=动 ai 模块模型契约的再设计，收益不抵风险
+- 处置后 data/utils 层 ui 反向依赖 = 仅剩 #5 一处（已定性）；全量 3117 单测绿
+
 
 ### 8.2 ViewModel 层健康（无需专门轮次）
 
