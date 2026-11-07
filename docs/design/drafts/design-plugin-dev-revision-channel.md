@@ -247,3 +247,32 @@ active --手动回退--> active(lastGood 复活为新 active, 旧 active 降入�
 
 走查手记：编辑器内光标导航（KEYCODE_MOVE_END 是**行尾**非文档尾）曾两次损坏清单——错误
 内联立即指明 offset/path，符合「失败可见、可修」的设计预期；自动化应改走草稿注入而非键入。
+
+## 十三、R3 实施与真机走查记录（2026-11-07）
+
+未提交（待授权）；代码基线 `b727facb9`（R2）。
+
+### 13.1 交付
+
+- **ADB inbox 通道**（`PluginRevisionInbox`）：`files/plugin_revisions/inbox/` 下的 `.js`/`.json`
+  在前台恢复时扫描处理（RouteActivity.onResume + `BuildConfig.DEBUG` 编译期门控，release 无此
+  路径）；解析→预检→`installOrUpdate(origin=ADB)`→**处理后即删**（成败皆删，结果进日志，
+  失败可重推同名文件重试；CancellationException 不吞）。1s 最小扫描间隔防抖。
+  **能力全量自动批准**（有记录的取舍：通道使用者=设备主人，adb push 已是完全控制权）。
+- **规则插件接入（同口径）**：`precheckRule`（manifest 校验+正则可编译性独立维度——
+  action.validate 已内嵌正则检查，报告里单列让语义自洽）；`RulePluginInstaller` 增
+  installOrUpdate/revertToLastGood/loadRevisions（修订 kind="rules"，source 记原始导入文本）；
+  详情页修订区泛化（lambda 门面驱动，规则插件有历史+回退、无编辑器入口）。
+- **测试**：全量 JVM **3629 项 0 失败**（新增 2：规则健康/坏正则各 1）。
+
+### 13.2 真机走查（PJX110，.perfp1）
+
+| 场景 | 结果 |
+|---|---|
+| push notebook-v2.js（JS 同 id 更新）→ 前台恢复扫描 | ✓ `inbox notebook-v2.js: activated` + `updated js plugin`，inbox 清空 |
+| push sample.bench_rule.json（规则首装） | ✓ `installed rule plugin` + 修订 #1（ADB, rules） |
+| push rule-v2.json（规则同 id 更新） | ✓ `updated rule plugin`，历史 [(1,ADB),(2,ADB)] active=2 |
+| 走查抓出问题 | onResume 早期 `by inject<AppScope>()` 抛 NoDefinitionFoundException → CrashHandler 记录 → 应用进安全模式；改为 lifecycleScope + GlobalContext 延迟解析后恢复。教训：**Activity 侧 `by inject` 不要碰 Compose 层才解析的类型**（AppScope 定义存在但早期解析不可用，机制待查，先记录现象） |
+
+修订通道三期至此全部落地（R1 预检+代次切换、R2 编辑器+回退、R3 inbox+规则插件）；
+§九 开放问题全部收口（smoke 口径 §十二、inbox 轮询时机=onResume 单次扫描+防抖）。

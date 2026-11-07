@@ -153,6 +153,18 @@ fun PluginDetailPage(pluginId: String) {
                     }
                 }
 
+                if (BuildConfig.DEBUG) {
+                    item("revisions") {
+                        val ruleInstaller: RulePluginInstaller = koinInject()
+                        RevisionSection(
+                            pluginId = plugin.id,
+                            editorScreen = null,
+                            loadRevisions = { ruleInstaller.loadRevisions(plugin.id) },
+                            revert = { ruleInstaller.revertToLastGood(plugin.id) },
+                        )
+                    }
+                }
+
                 item("uninstall") {
                     val installer: RulePluginInstaller = koinInject()
                     UninstallButton(
@@ -237,7 +249,15 @@ fun PluginDetailPage(pluginId: String) {
                 }
 
                 if (BuildConfig.DEBUG) {
-                    item("revisions") { RevisionSection(plugin.id) }
+                    item("revisions") {
+                        val jsInstaller: JsPluginInstaller = koinInject()
+                        RevisionSection(
+                            pluginId = plugin.id,
+                            editorScreen = Screen.PluginEditor(plugin.id),
+                            loadRevisions = { jsInstaller.loadRevisions(plugin.id) },
+                            revert = { jsInstaller.revertToLastGood(plugin.id) },
+                        )
+                    }
                 }
 
                 item("uninstall") {
@@ -257,17 +277,20 @@ fun PluginDetailPage(pluginId: String) {
  * release 连代码都不进，见设计稿 §5.2）。文案走硬编码中文（开发者向 UI，不入 i18n）。
  */
 @Composable
-private fun RevisionSection(pluginId: String) {
-    val installer: JsPluginInstaller = koinInject()
+private fun RevisionSection(
+    pluginId: String,
+    editorScreen: Screen?,
+    loadRevisions: suspend () -> app.androidrik.rikkahub.data.plugin.revision.PluginRevisionState?,
+    revert: suspend () -> Result<Unit>,
+) {
     val appScope: AppScope = koinInject()
     val toaster = LocalToaster.current
-    val context = LocalContext.current
     val nav = LocalNavController.current
     val state = remember(pluginId) { mutableStateOf<app.androidrik.rikkahub.data.plugin.revision.PluginRevisionState?>(null) }
     var busy by remember { mutableStateOf(false) }
 
     LaunchedEffect(pluginId) {
-        state.value = installer.loadRevisions(pluginId)
+        state.value = loadRevisions()
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -303,18 +326,20 @@ private fun RevisionSection(pluginId: String) {
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(enabled = !busy, onClick = { nav.navigate(Screen.PluginEditor(pluginId)) }) {
-                    Text("编辑修订")
+                if (editorScreen != null) {
+                    TextButton(enabled = !busy, onClick = { nav.navigate(editorScreen) }) {
+                        Text("编辑修订")
+                    }
                 }
                 TextButton(
                     enabled = !busy && s.lastGoodRevisionNo != null,
                     onClick = {
                         busy = true
                         appScope.launch {
-                            installer.revertToLastGood(pluginId)
+                            revert()
                                 .onSuccess {
                                     toaster.show(message = "已回退到上一可用版本", type = ToastType.Success)
-                                    state.value = installer.loadRevisions(pluginId)
+                                    state.value = loadRevisions()
                                 }
                                 .onFailure {
                                     toaster.show(message = "回退失败: ${it.message}", type = ToastType.Error)

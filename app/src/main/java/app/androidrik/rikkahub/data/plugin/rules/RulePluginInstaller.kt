@@ -3,6 +3,13 @@ package app.androidrik.rikkahub.data.plugin.rules
 import android.util.Log
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
+import app.androidrik.rikkahub.data.plugin.revision.PluginRevision
+import app.androidrik.rikkahub.data.plugin.revision.PluginRevisionStore
+import app.androidrik.rikkahub.data.plugin.revision.PrecheckRejectedException
+import app.androidrik.rikkahub.data.plugin.revision.RevisionOrigin
+import app.androidrik.rikkahub.data.plugin.revision.precheckRule
+import app.androidrik.rikkahub.data.plugin.revision.recordActivatedRevision
+import app.androidrik.rikkahub.data.plugin.revision.revertToLastGood
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -21,6 +28,8 @@ class RulePluginInstaller(
     private val okHttpClient: OkHttpClient,
     private val store: JsonRulePluginStore,
     private val manager: PluginManager,
+    /** 修订通道（R3）：预检历史存储；生效定义本体的读写仍在 [store]/[manager]。 */
+    private val revisionStore: PluginRevisionStore? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -101,5 +110,94 @@ class RulePluginInstaller(
                 }
             }.onFailure { Log.w(TAG, "failed to restore rule plugin ${definition.id}", it) }
         }
+    }
+
+    // ---- 修订通道（R3，与 JsPluginInstaller 同口径）----
+
+    /** 当前生效的规则 JSON（序列化形态，供历史记录 source）；插件不存在时 null。 */
+    suspend fun currentSource(pluginId: String): String? =
+        store.read().firstOrNull { it.id == pluginId }?.let { json.encodeToString(JsonRuleDefinition.serializer(), it) }
+
+    suspend fun loadRevisions(pluginId: String): app.androidrik.rikkahub.data.plugin.revision.PluginRevisionState? =
+        revisionStore?.load(pluginId)
+
+    /**
+     * 安装或更新（R3 同口径）：预检（结构+正则）→ 新 id 走 [install]；已有 id 走
+     * 代次切换（unregister/register，保留授权与启停态）→ 激活成功后修订历史落盘。
+     */
+    suspend fun installOrUpdate(
+        definition: JsonRuleDefinition,
+        approvedCapabilities: Set<PluginCapability>,
+        origin: RevisionOrigin = RevisionOrigin.IMPORT,
+        /** source 用原始导入文本记录（无原文时回落序列化形态）；仅影响历史可读性 */
+        sourceOverride: String? = null,
+    ): Result<Unit> = runCatching {
+        val revisions = requireNotNull(revisionStore) { "修订通道未接线（revisionStore 缺失）" }
+
+        val report = precheckRule(definition)
+        if (!report.passed) throw PrecheckRejectedException(report)
+
+        val existing = manager.plugins.value.firstOrNull { it.plugin.id == definition.id }
+        if (existing == null) {
+            install(definition, approvedCapabilities).getOrThrow()
+        } else {
+            require(definition.requiredCapability in existing.grants) {
+                "新修订声明了未授权能力: ${definition.requiredCapability}（请先卸载再导入以重新授权）"
+            }
+            val wasEnabled = existing.enabled
+            val current = store.read()
+            store.save(current.filterNot { it.id == definition.id } + definition)
+            manager.unregister(definition.id)
+            manager.register(JsonRulePlugin(definition))
+            manager.setApprovedCapabilities(definition.id, existing.grants)
+            if (!wasEnabled) manager.setEnabled(definition.id, false)
+            Log.i(TAG, "updated rule plugin (new revision): ${definition.id} enabled=$wasEnabled")
+        }
+
+        val state = revisions.load(definition.id)
+        val revisionNo = (state.revisions.maxOfOrNull { it.revisionNo } ?: 0L) + 1
+        val source = sourceOverride
+            ?: currentSource(definition.id) ?: json.encodeToString(JsonRuleDefinition.serializer(), definition)
+        revisions.save(
+            recordActivatedRevision(
+                state,
+                PluginRevision(
+                    pluginId = definition.id,
+                    revisionNo = revisionNo,
+                    kind = "rules",
+                    source = source,
+                    origin = origin,
+                    createdAt = System.currentTimeMillis(),
+                    precheck = report,
+                ),
+            ).copy(draftSource = null),
+        )
+    }
+
+    /** 回退到 last-good（同 JS 口径：预检→重载→双指针互换→清草稿）。 */
+    suspend fun revertToLastGood(pluginId: String): Result<Unit> = runCatching {
+        val revisions = requireNotNull(revisionStore) { "修订通道未接线（revisionStore 缺失）" }
+        val state = revisions.load(pluginId)
+        val target = revertToLastGood(state)
+        val revision = target.revisions.first { it.revisionNo == target.lastGoodRevisionNo }
+        require(revision.kind == "rules") { "未知修订载体: ${revision.kind}" }
+
+        val definition = parseText(revision.source).getOrThrow()
+        require(definition.id == pluginId) { "修订源码 id(${definition.id}) 与插件($pluginId) 不一致" }
+        val report = precheckRule(definition)
+        if (!report.passed) throw PrecheckRejectedException(report)
+
+        val existing = manager.plugins.value.firstOrNull { it.plugin.id == pluginId }
+        requireNotNull(existing) { "插件 $pluginId 未安装" }
+        val wasEnabled = existing.enabled
+        val current = store.read()
+        store.save(current.filterNot { it.id == pluginId } + definition)
+        manager.unregister(pluginId)
+        manager.register(JsonRulePlugin(definition))
+        manager.setApprovedCapabilities(pluginId, existing.grants)
+        if (!wasEnabled) manager.setEnabled(pluginId, false)
+
+        revisions.save(target.copy(draftSource = null))
+        Log.i(TAG, "reverted rule plugin: $pluginId active=#${target.activeRevisionNo}")
     }
 }

@@ -213,6 +213,24 @@ open class RouteActivity : ComponentActivity() {
     private val mediaCreationRepository by inject<MediaCreationRepository>()
     private var navStack: MutableList<NavKey>? = null
 
+    /**
+     * ADB inbox 快速通道（R3，设计稿 §5.1）：前台恢复时扫描一次
+     * `files/plugin_revisions/inbox/`；仅 debug 构建编译进包（release 无此代码路径）。
+     * 经 lifecycleScope + GlobalContext 延迟解析（AppScope 的 Activity 侧 inject 在
+     * onResume 早期不可用——真机走查实证 NoDefinitionFoundException）。
+     */
+    override fun onResume() {
+        super.onResume()
+        if (BuildConfig.DEBUG) {
+            lifecycleScope.launch {
+                val inbox = org.koin.core.context.GlobalContext.get()
+                    .get<app.androidrik.rikkahub.data.plugin.revision.PluginRevisionInbox>()
+                runCatching { inbox.scanAndProcess() }
+                    .onFailure { android.util.Log.w("PluginRevisionInbox", "scan failed", it) }
+            }
+        }
+    }
+
     // Compose 导航栈就绪前到达的 Intent 排队，SideEffect flush（对齐上游 513b784c）
     private val pendingIntents = ArrayDeque<Intent>()
 

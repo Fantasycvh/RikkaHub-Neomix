@@ -95,6 +95,15 @@ val appModule = module {
             okHttpClient = get(),
             store = get(),
             manager = get(),
+            revisionStore = get(),
+        )
+    }
+
+    single {
+        app.androidrik.rikkahub.data.plugin.revision.PluginRevisionInbox(
+            context = get(),
+            jsInstaller = get(),
+            ruleInstaller = get(),
         )
     }
 
