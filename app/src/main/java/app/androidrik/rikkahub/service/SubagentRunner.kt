@@ -59,13 +59,11 @@ import app.androidrik.rikkahub.utils.cancelNotification
 import app.androidrik.rikkahub.utils.NotificationUtil
 import app.androidrik.rikkahub.utils.sendNotification
 import kotlinx.coroutines.Job
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -145,19 +143,11 @@ class SubagentRunner(
      */
     fun gateLoad(): ConcurrentRunGate.Load = gate.load()
 
-    /** runId → 它所在的协程 Job（取消用；两条入口都登记，这样才能"只取消这一个 run"）。 */
-    private val activeJobs = ConcurrentHashMap<Uuid, Job>()
+    /** 进度注册表（活跃 Job 登记 + 进度列表，见 [RunProgressTracker]）。 */
+    private val progressTracker = RunProgressTracker()
 
-    private val _progress = MutableStateFlow<List<RunProgress>>(emptyList())
-
-    /**
-     * **活跃 run 的进度列表**（对话内工具卡据此显示"跑到第几步"）。
-     *
-     * 并行上限 2 之后不能再假设"活跃的就是我这一个"，所以这里给的是列表，卡片按
-     * **预设名 + 任务目标**匹配自己那一条（两者都在卡片的入参里，无需额外接线）；
-     * 匹配不到且只有一条时退回那一条，多于一条且匹配不到时只显示"并行运行中"的聚合态。
-     */
-    val progress: StateFlow<List<RunProgress>> = _progress.asStateFlow()
+    /** **活跃 run 的进度列表**（对话内工具卡据此显示"跑到第几步"）。 */
+    val progress: StateFlow<List<RunProgress>> get() = progressTracker.progress
 
     /** 还能不能再开一个 run（UI 按钮态与派发工具的先手判断）。 */
     fun canStartRun(): Boolean = gate.canAcquire()
@@ -170,19 +160,6 @@ class SubagentRunner(
 
     /** 某个 run 是否仍在跑（任务中心据此决定「取消」按钮是否可用/是否已结束）。 */
     fun isRunActive(id: Uuid): Boolean = gate.isActive(id.toString())
-
-    /** 该 run 进度条目的起始时间（已存在则沿用，避免每步重置计时）。 */
-    private fun progressStartedAt(runId: String): Long =
-        _progress.value.firstOrNull { it.runId == runId }?.startedAt ?: System.currentTimeMillis()
-
-    /** 进度列表的写入助手：按 runId 覆盖或移除（并行下不能整体赋值）。 */
-    private fun upsertProgress(progress: RunProgress) {
-        _progress.value = _progress.value.filterNot { it.runId == progress.runId } + progress
-    }
-
-    private fun clearProgress(runId: String) {
-        _progress.value = _progress.value.filterNot { it.runId == runId }
-    }
 
     /**
      * 派发一个 run（**即发即忘**，运行页用）。
@@ -217,12 +194,11 @@ class SubagentRunner(
                 executeRun(run, profile, allowedTools, RUN_TIMEOUT_MS, SubagentToolApproval.DENY)
             } finally {
                 gate.release(runId.toString())
-                activeJobs.remove(runId)
-                // 进度只服务"跑的时候看一眼"，结束即清（订阅者据此回到结果态）
-                clearProgress(runId.toString())
+                progressTracker.unregister(runId)
+                progressTracker.clear(runId.toString())
             }
         }
-        activeJobs[runId] = job
+        progressTracker.register(runId, job)
         return runId
     }
 
@@ -331,7 +307,7 @@ class SubagentRunner(
         // 又能让"用户中断本轮对话"照旧级联取消它（父 Job 取消 → 子 Job 取消）。
         // 用 Job(parent) 而不是直接复用父 Job：前者取消不会反向杀掉父生成。
         val runJob = Job(coroutineContext[Job])
-        activeJobs[runId] = runJob
+        progressTracker.register(runId, runJob)
         return try {
             withContext(runJob) {
                 agentRunDAO.insertRun(run)
@@ -381,8 +357,8 @@ class SubagentRunner(
             // 取消路径无需处理：取消传播会把 runJob 一并置为 Cancelled，complete 对已完成 Job 是空操作。
             if (runJob.isActive) runJob.complete()
             gate.release(runId.toString())
-            activeJobs.remove(runId)
-            clearProgress(runId.toString())
+            progressTracker.unregister(runId)
+            progressTracker.clear(runId.toString())
         }
     }
 
@@ -416,7 +392,7 @@ class SubagentRunner(
                     executeRun(run, profile, preset.allowedTools, timeoutMillis, approval.policy,
                         preset.deliverables, context.parentToolEnvelope, context.parentWorkspaceId)
                 }
-                activeJobs[runId] = job
+                progressTracker.register(runId, job)
                 job.invokeOnCompletion { cause ->
                     if (cause != null) appScope.launch {
                         withContext(NonCancellable) {
@@ -426,8 +402,8 @@ class SubagentRunner(
                         }
                     }
                     gate.release(run.id)
-                    activeJobs.remove(runId)
-                    clearProgress(run.id)
+                    progressTracker.unregister(runId)
+                    progressTracker.clear(run.id)
                 }
                 job.start()
             }
@@ -490,7 +466,7 @@ class SubagentRunner(
      */
     fun cancelRun(id: Uuid) {
         if (!gate.isActive(id.toString())) return
-        activeJobs[id]?.cancel()
+        progressTracker.cancelJob(id)
         // 后台 shell 任务不在这里收：`killBackgroundTasksByOwner` 是 suspend，而本方法是 UI/通知
         // 直接调用的非挂起入口。取消 → CancellationException 路径会在 NonCancellable 里按
         // `run:<id>` 级联收掉（见 executeRun 的取消分支），超时路径同款处理。
@@ -530,7 +506,7 @@ class SubagentRunner(
         }
 
         update { it.copy(status = AgentRunEntity.STATUS_RUNNING, startedAt = System.currentTimeMillis()) }
-        upsertProgress(
+        progressTracker.upsert(
             RunProgress(
                 runId = initial.id,
                 label = initial.profileName,
@@ -662,7 +638,7 @@ class SubagentRunner(
                                     update { it.copy(transcript = newTranscript(currentMessages)) }
                                     // 同一步顺带更新进度（对话内工具卡据此显示"跑到第几步"）
                                     val snapshot = snapshotProgress(currentMessages)
-                                    upsertProgress(
+                                    progressTracker.upsert(
                                         RunProgress(
                                             runId = initial.id,
                                             label = initial.profileName,
@@ -670,7 +646,7 @@ class SubagentRunner(
                                             status = AgentRunEntity.STATUS_RUNNING,
                                             steps = snapshot.steps,
                                             lastTool = snapshot.lastTool,
-                                            startedAt = progressStartedAt(initial.id),
+                                            startedAt = progressTracker.startedAt(initial.id),
                                         )
                                     )
                                 }
@@ -710,12 +686,8 @@ class SubagentRunner(
                         approvalRounds += 1
 
                         update { it.copy(status = AgentRunEntity.STATUS_AWAITING_APPROVAL) }
-                        _progress.value = _progress.value.map { entry ->
-                            if (entry.runId == initial.id) {
-                                entry.copy(status = AgentRunEntity.STATUS_AWAITING_APPROVAL)
-                            } else {
-                                entry
-                            }
+                        progressTracker.update(initial.id) { entry ->
+                            entry.copy(status = AgentRunEntity.STATUS_AWAITING_APPROVAL)
                         }
                         val decisions = awaitHumanDecision(
                             runId = initial.id,
