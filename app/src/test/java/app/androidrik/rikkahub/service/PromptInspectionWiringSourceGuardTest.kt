@@ -25,7 +25,11 @@ class PromptInspectionWiringSourceGuardTest {
 
     @Test
     fun `inspectPromptAssembly dispatches heavy work through the background helper`() {
-        val body = indentedBlock(chatServiceSource(), "suspend fun inspectPromptAssembly(")
+        // 2026-11-07 批次 8 拆分：入口委托 PromptInspectionController，重活调度断言改读控制器文件
+        val body = indentedBlock(
+            chatServiceModelsSource("PromptInspectionController.kt"),
+            "internal suspend fun inspectPromptAssembly(",
+        )
 
         assertTrue(
             "入口必须经 withPromptInspectionDispatcher 调度（删掉即主线程 ANR 回归）",
@@ -40,7 +44,8 @@ class PromptInspectionWiringSourceGuardTest {
             settingsSnapshotAt < dispatchAt,
         )
 
-        val conversationSnapshotAt = body.indexOf("getConversationFlow(conversationId).value")
+        // 拆分后会话流经构造注入的 conversationFlow 访问器取（ChatService.getConversationFlow 的委托）
+        val conversationSnapshotAt = body.indexOf("conversationFlow(conversationId).value")
         assertTrue("入口必须读 conversation 快照", conversationSnapshotAt >= 0)
         assertTrue(
             "conversation 快照必须在调度之前读（getOrCreateSession 不能跑在 Default 线程）",
@@ -56,7 +61,10 @@ class PromptInspectionWiringSourceGuardTest {
             assembleAt > settingsSnapshotAt && assembleAt > conversationSnapshotAt,
         )
 
-        val assembler = indentedBlock(chatServiceSource(), "private suspend fun assemblePromptInspection(")
+        val assembler = indentedBlock(
+            chatServiceModelsSource("PromptInspectionController.kt"),
+            "internal suspend fun assemblePromptInspection(",
+        )
         assertTrue(
             "重活主体必须自查经 withPromptInspectionDispatcher 调度",
             assembler.contains("withPromptInspectionDispatcher"),
@@ -162,7 +170,7 @@ private fun chatServiceSource(): String = serviceSource("ChatService.kt")
  * 读取 ChatServiceModels.kt（withPromptInspectionDispatcher 所在文件；
  * 2026-11-07 拆分后 helper 从 ChatService.kt 迁入，守护断言跟随源文件）。
  */
-private fun chatServiceModelsSource(): String = serviceSource("ChatServiceModels.kt")
+private fun chatServiceModelsSource(name: String = "ChatServiceModels.kt"): String = serviceSource(name)
 
 /** 按文件名读取 service 包源码（Gradle 单测工作目录可能是模块根，也可能是仓库根——两种都试）。 */
 private fun serviceSource(name: String): String {
