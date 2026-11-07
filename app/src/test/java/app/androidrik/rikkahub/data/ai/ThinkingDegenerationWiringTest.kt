@@ -97,9 +97,11 @@ class ThinkingDegenerationWiringTest {
             read("app/androidrik/rikkahub/service/ChatService.kt")
                 .contains("is GenerationNotice.ThinkingDegenerationStopped ->"),
         )
+        // 2026-11-07 拆分后 notice→RunOutcome 的映射在 SubagentRunOutcome.evaluateCompletion，
+        // 守护意图不变：无头 run 的完成判定必须消费（否则 run 被记成「正常完成」的静默失败）
         assertTrue(
             "无头 run 必须消费（否则 run 被记成「正常完成」的静默失败）",
-            read("app/androidrik/rikkahub/service/SubagentRunner.kt")
+            read("app/androidrik/rikkahub/service/SubagentRunOutcome.kt")
                 .contains("is GenerationNotice.ThinkingDegenerationStopped ->"),
         )
     }
