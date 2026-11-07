@@ -1,7 +1,6 @@
-package app.androidrik.rikkahub.utils
+package app.androidrik.rikkahub.data.ai
 
-import app.androidrik.rikkahub.data.ai.PromptSegment
-import app.androidrik.rikkahub.data.ai.PromptSegmentKind
+import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
 
 /**
  * 上下文容量面板的派生数据（纯计算，便于单测）。

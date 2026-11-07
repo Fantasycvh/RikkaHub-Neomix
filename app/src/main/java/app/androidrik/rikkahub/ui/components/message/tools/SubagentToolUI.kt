@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 import org.koin.compose.koinInject
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Robot01
+import app.androidrik.rikkahub.utils.getStringContent
 
 /**
  * 对话内子代理派发（`dispatch_subagent`）的卡片渲染（设计 §四/§十）。

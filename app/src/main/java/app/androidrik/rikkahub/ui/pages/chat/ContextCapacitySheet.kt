@@ -37,8 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.utils.ContextCapacity
-import app.androidrik.rikkahub.utils.MIN_ROUNDS_FOR_ESTIMATE
+import app.androidrik.rikkahub.data.ai.ContextCapacity
+import app.androidrik.rikkahub.data.ai.MIN_ROUNDS_FOR_ESTIMATE
 import app.androidrik.rikkahub.utils.formatContextLength
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ChartColumn

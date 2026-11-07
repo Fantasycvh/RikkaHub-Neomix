@@ -1,7 +1,6 @@
 package app.androidrik.rikkahub.data.ai.tools
 
 import kotlin.uuid.Uuid
-import app.androidrik.rikkahub.ui.components.message.tools.getStringContent
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.buildJsonObject
 import app.androidrik.ai.core.InputSchema
@@ -35,6 +34,7 @@ import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.workspace.ExecutionScope
 import app.androidrik.workspace.WorkspaceShellStatus
+import app.androidrik.rikkahub.utils.getStringContent
 
 private const val TAG = "ChatToolFactory"
 

@@ -33,6 +33,7 @@ import app.androidrik.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.utils.JsonInstantPretty
+import app.androidrik.rikkahub.utils.getStringContent
 import app.androidrik.rikkahub.utils.jsonPrimitiveOrNull
 
 /**
@@ -173,9 +174,6 @@ object ToolUIRegistry {
         }
     }
 }
-
-internal fun JsonElement?.getStringContent(key: String): String? =
-    this?.jsonObjectOrNull?.get(key)?.jsonPrimitiveOrNull?.contentOrNull
 
 /**
  * 默认工具详情: 入参与输出的 JSON 高亮展示

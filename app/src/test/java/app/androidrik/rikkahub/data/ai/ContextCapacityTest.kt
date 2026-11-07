@@ -1,4 +1,4 @@
-package app.androidrik.rikkahub.utils
+package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.rikkahub.data.ai.PromptSegment
 import app.androidrik.rikkahub.data.ai.PromptSegmentKind

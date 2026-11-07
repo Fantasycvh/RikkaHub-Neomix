@@ -71,6 +71,7 @@ import app.androidrik.rikkahub.utils.jsonPrimitiveOrNull
 import app.androidrik.workspace.WorkspaceStorageArea
 import org.koin.compose.koinInject
 import java.io.File
+import app.androidrik.rikkahub.utils.getStringContent
 
 /** 审批期 dry-run 的磁盘文件读取结果：Unavailable = 文件不存在或读不到（按新文件处理） */
 private sealed interface ExistingFileState {

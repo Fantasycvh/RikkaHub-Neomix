@@ -20,8 +20,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.ai.ContextUsage
-import app.androidrik.rikkahub.utils.ContextCapacity
-import app.androidrik.rikkahub.utils.computeContextCapacity
+import app.androidrik.rikkahub.data.ai.ContextCapacity
+import app.androidrik.rikkahub.data.ai.computeContextCapacity
 
 /**
  * 容量面板的外壳：**打开时只读组装一次**（跑一遍与真实请求同源的 transformer 链），

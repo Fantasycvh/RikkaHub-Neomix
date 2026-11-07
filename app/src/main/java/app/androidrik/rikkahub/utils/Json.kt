@@ -1,8 +1,10 @@
 package app.androidrik.rikkahub.utils
 
 import kotlinx.serialization.json.Json
+import app.androidrik.common.http.jsonObjectOrNull
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 val JsonInstant by lazy {
     Json {
@@ -25,3 +27,11 @@ val JsonInstantPretty by lazy {
 
 val JsonElement.jsonPrimitiveOrNull: JsonPrimitive?
     get() = this as? JsonPrimitive
+
+/**
+ * 取 JSON 对象里某个 key 的字符串内容（非字符串/缺 key 返回 null）。
+ * 批次 11 从 ui/components/message/tools/ToolUI.kt 下沉——data/ai（ChatToolFactory）
+ * 与 ui（BuiltinToolUIs 等）两侧都在用，utils 是中立层。
+ */
+internal fun JsonElement?.getStringContent(key: String): String? =
+    this?.jsonObjectOrNull?.get(key)?.jsonPrimitiveOrNull?.contentOrNull
