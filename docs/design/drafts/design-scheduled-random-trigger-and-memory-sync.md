@@ -1,6 +1,9 @@
 # 定时任务随机触发 + 主动消息记忆同步（design-scheduled-random-trigger-and-memory-sync）
 
-> 状态：**rev 1——草稿，未实现，三个分叉点待拍板（见 §〇）**。
+> 状态：**rev 2——草稿，未实现；2026-11-07 已联合 Notice/收件箱复核**。
+> 最新建议见 [任务完成通知、收件箱与主动同步整合评估](design-task-notice-inbox-and-proactive-sync.md)。
+> 本稿保留原始分叉与设计过程；随机种子/边界、后台审批、headless 能力与实施分期以整合稿为准，
+> 均为建议，尚未拍板。原先“沿用通知审批即零开发”和整体 2～4 天估时不再适用于整项。
 > 挂靠 `design-scheduled-ai-tasks.md`（已发布的定时任务特性线，beta.13 / DB v56）的增量稿，
 > 与 `design-proactive-task-management.md`（隐形会话 + AI 管理任务）并列；不改动那条线的
 > 已定案语义，只在其上叠两层能力：
@@ -20,7 +23,7 @@
 | # | 分叉 | 选项 | 本稿倾向 |
 |---|---|---|---|
 | 1 | 随机语义 | A. 每日窗口内 N 个随机槽；B. INTERVAL 加抖动；A+B 都做 | **v1 只做 A**（「角色主动来找我」的主诉求），B 留尾单 |
-| 2 | 后台记忆写入审批 | a. 沿用通知审批（现状即通）；b. per-task 开关允许自动放行写审批 | **v1 只做 a**（零开发），b 观察后再说 |
+| 2 | 后台记忆写入审批 | a. 复用既有通知能力，补 scheduled 注入审批桥；b. per-task 自动放行 | **建议 a**（需要开发；普通注入并未自动接入 run 通知审批），b 暂缓 |
 | 3 | 摘要回写主会话（B3） | 做 / 不做 / 二期 | **二期**——会话树写入是重活，先验证 B1 是否够用 |
 
 ## 一、要解决的问题
@@ -64,6 +67,11 @@ data class RandomWindow(
 )
 ```
 
+2026-11-07 补充：窗口统一为 `[startMinute, endMinute)`，次数不得大于可用分钟数，使用有限集合
+无放回采样。建议 payload 持久化 randomSeed / randomAlgorithmVersion，固定 PRNG 与测试向量；
+下文 taskId.hashCode + Kotlin Random 仅为原始构想，不作为跨升级稳定性的实现约定。
+DST 去重、时区改变重算、task_manage 参数与非法配置处理见整合稿 §五。
+
 `RandomWindow != null` 时 `hour/minute/extraMinutesOfDay` 忽略（与现有「按类型只读对应字段」
 的约定一致）。选项 B（INTERVAL 加 `jitterMinutes`，next = current + interval ± 均匀抖动）
 结构上只是 `ScheduleMath.advance` 的另一个小分支，留作尾单。
@@ -103,29 +111,30 @@ RNG = Random(seed = taskId.hashCode() * 31 + LocalDate.toEpochDay())
 
 ### 4.1 B0（现状，零开发）：管道已通，先写进文档
 
-助手 `enableMemory` 开启时，后台任务轮次**已经**具备：记忆分层注入（`ChatService.kt:2797
+普通注入路径在助手 `enableMemory` 开启且会话未 `memoryDisabled` 时，任务轮次具备：记忆分层注入（`ChatService.kt:2797
 currentMemoriesFor` → `GenerationHandler`）与 memory_tool 读写（`ChatToolFactory.kt:187`），
-写入落同一条助手级记忆库。这一条要补的只是**文档与用户认知**：在定时任务设置页加一句
-「记忆跟随助手设置」。
+写入落同一条助手级记忆库。可在设置页说明「记忆跟随助手与会话设置」，但这只确认工具与注入
+能力，不代表后台写入审批或可靠保留已经打通。可选 headless 路径明确关闭记忆工具，本期不承诺同步。
 
 ### 4.2 B1：任务提示词加记忆引导段（G2）
 
-`buildTaskPrompt` 追加固定段（仅当助手 `enableMemory` 为真时拼入，避免给关记忆的助手
-递一个不存在的工具）：
+`buildTaskPrompt` 追加固定段（仅当助手开启记忆、会话未禁用记忆且执行入口实际挂载记忆工具时
+拼入；headless 不拼）：
 
-> 本次是你在后台主动发起的消息（无人先说话）。若本轮出现了值得长期记住的信息（用户近况、
-> 明确偏好、待办事务），请用 memory_tool 落记忆；不要为寒暄强行写。
+> 本次由预设任务触发。仅将有来源的稳定事实、用户明确偏好或已核实的任务结果通过 memory_tool
+> 保存；不要把你的推测、寒暄或虚构的用户近况写成事实。仍须遵守已有写入审批。
 
 放在任务 prompt **之前**（与「长期目标」段同级），单测锁住拼接顺序与 enableMemory 条件。
 这是「自动清理模式下记忆是唯一载体」断点的最小修复，估半天。
 
 ### 4.3 B2：后台记忆写入的审批语义（G3）
 
-现状核对：工具审批走**通知栏批准/拒绝**（`SubagentApprovalReceiver` 通道，scheduled 稿 §六
-无头审批路径）——记忆写审批在后台不是「卡死」，是「弹通知等批，错过按既有超时语义收尾」。
-因此 **v1 不加新机制**（决议 2 选 a）：文档写明「后台记忆写入会弹通知审批」；
-per-task 自动放行（选 b）留观察单——若真机验证发现通知审批打断体验再立项，
-届时可用 Assistant 既有三档审批字段（create/delete/modify）对齐，不新造开关体系。
+2026-11-07 源码复核修正：普通定时注入在 GenerationHandler 遇 pending 工具时结束本轮等批准；
+SubagentApprovalReceiver 解析的是 SubagentApprovalQueue，并不自动覆盖这条路径。
+因此选 a 仍需补**scheduled 注入审批桥**：绑定 toolCallId、conversationId、scheduledRunId，
+复用通知可用性与超时判定，批准后走正常 ChatService 恢复；通知不可用时明确拒绝。
+停止/删除撤销 waiter，前台卡片与通知只接受一次决定。不能描述为零开发或现状已通。
+per-task 自动放行继续暂缓；完整生命周期与验收见整合稿 §六。
 
 ### 4.4 B3（二期，暂不做）：成功轮摘要回写主会话
 
@@ -159,12 +168,13 @@ assistant 回复截取或二次生成，与自动清理共享「跳过有新消�
 
 | 期 | 内容 | 估时 |
 |---|---|---|
-| P1 | B0 文档 + B1 提示词引导 + B2 语义写明（决议 2 选 a） | 0.5~1 天 |
+| P1 | B0 能力说明 + B1 有条件提示引导 + B2 scheduled 通知审批桥 | 旧 0.5~1 天估时作废，需重估审批生命周期 |
 | P1.5 | G1 随机窗口调度（payload + ScheduleMath + UI + 单测） | 1~2 天 |
 | P2 | B3 摘要回写主会话（独立小稿）、选项 B 间隔抖动 | 视 P1 观察结果 |
 
 ## 关联
 
 - 上位特性线：`design-scheduled-ai-tasks.md`（调度器/状态机/触发层/无头审批的既定语义）
+- 联合落地评估：[Notice/收件箱与主动同步](design-task-notice-inbox-and-proactive-sync.md)（2026-11-07，含源码复核修正）
 - 兄弟稿：`design-proactive-task-management.md`（隐形会话——B3 回写目标需与其对齐）
 - 需求评估来源：2026-10-31 会话（上游无此特性、ST 生态不可移植的调研结论）
