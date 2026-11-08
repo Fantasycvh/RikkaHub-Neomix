@@ -61,6 +61,8 @@ import app.androidrik.rikkahub.data.storage.StorageUsageManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.remote.ModelsDevUpdater
 import app.androidrik.rikkahub.data.plugin.installBuiltInPlugins
+import app.androidrik.rikkahub.ui.theme.BuiltinChatAppearancePlugin
+import app.androidrik.rikkahub.ui.theme.installPluginChatAppearanceBridge
 import app.androidrik.rikkahub.ui.components.message.tools.installPluginToolUIBridge
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.service.MediaCreationService
@@ -448,7 +450,10 @@ class RikkaHubApp : Application() {
             manager.start()
             get<AppScope>().launch {
                 installPluginToolUIBridge(manager)
+                installPluginChatAppearanceBridge(manager)
                 installBuiltInPlugins(manager)
+                runCatching { manager.register(BuiltinChatAppearancePlugin) }
+                    .onFailure { Log.e(TAG, "failed to register appearance plugin", it) }
                 // 已安装的 JSON 规则插件物化回注册表(与内置插件同一套状态与开关)
                 runCatching {
                     get<app.androidrik.rikkahub.data.plugin.rules.RulePluginInstaller>()

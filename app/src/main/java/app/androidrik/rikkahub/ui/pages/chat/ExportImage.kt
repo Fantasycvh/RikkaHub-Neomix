@@ -86,6 +86,9 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.Navigator
 import com.dokar.sonner.rememberToasterState
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.components.message.ChatBubbleSurface
+import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
+import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
 import app.androidrik.rikkahub.ui.theme.LocalUserBubbleColor
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
@@ -351,6 +354,8 @@ private fun ExportedChatMessage(
     if (message.parts.isEmptyUIMessage()) return
     val context = LocalContext.current
     val settings = LocalSettings.current
+    val appearance = rememberChatAppearance(settings.displaySetting)
+    val chatFontFamily = rememberChatFontFamily(settings.displaySetting)
     // 导出标签统一走三级优先级的生效配置（消息 > 会话 > 全局；PNG / Markdown / HTML 同一份解析，
     // 见 data/export/ExportDisplayLabel.kt）。图标种子与显示文案**分开**：自定义文案不能拿去选图标。
     val messageDisplayConfig = messageExportDisplayConfig(
@@ -379,7 +384,7 @@ private fun ExportedChatMessage(
                 .widthIn(max = (540 * 0.9).dp)
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = if (message.semanticRole == MessageRole.USER) Alignment.End else Alignment.Start
+            horizontalAlignment = if (message.semanticRole == MessageRole.USER && appearance.layout.userAlignEnd) Alignment.End else Alignment.Start
         ) {
             groupedParts.forEach { block ->
                 when (block) {
@@ -426,41 +431,22 @@ private fun ExportedChatMessage(
                         when (val part = block.part) {
                             is UIMessagePart.Text -> {
                                 if (part.text.isNotBlank()) {
-                                    ProvideTextStyle(MaterialTheme.typography.bodyMedium) {
-                                        if (message.semanticRole == MessageRole.USER) {
-                                            // 与屏显同源：用户气泡走角色覆写（LocalUserBubbleColor），缺省 primaryContainer
-                                            val userBubbleColor = LocalUserBubbleColor.current
-                                                ?: MaterialTheme.colorScheme.primaryContainer
-                                            Card(
-                                                shape = MaterialTheme.shapes.medium,
-                                                colors = CardDefaults.cardColors(
-                                                    containerColor = userBubbleColor,
-                                                    contentColor = adaptiveContentColor(userBubbleColor),
-                                                )
-                                            ) {
-                                                MarkdownBlock(
-                                                    content = part.text,
-                                                    modifier = Modifier.padding(8.dp)
-                                                )
-                                            }
-                                        } else {
-                                            if (settings.displaySetting.showAssistantBubble) {
-                                                Card(
-                                                    shape = MaterialTheme.shapes.medium,
-                                                    colors = CardDefaults.cardColors(
-                                                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                                    )
-                                                ) {
-                                                    MarkdownBlock(
-                                                        content = part.text,
-                                                        modifier = Modifier.padding(8.dp)
-                                                    )
-                                                }
-                                            } else {
-                                                MarkdownBlock(
-                                                    content = part.text,
-                                                )
-                                            }
+                                    val user = message.semanticRole == MessageRole.USER
+                                    val baseColor = if (user) LocalUserBubbleColor.current
+                                        ?: MaterialTheme.colorScheme.primaryContainer
+                                    else MaterialTheme.colorScheme.surfaceContainerHigh
+                                    ProvideTextStyle(MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = chatFontFamily,
+                                        fontSize = MaterialTheme.typography.bodyMedium.fontSize * appearance.typography.sizeRatio,
+                                        lineHeight = MaterialTheme.typography.bodyMedium.lineHeight * appearance.typography.sizeRatio,
+                                    )) {
+                                        ChatBubbleSurface(
+                                            style = if (user) appearance.userBubble else appearance.assistantBubble,
+                                            defaultColor = baseColor,
+                                            defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
+                                            padWhenHidden = user,
+                                        ) {
+                                            MarkdownBlock(content = part.text)
                                         }
                                     }
                                 }

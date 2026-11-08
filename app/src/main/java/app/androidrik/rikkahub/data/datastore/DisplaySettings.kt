@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.datastore
 
+import app.androidrik.rikkahub.data.model.ChatAppearanceDetails
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.ThemeRoleOverrides
 import kotlin.uuid.Uuid
@@ -141,6 +142,8 @@ data class ChainOfThoughtScheme(
 
 @Serializable
 data class DisplaySetting(
+    val chatAppearanceDetails: ChatAppearanceDetails = ChatAppearanceDetails(),
+    val chatAppearancePresetId: String? = null,
     val userAvatar: Avatar = Avatar.Dummy,
     val userNickname: String = "",
     val useAppIconStyleLoadingIndicator: Boolean = true,

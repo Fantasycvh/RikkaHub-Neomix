@@ -20,28 +20,35 @@ fun ChatFontProvider(
     displaySetting: DisplaySetting,
     content: @Composable () -> Unit,
 ) {
-    val chatFontFamily = rememberChatFontFamily(displaySetting)
-    CompositionLocalProvider(LocalChatFontFamily provides chatFontFamily) {
-        content()
+    ChatAppearanceProvider(displaySetting) {
+        val chatFontFamily = rememberChatFontFamily(displaySetting)
+        CompositionLocalProvider(LocalChatFontFamily provides chatFontFamily) {
+            content()
+        }
     }
 }
 
 @Composable
 fun rememberChatFontFamily(displaySetting: DisplaySetting): FontFamily {
     val context = LocalContext.current
+    val appearance = rememberChatAppearance(displaySetting)
+    val typography = appearance.typography
     return remember(
-        displaySetting.chatFontFamily,
-        displaySetting.chatCustomFontPath,
+        typography.family,
+        typography.customFontPath,
     ) {
-        displaySetting.resolveChatFontFamily(context)
+        resolveChatFontFamily(context, typography.family, typography.customFontPath)
     }
 }
 
-fun DisplaySetting.resolveChatFontFamily(context: Context): FontFamily = when (chatFontFamily) {
+fun DisplaySetting.resolveChatFontFamily(context: Context): FontFamily =
+    resolveChatFontFamily(context, chatFontFamily, chatCustomFontPath)
+
+private fun resolveChatFontFamily(context: Context, family: ChatFontFamily, path: String): FontFamily = when (family) {
     ChatFontFamily.DEFAULT -> FontFamily.Default
     ChatFontFamily.SERIF -> FontFamily.Serif
     ChatFontFamily.MONOSPACE -> FontFamily.Monospace
-    ChatFontFamily.CUSTOM -> loadCustomFontFamily(context, chatCustomFontPath) ?: FontFamily.Default
+    ChatFontFamily.CUSTOM -> loadCustomFontFamily(context, path) ?: FontFamily.Default
 }
 
 private fun loadCustomFontFamily(context: Context, relativePath: String): FontFamily? {

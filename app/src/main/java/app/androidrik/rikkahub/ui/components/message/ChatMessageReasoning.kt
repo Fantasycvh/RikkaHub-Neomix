@@ -166,7 +166,7 @@ private fun ReasoningContent(
     loading: Boolean,
 ) {
     val isPreview = expandState == ReasoningCardState.Preview
-    val fontSizeRatio = LocalSettings.current.displaySetting.fontSizeRatio
+    val fontSizeRatio = app.androidrik.rikkahub.ui.theme.rememberChatAppearance(LocalSettings.current.displaySetting).typography.sizeRatio
     val bodySmallStyle = MaterialTheme.typography.bodySmall
     val reasoningTextStyle = bodySmallStyle.copy(
         fontSize = bodySmallStyle.fontSize * fontSizeRatio,

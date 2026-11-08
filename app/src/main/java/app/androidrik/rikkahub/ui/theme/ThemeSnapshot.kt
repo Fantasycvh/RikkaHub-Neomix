@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.ui.theme
 
 import app.androidrik.rikkahub.data.datastore.BackgroundEffectType
+import app.androidrik.rikkahub.data.model.ChatAppearanceDetails
+import app.androidrik.rikkahub.data.model.withChatAppearance
 import app.androidrik.rikkahub.data.model.CustomTheme
 import app.androidrik.rikkahub.data.model.ThemeRoleOverrides
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
@@ -30,6 +32,7 @@ data class ThemeSnapshot(
  */
 @Serializable
 data class ThemeAppearanceSnapshot(
+    val chatAppearanceDetails: ChatAppearanceDetails? = null,
     val enableBlurEffect: Boolean = false,
     val inputEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     val enableGlassTheme: Boolean = false,
@@ -44,24 +47,32 @@ data class ThemeAppearanceSnapshot(
     val themeRoleOverrides: ThemeRoleOverrides = ThemeRoleOverrides(),
 )
 
-/** 从当前显示设置取外观子集（导出侧）。 */
-fun DisplaySetting.toAppearanceSnapshot(): ThemeAppearanceSnapshot = ThemeAppearanceSnapshot(
-    enableBlurEffect = enableBlurEffect,
-    inputEffectType = inputEffectType,
-    enableGlassTheme = enableGlassTheme,
-    listGlassEffectType = listGlassEffectType,
-    enableTopBarBlur = enableTopBarBlur,
-    topBarEffectType = topBarEffectType,
-    liquidGlassReadabilityMode = liquidGlassReadabilityMode,
-    chatFontFamily = chatFontFamily,
-    showAssistantBubble = showAssistantBubble,
-    bubbleOpacity = bubbleOpacity,
-    fontSizeRatio = fontSizeRatio,
-    themeRoleOverrides = themeRoleOverrides,
-)
+/** Export the currently resolved appearance; plugin IDs and local font paths are not portable. */
+fun DisplaySetting.toAppearanceSnapshot(): ThemeAppearanceSnapshot {
+    val resolved = withChatAppearance(resolveChatAppearance(this, ChatAppearanceRegistry.shared.presets.value))
+    return resolved.run {
+        ThemeAppearanceSnapshot(
+            chatAppearanceDetails = chatAppearanceDetails,
+            enableBlurEffect = enableBlurEffect,
+            inputEffectType = inputEffectType,
+            enableGlassTheme = enableGlassTheme,
+            listGlassEffectType = listGlassEffectType,
+            enableTopBarBlur = enableTopBarBlur,
+            topBarEffectType = topBarEffectType,
+            liquidGlassReadabilityMode = liquidGlassReadabilityMode,
+            chatFontFamily = chatFontFamily,
+            showAssistantBubble = showAssistantBubble,
+            bubbleOpacity = bubbleOpacity,
+            fontSizeRatio = fontSizeRatio,
+            themeRoleOverrides = themeRoleOverrides,
+        )
+    }
+}
 
 /** 应用外观快照：逐字段合并，只覆盖快照携带的域，其余显示设置不动（纯函数）。 */
 fun DisplaySetting.withAppearanceSnapshot(a: ThemeAppearanceSnapshot): DisplaySetting = copy(
+    chatAppearancePresetId = null,
+    chatAppearanceDetails = a.chatAppearanceDetails ?: chatAppearanceDetails,
     enableBlurEffect = a.enableBlurEffect,
     inputEffectType = a.inputEffectType,
     enableGlassTheme = a.enableGlassTheme,

@@ -62,6 +62,12 @@ import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.data.model.ChatAppearance
+import app.androidrik.rikkahub.data.model.withChatAppearance
+import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
+import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
+import app.androidrik.rikkahub.ui.theme.resolveChatAppearance
+import app.androidrik.rikkahub.ui.pages.setting.components.ChatAppearanceSettings
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
 import app.androidrik.rikkahub.utils.plus
@@ -98,11 +104,21 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
+    val appearance = rememberChatAppearance(displaySetting)
     val chatFontFamily = rememberChatFontFamily(displaySetting)
 
-    fun updateDisplaySetting(setting: DisplaySetting) {
-        displaySetting = setting
-        vm.updateSettings(settings.copy(displaySetting = setting))
+    fun updateAppearance(transform: (ChatAppearance) -> ChatAppearance) {
+        displaySetting = displaySetting.withChatAppearance(transform(appearance))
+        vm.updateSettings { current ->
+            current.copy(displaySetting = current.displaySetting.withChatAppearance(
+                transform(resolveChatAppearance(current.displaySetting, ChatAppearanceRegistry.shared.presets.value))
+            ))
+        }
+    }
+
+    fun updateDisplaySetting(transform: (DisplaySetting) -> DisplaySetting) {
+        displaySetting = transform(displaySetting)
+        vm.updateSettings { current -> current.copy(displaySetting = transform(current.displaySetting)) }
     }
 
     // 输入栏背景图选择：复用助手背景的 managed 目录（backgrounds/），防「文件管理」
@@ -115,7 +131,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
         onCroppedImageReady = { croppedUri ->
             val saved = filesManager.createBackgroundImage(croppedUri)
             if (saved != null) {
-                updateDisplaySetting(displaySetting.copy(chatInputBackgroundImage = saved.toString()))
+                updateDisplaySetting { current -> current.copy(chatInputBackgroundImage = saved.toString()) }
             } else {
                 toaster.show(inputBackgroundFailedMsg, type = ToastType.Error)
             }
@@ -134,7 +150,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
         uri ?: return@rememberLauncherForActivityResult
         val saved = filesManager.createAvatarFrameImage(uri)
         if (saved != null) {
-            updateDisplaySetting(displaySetting.copy(avatarFrameImagePath = saved.toString()))
+            updateDisplaySetting { current -> current.copy(avatarFrameImagePath = saved.toString()) }
         } else {
             toaster.show(inputBackgroundFailedMsg, type = ToastType.Error)
         }
@@ -161,13 +177,11 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                     importCustomChatFontInternal(context, uri)
                 }
             }.onSuccess { importedFont ->
-                updateDisplaySetting(
-                    displaySetting.copy(
-                        chatFontFamily = ChatFontFamily.CUSTOM,
-                        chatCustomFontPath = importedFont.relativePath,
-                        chatCustomFontName = importedFont.displayName,
-                    )
-                )
+                updateAppearance { a -> a.copy(typography = a.typography.copy(
+                    family = ChatFontFamily.CUSTOM,
+                    customFontPath = importedFont.relativePath,
+                    customFontName = importedFont.displayName,
+                )) }
                 toaster.show(importSuccessMsg, type = ToastType.Success)
             }.onFailure { error ->
                 toaster.show(importFailedMsg.format(error.message.orEmpty()), type = ToastType.Error)
@@ -198,6 +212,17 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
             contentPadding = contentPadding + PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            item(key = "chat_appearance") {
+                ChatAppearanceSettings(
+                    display = displaySetting,
+                    appearance = appearance,
+                    onSelectPreset = { id ->
+                        displaySetting = displaySetting.copy(chatAppearancePresetId = id)
+                        vm.updateSettings { current -> current.copy(displaySetting = current.displaySetting.copy(chatAppearancePresetId = id)) }
+                    },
+                    onChange = ::updateAppearance,
+                )
+            }
             item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
@@ -210,7 +235,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.showUserAvatar,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showUserAvatar = it))
+                                    updateDisplaySetting { current -> current.copy(showUserAvatar = it) }
                                 }
                             )
                         },
@@ -220,9 +245,9 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                         supportingContent = { Text(stringResource(R.string.setting_display_page_show_assistant_bubble_desc)) },
                         trailingContent = {
                             Switch(
-                                checked = displaySetting.showAssistantBubble,
+                                checked = appearance.assistantBubble.visible,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showAssistantBubble = it))
+                                    updateAppearance { a -> a.copy(assistantBubble = a.assistantBubble.copy(visible = it)) }
                                 }
                             )
                         },
@@ -236,15 +261,15 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Slider(
-                                    value = displaySetting.bubbleOpacity,
+                                    value = appearance.userBubble.opacity,
                                     onValueChange = {
-                                        updateDisplaySetting(displaySetting.copy(bubbleOpacity = it))
+                                        updateAppearance { a -> a.copy(userBubble = a.userBubble.copy(opacity = it), assistantBubble = a.assistantBubble.copy(opacity = it)) }
                                     },
-                                    valueRange = 0.1f..1.0f,
+                                    valueRange = 0f..1.0f,
                                     steps = 8,
                                     modifier = Modifier.weight(1f)
                                 )
-                                Text(text = "${(displaySetting.bubbleOpacity * 100).toInt()}%")
+                                Text(text = "${(appearance.userBubble.opacity * 100).toInt()}%")
                             }
                         }
                     )
@@ -255,7 +280,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.showModelIcon,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showModelIcon = it))
+                                    updateDisplaySetting { current -> current.copy(showModelIcon = it) }
                                 }
                             )
                         },
@@ -267,7 +292,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.showModelName,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showModelName = it))
+                                    updateDisplaySetting { current -> current.copy(showModelName = it) }
                                 }
                             )
                         },
@@ -279,7 +304,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.showGenerationSource,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showGenerationSource = it))
+                                    updateDisplaySetting { current -> current.copy(showGenerationSource = it) }
                                 }
                             )
                         },
@@ -291,7 +316,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.showDateTimeInMessage,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showDateTimeInMessage = it))
+                                    updateDisplaySetting { current -> current.copy(showDateTimeInMessage = it) }
                                 }
                             )
                         },
@@ -303,7 +328,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.showTokenUsage,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showTokenUsage = it))
+                                    updateDisplaySetting { current -> current.copy(showTokenUsage = it) }
                                 }
                             )
                         },
@@ -315,7 +340,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.showThinkingContent,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showThinkingContent = it))
+                                    updateDisplaySetting { current -> current.copy(showThinkingContent = it) }
                                 }
                             )
                         },
@@ -327,7 +352,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.wholeTurnFolding,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(wholeTurnFolding = it))
+                                    updateDisplaySetting { current -> current.copy(wholeTurnFolding = it) }
                                 }
                             )
                         },
@@ -350,7 +375,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                 // 决策 4：整轮折叠开时置灰（由整轮折叠接管）
                                 enabled = !displaySetting.wholeTurnFolding,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(autoCloseThinking = it))
+                                    updateDisplaySetting { current -> current.copy(autoCloseThinking = it) }
                                 }
                             )
                         },
@@ -362,7 +387,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.enableLatexRendering,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(enableLatexRendering = it))
+                                    updateDisplaySetting { current -> current.copy(enableLatexRendering = it) }
                                 }
                             )
                         },
@@ -374,7 +399,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.enableDiagramRendering,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(enableDiagramRendering = it))
+                                    updateDisplaySetting { current -> current.copy(enableDiagramRendering = it) }
                                 }
                             )
                         },
@@ -384,12 +409,12 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                         supportingContent = {
                             Select(
                                 options = ChatFontFamily.entries,
-                                selectedOption = displaySetting.chatFontFamily,
+                                selectedOption = appearance.typography.family,
                                 onOptionSelected = { family ->
                                     if (family == ChatFontFamily.CUSTOM && displaySetting.chatCustomFontPath.isBlank()) {
                                         fontPickerLauncher.launch(CustomFontMimeTypesUI)
                                     } else {
-                                        updateDisplaySetting(displaySetting.copy(chatFontFamily = family))
+                                        updateAppearance { a -> a.copy(typography = a.typography.copy(family = family)) }
                                     }
                                 },
                                 modifier = Modifier
@@ -432,13 +457,9 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                     IconButton(
                                         onClick = {
                                             deleteCustomChatFontInternal(context, displaySetting.chatCustomFontPath)
-                                            updateDisplaySetting(
-                                                displaySetting.copy(
-                                                    chatFontFamily = ChatFontFamily.DEFAULT,
-                                                    chatCustomFontPath = "",
-                                                    chatCustomFontName = "",
-                                                )
-                                            )
+                                            updateAppearance { a -> a.copy(typography = a.typography.copy(
+                                                family = ChatFontFamily.DEFAULT, customFontPath = "", customFontName = "",
+                                            )) }
                                         }
                                     ) {
                                         Icon(
@@ -462,21 +483,21 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     Slider(
-                                        value = displaySetting.fontSizeRatio,
+                                        value = appearance.typography.sizeRatio,
                                         onValueChange = {
-                                            updateDisplaySetting(displaySetting.copy(fontSizeRatio = it))
+                                            updateAppearance { a -> a.copy(typography = a.typography.copy(sizeRatio = it)) }
                                         },
                                         valueRange = 0.5f..2f,
                                         steps = 11,
                                         modifier = Modifier.weight(1f)
                                     )
-                                    Text(text = "${(displaySetting.fontSizeRatio * 100).toInt()}%")
+                                    Text(text = "${(appearance.typography.sizeRatio * 100).toInt()}%")
                                 }
                                 MarkdownBlock(
                                     content = stringResource(R.string.setting_display_page_font_size_preview),
                                     style = LocalTextStyle.current.copy(
-                                        fontSize = LocalTextStyle.current.fontSize * displaySetting.fontSizeRatio,
-                                        lineHeight = LocalTextStyle.current.lineHeight * displaySetting.fontSizeRatio,
+                                        fontSize = LocalTextStyle.current.fontSize * appearance.typography.sizeRatio,
+                                        lineHeight = LocalTextStyle.current.lineHeight * appearance.typography.sizeRatio,
                                         fontFamily = chatFontFamily
                                     )
                                 )
@@ -501,7 +522,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                         FilterChip(
                                             selected = displaySetting.avatarFrameStyle == style,
                                             onClick = {
-                                                updateDisplaySetting(displaySetting.copy(avatarFrameStyle = style))
+                                                updateDisplaySetting { current -> current.copy(avatarFrameStyle = style) }
                                                 when (style) {
                                                     AvatarFrameStyle.CUSTOM_PARAMS -> showFrameParamsSheet = true
                                                     AvatarFrameStyle.CUSTOM_IMAGE -> avatarFrameImagePicker.launch("image/*")
@@ -532,7 +553,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                         }
                                         if (displaySetting.avatarFrameImagePath.isNotBlank()) {
                                             TextButton(onClick = {
-                                                updateDisplaySetting(displaySetting.copy(avatarFrameImagePath = ""))
+                                                updateDisplaySetting { current -> current.copy(avatarFrameImagePath = "") }
                                             }) {
                                                 Text(stringResource(R.string.setting_display_page_avatar_frame_clear_image))
                                             }
@@ -566,7 +587,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                 }
                                 if (displaySetting.chatInputBackgroundImage.isNotBlank()) {
                                     TextButton(onClick = {
-                                        updateDisplaySetting(displaySetting.copy(chatInputBackgroundImage = ""))
+                                        updateDisplaySetting { current -> current.copy(chatInputBackgroundImage = "") }
                                     }) {
                                         Text(stringResource(R.string.setting_display_page_input_background_clear))
                                     }
@@ -583,7 +604,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                     options = ChainOfThoughtStyle.entries.toList(),
                                     selectedOption = displaySetting.chainOfThoughtStyle,
                                     onOptionSelected = {
-                                        updateDisplaySetting(displaySetting.copy(chainOfThoughtStyle = it))
+                                        updateDisplaySetting { current -> current.copy(chainOfThoughtStyle = it) }
                                         if (it == ChainOfThoughtStyle.CUSTOM) showCotCustomSheet = true
                                     },
                                     optionToString = { cotStyleLabel(it) },
@@ -610,12 +631,10 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                         settings.avatarFrameSchemes.forEach { scheme ->
                             item(
                                 onClick = {
-                                    updateDisplaySetting(
-                                        displaySetting.copy(
+                                    updateDisplaySetting { current -> current.copy(
                                             avatarFrameStyle = AvatarFrameStyle.CUSTOM_PARAMS,
                                             avatarFrameParams = scheme.params,
-                                        )
-                                    )
+                                        ) }
                                 },
                                 headlineContent = { Text(scheme.name) },
                                 leadingContent = { AvatarFrameSchemePreview(scheme.params) },
@@ -638,12 +657,10 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                         settings.cotStyleSchemes.forEach { scheme ->
                             item(
                                 onClick = {
-                                    updateDisplaySetting(
-                                        displaySetting.copy(
+                                    updateDisplaySetting { current -> current.copy(
                                             chainOfThoughtStyle = ChainOfThoughtStyle.CUSTOM,
                                             chainOfThoughtCustomStyle = scheme.style,
-                                        )
-                                    )
+                                        ) }
                                 },
                                 headlineContent = { Text(scheme.name) },
                                 leadingContent = { CotSchemePreview(scheme.style) },
@@ -670,7 +687,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.codeBlockAutoWrap,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(codeBlockAutoWrap = it))
+                                    updateDisplaySetting { current -> current.copy(codeBlockAutoWrap = it) }
                                 }
                             )
                         },
@@ -682,7 +699,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.codeBlockAutoCollapse,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(codeBlockAutoCollapse = it))
+                                    updateDisplaySetting { current -> current.copy(codeBlockAutoCollapse = it) }
                                 }
                             )
                         },
@@ -694,7 +711,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             Switch(
                                 checked = displaySetting.showLineNumbers,
                                 onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(showLineNumbers = it))
+                                    updateDisplaySetting { current -> current.copy(showLineNumbers = it) }
                                 }
                             )
                         },
@@ -823,7 +840,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
         AvatarFrameParamsSheet(
             params = current,
             onSave = {
-                updateDisplaySetting(displaySetting.copy(avatarFrameParams = it))
+                updateDisplaySetting { current -> current.copy(avatarFrameParams = it) }
                 showFrameParamsSheet = false
             },
             onSaveScheme = { name, params ->
@@ -840,12 +857,10 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
         ChainOfThoughtCustomSheet(
             style = current,
             onSave = {
-                updateDisplaySetting(
-                    displaySetting.copy(
+                updateDisplaySetting { current -> current.copy(
                         chainOfThoughtCustomStyle = it,
                         // 保存即代表处于自定义档语义；档位仍由用户显式切换
-                    )
-                )
+                    ) }
                 showCotCustomSheet = false
             },
             onSaveScheme = { name, style ->

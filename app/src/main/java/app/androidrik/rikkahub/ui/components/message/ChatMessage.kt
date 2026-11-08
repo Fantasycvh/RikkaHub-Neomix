@@ -101,6 +101,7 @@ import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.theme.LocalChatFontFamily
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
+import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.theme.LocalUserBubbleColor
 import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
 import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
@@ -165,10 +166,11 @@ fun ChatMessage(
         return
     }
     val settings = LocalSettings.current.displaySetting
+    val appearance = rememberChatAppearance(settings)
     val chatFontFamily = LocalChatFontFamily.current ?: rememberChatFontFamily(settings)
     val textStyle = LocalTextStyle.current.copy(
-        fontSize = LocalTextStyle.current.fontSize * settings.fontSizeRatio,
-        lineHeight = LocalTextStyle.current.lineHeight * settings.fontSizeRatio,
+        fontSize = LocalTextStyle.current.fontSize * appearance.typography.sizeRatio,
+        lineHeight = LocalTextStyle.current.lineHeight * appearance.typography.sizeRatio,
         fontFamily = chatFontFamily
     )
     var showActionsSheet by remember { mutableStateOf(false) }
@@ -182,8 +184,8 @@ fun ChatMessage(
     CompositionLocalProvider(LocalWorkspaceId provides assistant?.workspaceId?.toString()) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = if (message.role == MessageRole.USER) Alignment.End else Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        horizontalAlignment = if (message.role == MessageRole.USER && appearance.layout.userAlignEnd) Alignment.End else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(appearance.layout.messageGapDp.dp)
     ) {
         // #1812：半截生成失败的草稿横幅——放置在消息上方，重试复用现有 regenerate
         if (message.annotations.any { it is UIMessageAnnotation.PartialFailure }) {
@@ -395,6 +397,7 @@ private fun MessagePartsBlock(
     // 消息输出HapticFeedback
     val hapticFeedback = LocalHapticFeedback.current
     val settings = LocalSettings.current
+    val appearance = rememberChatAppearance(settings.displaySetting)
     val partsState by rememberUpdatedState(parts)
 
     val handleClickCitation: (String) -> Unit = remember {
@@ -551,62 +554,28 @@ private fun MessagePartsBlock(
                     is UIMessagePart.Text -> {
                         val truncatedNotice = stringResource(R.string.chat_message_truncated_notice, MAX_RENDER_TEXT_LENGTH)
                             val textContent = @Composable {
-                                if (role == MessageRole.USER) {
-                                    // 用户气泡：角色覆写（LocalUserBubbleColor）优先，null = 跟随主题；
-                                    // 任意拾取色时 contentColorFor 命中不了，按 HCT tone 自适应内容色。
-                                    val userBubbleColor = LocalUserBubbleColor.current
-                                        ?: MaterialTheme.colorScheme.primaryContainer
-                                    Surface(
-                                        modifier = Modifier.animateContentSize(),
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = userBubbleColor.copy(alpha = settings.displaySetting.bubbleOpacity),
-                                        contentColor = adaptiveContentColor(userBubbleColor),
-                                        onClick = { onUserMessageClick?.invoke() },
-                                    ) {
-                                    Column(modifier = Modifier.padding(8.dp)) {
-                                        MarkdownBlock(
-                                            content = part.text.renderSafe(truncatedNotice).replaceRegexes(
-                                                assistant = assistant,
-                                                scope = AssistantAffectScope.USER,
-                                                visual = true,
-                                            ),
-                                            onClickCitation = handleClickCitation,
-                                            streaming = loading,
-                                        )
-                                    }
-                                }
-                            } else {
-                                if (settings.displaySetting.showAssistantBubble) {
-                                    Surface(
-                                        modifier = Modifier.animateContentSize(),
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = settings.displaySetting.bubbleOpacity),
-                                    ) {
-                                        Column(modifier = Modifier.padding(8.dp)) {
-                                            MarkdownBlock(
-                                                content = part.text.renderSafe(truncatedNotice).replaceRegexes(
-                                                    assistant = assistant,
-                                                    scope = AssistantAffectScope.ASSISTANT,
-                                                    visual = true,
-                                                ),
-                                                onClickCitation = handleClickCitation,
-                                                streaming = loading,
-                                            )
-                                        }
-                                    }
-                                } else {
+                                val user = role == MessageRole.USER
+                                val baseColor = if (user) LocalUserBubbleColor.current
+                                    ?: MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHigh
+                                ChatBubbleSurface(
+                                    style = if (user) appearance.userBubble else appearance.assistantBubble,
+                                    defaultColor = baseColor,
+                                    defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
+                                    padWhenHidden = user,
+                                    onClick = if (user) ({ onUserMessageClick?.invoke() }) else null,
+                                    modifier = Modifier.animateContentSize(),
+                                ) {
                                     MarkdownBlock(
                                         content = part.text.renderSafe(truncatedNotice).replaceRegexes(
                                             assistant = assistant,
-                                            scope = AssistantAffectScope.ASSISTANT,
+                                            scope = if (user) AssistantAffectScope.USER else AssistantAffectScope.ASSISTANT,
                                             visual = true,
                                         ),
                                         onClickCitation = handleClickCitation,
                                         streaming = loading,
-                                        modifier = Modifier.animateContentSize()
                                     )
                                 }
-                            }
                         }
 
                         // BetterText 自带选择容器：流式生成期间也可以选择（Compose Text 的
