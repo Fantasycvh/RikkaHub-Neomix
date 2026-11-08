@@ -47,6 +47,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.asr.ASRStatus
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Voice
+import app.androidrik.rikkahub.ui.components.motion.MotionTokens
 
 private enum class AsrDisplayState {
     Idle, Connecting, Active
@@ -74,12 +75,12 @@ internal fun AsrButton(
     }
     val containerColor by animateColorAsState(
         targetValue = targetContainerColor,
-        animationSpec = tween(300),
+        animationSpec = tween(MotionTokens.STANDARD_MS),
         label = "asr_container"
     )
     val contentColor by animateColorAsState(
         targetValue = targetContentColor,
-        animationSpec = tween(300),
+        animationSpec = tween(MotionTokens.STANDARD_MS),
         label = "asr_content"
     )
 
@@ -102,7 +103,7 @@ internal fun AsrButton(
         AnimatedContent(
             targetState = displayState,
             transitionSpec = {
-                (fadeIn(tween(200)) togetherWith fadeOut(tween(200)))
+                (fadeIn(tween(MotionTokens.QUICK_MS)) togetherWith fadeOut(tween(MotionTokens.QUICK_MS)))
                     .using(SizeTransform(clip = false))
             },
             label = "asr_content_switch"
@@ -131,7 +132,7 @@ internal fun AsrButton(
                             initialValue = 0.8f,
                             targetValue = 1.2f,
                             animationSpec = infiniteRepeatable(
-                                animation = tween(600, easing = LinearEasing),
+                                animation = tween(MotionTokens.PULSE_MS, easing = MotionTokens.LinearEasingToken),
                                 repeatMode = RepeatMode.Reverse
                             ),
                             label = "asr_pulse_scale"

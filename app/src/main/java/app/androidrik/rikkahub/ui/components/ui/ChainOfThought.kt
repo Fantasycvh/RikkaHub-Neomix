@@ -51,6 +51,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtCustomStyle
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
+import app.androidrik.rikkahub.ui.components.motion.MotionTokens
 
 private val LocalCardColor = staticCompositionLocalOf { Color.White }
 
@@ -113,7 +114,7 @@ fun <T> ChainOfThought(
                     .animateContentSize(
                         // γ: 用短 tween 替代 expressive 长曲线。步骤列表大时（Workspace 多命令）
                         // 长尺寸动画 + 反复测量是交互卡顿主因，短动画显著降低卡顿感
-                        animationSpec = tween(durationMillis = 120)
+                        animationSpec = tween(durationMillis = MotionTokens.SNAP_MS)
                     ),
             ) {
                 val visibleSteps = if (expanded || !canCollapse) {

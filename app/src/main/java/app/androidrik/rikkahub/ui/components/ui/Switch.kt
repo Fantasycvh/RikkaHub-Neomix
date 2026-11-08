@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.androidrik.rikkahub.ui.components.motion.MotionTokens
 
 enum class SwitchSize {
     Small,
@@ -76,7 +77,7 @@ fun Switch(
         } else {
             0.dp
         },
-        animationSpec = tween(durationMillis = 150),
+        animationSpec = tween(durationMillis = MotionTokens.FAST_MS),
         label = "thumbOffset"
     )
 

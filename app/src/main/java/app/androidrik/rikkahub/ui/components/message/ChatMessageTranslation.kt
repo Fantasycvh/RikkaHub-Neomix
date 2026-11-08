@@ -53,6 +53,7 @@ import me.rerere.hugeicons.stroke.LanguageCircle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import java.util.Locale
+import app.androidrik.rikkahub.ui.components.motion.MotionTokens
 
 @Composable
 fun LanguageSelectionDialog(
@@ -264,7 +265,7 @@ fun CollapsibleTranslationText(
                             initialValue = 0.3f,
                             targetValue = 1f,
                             animationSpec = infiniteRepeatable(
-                                animation = tween(1000, easing = LinearEasing),
+                                animation = tween(MotionTokens.AMBIENT_MS, easing = MotionTokens.LinearEasingToken),
                                 repeatMode = RepeatMode.Reverse
                             ),
                             label = "alpha"

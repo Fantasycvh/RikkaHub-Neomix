@@ -40,6 +40,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.tools.local.TodoEntry
 import app.androidrik.rikkahub.data.ai.tools.local.TODO_STATUS_COMPLETED
 import app.androidrik.rikkahub.data.ai.tools.local.TODO_STATUS_IN_PROGRESS
+import app.androidrik.rikkahub.ui.components.motion.MotionTokens
 
 /**
  * 计划细条（借鉴 Yuihub 最终形态，方案 E）：常驻在输入栏正上方，收起时一行高度。
@@ -65,7 +66,7 @@ fun PlanBar(
     // 箭头随展开状态旋转，与「下拉」的方向语义一致
     val arrowRotation by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(200),
+        animationSpec = tween(MotionTokens.QUICK_MS),
         label = "planBarArrow",
     )
 

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
 import kotlin.math.roundToInt
+import app.androidrik.rikkahub.ui.components.motion.MotionTokens
 
 /** 会话上下文占用数据：由 ChatPage 用 [app.androidrik.rikkahub.utils.estimateWindowTokens] 组装传入。 */
 data class ContextUsage(
@@ -63,7 +64,7 @@ internal fun ContextUsageRingButton(
     val percent = (fraction * 100f).roundToInt()
     val animatedFraction by animateFloatAsState(
         targetValue = fraction,
-        animationSpec = tween(450),
+        animationSpec = tween(MotionTokens.EMPHASIZED_MS),
         label = "contextUsageFraction",
     )
 
