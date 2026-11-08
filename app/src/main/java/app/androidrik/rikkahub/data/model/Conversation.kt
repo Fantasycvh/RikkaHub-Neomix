@@ -286,7 +286,9 @@ data class Conversation(
         val checkpointMessage = UIMessage(
             role = MessageRole.USER,
             parts = listOf(
-                UIMessagePart.Text(buildCompactionCheckpointText(checkpoint.content))
+                UIMessagePart.Text(
+                    buildCompactionCheckpointText(checkpoint.content) + taskAnchorSuffix(currentMessages)
+                )
             ),
             isSynthetic = true,
         )
@@ -514,4 +516,36 @@ private fun String.sha256(): String {
     val digest = java.security.MessageDigest.getInstance("SHA-256")
     val bytes = digest.digest(this.toByteArray(Charsets.UTF_8))
     return bytes.joinToString("") { "%02x".format(it) }.take(32)
+}
+
+/** 任务锚点引用长度上限：**原样截取**（不概括），超长截断加省略号。 */
+internal const val TASK_ANCHOR_MAX_CHARS = 400
+
+/**
+ * 任务锚点（借鉴 NMoi D185「压缩摘要尾附当前任务」，台账 `docs/references/other projects/nmoi-agent.md`
+ * §13.4 候选 3；nmoi 实现 `crates/core/src/anchor.rs`）。
+ *
+ * 为什么需要：压缩把早期历史折成摘要后，**用户最近一条指令可能恰好落在被摘要的区域**——
+ * 模型看到摘要却丢了「现在到底要干什么」。锚点把最近一条用户消息**原样**（不概括、不改写，
+ * 概括会引入二次失真）附到检查点合成消息末尾，且**不新增消息**——新增会改变消息序列，
+ * 让「最后一条 user 消息」的寻址（模板变量、压缩触发判定）指到锚点自己。
+ *
+ * 纯函数、每次请求重算：窗口内出现更新的用户消息时锚点自动跟随；无有效用户消息返回空串。
+ * 只挂在 native 合成检查点上（upstream 原始检查点不改正文）。
+ */
+internal fun taskAnchorSuffix(messages: List<UIMessage>): String {
+    val anchor = messages.asReversed().firstOrNull { message ->
+        message.role == MessageRole.USER &&
+            !message.isSynthetic &&
+            !message.isExternalNotice
+    }?.parts?.filterIsInstance<UIMessagePart.Text>()
+        ?.joinToString("\n") { it.text }
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() } ?: return ""
+    val excerpt = if (anchor.length > TASK_ANCHOR_MAX_CHARS) {
+        anchor.take(TASK_ANCHOR_MAX_CHARS) + "…"
+    } else {
+        anchor
+    }
+    return "\n\n当前任务（原样引用最近一条用户消息）：\n$excerpt"
 }

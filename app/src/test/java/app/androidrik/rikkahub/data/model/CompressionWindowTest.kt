@@ -335,3 +335,46 @@ class CompressionWindowTest {
         assertEquals(short, window.applyTo(short))
     }
 }
+
+/** 任务锚点（借鉴 NMoi D185，台账 nmoi-agent.md §13.4 候选 3）：原样引用、不新增消息、超长截断。 */
+class TaskAnchorTest {
+
+    private fun userMsg(text: String) =
+        UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text(text)))
+
+    @Test
+    fun `anchor appends the last real user message verbatim`() {
+        val messages = listOf(
+            userMsg("旧消息"),
+            UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("答"))),
+            userMsg("帮我整理这份报告的第三章"),
+        )
+        val suffix = taskAnchorSuffix(messages)
+        assertTrue(suffix.contains("帮我整理这份报告的第三章"))
+        assertTrue(suffix.contains("当前任务"))
+    }
+
+    @Test
+    fun `no user message yields empty anchor`() {
+        val messages = listOf(
+            UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("答"))),
+        )
+        assertEquals("", taskAnchorSuffix(messages))
+    }
+
+    @Test
+    fun `anchor truncates long instructions`() {
+        val long = "x".repeat(1000)
+        val suffix = taskAnchorSuffix(listOf(userMsg(long)))
+        assertTrue(suffix.length < 1000)
+        assertTrue(suffix.endsWith("…"))
+    }
+
+    @Test
+    fun `synthetic and notice messages are skipped as anchor source`() {
+        val synthetic = userMsg("合成").copy(isSynthetic = true)
+        val suffix = taskAnchorSuffix(listOf(synthetic, userMsg("真实指令")))
+        assertFalse(suffix.contains("合成"))
+        assertTrue(suffix.contains("真实指令"))
+    }
+}
