@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.service
 import android.util.Log
 import androidx.room.withTransaction
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.isExternalNotice
 import app.androidrik.rikkahub.data.datastore.Settings
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.Flow
@@ -124,6 +125,28 @@ internal class WorkspaceNoticeInbox(
         process(session, rows, beforeUser = true)
     }
 
+    /** Called by the active loop with its authoritative full message list at a completed step boundary. */
+    suspend fun atStep(session: ConversationSession, live: List<app.androidrik.ai.ui.UIMessage>): List<app.androidrik.ai.ui.UIMessage> = mutex.withLock {
+        withContext(Dispatchers.Main.immediate) {
+            if (session.messageQueue.state.value.paused || !settings.value.workspaceTaskNoticeEnabled ||
+                live.any { m -> m.parts.any { it is UIMessagePart.Tool && (it.isPending || it.canResumeExecution) } }) return@withContext live
+            val rows = dao.pendingForConversation(session.id.toString())
+            if (rows.isEmpty()) return@withContext live
+            val original = session.state.value
+            val liveIds = live.map { it.id }.toSet()
+            if (original.currentMessages.any { !it.isExternalNotice && it.id !in liveIds }) return@withContext live
+            val staged = original.updateCurrentMessages(live)
+            session.state.value = staged
+            try {
+                process(session, rows, beforeUser = true)
+                session.state.value.currentMessages
+            } catch (e: Throwable) {
+                if (session.state.value === staged) session.state.value = original
+                throw e
+            }
+        }
+    }
+
     private suspend fun process(session: ConversationSession, rows: List<ExternalNoticeEntity>, beforeUser: Boolean) =
         withContext(Dispatchers.Main.immediate) {
             if (rows.isEmpty() || settings.value.init) return@withContext
@@ -143,8 +166,12 @@ internal class WorkspaceNoticeInbox(
             var chars = 0
             val batch = pending.take(8).takeWhile { chars += it.body.length; chars <= 8_000 }
             val unseen = batch.filter { it.id !in selected }
-            val messages = unseen.map(::externalNoticeMessage)
-            if (messages.isNotEmpty() && estimateTokenCount(messages) + 4096 >= remainingTokens(session)) return@withContext
+            val messages = unseen.map { row -> externalNoticeMessage(row).let { message ->
+                message.copy(parts = listOf(UIMessagePart.Notice(row.id, (message.parts.single() as UIMessagePart.Text).text)))
+            } }
+            if (messages.isNotEmpty() && estimateTokenCount(messages.map { message -> message.copy(parts = message.parts.map { part ->
+                if (part is UIMessagePart.Notice) UIMessagePart.Text(part.text) else part
+            }) }) + 4096 >= remainingTokens(session)) return@withContext
             val updated = original.copy(
                 messageNodes = original.messageNodes + messages.map { app.androidrik.rikkahub.data.model.MessageNode(messages = listOf(it)) },
                 chatSuggestions = if (messages.isEmpty()) original.chatSuggestions else emptyList(),

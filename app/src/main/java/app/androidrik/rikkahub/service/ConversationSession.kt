@@ -192,11 +192,15 @@ class ConversationSession(
      *   [QueuedMessage.turnOwner]）。null/空白 = 生成新的 turn 令牌，**所有用户发起路径都不传**，
      *   行为与过去逐位一致。显式令牌同样只在轮边界换、跨审批续跑不换。
      */
+    var lastScheduledMemoryReceipts: String? = null
+    var lastScheduledMemoryState: String? = null
     var externalNoticeRootScope: String? = null
     val scheduledMemoryDecisions = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     fun beginNewTurn(forcedTurnOwner: String? = null) {
         externalNoticeRootScope = null
+        lastScheduledMemoryState = null
+        lastScheduledMemoryReceipts = null
         scheduledMemoryDecisions.clear()
         replyMessageId.value = null
         toolLoopGuard.reset()

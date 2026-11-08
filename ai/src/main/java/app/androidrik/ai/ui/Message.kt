@@ -223,6 +223,7 @@ data class UIMessage(
         val text = "[${role.name}]: " + parts.joinToString(separator = "\n") { part ->
             when (part) {
                 is UIMessagePart.Text -> part.text
+            is UIMessagePart.Notice -> part.text
                 else -> ""
             }
         }
@@ -232,6 +233,7 @@ data class UIMessage(
     fun toText() = parts.joinToString(separator = "\n") { part ->
         when (part) {
             is UIMessagePart.Text -> part.text
+            is UIMessagePart.Notice -> part.text
             else -> ""
         }
     }
@@ -240,6 +242,7 @@ data class UIMessage(
 
     fun isValidToUpload() = parts.any { part ->
         when (part) {
+            is UIMessagePart.Notice -> part.text.isNotBlank()
             is UIMessagePart.Text -> part.text.isNotBlank()
             is UIMessagePart.Image -> part.url.isNotBlank()
             is UIMessagePart.Video -> part.url.isNotBlank()
@@ -452,11 +455,12 @@ fun List<UIMessagePart>.toSortedMessageParts(): List<UIMessagePart> {
     // Skip sorting if multiple Reasoning or Text parts exist to preserve semantic order
     val reasoningCount = count { it is UIMessagePart.Reasoning }
     val textCount = count { it is UIMessagePart.Text }
-    if (reasoningCount > 1 || textCount > 1) {
+    if (reasoningCount > 1 || textCount > 1 || any { it is UIMessagePart.Notice }) {
         return this
     }
     return sortedBy { part ->
         when (part) {
+            is UIMessagePart.Notice -> 0
             is UIMessagePart.Reasoning -> -1
             is UIMessagePart.Text -> 0
             is UIMessagePart.Tool -> 0
@@ -771,9 +775,10 @@ val UIMessage.isSubagentNotice: Boolean
     get() = annotations.any { it is UIMessageAnnotation.SubagentNotice }
 
 val UIMessage.isExternalNotice: Boolean
-    get() = isSubagentNotice || annotations.any { it is UIMessageAnnotation.ExternalNotice }
+    get() = isSubagentNotice || annotations.any { it is UIMessageAnnotation.ExternalNotice } ||
+        (parts.isNotEmpty() && parts.all { it is UIMessagePart.Notice })
 
-fun List<UIMessage>.messagesForAuxGeneration(): List<UIMessage> = filterNot { it.isExternalNotice }
+fun List<UIMessage>.messagesForAuxGeneration(): List<UIMessage> = expandNotices().filterNot { it.isExternalNotice }
 
 /** USER 仅是兼容载体；注解决定语义角色，用户意图/导出应共用此判定。 */
 val UIMessage.semanticRole: MessageRole get() = if (isExternalNotice) MessageRole.SYSTEM else role

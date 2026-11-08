@@ -91,7 +91,8 @@ class AgentRunDeliveryInstrumentedTest {
         val db = Room.databaseBuilder(context, AppDatabase::class.java, "agent-delivery-migration-test")
             .build().also { database = it }
         val restored = db.agentRunDao().getRun("legacy")!!
-        assertEquals(58, db.openHelper.readableDatabase.version)
+        // AppDatabase migrates through all registered versions, not just the original 57→58 change.
+        assertEquals(AppDatabase.SCHEMA_VERSION, db.openHelper.readableDatabase.version)
         assertEquals("[{\"evidence\":\"retained\"}]", restored.transcript)
         assertEquals("answer", restored.resultSummary)
         assertEquals(DELIVERY_MODE_AWAIT, restored.deliveryMode)

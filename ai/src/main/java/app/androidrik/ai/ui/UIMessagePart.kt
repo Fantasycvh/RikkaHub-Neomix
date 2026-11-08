@@ -66,6 +66,11 @@ sealed class UIMessagePart {
     abstract val metadata: JsonObject?
 
     @Serializable
+    @SerialName("notice")
+    data class Notice(val eventId: String, val text: String, override val metadata: JsonObject? = null) : UIMessagePart()
+
+
+    @Serializable
     @SerialName("text")
     data class Text(
         val text: String,

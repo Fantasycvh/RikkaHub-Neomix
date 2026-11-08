@@ -155,7 +155,7 @@ fun ChatMessage(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (externalNotice != null) "后台命令结果" else stringResource(R.string.subagent_notice_title, notice!!.runIds.size), style = MaterialTheme.typography.titleSmall)
                 SelectionContainer {
-                    Text(message.parts.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text },
+                    Text(message.parts.mapNotNull { when(it) { is UIMessagePart.Text -> it.text; is UIMessagePart.Notice -> it.text; else -> null } }.joinToString("\n"),
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -542,6 +542,10 @@ private fun MessagePartsBlock(
 
             is MessagePartBlock.ContentBlock -> key(block.index) {
                 when (val part = block.part) {
+                    is UIMessagePart.Notice -> Surface(color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        SelectionContainer { Text(part.text, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall) }
+                    }
                     is UIMessagePart.Text -> {
                         val truncatedNotice = stringResource(R.string.chat_message_truncated_notice, MAX_RENDER_TEXT_LENGTH)
                             val textContent = @Composable {

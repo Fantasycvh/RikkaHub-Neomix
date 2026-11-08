@@ -104,6 +104,13 @@ class ScheduledTaskRunner(
             settingsStore.awaitLoaded()
         } != null
 
+        if (taskRepository.retainedSources(task.id) >= 60) {
+            taskRepository.recordStatus(task.id, TaskRunStatus.FAILED)
+            taskRepository.setEnabled(task.id, false)
+            taskRepository.finishWithEvidence(runId, TaskRunStatus.FAILED,
+                app.androidrik.rikkahub.data.scheduled.RunEvidence("capacity_blocked", "保留的未解决源会话已达 60 轮；请先审阅或删除该任务。", "[]"))
+            return TaskRunStatus.FAILED
+        }
         val mode = targetModeOrDefault(task.targetMode)
         val conversationId = when (mode) {
             // 每轮新建：没有存量锚点，本轮现建一条（按选中助手）
@@ -266,7 +273,8 @@ class ScheduledTaskRunner(
                 "(runId=${result?.runId}, error=${result?.error})",
         )
         taskRepository.recordStatus(task.id, status)
-        taskRepository.finishRun(runId, status)
+        taskRepository.finishWithEvidence(runId, status, app.androidrik.rikkahub.data.scheduled.RunEvidence(
+            "unsupported", (result?.summary ?: result?.error ?: "No result").take(12_000), "[]"))
         // 有 run 结果时完成通知由 RunNotifications 按 agent run 发（带摘要）；
         // 只有「闸门忙/异常，根本没跑起来」才退回定时任务的通用失败通知，避免两条通知。
         if (result == null) {
@@ -389,7 +397,7 @@ class ScheduledTaskRunner(
         if (!reachedEnd) {
             chatService.removeQueuedMessagesOfTurn(conversationId, turnOwner)
             val ownJob = chatService.getGenerationJobStateFlow(conversationId).first()
-            if (chatService.getTurnOwner(conversationId) == turnOwner) ownJob?.cancel()
+            if (chatService.getTurnOwner(conversationId) == turnOwner) { ownJob?.cancel(); ownJob?.join() }
         }
         val quiesced = reachedEnd
         val hasNewError = chatService.errors.value.count { it.conversationId == conversationId } > errorsBefore
@@ -405,7 +413,9 @@ class ScheduledTaskRunner(
                 "producedReply=$producedReply)",
         )
         taskRepository.recordStatus(task.id, status)
-        taskRepository.finishRun(runId, status, gateRetries = loopGate?.retries ?: 0)
+        taskRepository.finishWithEvidence(runId, status,
+            app.androidrik.rikkahub.data.scheduled.captureRunEvidence(runId, chatService.getConversationFlow(conversationId).value.currentMessages, memoryAvailable, task.deliverables),
+            loopGate?.retries ?: 0)
         notifyResult(task, conversationId, status, loopGate)
 
         // 自动清理（§4.2）：仅 NEW_EACH_RUN 且开关开启，仅成功轮次后执行——失败轮的会话
@@ -427,7 +437,12 @@ class ScheduledTaskRunner(
     private suspend fun finishCancelled(task: ScheduledTaskEntity, runId: String): String {
         Log.i(TAG, "runClaimed: task=${task.title} -> ${TaskRunStatus.CANCELLED} (stopped by user)")
         taskRepository.recordStatus(task.id, TaskRunStatus.CANCELLED)
-        taskRepository.finishRun(runId, TaskRunStatus.CANCELLED)
+        val row = taskRepository.runById(runId)
+        val conversation = row?.conversationId?.let { id -> runCatching { Uuid.parse(id) }.getOrNull() }
+            ?.let { conversationRepository.getConversationById(it) }
+        val available = conversation?.let { settingsStore.settingsFlow.value.getAssistantById(it.assistantId)?.enableMemory == true && !it.memoryDisabled } == true
+        taskRepository.finishWithEvidence(runId, TaskRunStatus.CANCELLED,
+            app.androidrik.rikkahub.data.scheduled.captureRunEvidence(runId, conversation?.currentMessages.orEmpty(), available, task.deliverables))
         return TaskRunStatus.CANCELLED
     }
 
@@ -447,7 +462,10 @@ class ScheduledTaskRunner(
                 val lastMsg = id?.let { conversationRepository.getConversationById(it)?.lastMessageAt }
                 candidate.conversationId!! to lastMsg?.toEpochMilli()
             }
-            val targets = pickAutoCleanupTargets(withConversation, task.keepLastConversations, lastMessageAt)
+            val targets = pickAutoCleanupTargets(withConversation, task.keepLastConversations, lastMessageAt).filter { id ->
+                runs.filter { it.conversationId == id }.all { it.finishedAt != null &&
+                    app.androidrik.rikkahub.data.scheduled.safeToRemoveRunSource(it.memorySyncStatus, it.runSummary) }
+            }
             targets.forEach { id ->
                 val uuid = runCatching { Uuid.parse(id) }.getOrNull() ?: return@forEach
                 conversationRepository.getConversationById(uuid)?.let {
@@ -678,6 +696,6 @@ internal fun pickAutoCleanupTargets(
  */
 internal fun buildTaskPrompt(prompt: String, withGoal: Boolean, goal: String?, memoryAvailable: Boolean = false): String = buildList {
     if (withGoal && !goal.isNullOrBlank()) add("## 长期目标\n$goal")
-    if (memoryAvailable) add("## Memory\nThis is a preconfigured scheduled task, not a new user statement. Use memory_tool only for sourced stable facts, explicit user preferences, or verified task results. Do not store your guesses, greetings, invented user circumstances or raw logs as facts. Existing write approvals still apply; a generated message alone does not mean memory was saved.")
+    if (memoryAvailable) add("## Memory\nThis is a preconfigured scheduled task, not a new user statement. Use memory_tool only for sourced stable facts, explicit user preferences, or verified task results. Do not store your guesses, greetings, invented user circumstances or raw logs as facts. Existing write approvals still apply; a generated message alone does not mean memory was saved. If you assessed the run and there is no appropriate memory candidate, explicitly call memory_tool with action=no_candidate. Do not infer no_candidate from the absence of a write.")
     add(prompt)
 }.joinToString("\n\n")

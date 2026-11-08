@@ -367,6 +367,7 @@ class GenerationHandler(
          * 默认 null：无头 run（`SubagentRunner`）自己维护 `currentMessages`，无需此落点。
          */
         onMessagesCommitted: ((List<UIMessage>) -> Unit)? = null,
+        consumeStepNotices: (suspend (List<UIMessage>) -> List<UIMessage>)? = null,
         /**
          * 用量流水的归属标记（来源 / 助手 / 会话）。
          *
@@ -402,12 +403,13 @@ class GenerationHandler(
             usageRecorder.wrap(providerManager.getProviderByType(it), usageTag)
         }
 
+        var committedNoticeMessages: List<UIMessage>? = null
         suspend fun runLoop(
             targetModel: Model,
             targetProvider: ProviderSetting,
             targetProviderImpl: Provider<ProviderSetting>,
         ) {
-            var messages: List<UIMessage> = messages
+            var messages: List<UIMessage> = committedNoticeMessages ?: messages
 
             // 本轮的工具调用失控护栏：**由调用方传入**（挂在会话上），跨「审批续跑」累积。
             // 这里刻意不新建实例——真机实测每次批准都会重新进入 runLoop（step #0 重来），
@@ -469,6 +471,18 @@ class GenerationHandler(
 
             val toolsToProcess: List<UIMessagePart.Tool>
 
+            // Only between completed tool batches, never before approved tools or across an approval/guard stop.
+            if (pendingTools.isEmpty() && messages.none { m -> m.getTools().any { it.isPending } }) {
+                consumeStepNotices?.let { consume ->
+                    val updated = consume(messages)
+                    if (updated != messages) {
+                        messages = updated
+                        committedNoticeMessages = updated
+                        onMessagesCommitted?.invoke(messages)
+                        emit(GenerationChunk.Messages(messages))
+                    }
+                }
+            }
             // Skip generation if we have approved/denied tool calls to handle
             if (pendingTools.isEmpty()) {
                 // 规则提醒：**每一步拼装前**求值 ⇒ 作用于下一步（本仓工具循环每步重拼提示词）。

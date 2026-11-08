@@ -48,6 +48,9 @@ data class ScheduledTaskRunEntity(
      */
     @ColumnInfo("gate_retries", defaultValue = "0")
     val gateRetries: Int = 0,
+    @ColumnInfo("memory_sync_status", defaultValue = "'legacy'") val memorySyncStatus: String = "legacy",
+    @ColumnInfo("run_summary") val runSummary: String? = null,
+    @ColumnInfo("memory_receipts") val memoryReceipts: String? = null,
 ) {
     /** 触发入口的规范值；只作记录与展示，执行器不依赖它做任何分支（与 Executor 的 source 串一致） */
     object RunSource {

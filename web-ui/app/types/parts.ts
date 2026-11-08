@@ -60,7 +60,10 @@ export interface ToolPart extends BaseMessagePart {
  * Union type for all message parts
  * @see ai/src/main/java/me/rerere/ai/ui/Message.kt - UIMessagePart
  */
+export interface NoticePart extends BaseMessagePart { type: "notice"; eventId: string; text: string; }
+
 export type UIMessagePart =
+  | NoticePart
   | TextPart
   | ImagePart
   | VideoPart

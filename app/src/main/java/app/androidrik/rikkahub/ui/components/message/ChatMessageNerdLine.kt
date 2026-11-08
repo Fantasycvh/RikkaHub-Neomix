@@ -226,6 +226,7 @@ private fun LiveTpsItem(message: UIMessage, color: Color) {
     val tokens = message.usage?.completionTokens?.takeIf { it > 0 }
         ?: message.parts.sumOf { part ->
             when (part) {
+                is UIMessagePart.Notice -> estimateTokens(part.text)
                 is UIMessagePart.Text -> estimateTokens(part.text)
                 is UIMessagePart.Reasoning -> estimateTokens(part.reasoning)
                 else -> 0

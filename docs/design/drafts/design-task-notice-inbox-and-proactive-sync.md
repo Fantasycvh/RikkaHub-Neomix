@@ -1,8 +1,9 @@
 # 任务完成主动通知模型：收件箱、随机触发与记忆同步整合评估
 
-> 状态：rev 2，**用户已要求实施；A–D 首期代码已实现，设备验收未完成，未提交/未推送**。
+> 状态：rev 3，**A–D 与 E/F 首期代码已实现；正常 debug 上 18 项设备数据库测试通过，模型/UI 验收未完成；未推送**。
 > 2026-11-08 实施范围、分期偏差与验证结果见 [实施记录](../verification/task-notice-inbox-2026-11-08.md)。
-> 下文保留完整目标设计；当前保留原 agent run 泵，scheduled 仅桥接 memory_tool，未建设独立收件箱管理页，E/F 后置。
+> E/F 最新实现见 [步骤消费与可靠同步记录](../verification/task-notice-step-sync-2026-11-08.md)。
+> 下文保留目标设计；当前步骤消费接入 workspace shell，原 agent run 泵保留，scheduled 审批仍仅桥接 memory_tool，未建设独立收件箱管理页。
 > 日期：2026-11-07。与 [随机触发与记忆同步](design-scheduled-random-trigger-and-memory-sync.md) 联合评估。
 > 代码基线：本仓 `2778a55b1`；上游参考为本机 `F:/build/projects/rikkahub` 中的
 > `4ebfde221` 历史对象，非该目录当前工作树，也不声称是上游最新实现。

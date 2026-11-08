@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.ai
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.withoutUiNotices
+import app.androidrik.ai.ui.expandNotices
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.ai.prompts.partitionCheckpointMessages
 import app.androidrik.ai.ui.limitContext
@@ -378,7 +379,7 @@ internal fun buildInternalMessagesWithPlan(
         }
     }
     timing?.mark("asm_tail")
-    return AssembledRequest(assembledMessages, memoryPlan)
+    return AssembledRequest(assembledMessages.expandNotices(), memoryPlan)
 }
 
 /** Compatibility entry point; the shared assembly owns selection and accounting. */

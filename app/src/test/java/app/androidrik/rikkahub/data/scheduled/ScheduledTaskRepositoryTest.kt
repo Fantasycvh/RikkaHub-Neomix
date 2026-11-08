@@ -116,6 +116,17 @@ class ScheduledTaskRepositoryTest {
             bump()
         }
 
+        override suspend fun interruptOldApprovals(before: Long) { runs.replaceAll { _, row ->
+            if (row.memorySyncStatus in setOf("pending_approval", "writing") && row.startedAt < before) row.copy(memorySyncStatus = "interrupted") else row }; bump() }
+        override suspend fun runById(id: String) = runs[id]
+        override suspend fun updateMemoryEvidence(id: String, state: String, receipts: String) { runs[id] = runs[id]!!.copy(memorySyncStatus = state, memoryReceipts = receipts); bump() }
+        override suspend fun updateMemorySync(id: String, state: String) { runs[id] = runs[id]!!.copy(memorySyncStatus = state); bump() }
+        override suspend fun finishWithEvidence(id: String, at: Long, status: String, retries: Int, memory: String, summary: String, receipts: String) {
+            runs[id] = runs[id]!!.copy(finishedAt = at, status = status, gateRetries = retries, memorySyncStatus = memory, runSummary = summary, memoryReceipts = receipts); bump()
+        }
+        override suspend fun retainedSources(taskId: String) = runs.values.count { it.taskId == taskId && it.conversationId != null &&
+            it.memorySyncStatus !in setOf("legacy", "saved", "no_candidate", "disabled", "unsupported", "capacity_blocked") }
+
         override suspend fun updateRunConversation(id: String, conversationId: String) {
             runs[id] = runs[id]!!.copy(conversationId = conversationId)
             bump()
@@ -333,6 +344,18 @@ class ScheduledTaskRepositoryTest {
         // 未终态账本：只含 finished_at 留空的行；任务中心据此显示 INTERRUPTED，
         // 而不是把「进程死亡」误画成 RUNNING（注册表重启后为空）。
         assertEquals(listOf(unfinished), repo.flowUnfinishedRuns().first().map { it.id })
+    }
+
+    @Test fun `restart invalidates old approval waits but leaves current process waits alone`() = runTest {
+        val dao = FakeScheduledTaskDAO()
+        val repo = repository(dao, now = 100L)
+        val old = repo.startRun("task", "alarm", "source", startedAt = 10L)
+        val current = repo.startRun("task", "alarm", "source", startedAt = 200L)
+        dao.updateMemorySync(old, "pending_approval")
+        dao.updateMemorySync(current, "pending_approval")
+        repo.interruptOldApprovals(100L)
+        assertEquals("interrupted", dao.runs[old]!!.memorySyncStatus)
+        assertEquals("pending_approval", dao.runs[current]!!.memorySyncStatus)
     }
 
     @Test

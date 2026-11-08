@@ -50,6 +50,36 @@ class WorkspaceNoticeInboxInstrumentedTest {
         } finally { context.deleteDatabase(name) }
     }
 
+    @Test fun migration61To62PreservesUnverifiedHistoryWithoutInventingSuccessfulSync() {
+        val name = "run-evidence-migration-test"
+        try {
+            migrations.createDatabase(name, 61).use { db ->
+                db.execSQL("INSERT INTO scheduled_task_runs(id,task_id,source,started_at) VALUES ('old','task','sweep',1)")
+            }
+            migrations.runMigrationsAndValidate(name, 62, true).use { db ->
+                db.query("SELECT memory_sync_status,run_summary,memory_receipts FROM scheduled_task_runs WHERE id='old'").use { c ->
+                    assertTrue(c.moveToFirst()); assertEquals("legacy", c.getString(0)); assertTrue(c.isNull(1)); assertTrue(c.isNull(2))
+                }
+            }
+        } finally { context.deleteDatabase(name) }
+    }
+
+    @Test fun runEvidenceIsAtomicAndPendingSourceSurvivesHistoryPruning() = fixture { f ->
+        val dao = f.db.scheduledTaskDao()
+        fun row(id: String, time: Long) = app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity(
+            id, "task", "sweep", "source", time, memorySyncStatus = "unassessed")
+        dao.insertRun(row("pending", 1))
+        dao.insertRun(row("resolved", 2))
+        dao.insertRun(row("new", 3))
+        dao.finishWithEvidence("resolved", 4, "OK", 0, "saved", "durable summary", "[]")
+        assertEquals("saved", dao.runById("resolved")!!.memorySyncStatus)
+        assertEquals("durable summary", dao.runById("resolved")!!.runSummary)
+        dao.pruneRuns("task", 1)
+        assertNotNull(dao.runById("pending"))
+        assertNull(dao.runById("resolved"))
+        assertNotNull(dao.runById("new"))
+    }
+
     @Test fun pendingUserConsumesResultOnceAndNextRepositorySaveKeepsIt() = fixture { f ->
         val row = f.row()
         f.dao.insert(row)

@@ -65,6 +65,7 @@ internal fun memoryToolNeedsApproval(assistant: Assistant, action: String): Bool
     // 必须显式列出——落进 else 兜底会让渐进披露的每次 memory_read、以及每次按需检索，
     // 都变成一次审批轰炸（检索是「查找」不是「改动」，与 read 同类）。
     "read", "search" -> false
+    "no_candidate" -> false
     else -> assistant.memoryModifyApproval
 }
 

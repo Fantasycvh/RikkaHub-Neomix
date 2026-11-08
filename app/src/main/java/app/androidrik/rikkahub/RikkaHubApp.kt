@@ -544,10 +544,13 @@ class RikkaHubApp : Application() {
         }
     }
 
+    private val processBornAt = System.currentTimeMillis()
+
     private fun reconcileScheduledTasks() {
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
                 val repository = get<app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository>()
+                repository.interruptOldApprovals(processBornAt)
                 get<ScheduledTaskSweeperKeeper>().rearm(repository)
             }.onFailure {
                 Log.e(TAG, "reconcileScheduledTasks failed", it)

@@ -84,6 +84,24 @@ interface ScheduledTaskDAO {
     )
     suspend fun finishRun(id: String, finishedAt: Long, status: String, gateRetries: Int = 0)
 
+    @Query("UPDATE scheduled_task_runs SET memory_sync_status = 'interrupted' WHERE memory_sync_status IN ('pending_approval','writing') AND started_at < :before")
+    suspend fun interruptOldApprovals(before: Long)
+
+    @Query("SELECT * FROM scheduled_task_runs WHERE id = :id")
+    suspend fun runById(id: String): ScheduledTaskRunEntity?
+
+    @Query("UPDATE scheduled_task_runs SET memory_sync_status = :state, memory_receipts = :receipts WHERE id = :id")
+    suspend fun updateMemoryEvidence(id: String, state: String, receipts: String)
+
+    @Query("UPDATE scheduled_task_runs SET memory_sync_status = :state WHERE id = :id AND memory_sync_status != :state")
+    suspend fun updateMemorySync(id: String, state: String)
+
+    @Query("UPDATE scheduled_task_runs SET finished_at = :at, status = :status, gate_retries = :retries, memory_sync_status = :memory, run_summary = :summary, memory_receipts = :receipts WHERE id = :id")
+    suspend fun finishWithEvidence(id: String, at: Long, status: String, retries: Int, memory: String, summary: String, receipts: String)
+
+    @Query("SELECT COUNT(*) FROM scheduled_task_runs WHERE task_id = :taskId AND conversation_id IS NOT NULL AND memory_sync_status NOT IN ('legacy','saved','no_candidate','disabled','unsupported','capacity_blocked')")
+    suspend fun retainedSources(taskId: String): Int
+
     /** NEW_EACH_RUN：会话是执行中途才建出来的，账本行补记本轮实际会话 */
     @Query("UPDATE scheduled_task_runs SET conversation_id = :conversationId WHERE id = :id")
     suspend fun updateRunConversation(id: String, conversationId: String)
@@ -125,7 +143,8 @@ interface ScheduledTaskDAO {
 
     /** per-task 保底裁剪：只留最近 [keep] 条（insert 后调用） */
     @Query(
-        "DELETE FROM scheduled_task_runs WHERE task_id = :taskId AND id NOT IN (" +
+        "DELETE FROM scheduled_task_runs WHERE task_id = :taskId AND finished_at IS NOT NULL AND " +
+            "(conversation_id IS NULL OR (run_summary IS NOT NULL AND memory_sync_status IN ('saved','no_candidate','disabled','unsupported','capacity_blocked'))) AND id NOT IN (" +
             "SELECT id FROM scheduled_task_runs WHERE task_id = :taskId " +
             "ORDER BY started_at DESC LIMIT :keep)"
     )

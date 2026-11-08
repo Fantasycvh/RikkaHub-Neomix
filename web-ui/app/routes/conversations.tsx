@@ -135,6 +135,8 @@ function getQuickJumpPreview(
             name: truncatePreviewText(fallbackPart.toolName.trim(), 32),
           })
         : t("conversations.preview.tool_call");
+    case "notice":
+      return truncatePreviewText(fallbackPart.text);
     case "text":
       return t("conversations.preview.empty_message");
   }

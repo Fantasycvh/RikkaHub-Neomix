@@ -57,6 +57,15 @@ class PromptAssemblyTest {
     private fun assistantMessage(text: String) =
         UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text(text)))
 
+    @Test fun `all model requests expand notice parts at the shared assembly boundary`() {
+        val raw = UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Notice("event", "external result")))
+        val assembled = buildInternalMessages(assistant(), settings, model, listOf(userMessage("input"), raw),
+            emptyList(), emptyList(), null, null)
+        assertTrue(assembled.none { m -> m.parts.any { it is UIMessagePart.Notice } })
+        assertTrue(assembled.any { it.role == MessageRole.SYSTEM && it.toText().contains("external result") })
+        assertTrue(raw.parts.single() is UIMessagePart.Notice)
+    }
+
     // region buildSystemPromptText
 
     // ---- #1542 复核 Tier B：未漂移角色卡助手按槽渲染（输出逐字节不变，来源升级为卡槽块） ----

@@ -60,6 +60,7 @@ interface ChatMessageProps {
 
 function hasRenderablePart(part: UIMessagePart): boolean {
   switch (part.type) {
+    case "notice":
     case "text":
       return part.text.trim().length > 0;
     case "image":
@@ -77,6 +78,7 @@ function hasRenderablePart(part: UIMessagePart): boolean {
 
 function formatPartForCopy(part: UIMessagePart, t: TFunction): string | null {
   switch (part.type) {
+    case "notice":
     case "text":
       return part.text;
     case "image":
@@ -543,7 +545,7 @@ export const ChatMessage = React.memo(({
   if (notice?.type === "subagent_notice" || notice?.type === "external_notice") {
     return (
       <SubagentNoticeCard title={notice.type === "external_notice" ? "Workspace task results" : undefined} runIds={notice.type === "external_notice" ? notice.sourceIds : notice.runIds} text={message.parts
-        .filter((part) => part.type === "text").map((part) => part.text).join("\n")} />
+        .filter((part) => part.type === "text" || part.type === "notice").map((part) => part.text).join("\n")} />
     );
   }
 

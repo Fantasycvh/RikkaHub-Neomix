@@ -95,6 +95,7 @@ fun buildMemoryTools(
             put(key, value)
         }
         put("revision", memory.revision)
+        put("memory_sync", "saved")
         putMemoryKind(memory)
         observe(memory)
     }
@@ -206,6 +207,7 @@ fun buildMemoryTools(
                                 add("search")
                                 add("complete")
                                 add("drop")
+                                add("no_candidate")
                             }
                         )
                         put("description", "Operation to perform")
@@ -373,6 +375,7 @@ fun buildMemoryTools(
                         observe(memory)
                         buildJsonObject {
                             put("success", true)
+                            put("memory_sync", "saved")
                             put("id", memory.id)
                             put("revision", memory.revision)
                             putMemoryKind(memory)
@@ -395,6 +398,7 @@ fun buildMemoryTools(
                         delete(id, expected)
                         buildJsonObject {
                             put("success", true)
+                            put("memory_sync", "saved")
                             put("id", id)
                             put("revision", expected)
                         }
@@ -403,6 +407,7 @@ fun buildMemoryTools(
 
                 // 渐进披露的读取侧：清单层只给一行主题，模型据此取全文。
                 // 回执里带上 description/updated，让模型知道这条记录有多新（用于陈旧性判断）。
+                "no_candidate" -> buildJsonObject { put("memory_sync", "no_candidate"); put("success", true) }
                 "read" -> {
                     val id = params["id"]?.jsonPrimitive?.contentOrNull ?: error("id is required")
                     val memory = onRead(id) ?: error("Memory record $id not found")

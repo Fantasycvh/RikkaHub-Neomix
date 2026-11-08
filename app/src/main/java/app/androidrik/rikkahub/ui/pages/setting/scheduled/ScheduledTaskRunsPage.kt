@@ -95,6 +95,15 @@ fun ScheduledTaskRunsPage(
                         )
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
+                    Text("记忆同步：${memorySyncLabel(run.memorySyncStatus)}", style = MaterialTheme.typography.labelSmall)
+                    run.runSummary?.let { summary ->
+                        Text("运行摘要（有界快照）", style = MaterialTheme.typography.labelSmall)
+                        androidx.compose.foundation.text.selection.SelectionContainer {
+                            Text(runCatching { (app.androidrik.rikkahub.utils.JsonInstant.parseToJsonElement(summary) as? kotlinx.serialization.json.JsonObject)
+                                ?.get("final_text")?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.content ?: summary }.getOrDefault(summary),
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             text = runTimeText(run.startedAt),
@@ -168,4 +177,20 @@ private fun app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity.durati
     } else {
         String.format(java.util.Locale.ROOT, "%.1fs", seconds)
     }
+}
+
+private fun memorySyncLabel(state: String): String = when (state) {
+    "saved" -> "已保存"
+    "writing" -> "正在写入"
+    "pending_approval" -> "等待审批"
+    "no_candidate" -> "已评估，无需写入"
+    "unassessed" -> "尚未评估，保留源会话"
+    "denied" -> "写入被拒绝"
+    "interrupted" -> "写入或审批已中断，需重新审阅"
+    "failed" -> "写入未完成"
+    "proposed" -> "仅生成提案，尚未应用"
+    "disabled" -> "记忆未启用"
+    "unsupported" -> "该执行方式不支持"
+    "capacity_blocked" -> "待审阅记录已达上限"
+    else -> "未验证，保留源会话"
 }

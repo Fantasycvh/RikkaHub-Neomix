@@ -7,6 +7,7 @@ import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
 import app.androidrik.rikkahub.data.task.AppendNoticeResult
 import app.androidrik.rikkahub.data.task.NoticeDelivery
 import app.androidrik.ai.ui.messagesForAuxGeneration
+import app.androidrik.ai.ui.semanticRole
 import kotlinx.coroutines.channels.Channel
 import android.content.Context
 import android.os.SystemClock
@@ -909,6 +910,19 @@ class ChatService(
         return job
     }
 
+    private suspend fun recordScheduledMemorySync(session: ConversationSession, messages: List<UIMessage>, available: Boolean, owner: String) {
+        if (session.backgroundTaskOwner != owner) return
+        val trigger = messages.lastOrNull { it.semanticRole == MessageRole.USER }?.annotations
+            ?.filterIsInstance<UIMessageAnnotation.ScheduledTrigger>()?.lastOrNull()
+        val runId = if (owner.startsWith("sched:")) owner.removePrefix("sched:") else trigger?.runId ?: return
+        val evidence = app.androidrik.rikkahub.data.scheduled.captureRunEvidence(runId, messages, available, finished = false)
+        if (evidence.memorySync != session.lastScheduledMemoryState || evidence.receipts != session.lastScheduledMemoryReceipts) {
+            database.scheduledTaskDao().updateMemoryEvidence(runId, evidence.memorySync, evidence.receipts)
+            session.lastScheduledMemoryState = evidence.memorySync
+            session.lastScheduledMemoryReceipts = evidence.receipts
+        }
+    }
+
     private suspend fun bridgeScheduledMemoryApprovals(session: ConversationSession, owner: String) {
         val notifications = RunNotifications(context)
         val approvals = SubagentApprovalNotifications(context, settingsStore, notifications)
@@ -1478,6 +1492,7 @@ class ChatService(
             // 新一轮生成：清掉上一轮遗留的「未确认回填」快照（见 ConversationSession.lastCommittedMessages）。
             // 不清的话，本轮若在**任何工具回填之前**被取消，停止路径会把上一轮的旧快照并进内存态。
             session.lastCommittedMessages.value = null
+            val generationOwner = session.backgroundTaskOwner
             val transformerChains = transformerRegistry.snapshot(pluginManager.plugins.value)
             generationHandler.generateText(
                 settings = settings,
@@ -1534,6 +1549,7 @@ class ChatService(
                 // 已完成工具结果的**取消安全落点**（见 GenerationHandler 的 `onMessagesCommitted`）：
                 // emit 走 flow/flowOn，生成协程一被取消就送不到本方法的 collect 端
                 // ⇒ 把「已回填」的快照先记在 session 上，停止路径能补进内存态。
+                consumeStepNotices = if (messageRange == null) ({ live -> if (session.backgroundTaskOwner == generationOwner) workspaceNoticeInbox.atStep(session, live) else live }) else null,
                 onMessagesCommitted = { committed ->
                     session.lastCommittedMessages.value = committed
                 },
@@ -1569,6 +1585,7 @@ class ChatService(
                 try {
                 when (chunk) {
                     is GenerationChunk.Messages -> {
+                        recordScheduledMemorySync(session, chunk.messages, assistant.enableMemory && !conversation.memoryDisabled && ModelAbility.TOOL in model.abilities, generationOwner)
                         val updatedConversation = getConversationFlow(conversationId).value
                             .updateCurrentMessages(chunk.messages)
                         updateConversation(conversationId, updatedConversation)

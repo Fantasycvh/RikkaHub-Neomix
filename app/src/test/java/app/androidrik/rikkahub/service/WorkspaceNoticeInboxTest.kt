@@ -161,6 +161,35 @@ class WorkspaceNoticeInboxTest {
         assertEquals(1, f.wakes)
     }
 
+    @Test fun `active loop consumes results only at a completed step without starting another turn`() = runTest {
+        val f = Fixture(this)
+        val job = Job()
+        f.session.setJob(job)
+        f.dao.insert(f.row)
+        val updated = f.inbox.atStep(f.session, f.initial.currentMessages)
+        assertTrue(updated.last().parts.single() is UIMessagePart.Notice)
+        assertEquals(f.tool.parts, updated[1].parts)
+        assertEquals("delivered", f.dao.get(f.row.id)!!.deliveryState)
+        assertEquals("suppressed", f.dao.get(f.row.id)!!.wakeState)
+        assertEquals(0, f.wakes)
+        assertEquals(updated, f.inbox.atStep(f.session, updated))
+        job.complete()
+    }
+
+    @Test fun `step hook never consumes across a user pause or unresolved approved tool`() = runTest {
+        val f = Fixture(this)
+        f.dao.insert(f.row)
+        f.session.messageQueue.pause()
+        assertEquals(f.initial.currentMessages, f.inbox.atStep(f.session, f.initial.currentMessages))
+        assertEquals("pending", f.dao.get(f.row.id)!!.deliveryState)
+        f.session.messageQueue.resume()
+        val approved = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Tool(
+            "approved", "memory_tool", "{}", approvalState = ToolApprovalState.Approved)))
+        val live = f.initial.currentMessages + approved
+        assertEquals(live, f.inbox.atStep(f.session, live))
+        assertEquals("pending", f.dao.get(f.row.id)!!.deliveryState)
+    }
+
     private class Fixture(test: TestScope) {
         val dao = FakeDAO()
         val assistant = Assistant(workspaceId = Uuid.random())

@@ -77,6 +77,8 @@ function renderContentPart(
   onClickCitation?: (id: string) => void,
 ) {
   switch (part.type) {
+    case "notice":
+      return <pre className="whitespace-pre-wrap rounded-xl bg-muted p-3 text-xs">{part.text}</pre>;
     case "text":
       return <TextPart text={part.text} isAnimating={loading} onClickCitation={onClickCitation} />;
     case "image":

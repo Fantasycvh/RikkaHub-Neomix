@@ -131,6 +131,15 @@ class ScheduledTaskRepository(
 
     suspend fun markAssistantGone(id: String) = dao.markAssistantGone(id)
 
+    suspend fun interruptOldApprovals(before: Long) = dao.interruptOldApprovals(before)
+
+    suspend fun runById(id: String) = dao.runById(id)
+
+    suspend fun finishWithEvidence(runId: String, status: String, evidence: RunEvidence, retries: Int = 0) =
+        dao.finishWithEvidence(runId, clock(), status, retries, evidence.memorySync, evidence.summary, evidence.receipts)
+
+    suspend fun retainedSources(taskId: String) = dao.retainedSources(taskId)
+
     /** NEW_EACH_RUN：记录本轮新建出来的会话 id（供列表/详情跳转） */
     suspend fun recordLastConversation(id: String, conversationId: String) =
         dao.recordLastConversation(id, conversationId)
@@ -152,6 +161,8 @@ class ScheduledTaskRepository(
             source = source,
             conversationId = conversationId,
             startedAt = startedAt,
+            memorySyncStatus = if (source == ScheduledTaskRunEntity.RunSource.SKIP) "disabled" else "unassessed",
+            runSummary = if (source == ScheduledTaskRunEntity.RunSource.SKIP) "Skipped trigger; no generation" else null,
         )
         dao.insertRun(run)
         dao.pruneRuns(taskId, RUNS_KEEP_PER_TASK)
