@@ -96,5 +96,23 @@ Android 15 隔离包的调试预览已实际启动并截图核验：文字红蓝
 侧栏、卡片布局的多段正文与附加信息顺序正常。调试入口为 `SketchTestHostActivity`
 的 `appearancePreview=true` Intent extra，仅 debug 包包含；截图生成于
 `app/build/reports/appearance/device-preview.png`，不提交构建产物。
-这项视觉核查不计为 instrumentation 自动化通过；前述测试启动限制仍然保留。
+这项视觉核查不计为 instrumentation 自动化通过；上述启动限制仅针对隔离包。
 测试使用独立 applicationId，验证后移除临时 APK，未覆盖用户现有应用。
+
+### 常规 debug instrumentation 复核
+
+已改用常规 `app.androidrik.rikkahub.debug` 与 `androidx.test.runner.AndroidJUnitRunner`
+执行 `ChatAppearanceRenderingTest`：**5 项全部通过，耗时 7.338 秒**。
+覆盖渐变气泡像素、图案/噪声纹理与稳定性、BetterText 字体渐变及显式前景色和渐变关闭、
+无色气泡透底、三种内置布局的正文顺序与操作回调。
+
+当前源码 `@Database(version = 64)` 与 `SCHEMA_VERSION = 64` 一致；本次没有修改数据库代码。
+安装前停止 debug 进程并备份数据库和设置，确认原库有效版本为 63；更新后开库成功，
+包含已提交 WAL 的有效版本为 64（主文件尚未 checkpoint），
+没有发生此前 WIP 分支的 schema 哨兵漂移。使用 `adb install -r` 保留数据，仅选择上述测试类，
+未调用 clear-data、卸载 debug 主包或 Gradle connected-test 的安装/清理流程。
+
+结果日志：`app/build/reports/appearance/regular-instrumentation.txt`。
+原数据备份：`app/build/reports/appearance/regular-debug-before-instrumentation.tar`（含本机数据，
+属于忽略的构建产物，不提交）。隔离包绑定失败的具体 ROM/过滤原因仍未确证；
+不能再把它描述为“设备无法运行 instrumentation”。无效的 queries 试验未保留。
