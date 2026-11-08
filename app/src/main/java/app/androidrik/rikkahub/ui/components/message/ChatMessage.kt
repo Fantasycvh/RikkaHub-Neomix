@@ -260,6 +260,7 @@ fun ChatMessage(
         body = {
             ProvideTextStyle(textStyle) {
                 MessagePartsBlock(
+                    messageId = message.id,
                     assistant = assistant,
                     role = message.role,
                     parts = message.parts,
@@ -387,6 +388,7 @@ fun ChatMessage(
 @OptIn(FlowPreview::class)
 @Composable
 private fun MessagePartsBlock(
+    messageId: Uuid,
     assistant: Assistant?,
     role: MessageRole,
     model: Model?,
@@ -444,10 +446,11 @@ private fun MessagePartsBlock(
     // 整轮折叠（docs/design/design-whole-turn-folding.md）：过程解说并进思考链、
     // 只留最后一次工具调用之后的文本作最终回答；关闭时保持旧行为。
     val wholeTurnFolding = settings.displaySetting.wholeTurnFolding
-    val groupedParts = remember(parts, role, wholeTurnFolding) {
-        parts.groupMessageParts(role = role, wholeTurnFolding = wholeTurnFolding)
+    val displayDocument = remember(messageId, parts, role, wholeTurnFolding) {
+        messageDisplayDocument(messageId, parts, role, wholeTurnFolding)
     }
-    groupedParts.fastForEach { block ->
+    displayDocument.body.fastForEach { section ->
+        val block = section.block
         when (block) {
             is MessagePartBlock.ThinkingBlock -> {
                 if (block.steps.isNotEmpty()) {
@@ -579,6 +582,7 @@ private fun MessagePartsBlock(
                                     modifier = if (animateSizeChanges) Modifier.animateContentSize() else Modifier,
                                 ) {
                                     MarkdownBlock(
+                                        documentKey = section.textDocumentId,
                                         content = part.text.renderSafe(truncatedNotice).replaceRegexes(
                                             assistant = assistant,
                                             scope = if (user) AssistantAffectScope.USER else AssistantAffectScope.ASSISTANT,

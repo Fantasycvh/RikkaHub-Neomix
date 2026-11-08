@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -84,6 +85,7 @@ import me.rerere.bettertext.markdown.MarkdownInlineContent
 import me.rerere.bettertext.markdown.MarkdownTheme
 import me.rerere.bettertext.markdown.TableCell
 import me.rerere.bettertext.markdown.plainText
+import me.rerere.bettertext.markdown.rememberMarkdownRenderDocument
 import me.rerere.bettertext.text.BetterInline
 import me.rerere.bettertext.text.ComposableInline
 import me.rerere.bettertext.text.InlineAlign
@@ -112,6 +114,8 @@ fun MarkdownBlock(
     onClickCitation: (String) -> Unit = {},
     streaming: Boolean = false,
     textGradient: AppearanceGradient? = LocalChatTextGradient.current,
+    // Scope parser state by message + original text-part identity, independent of its content.
+    documentKey: Any? = null,
 ) {
     val displaySetting = LocalSettings.current.displaySetting
     val enableLatexRendering = displaySetting.enableLatexRendering
@@ -187,14 +191,16 @@ fun MarkdownBlock(
     }
     // 插槽里的组件（代码块、表格工具栏等）用 Material 的 Text，让它们也拿到正文样式
     ProvideTextStyle(resolved) {
-        BetterMarkdown(
-            content = normalizedContent,
-            modifier = modifier.padding(horizontal = 4.dp),
-            style = resolved,
-            theme = theme,
-            components = components,
-            streaming = streaming,
-        )
+        key(documentKey) {
+            val document = rememberMarkdownRenderDocument(normalizedContent, streaming = streaming)
+            BetterMarkdown(
+                document = document.document,
+                modifier = modifier.padding(horizontal = 4.dp),
+                style = resolved,
+                theme = theme,
+                components = components,
+            )
+        }
     }
 }
 

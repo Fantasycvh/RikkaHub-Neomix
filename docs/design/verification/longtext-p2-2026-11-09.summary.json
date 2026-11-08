@@ -1,0 +1,206 @@
+{
+  "phase": "P2",
+  "code_base": "6878aa9ba",
+  "device": "PJX110 Android 15",
+  "upstream_commit": "46324cfb1da1bba043d5ba75ea09b2f1ada06f17",
+  "jvm_tests_passed": 70,
+  "unique_device_tests_passed": 7,
+  "final_projection_device_tests_passed": 2,
+  "parser_snapshot_cases_equal": 40,
+  "snapshot_sha256": {
+    "old": "f367ff6d63c3905e8b392294f9d5ec866535e8777e1d8e244c2fa1fd93e46b57",
+    "final": "f367ff6d63c3905e8b392294f9d5ec866535e8777e1d8e244c2fa1fd93e46b57"
+  },
+  "cohorts": [
+    {
+      "run_id": "p2_before_mixed50k_20261109",
+      "provenance": {
+        "git_revision": "6878aa9ba4fa9f995af798067b1a84cd361525c9",
+        "utc": "2026-11-08T17:35:49.220944+00:00",
+        "target_artifact_origin": "F:\\build\\projects\\RikkaHub-Neomix\\_measure\\longtext\\p1_handoff_after_20261109",
+        "target_git_revision": "5d9cb28d7d3c1697ca54dd3fe0bb87a558aff7f4",
+        "apk_sha256": "904e22db058f4b456c039a4b45c7c032797392a444e392e7ebd9b0c9dd6f4be4",
+        "test_apk_sha256": "6d19c24e67d5965f9af501e39ceb97c0dee779ee838f8946cf3e9bf358c73f6f",
+        "rows": 6,
+        "expected_rows": 6
+      },
+      "summary": [
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 132,
+          "frame_p95_ms": 31.860504,
+          "frame_p99_ms": 44.873134,
+          "layout_p95_ms": 0.084063,
+          "deadline_miss_percent": 15.909090909090908,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 150.7373809814453,
+          "pss_before_mib": 574.01953125,
+          "pss_after_mib": 576.9306640625,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2162736,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "stream",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 269,
+          "frame_p95_ms": 219.696623,
+          "frame_p99_ms": 268.58013,
+          "layout_p95_ms": 0.053906,
+          "deadline_miss_percent": 20.0,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 206.70762634277344,
+          "pss_before_mib": 564.421875,
+          "pss_after_mib": 514.90625,
+          "gc_count_delta": 1,
+          "allocated_bytes_delta": 110641248,
+          "stream_update_interval_p95_ms": 288.109479,
+          "callback_drops": 0
+        }
+      ]
+    },
+    {
+      "run_id": "p2_after_reuse_mixed50k_20261109",
+      "provenance": {
+        "git_revision": "6878aa9ba4fa9f995af798067b1a84cd361525c9",
+        "utc": "2026-11-08T17:43:59.562968+00:00",
+        "apk_sha256": "41d3f12cc9e27985006ad444de94911ded058490ba1d149fd13296c0c2bed04b",
+        "test_apk_sha256": "e7babcfd3f99a10df9adbdbcca1d02e6c317692948725902e332bb0912372e76",
+        "rows": 6,
+        "expected_rows": 6
+      },
+      "summary": [
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 129,
+          "frame_p95_ms": 37.263568,
+          "frame_p99_ms": 58.652994,
+          "layout_p95_ms": 0.082187,
+          "deadline_miss_percent": 19.84732824427481,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 146.4756622314453,
+          "pss_before_mib": 571.349609375,
+          "pss_after_mib": 573.3046875,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2269232,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "stream",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 290,
+          "frame_p95_ms": 205.213054,
+          "frame_p99_ms": 335.409186,
+          "layout_p95_ms": 0.051822,
+          "deadline_miss_percent": 18.14814814814815,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 211.8437042236328,
+          "pss_before_mib": 557.619140625,
+          "pss_after_mib": 506.341796875,
+          "gc_count_delta": 1,
+          "allocated_bytes_delta": 111960160,
+          "stream_update_interval_p95_ms": 357.573438,
+          "callback_drops": 0
+        }
+      ]
+    },
+    {
+      "run_id": "p2_static_before_recheck_20261109",
+      "provenance": {
+        "git_revision": "6878aa9ba4fa9f995af798067b1a84cd361525c9",
+        "utc": "2026-11-08T17:46:38.118547+00:00",
+        "target_artifact_origin": "F:\\build\\projects\\RikkaHub-Neomix\\_measure\\longtext\\p2_before_mixed50k_20261109",
+        "target_git_revision": "5d9cb28d7d3c1697ca54dd3fe0bb87a558aff7f4",
+        "apk_sha256": "904e22db058f4b456c039a4b45c7c032797392a444e392e7ebd9b0c9dd6f4be4",
+        "test_apk_sha256": "6d19c24e67d5965f9af501e39ceb97c0dee779ee838f8946cf3e9bf358c73f6f",
+        "rows": 3,
+        "expected_rows": 3
+      },
+      "summary": [
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 128,
+          "frame_p95_ms": 31.375716,
+          "frame_p99_ms": 43.428127,
+          "layout_p95_ms": 0.088854,
+          "deadline_miss_percent": 20.3125,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 146.5928497314453,
+          "pss_before_mib": 569.765625,
+          "pss_after_mib": 571.58984375,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2035760,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        }
+      ]
+    },
+    {
+      "run_id": "p2_static_after_recheck_20261109",
+      "provenance": {
+        "git_revision": "6878aa9ba4fa9f995af798067b1a84cd361525c9",
+        "utc": "2026-11-08T17:47:58.590969+00:00",
+        "target_artifact_origin": "F:\\build\\projects\\RikkaHub-Neomix\\_measure\\longtext\\p2_after_reuse_mixed50k_20261109",
+        "target_git_revision": "6878aa9ba4fa9f995af798067b1a84cd361525c9",
+        "apk_sha256": "41d3f12cc9e27985006ad444de94911ded058490ba1d149fd13296c0c2bed04b",
+        "test_apk_sha256": "e7babcfd3f99a10df9adbdbcca1d02e6c317692948725902e332bb0912372e76",
+        "rows": 3,
+        "expected_rows": 3
+      },
+      "summary": [
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 127,
+          "frame_p95_ms": 27.119552,
+          "frame_p99_ms": 47.193095,
+          "layout_p95_ms": 0.094322,
+          "deadline_miss_percent": 20.610687022900763,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 146.9873809814453,
+          "pss_before_mib": 572.181640625,
+          "pss_after_mib": 573.357421875,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2138160,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        }
+      ]
+    }
+  ]
+}
