@@ -240,6 +240,11 @@ data class Settings(
     val recordRequestsEnabled: Boolean = false,
     /** 触发阈值：占用达到模型窗口的百分比时触发（默认 80） */
     val autoCompressThresholdPercent: Int = DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
+    /**
+     * 上下文图片清单上限（默认 20，0 = 关闭）：请求窗口只保留最近 N 张图片，更旧的换成
+     * 占位文本、模型可用 view_image 按路径取回（借鉴 NMoi D248/D272，只影响请求不影响落库）。
+     */
+    val contextImageLimit: Int = DEFAULT_CONTEXT_IMAGE_LIMIT,
     /** 保留比例：尾部原文占窗口的百分比（默认 40） */
     val autoCompressRetainPercent: Int = DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
 

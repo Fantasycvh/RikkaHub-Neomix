@@ -119,5 +119,15 @@ const val DEFAULT_WORKSPACE_TURN_MAX_STEPS = 64
 const val DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS = 2
 const val DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES = 30
 
+/**
+ * 上下文图片清单上限（借鉴 NMoi D248，台账 `docs/references/other projects/nmoi-agent.md` §13.4）。
+ * 请求窗口里保留的最近图片张数；超出的在**请求组装时**换成占位文本（可被 view_image 取回）。
+ * 0 = 关闭淘汰（历史行为）。
+ */
+const val DEFAULT_CONTEXT_IMAGE_LIMIT = 20
+
+/** [DEFAULT_CONTEXT_IMAGE_LIMIT] 的合法范围（设置页钳制口径）。 */
+val CONTEXT_IMAGE_LIMIT_RANGE: IntRange = 0..500
+
 /** 默认预设主题 id（= ui 侧 SakuraThemePreset 的 id）。批次 11 起 data 层不再引用 ui.theme 的 PresetThemes 取默认值，预设清单仍是 ui 的展示概念；持久化默认值只需这个稳定字符串。 */
 const val DEFAULT_THEME_ID = "sakura"

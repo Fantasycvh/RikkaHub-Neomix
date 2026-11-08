@@ -429,6 +429,7 @@ class SettingsStore(
         val EXPORT_DISPLAY_CONFIG = stringPreferencesKey("export_display_config")
         val EXPORT_DISPLAY_SCHEMES = stringPreferencesKey("export_display_schemes")
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
+        val CONTEXT_IMAGE_LIMIT = intPreferencesKey("context_image_limit")
         // 自定义压缩配置档（用户命名、可增改删；单 key 存 JSON 列表，与 modeInjections 同款）
         val COMPRESS_PRESETS = stringPreferencesKey("compress_presets")
         // 导入来源记录（重复导入提示用；见 docs/design/design-conversation-import-export.md §十）
@@ -632,6 +633,8 @@ class SettingsStore(
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
                 contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
                 autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
+                contextImageLimit = (preferences[CONTEXT_IMAGE_LIMIT] ?: DEFAULT_CONTEXT_IMAGE_LIMIT)
+                    .coerceIn(0, 500),
                 loopGuardSensitivity = preferences[LOOP_GUARD_SENSITIVITY]
                     ?: app.androidrik.rikkahub.data.ai.LoopGuardSensitivity.STANDARD.name,
                 loopGuardRepeatLimit = (preferences[LOOP_GUARD_REPEAT_LIMIT] ?: 0).coerceIn(0, 20),
@@ -952,6 +955,7 @@ class SettingsStore(
                 preferences[CONTEXT_LENGTH_OVERRIDE] = it
             } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
             preferences[AUTO_COMPRESS_ENABLED] = settings.autoCompressEnabled
+            preferences[CONTEXT_IMAGE_LIMIT] = settings.contextImageLimit
             preferences[LOOP_GUARD_SENSITIVITY] = settings.loopGuardSensitivity
             preferences[LOOP_GUARD_REPEAT_LIMIT] = settings.loopGuardRepeatLimit.coerceIn(0, 20)
             preferences[RULE_REMINDER_ENABLED] = settings.ruleReminderEnabled

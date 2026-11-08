@@ -216,6 +216,7 @@ val appModule = module {
     single {
         ChatToolFactory(
             json = get(),
+            filesDirPath = get<android.content.Context>().filesDir.absolutePath,
             memoryRepository = get(),
             conversationRepository = get(),
             localTools = get(),

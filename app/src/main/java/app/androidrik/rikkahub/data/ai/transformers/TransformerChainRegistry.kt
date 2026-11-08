@@ -143,6 +143,7 @@ internal fun defaultTransformerChainRegistry(
         TransformerContribution("builtin.placeholder", TransformerStage.CORE, PlaceholderTransformer, allowPreview = true),
         TransformerContribution("builtin.document_prompt", TransformerStage.CORE, DocumentAsPromptTransformer, allowPreview = true),
         TransformerContribution("builtin.ocr", TransformerStage.CORE, OcrTransformer, false, previewLabel = "图片文字识别（OCR）"),
+        TransformerContribution("builtin.context_image_eviction", TransformerStage.CORE, ContextImageEvictionTransformer, allowPreview = true),
         TransformerContribution("builtin.quote", TransformerStage.CORE, QuoteTransformer, allowPreview = true),
         TransformerContribution("builtin.template", TransformerStage.TEMPLATE, template, allowPreview = true),
         TransformerContribution("builtin.workspace_reminder", TransformerStage.WORKSPACE, workspaceReminder, false, previewLabel = "工作区环境提醒"),

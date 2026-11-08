@@ -62,6 +62,7 @@ import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
+import app.androidrik.rikkahub.data.datastore.CONTEXT_IMAGE_LIMIT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.clamped
 import app.androidrik.rikkahub.ui.components.ai.CompressPresetManageDialog
 import app.androidrik.rikkahub.ui.components.ai.CompressPresetSelector
@@ -283,6 +284,47 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 settings = settings,
                 vm = vm,
             )
+        }
+        item {
+            ContextImageLimitSetting(
+                settings = settings,
+                vm = vm,
+            )
+        }
+    }
+}
+
+/**
+ * 上下文图片清单上限（借鉴 NMoi D248/D272）：请求窗口只保留最近 N 张图片，更旧的换成
+ * 占位文本、模型可用 view_image 按路径取回。只影响发送的请求、不动落库与 UI。
+ * 0 = 关闭淘汰（历史行为）。
+ */
+@Composable
+private fun ContextImageLimitSetting(
+    settings: Settings,
+    vm: SettingVM,
+) {
+    CardGroup(title = { Text("上下文图片") }) {
+        item {
+            Column(
+                modifier = Modifier.padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                NumericSettingField(
+                    label = "图片保留张数（0 = 不淘汰）",
+                    value = settings.contextImageLimit,
+                    range = CONTEXT_IMAGE_LIMIT_RANGE,
+                    onValueChange = {
+                        vm.updateSettings(settings.copy(contextImageLimit = it))
+                    },
+                )
+                Text(
+                    text = "长会话里更早的图片会在发送时移出上下文，替换为带路径的占位文本；" +
+                        "模型需要时可通过 view_image 工具把图片取回。不影响聊天记录里的原图。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }

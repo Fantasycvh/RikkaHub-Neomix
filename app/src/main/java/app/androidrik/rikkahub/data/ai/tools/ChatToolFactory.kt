@@ -81,6 +81,8 @@ internal fun memoryToolNeedsApproval(assistant: Assistant, action: String): Bool
  */
 class ChatToolFactory(
     private val json: Json,
+    /** 应用私有目录（view_image 工具的路径白名单根，见 [createViewImageTool]） */
+    private val filesDirPath: String,
     private val memoryRepository: MemoryRepository,
     private val conversationRepository: ConversationRepository,
     private val localTools: LocalTools,
@@ -248,6 +250,12 @@ class ChatToolFactory(
                     needsApproval = { action -> memoryToolNeedsApproval(assistant, action) },
                 ),
             )
+        }
+
+        // 上下文图片淘汰的取回工具（借鉴 NMoi D248）：只在淘汰开启时装配——关闭时窗口里
+        // 没有占位路径，schema 白吃 token。与 ContextImageEvictionTransformer 配对。
+        if (settings.contextImageLimit > 0) {
+            segments += ToolSegment(ToolSource.Local, listOf(createViewImageTool(filesDirPath)))
         }
 
         if (shouldUseExternalWebSearch(assistant, model)) {
