@@ -100,6 +100,11 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 > 3. AlertDialog 放多字段表单：对话框窗口不与 IME insets 协调，内容高于可见区会被遮挡且
 >    「滚动到光标」引发整体抖动。内容必须 `verticalScroll + imePadding`；字段多到需要滚动
 >    就升级为 sheet 或整页。
+> 4. **状态流向单向**（借鉴 BiliPai `0125561e6`，台账 bilipai.md 2026-11-08 增量候选 2；
+>    与上面 1–3 的宿主拓扑规范互补，管的是状态流不是宿主）：`TextFieldState`/编辑器内部
+>    状态是**编辑态唯一权威**，VM/数据层字段只是它的投影——`snapshotFlow { text }` 单向
+>    同步出去；程序化回填必须**先比较、后 `setTextAndPlaceCursorAtEnd`（或等价 API）**，
+>    绝不向活跃 IME 会话回写。本仓历史坑「input text 丢字符」「整对象写丢更新」即同族病。
 >
 > 回归审计：`python scripts/audit_ime_trap.py`（A/A' 类命中即失败；C 类仅告警）。
 
