@@ -97,7 +97,14 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          # key 只收口到真正决定 Gradle 环境的文件（wrapper 版本/依赖目录/JVM/根脚本）：
+          # app/build.gradle.kts 的 versionCode/versionName 随发版必变，旧模式 `**/*.gradle*`
+          # 把它算进 key ⇒ 每次发版缓存全冷、强制重下 Gradle 发行包（2026-11-08 daily
+          # build 因此两连挂：bump 改 key → 冷缓存 → gradle-9.6.0-bin.zip 下载 504）。
+          # restore-keys 前缀兜底：新 key 冷启动时捡回最近一份旧缓存，不再裸下载。
+          key: ${{ runner.os }}-gradle-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', 'gradle/libs.versions.toml', 'gradle/gradle-daemon-jvm.properties', 'settings.gradle.kts', 'build.gradle.kts') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Prepare build files
         env:
