@@ -26,6 +26,12 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.focus.FocusDirection
@@ -147,7 +153,7 @@ class LongTextBaselineTest {
         val iterations = arguments.getString("iterations", "3").toInt().also { require(it in 1..10) }
         val animation = arguments.getString("animation", "true").toBooleanStrict()
         require(kinds.all { it in LongTextFixtures.kinds } && sizes.all { it in LongTextFixtures.sizes })
-        require(modes.all { it in setOf("scroll", "stream", "edit_inline", "edit_full") })
+        require(modes.all { it in setOf("scroll", "stream", "edit_inline", "edit_full", "edit_handoff_full") })
         ActivityScenario.launch<SketchTestHostActivity>(android.content.Intent(context, SketchTestHostActivity::class.java)).use { scenario ->
             scenario.onActivity {
                 activity = it
@@ -169,6 +175,11 @@ class LongTextBaselineTest {
                     awaitDraw(requireNotNull(activity).window) {}
                     val openMs = (System.nanoTime() - opened) / 1e6
                     SystemClock.sleep(750) // settle initial parsing/window animations outside the measured workload
+                    if (mode == "edit_handoff_full") {
+                        focusEditor(current, requireNotNull(activity).window)
+                        openFullScreen()
+                        SystemClock.sleep(750)
+                    }
                     val window = currentWindow(mode)
                     instrumentation.runOnMainSync {
                         window.attributes = window.attributes.apply { preferredRefreshRate = 60f }
@@ -272,7 +283,7 @@ class LongTextBaselineTest {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                 when (current.mode) {
                     "edit_full" -> FullScreenEditor(current.input) {}
-                    "edit_inline" -> ChatInput(
+                    "edit_inline", "edit_handoff_full" -> ChatInput(
                         state = current.input, loading = false, settings = current.settings,
                         hazeState = current.haze, enableSearch = false, onToggleSearch = {},
                         onUpdateChatModel = {}, onUpdateAssistant = {}, onUpdateSearchService = {},
@@ -297,7 +308,7 @@ class LongTextBaselineTest {
     }
 
     private fun focusEditor(current: Scene, window: Window) {
-        if (current.mode == "edit_full") {
+        if (current.mode == "edit_full" || (current.mode == "edit_handoff_full" && window !== activity?.window)) {
             // The full-screen editor's body occupies this point, below its Save toolbar.
             val view = window.decorView
             val location = IntArray(2)
@@ -315,7 +326,7 @@ class LongTextBaselineTest {
             var connected = false
             instrumentation.runOnMainSync {
                 connected = window.decorView.findFocus()?.onCreateInputConnection(android.view.inputmethod.EditorInfo()) != null
-                if (!connected && current.mode == "edit_inline") current.focusManager!!.moveFocus(FocusDirection.Next)
+                if (!connected && current.mode in setOf("edit_inline", "edit_handoff_full")) current.focusManager!!.moveFocus(FocusDirection.Next)
             }
             if (connected) { SystemClock.sleep(750); return }
             SystemClock.sleep(50)
@@ -324,7 +335,7 @@ class LongTextBaselineTest {
     }
 
     private fun currentWindow(mode: String): Window {
-        if (mode != "edit_full") return requireNotNull(activity).window
+        if (mode !in setOf("edit_full", "edit_handoff_full")) return requireNotNull(activity).window
         fun find(view: View): Window? {
             if (view is DialogWindowProvider) return view.window
             if (view is ViewGroup) for (index in 0 until view.childCount) find(view.getChildAt(index))?.let { return it }
@@ -335,6 +346,30 @@ class LongTextBaselineTest {
             found = WindowInspector.getGlobalWindowViews().firstNotNullOfOrNull(::find)
         }
         return checkNotNull(found) { "Compose dialog window missing; activity-window metrics would be invalid" }
+    }
+
+    /** In-process semantics only, outside measurement; never export a long text through accessibility. */
+    private fun openFullScreen() {
+        fun root(view: View): ViewRootForTest? {
+            if (view is ViewRootForTest) return view
+            if (view is ViewGroup) for (index in 0 until view.childCount) root(view.getChildAt(index))?.let { return it }
+            return null
+        }
+        fun nodes(node: SemanticsNode): Sequence<SemanticsNode> = sequence {
+            yield(node)
+            for (child in node.children) yieldAll(nodes(child))
+        }
+        instrumentation.runOnMainSync {
+            val semantics = checkNotNull(root(requireNotNull(activity).window.decorView)).semanticsOwner
+            val input = nodes(semantics.unmergedRootSemanticsNode)
+                .single { it.config.getOrNull(SemanticsProperties.TestTag) == "chat_input" }
+            // With no quick messages, the field has exactly one button: Expand. Works on P0 too.
+            val expand = nodes(input).single {
+                it.config.getOrNull(SemanticsProperties.Role) == Role.Button &&
+                    it.config.getOrNull(SemanticsActions.OnClick)?.action != null
+            }
+            check(expand.config[SemanticsActions.OnClick].action!!.invoke())
+        }
     }
 
     /** Returns action dispatch -> end of next draw, an input proxy, not IME composition/display photon latency. */

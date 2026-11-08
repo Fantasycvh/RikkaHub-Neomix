@@ -1,6 +1,5 @@
 package app.androidrik.rikkahub.ui.components.ai.completion
 
-import androidx.compose.ui.text.TextRange
 import kotlinx.coroutines.CancellationException
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.File02
@@ -27,7 +26,7 @@ class WorkspaceCompletionProvider(
 
     override suspend fun complete(context: ChatCompletionContext): ChatCompletionList? {
         if (workspaceId.isNullOrBlank() || context.hasSelection) return null
-        val mention = findWorkspaceMention(context.text, context.cursor) ?: return null
+        val mention = findWorkspaceMention(context) ?: return null
         if (!loadWorkspace(workspaceId)) return null
         val query = mention.query.normalizeWorkspaceQuery()
         val absoluteQuery = mention.query.isWorkspaceAbsoluteQuery()
@@ -265,29 +264,6 @@ class WorkspaceCompletionProvider(
             else -> this
         }
     }
-
-    private data class WorkspaceMention(
-        val query: String,
-        val range: TextRange,
-    )
-
-    private fun findWorkspaceMention(text: String, cursor: Int): WorkspaceMention? {
-        if (cursor < 0 || cursor > text.length) return null
-        val prefix = text.substring(0, cursor)
-        val start = prefix.lastIndexOf('@')
-        if (start < 0) return null
-        if (start > 0 && !text[start - 1].isMentionBoundary()) return null
-
-        val query = prefix.substring(start + 1)
-        if (query.any { it.isWhitespace() }) return null
-        return WorkspaceMention(
-            query = query,
-            range = TextRange(start, cursor),
-        )
-    }
-
-    private fun Char.isMentionBoundary(): Boolean =
-        isWhitespace() || this in "([{<\"'"
 
     companion object {
         private const val MAX_COMPLETION_ITEMS = 8

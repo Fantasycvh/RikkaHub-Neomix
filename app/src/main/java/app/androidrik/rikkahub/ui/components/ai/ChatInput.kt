@@ -67,6 +67,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -91,7 +95,9 @@ import com.dokar.sonner.ToastType
 import dev.chrisbanes.haze.HazeState
 import app.androidrik.rikkahub.ui.components.haze.chatInputBackgroundEffect
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessageAnnotation
@@ -123,6 +129,7 @@ import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionContext
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionItem
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionList
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionProvider
+import app.androidrik.rikkahub.ui.components.ai.completion.completionContext
 import app.androidrik.rikkahub.ui.components.message.MessageQuoteCard
 import app.androidrik.rikkahub.ui.components.ui.KeepScreenOn
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
@@ -715,7 +722,15 @@ private fun TextInputRow(
 
         var isFocused by remember { mutableStateOf(false) }
         var isFullScreen by remember { mutableStateOf(false) }
+        val inlineScrollState = rememberScrollState()
+        val fullScreenScrollState = rememberScrollState()
+        val inputFocusRequester = remember { FocusRequester() }
+        var restoreInputFocus by remember { mutableStateOf(false) }
+        var inlineHeightPx by remember { mutableStateOf(0) }
+        val density = LocalDensity.current
+        val focusManager = LocalFocusManager.current
         var completionList by remember { mutableStateOf<ChatCompletionList?>(null) }
+        var completionRequest by remember { mutableStateOf<ChatCompletionContext?>(null) }
         val attachmentToaster = LocalToaster.current
         val receiveContentListener = remember(
             settings.displaySetting.pasteLongTextAsFile, settings.displaySetting.pasteLongTextThreshold
@@ -754,29 +769,33 @@ private fun TextInputRow(
             }
         }
 
-        LaunchedEffect(completionProviders, isFocused) {
-            if (!isFocused || completionProviders.isEmpty()) {
+        LaunchedEffect(completionProviders, isFocused, isFullScreen) {
+            if (!isFocused || isFullScreen || completionProviders.isEmpty()) {
                 completionList = null
+                completionRequest = null
                 return@LaunchedEffect
             }
 
             snapshotFlow {
-                ChatCompletionContext(
-                    text = state.textContent.text.toString(),
-                    selection = state.textContent.selection,
-                )
+                completionContext(state.textContent.text, state.textContent.selection)
             }.collectLatest { context ->
-                val lists = completionProviders.mapNotNull { provider ->
-                    try {
-                        provider.complete(context)
-                            ?.takeIf { it.items.isNotEmpty() }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        null
+                completionList = null
+                completionRequest = null
+                if (context == null) return@collectLatest
+                val lists = withContext(Dispatchers.Default) {
+                    completionProviders.mapNotNull { provider ->
+                        try {
+                            provider.complete(context)
+                                ?.takeIf { it.items.isNotEmpty() }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            null
+                        }
                     }
                 }
                 val primary = lists.firstOrNull()
+                completionRequest = context
                 completionList = primary?.let { list ->
                     val mergedItems = lists
                         .filter { it.replacementRange == list.replacementRange }
@@ -794,20 +813,34 @@ private fun TextInputRow(
         }
 
         completionList?.takeIf { it.items.isNotEmpty() }?.let { list ->
+            val request = completionRequest
             CompletionPopup(
                 completionList = list,
                 onItemClick = { item ->
-                    state.applyCompletion(list.replacementRange, item)
+                    if (request != null && request == completionContext(state.textContent.text, state.textContent.selection)) {
+                        state.applyCompletion(list.replacementRange, item)
+                    }
                     completionList = null
                 },
             )
         }
 
-        TextField(
+        LaunchedEffect(isFullScreen, restoreInputFocus) {
+            if (!isFullScreen && restoreInputFocus) {
+                inputFocusRequester.requestFocus()
+                restoreInputFocus = false
+            }
+        }
+        // Both hosts share TextFieldState, but only one may observe/layout it at a time.
+        // Keep each host's scroll state outside this branch so switching does not reset it.
+        if (!isFullScreen) TextField(
             state = state.textContent,
+            scrollState = inlineScrollState,
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("chat_input")
+                .focusRequester(inputFocusRequester)
+                .onSizeChanged { inlineHeightPx = it.height }
                 .contentReceiver(receiveContentListener)
                 .onFocusChanged {
                     isFocused = it.isFocused
@@ -835,8 +868,11 @@ private fun TextInputRow(
             trailingIcon = {
                 if (isFocused) {
                     IconButton(
+                        modifier = Modifier.testTag("chat_input_expand"),
                         onClick = {
-                            isFullScreen = !isFullScreen
+                            focusManager.clearFocus()
+                            completionList = null
+                            isFullScreen = true
                         }) {
                         Icon(HugeIcons.FullScreen, null)
                     }
@@ -847,10 +883,11 @@ private fun TextInputRow(
                     QuickMessageButton(quickMessages = quickMessages, state = state)
                 }
             } else null,
-        )
+        ) else Spacer(Modifier.height(with(density) { inlineHeightPx.toDp() }))
         if (isFullScreen) {
-            FullScreenEditor(state = state) {
+            FullScreenEditor(state = state, scrollState = fullScreenScrollState) {
                 isFullScreen = false
+                restoreInputFocus = true
             }
         }
     }

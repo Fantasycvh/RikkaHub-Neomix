@@ -70,6 +70,23 @@ Java heap 峰值是工作负载步骤间稀疏采样，PSS 仅记录场景前后
 
 未来 P1 用相同脚本重测编辑场景；P3/P4 重测滚动与流式场景。工作区补全当前不启用，因此它的优化收益需要增补相应工作区样本后再评价。
 
+### P1 补充：实际全屏切换
+
+`edit_full` 直接挂载全屏编辑器，不覆盖聊天输入框背后的宿主开销。新增可选场景 `edit_handoff_full`：挂载生产 `ChatInput`，取得焦点，通过进程内 Compose semantics 点击展开，随后在实际 Dialog Window 上执行与 P0 相同的选区/输入负载。窗口切换与初始稳定等待不计入稳态指标，不创建无障碍服务或导出长文本节点树。默认 P0 矩阵不变。
+
+```powershell
+# 复测当前版本的真实全屏路径：
+python scripts/longtext_baseline.py run --shared-package --sizes 10000,50000,100000 --kinds prose --scenarios edit_handoff_full
+
+# 原样重放已归档的 application/test APK 配对（两者 SHA-256 均需匹配 metadata）：
+python scripts/longtext_baseline.py run --shared-package --reference-run _measure/longtext/REFERENCE --scenarios edit_inline,edit_full
+
+# 已构建当前测试 APK，给旧目标应用增加相同的 handoff 驱动：
+python scripts/longtext_baseline.py run --shared-package --reference-run _measure/longtext/REFERENCE --current-handoff-driver --scenarios edit_handoff_full
+```
+
+`--current-handoff-driver` 仅允许 `edit_handoff_full`，该路径调用的 `ChatInput` 接口在 P0/P1 间保持一致，绕过已改签名的独立 `FullScreenEditor` 入口。它不会自动构建测试 APK，需事先 `:app:assembleDebugAndroidTest -PlongTextBaseline=shared`；其他旧版应用不能据此推定 ABI 兼容。元数据分别保存目标来源/revision、当前源文件快照及实际安装的两份 APK hash。较早的 P0 metadata 未记录测试 APK hash，应使用已核对并归档两份 hash 的后续重放记录。
+
 旧 schema=1 诊断流程通过 accessibility 节点查找/选区，曾采到 78/108 行后在设备的无障碍事件发送链路触发 JNI Abort（pending `DeadSystemRuntimeException`）；单独新进程 10 万字编辑可通过。按样本分进程仍出现同类中止，因此更换驱动协议。旧数据与日志保留为诊断证据，不作为完整基线，也不据此判断应用正常使用必然崩溃。
 
 参考：[FrameMetrics](https://developer.android.com/reference/android/view/FrameMetrics)、[UiAutomation 的无障碍开销控制](https://developer.android.com/reference/android/app/UiAutomation#FLAG_DONT_USE_ACCESSIBILITY)、[Release Macrobenchmark 的构建要求](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-overview)。

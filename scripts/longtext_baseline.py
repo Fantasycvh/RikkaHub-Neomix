@@ -120,6 +120,8 @@ def write_report(directory, rows):
 
 
 def run(args):
+    if args.current_handoff_driver and not args.reference_run:
+        raise ValueError("--current-handoff-driver requires --reference-run")
     package = "app.androidrik.rikkahub.debug" if args.shared_package else PACKAGE
     adb = args.adb or shutil.which("adb")
     if not adb:
@@ -155,18 +157,40 @@ def run(args):
     }.items():
         (directory / f"{label}.txt").write_bytes(command(adb_cmd + ["shell"] + shell).stdout)
     try:
-        if not args.skip_build:
+        if not args.skip_build and not args.reference_run:
             gradle = ROOT / ("gradlew.bat" if sys.platform == "win32" else "gradlew")
             with (directory / "build.log").open("wb") as log:
                 subprocess.run([str(gradle), ":app:assembleDebug", ":app:assembleDebugAndroidTest",
                                 "-PlongTextBaseline=" + ("shared" if args.shared_package else "true"), "--console=plain"], cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, check=True)
-        main = ROOT / "app/build/outputs/apk/debug/output-metadata.json"
-        test = ROOT / "app/build/outputs/apk/androidTest/debug/output-metadata.json"
-        main_meta, test_meta = json.loads(main.read_text()), json.loads(test.read_text())
-        if main_meta["applicationId"] != package or test_meta["applicationId"] != package + ".test":
-            raise ValueError("APK metadata is not isolated; rebuild with -PlongTextBaseline=true")
-        apk = main.parent / next(e["outputFile"] for e in main_meta["elements"] if not e["filters"])
-        test_apk = test.parent / test_meta["elements"][0]["outputFile"]
+        if args.reference_run:
+            reference = Path(args.reference_run).resolve()
+            reference_meta = json.loads((reference / "metadata.json").read_text(encoding="utf-8"))
+            if reference_meta["parameters"]["shared_package"] != args.shared_package:
+                raise ValueError("Reference package mode differs")
+            apk, test_apk = reference / "apks/application.apk", reference / "apks/tests.apk"
+            if hashlib.sha256(apk.read_bytes()).hexdigest() != reference_meta["apk_sha256"]:
+                raise ValueError("Reference application APK hash differs")
+            if hashlib.sha256(test_apk.read_bytes()).hexdigest() != reference_meta.get("test_apk_sha256"):
+                raise ValueError("Reference test APK hash differs")
+            metadata["target_artifact_origin"] = str(reference)
+            metadata["target_git_revision"] = reference_meta.get("target_git_revision", reference_meta["git_revision"])
+            if args.current_handoff_driver:
+                if args.scenarios != "edit_handoff_full":
+                    raise ValueError("Current driver with reference app supports only edit_handoff_full; other entry points may differ in ABI")
+                test_listing = ROOT / "app/build/outputs/apk/androidTest/debug/output-metadata.json"
+                current_test = json.loads(test_listing.read_text())
+                if current_test["applicationId"] != package + ".test":
+                    raise ValueError("Current test APK package differs; rebuild the matching baseline mode")
+                test_apk = test_listing.parent / current_test["elements"][0]["outputFile"]
+                metadata["driver_artifact_origin"] = "current_build_handoff_only"
+        else:
+            main = ROOT / "app/build/outputs/apk/debug/output-metadata.json"
+            test = ROOT / "app/build/outputs/apk/androidTest/debug/output-metadata.json"
+            main_meta, test_meta = json.loads(main.read_text()), json.loads(test.read_text())
+            if main_meta["applicationId"] != package or test_meta["applicationId"] != package + ".test":
+                raise ValueError("APK metadata is not isolated; rebuild with -PlongTextBaseline=true")
+            apk = main.parent / next(e["outputFile"] for e in main_meta["elements"] if not e["filters"])
+            test_apk = test.parent / test_meta["elements"][0]["outputFile"]
         metadata["apk_sha256"] = hashlib.sha256(apk.read_bytes()).hexdigest()
         metadata["test_apk_sha256"] = hashlib.sha256(test_apk.read_bytes()).hexdigest()
         artifacts = directory / "apks"
@@ -284,6 +308,8 @@ def main():
     execute.add_argument("--serial")
     execute.add_argument("--run-id")
     execute.add_argument("--skip-build", action="store_true")
+    execute.add_argument("--reference-run", help="Replay an archived run's application/test APK pair with new workload parameters")
+    execute.add_argument("--current-handoff-driver", action="store_true", help="Use current driver against reference app, only for ABI-compatible edit_handoff_full")
     execute.add_argument("--shared-package", action="store_true", help="OEM fallback: regular debug package, isolated Application/DB/settings")
     execute.add_argument("--single-process", action="store_true", help="Diagnostic only: reuse a process across fixtures; not comparable with the default")
     execute.add_argument("--sizes", default="10000,50000,100000")

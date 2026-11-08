@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.hooks
 import android.net.Uri
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.foundation.text.input.placeCursorAtEnd
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -35,6 +36,7 @@ class ChatInputState {
      * null = 取最后一个 Text part（单文本消息的历史行为）。
      */
     private var editingTextIndex: Int? = null
+    private var loadedEditingMessage: Uuid? = null
 
     /**
      * 编辑历史消息时「原附件 → 替换后的附件」。
@@ -54,16 +56,21 @@ class ChatInputState {
         editingAttachmentUrls = emptySet()
         replacedAttachments = emptyMap()
         editingTextIndex = null
+        loadedEditingMessage = null
     }
 
     fun isEditing() = editingMessage != null
 
     fun setMessageText(text: String) {
-        textContent.setTextAndPlaceCursorAtEnd(text)
+        if (!textContent.text.contentEquals(text)) textContent.setTextAndPlaceCursorAtEnd(text)
     }
 
     fun appendText(content: String) {
-        textContent.setTextAndPlaceCursorAtEnd(textContent.text.toString() + content)
+        if (content.isEmpty()) return
+        textContent.edit {
+            append(content)
+            placeCursorAtEnd()
+        }
     }
 
     /**
@@ -79,7 +86,12 @@ class ChatInputState {
             ?.takeIf { contents.getOrNull(it) is UIMessagePart.Text }
             ?: contents.indexOfLast { it is UIMessagePart.Text }
         val text = (resolvedIndex.takeIf { it >= 0 }?.let { contents[it] } as? UIMessagePart.Text)?.text ?: ""
-        textContent.setTextAndPlaceCursorAtEnd(text)
+        // Equal text may skip the buffer update, but must not carry undo across editing targets.
+        if (editingMessage != loadedEditingMessage || resolvedIndex.takeIf { it >= 0 } != editingTextIndex) {
+            textContent.undoState.clearHistory()
+        }
+        setMessageText(text)
+        loadedEditingMessage = editingMessage
         messageContent = contents.filter { it.isEditableAttachment() }
         editingParts = contents
         editingTextIndex = resolvedIndex.takeIf { it >= 0 }

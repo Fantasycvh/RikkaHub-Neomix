@@ -4,6 +4,8 @@ package app.androidrik.rikkahub.ui.components.ai
 // 与主输入共享 state.textContent，纯搬）
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -21,10 +23,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -33,8 +40,11 @@ import app.androidrik.rikkahub.ui.hooks.ChatInputState
 
 @Composable
 internal fun FullScreenEditor(
-    state: ChatInputState, onDone: () -> Unit
+    state: ChatInputState,
+    scrollState: ScrollState = rememberScrollState(),
+    onDone: () -> Unit,
 ) {
+    val focusRequester = remember { FocusRequester() }
     BasicAlertDialog(
         onDismissRequest = {
             onDone()
@@ -65,6 +75,7 @@ internal fun FullScreenEditor(
                 ) {
                     Row {
                         TextButton(
+                            modifier = Modifier.testTag("chat_fullscreen_done"),
                             onClick = {
                                 onDone()
                             }) {
@@ -73,9 +84,12 @@ internal fun FullScreenEditor(
                     }
                     TextField(
                         state = state.textContent,
+                        scrollState = scrollState,
                         modifier = Modifier
                             .padding(bottom = 2.dp)
-                            .fillMaxSize(),
+                            .fillMaxSize()
+                            .testTag("chat_fullscreen_input")
+                            .focusRequester(focusRequester),
                         shape = RoundedCornerShape(32.dp),
                         placeholder = {
                             Text(stringResource(R.string.chat_input_placeholder))
@@ -90,6 +104,7 @@ internal fun FullScreenEditor(
                             unfocusedContainerColor = Color.Transparent,
                         ),
                     )
+                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
                 }
             }
         }
