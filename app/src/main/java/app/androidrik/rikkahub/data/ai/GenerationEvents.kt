@@ -6,7 +6,9 @@ import app.androidrik.ai.ui.UIMessage
 @Serializable
 sealed interface GenerationChunk {
     data class Messages(
-        val messages: List<UIMessage>
+        val messages: List<UIMessage>,
+        /** Only incremental content snapshots may be delayed; lifecycle/tool boundaries stay immediate. */
+        val coalescible: Boolean = false,
     ) : GenerationChunk
 
     /**

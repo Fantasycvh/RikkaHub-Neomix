@@ -527,8 +527,8 @@ class GenerationHandler(
                         frozenAnchorIds = frozenAnchorIds,
                         debugKey = debugKey,
                         sessionId = sessionId,
-                        onUpdateMessages = {
-                            messages = it.transforms(
+                        onUpdateMessages = { updated, coalescible ->
+                            messages = updated.transforms(
                                 transformers = outputTransformers,
                                 context = context,
                                 model = targetModel,
@@ -543,7 +543,8 @@ class GenerationHandler(
                                         model = targetModel,
                                         assistant = assistant,
                                         settings = settings
-                                    )
+                                    ),
+                                    coalescible = coalescible,
                                 )
                             )
                         },
@@ -1247,7 +1248,7 @@ class GenerationHandler(
          * 边界之前由检查点合成消息替代、边界之后取 live——见 [Conversation.CompressionWindow.applyTo]。
          */
         compressionWindow: Conversation.CompressionWindow? = null,
-        onUpdateMessages: suspend (List<UIMessage>) -> Unit,
+        onUpdateMessages: suspend (List<UIMessage>, Boolean) -> Unit,
         transformers: List<MessageTransformer>,
         model: Model,
         providerImpl: Provider<ProviderSetting>,
@@ -1404,7 +1405,7 @@ class GenerationHandler(
                 // 且 UI 会提前显示「终值」tok/s 卡片——新一步开始即清除
                 messages.lastOrNull()?.takeIf { it.finishedAt != null }?.let { last ->
                     messages = messages.dropLast(1) + last.copy(finishedAt = null)
-                    onUpdateMessages(messages)
+                    onUpdateMessages(messages, false)
                 }
                 // 快照：流中途失败时回滚已输出的部分内容，重试从干净状态重新生成
                 val snapshot = messages
@@ -1451,7 +1452,12 @@ class GenerationHandler(
                                     }
                                 }
                             }
-                            onUpdateMessages(messages)
+                            onUpdateMessages(
+                                messages,
+                                chunk is StreamChunk.TextDelta || chunk is StreamChunk.ReasoningDelta ||
+                                    chunk is StreamChunk.ToolCallDelta || chunk is StreamChunk.ServerToolInputDelta ||
+                                    chunk is StreamChunk.Usage,
+                            )
                             // 判定放在**本条已并入 messages 且已回调之后**：断流不丢已生成内容
                             val deltaVerdict = degenerationGuard?.onDelta(chunk.toGuardDelta())
                             if (deltaVerdict is ThinkingDegenerationGuard.Verdict.Repeating) {
@@ -1487,7 +1493,7 @@ class GenerationHandler(
                                 " — content may be truncated (finishReason=$finishReason)"
                         )
                     }
-                    onUpdateMessages(messages)
+                    onUpdateMessages(messages, false)
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
                     val plan = provider.retryOption ?: settings.retrySetting
@@ -1499,7 +1505,7 @@ class GenerationHandler(
                         throw GenerationPartialFailureException(e, messages)
                     }
                     messages = snapshot
-                    onUpdateMessages(messages)
+                    onUpdateMessages(messages, false)
                     throw e
                 }
             }
@@ -1514,7 +1520,7 @@ class GenerationHandler(
                 // 同流式路径：清上一步的 finishedAt + usage 按全轮口径累计
                 messages.lastOrNull()?.takeIf { it.finishedAt != null }?.let { last ->
                     messages = messages.dropLast(1) + last.copy(finishedAt = null)
-                    onUpdateMessages(messages)
+                    onUpdateMessages(messages, false)
                 }
                 val snapshot = messages
                 val roundBaseUsage = messages.last().usage ?: TokenUsage()
@@ -1550,11 +1556,11 @@ class GenerationHandler(
                         reason = result.finishReason?.takeIf { it.isNotBlank() && it != "unknown" },
                         incomplete = false,
                     )
-                    onUpdateMessages(messages)
+                    onUpdateMessages(messages, false)
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
                     messages = snapshot
-                    onUpdateMessages(messages)
+                    onUpdateMessages(messages, false)
                     throw e
                 }
             }

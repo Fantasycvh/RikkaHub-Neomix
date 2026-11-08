@@ -164,37 +164,34 @@ data class Conversation(
     }
 
     fun updateCurrentMessages(messages: List<UIMessage>): Conversation {
-        val newNodes = this.messageNodes.toMutableList()
-
+        // Streaming snapshots normally share every message except the active reply.
+        // Allocate candidate/node copies only where content actually changed.
+        var newNodes: MutableList<MessageNode>? = null
         messages.forEachIndexed { index, message ->
-            val node = newNodes
-                .getOrElse(index) { message.toMessageNode() }
-
-            val newMessages = node.messages.toMutableList()
-            var newMessageIndex = node.selectIndex
-            if (newMessages.any { it.id == message.id }) {
-                newMessages[newMessages.indexOfFirst { it.id == message.id }] = message
+            val node = messageNodes.getOrNull(index)
+            val newNode = if (node == null) {
+                message.toMessageNode()
             } else {
-                newMessages.add(message)
-                newMessageIndex = newMessages.lastIndex
+                val candidateIndex = node.messages.indexOfFirst { it.id == message.id }
+                // Updating an existing candidate preserves the current selection.
+                if (candidateIndex >= 0 && node.messages[candidateIndex] == message) {
+                    return@forEachIndexed
+                }
+                val candidates = node.messages.toMutableList()
+                if (candidateIndex >= 0) candidates[candidateIndex] = message else candidates.add(message)
+                node.copy(
+                    messages = candidates,
+                    selectIndex = if (candidateIndex >= 0) node.selectIndex else candidates.lastIndex,
+                )
             }
-
-            val newNode = node.copy(
-                messages = newMessages,
-                selectIndex = newMessageIndex
-            )
-
-            // 更新newNodes
-            if (index > newNodes.lastIndex) {
-                newNodes.add(newNode)
+            val updated = newNodes ?: messageNodes.toMutableList().also { newNodes = it }
+            if (index > updated.lastIndex) {
+                updated.add(newNode)
             } else {
-                newNodes[index] = newNode
+                updated[index] = newNode
             }
         }
-
-        return this.copy(
-            messageNodes = newNodes
-        )
+        return newNodes?.let { copy(messageNodes = it) } ?: this
     }
 
     // ---- 压缩检查点（设计见 docs/design/design-auto-compaction.md §4.1 三边界对齐）----

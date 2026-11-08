@@ -60,6 +60,22 @@ import kotlin.uuid.Uuid
  * 用例互相独立：三处修复各自回滚一次都能让对应用例变红（见类尾注释里的实测记录）。
  */
 class GenerationToolLoopTest {
+    @Test fun `streaming deltas can coalesce while finish boundaries stay immediate`() = runBlocking {
+        val provider = ScriptedProvider { _, _ -> textStep("complete text") }
+        val chunks = mutableListOf<GenerationChunk.Messages>()
+        handler(provider).generateText(
+            settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
+            model = model,
+            messages = listOf(UIMessage.user("hi")),
+            assistant = Assistant(chatModelId = model.id),
+            tools = emptyList(),
+        ).collect { if (it is GenerationChunk.Messages) chunks += it }
+        assertTrue(chunks.any { it.coalescible })
+        assertTrue(chunks.filter { it.messages.last().finishReason != null }.all { !it.coalescible })
+        assertFalse(chunks.last().coalescible)
+        assertEquals("complete text", chunks.last().messages.last().toText())
+    }
+
     @Test fun `waiting for background work commits the complete batch and ends without another model call`() {
         val wait = app.androidrik.rikkahub.data.ai.tools.createAwaitBackgroundTasksTool { listOf("run:pending") }
         val sibling = tool("independent") { listOf(UIMessagePart.Text("saved")) }

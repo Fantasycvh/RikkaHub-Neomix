@@ -73,6 +73,7 @@ import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
+import app.androidrik.rikkahub.data.ai.coalesceMessageUpdates
 import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.ai.withProviderErrorHint
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
@@ -1625,7 +1626,12 @@ class ChatService(
                     assistantId = assistant.id,
                     conversationId = conversationId,
                 ),
-            ).onCompletion {
+            ).coalesceMessageUpdates(onUndelivered = { pending ->
+                // Cancellation can interrupt a 50ms display window. Preserve its complete
+                // tail synchronously before completion/stop cleanup persists the conversation.
+                val current = getConversationFlow(conversationId).value
+                updateConversation(conversationId, current.updateCurrentMessages(pending.messages))
+            }).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
                     messageNodes = getConversationFlow(conversationId).value.messageNodes.map { node ->
@@ -2323,6 +2329,7 @@ class ChatService(
     private fun updateConversation(conversationId: Uuid, conversation: Conversation) {
         if (conversation.id != conversationId) return
         val session = getOrCreateSession(conversationId)
+        if (conversation === session.state.value) return
         checkFilesDelete(conversation, session.state.value)
         session.state.value = conversation
     }
