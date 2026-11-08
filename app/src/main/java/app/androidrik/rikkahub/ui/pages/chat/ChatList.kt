@@ -104,6 +104,7 @@ import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
 import app.androidrik.rikkahub.ui.components.ui.ScrollJumperBar
 import app.androidrik.rikkahub.ui.components.ui.Tooltip
 import app.androidrik.rikkahub.ui.hooks.ImeLazyListAutoScroller
+import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.theme.ChatFontProvider
 import app.androidrik.rikkahub.utils.collectConversationImageUrls
 import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
@@ -427,6 +428,7 @@ private fun ChatListNormal(
         }
 
         ChatFontProvider(displaySetting = settings.displaySetting, backdropState = glassHazeState) {
+            val appearance = rememberChatAppearance(settings.displaySetting)
             // 容器不再被顶栏 padding 挡住：列表与玻璃层都延伸到顶栏底下，
             // 滚动时消息从顶栏下穿过被 blur（顶栏消费 hazeState，见 ChatPage.TopBar）
             //
@@ -450,11 +452,11 @@ private fun ChatListNormal(
                 state = state,
                 // top 进 contentPadding 而非容器 padding：静止时首条消息仍从顶栏下缘起排，
                 // 滚动时消息可穿过顶栏被 blur（与 bottom 穿过输入栏同款）
-                contentPadding = PaddingValues(16.dp) +
+                contentPadding = PaddingValues(appearance.layout.listPaddingDp.dp) +
                     PaddingValues(top = innerPadding.calculateTopPadding()) +
                     PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(appearance.layout.listSpacingDp.dp),
                 modifier = Modifier
                     .fillMaxSize()
                     .hazeSourceCompat(state = hazeState),

@@ -19,7 +19,8 @@ data class ChatAppearancePreset(val id: String, val name: String, val appearance
 
 /** Native plugin extension, deliberately in UI like PluginToolUIRendererProvider. */
 interface PluginChatAppearanceProvider : RikkaPlugin {
-    val chatAppearancePresets: List<ChatAppearancePreset>
+    val chatAppearancePresets: List<ChatAppearancePreset> get() = emptyList()
+    val chatLayouts: List<ChatLayoutRenderer> get() = emptyList()
 }
 
 /** Namespaced, observable contributions. Closing an old handle cannot remove its replacement. */
@@ -76,11 +77,13 @@ fun ChatAppearanceProvider(display: DisplaySetting, content: @Composable () -> U
 fun installPluginChatAppearanceBridge(
     manager: PluginManager,
     registry: ChatAppearanceRegistry = ChatAppearanceRegistry.shared,
+    layoutRegistry: ChatLayoutRegistry = ChatLayoutRegistry.shared,
 ) {
     manager.addObserver(object : PluginLifecycleObserver {
         override suspend fun onPluginEnabled(plugin: RikkaPlugin, resources: PluginResources) {
             if (plugin is PluginChatAppearanceProvider) {
                 resources.register { registry.register(plugin.id, plugin.chatAppearancePresets) }
+                resources.register { layoutRegistry.register(plugin.id, plugin.chatLayouts) }
             }
         }
     })

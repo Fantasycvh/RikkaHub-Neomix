@@ -17,7 +17,13 @@ data class ChatAppearance(
             sizeRatio = typography.sizeRatio.bounded(0.5f, 2f, 1f),
             gradient = typography.gradient?.normalized(),
         ),
-        layout = layout.copy(messageGapDp = layout.messageGapDp.bounded(0f, 32f, 4f)),
+        layout = layout.copy(
+            messageGapDp = layout.messageGapDp.bounded(0f, 32f, 4f),
+            rendererId = layout.rendererId.takeIf { it.isNotBlank() && it.length <= 160 } ?: "builtin.standard",
+            contentWidthFraction = layout.contentWidthFraction.bounded(0.35f, 1f, 1f),
+            listSpacingDp = layout.listSpacingDp.bounded(0f, 40f, 12f),
+            listPaddingDp = layout.listPaddingDp.bounded(0f, 40f, 16f),
+        ),
         userBubble = userBubble.normalized(),
         assistantBubble = assistantBubble.normalized(),
     )
@@ -36,6 +42,11 @@ data class ChatTypography(
 data class ChatLayout(
     val userAlignEnd: Boolean = true,
     val messageGapDp: Float = 4f,
+    val rendererId: String = "builtin.standard",
+    val showHeader: Boolean = true,
+    val contentWidthFraction: Float = 1f,
+    val listSpacingDp: Float = 12f,
+    val listPaddingDp: Float = 16f,
 )
 
 @Serializable

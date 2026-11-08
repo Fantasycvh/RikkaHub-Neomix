@@ -21,6 +21,7 @@ import app.androidrik.rikkahub.data.model.ChatBubble
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
+import app.androidrik.rikkahub.ui.theme.ChatLayoutRegistry
 
 @Composable
 fun ChatAppearanceSettings(
@@ -30,6 +31,7 @@ fun ChatAppearanceSettings(
     onChange: ((ChatAppearance) -> ChatAppearance) -> Unit,
 ) {
     val presets by ChatAppearanceRegistry.shared.presets.collectAsState()
+    val layouts by ChatLayoutRegistry.shared.layouts.collectAsState()
     var editingUser by remember { mutableStateOf<Boolean?>(null) }
     var editingTypography by remember { mutableStateOf(false) }
     CardGroup(modifier = Modifier.padding(horizontal = 8.dp), title = { Text("聊天外观") }) {
@@ -45,6 +47,38 @@ fun ChatAppearanceSettings(
                 if (display.chatAppearancePresetId != null && presets.none { it.id == display.chatAppearancePresetId }) {
                     Text("方案暂不可用，已回退到自定义外观")
                 }
+            }
+        })
+        item(headlineContent = { Text("消息布局") }, supportingContent = {
+            Column {
+                Select(options = layouts.map { it.id },
+                    selectedOption = appearance.layout.rendererId.takeIf { id -> layouts.any { it.id == id } } ?: "builtin.standard",
+                    onOptionSelected = { value -> onChange { it.copy(layout = it.layout.copy(rendererId = value)) } },
+                    optionToString = { id -> layouts.firstOrNull { it.id == id }?.name ?: "标准" })
+                if (layouts.none { it.id == appearance.layout.rendererId }) Text("布局暂不可用，已回退到标准布局")
+            }
+        })
+        item(headlineContent = { Text("显示消息头部") }, trailingContent = {
+            Switch(checked = appearance.layout.showHeader, onCheckedChange = { value ->
+                onChange { it.copy(layout = it.layout.copy(showHeader = value)) }
+            })
+        })
+        item(headlineContent = { Text("正文最大宽度") }, supportingContent = {
+            Column {
+                Text("${(appearance.layout.contentWidthFraction * 100).toInt()}%")
+                Slider(value = appearance.layout.contentWidthFraction, valueRange = 0.35f..1f, onValueChange = { value ->
+                    onChange { it.copy(layout = it.layout.copy(contentWidthFraction = value)) }
+                })
+            }
+        })
+        item(headlineContent = { Text("消息之间的间距") }, supportingContent = {
+            AppearanceSlider(appearance.layout.listSpacingDp, 0f..40f) { value ->
+                onChange { it.copy(layout = it.layout.copy(listSpacingDp = value)) }
+            }
+        })
+        item(headlineContent = { Text("列表边距") }, supportingContent = {
+            AppearanceSlider(appearance.layout.listPaddingDp, 0f..40f) { value ->
+                onChange { it.copy(layout = it.layout.copy(listPaddingDp = value)) }
             }
         })
         item(headlineContent = { Text("正文字体渐变") }, supportingContent = {

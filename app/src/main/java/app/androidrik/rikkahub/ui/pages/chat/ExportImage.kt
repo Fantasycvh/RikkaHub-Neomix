@@ -89,6 +89,8 @@ import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.components.message.ChatBubbleSurface
 import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
+import app.androidrik.rikkahub.ui.theme.ChatMessageLayoutHost
+import app.androidrik.rikkahub.ui.theme.LocalChatTextGradient
 import app.androidrik.rikkahub.ui.theme.LocalUserBubbleColor
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
@@ -476,6 +478,12 @@ private fun ExportedChatMessage(
         }
     }
 
+    CompositionLocalProvider(LocalChatTextGradient provides appearance.typography.gradient) {
+        ChatMessageLayoutHost(
+            layout = appearance.layout,
+            isUser = message.semanticRole == MessageRole.USER,
+            exporting = true,
+            header = {
     if (showModelLabel) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -501,7 +509,10 @@ private fun ExportedChatMessage(
             )
         }
     }
-    messageContent()
+            },
+            body = messageContent,
+        )
+    }
 }
 
 @Composable

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.TextStyle
@@ -21,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -89,6 +92,36 @@ class ChatAppearanceRenderingTest {
         assertEquals(0, solid.first)
         assertEquals(0, solid.second)
         assertTrue(solid.third > 10)
+    }
+
+    @Test fun builtInLayoutsKeepAllBodySectionsAndFooterActions() {
+        var clicks = 0
+        compose.setContent {
+            MaterialTheme {
+                Column {
+                    builtInChatLayouts.forEach { entry ->
+                        ChatMessageLayoutHost(layout = ChatLayout(rendererId = entry.id), isUser = false,
+                            header = { Text("Header", Modifier.testTag("${entry.id}:header")) },
+                            body = {
+                                Text("First section", Modifier.testTag("${entry.id}:first"))
+                                Text("Second section", Modifier.testTag("${entry.id}:second"))
+                            },
+                            footer = {
+                                TextButton(onClick = { clicks++ }, Modifier.testTag("${entry.id}:action")) { Text("Action") }
+                            })
+                    }
+                }
+            }
+        }
+        builtInChatLayouts.forEach { entry ->
+            val first = compose.onNodeWithTag("${entry.id}:first").fetchSemanticsNode().boundsInRoot
+            val second = compose.onNodeWithTag("${entry.id}:second").fetchSemanticsNode().boundsInRoot
+            val action = compose.onNodeWithTag("${entry.id}:action")
+            assertTrue("body sections overlap in ${entry.id}", first.bottom <= second.top)
+            assertTrue("footer overlaps body in ${entry.id}", second.bottom <= action.fetchSemanticsNode().boundsInRoot.top)
+            action.performClick()
+        }
+        compose.runOnIdle { assertEquals(builtInChatLayouts.size, clicks) }
     }
 
     @Test fun hiddenBubblePreservesTheBackground() {

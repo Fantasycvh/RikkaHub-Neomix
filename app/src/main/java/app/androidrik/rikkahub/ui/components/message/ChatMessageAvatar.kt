@@ -21,6 +21,7 @@ import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.AvatarFrameBox
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
+import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.context.LocalSettings
 
 @Composable
@@ -31,10 +32,11 @@ fun ChatMessageUserAvatar(
     modifier: Modifier = Modifier,
 ) {
     val settings = LocalSettings.current
+    val appearance = rememberChatAppearance(settings.displaySetting)
     if (message.role == MessageRole.USER && !message.parts.isEmptyUIMessage() && settings.displaySetting.showUserAvatar) {
         Row(
             modifier = modifier,
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, if (appearance.layout.userAlignEnd) Alignment.End else Alignment.Start),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

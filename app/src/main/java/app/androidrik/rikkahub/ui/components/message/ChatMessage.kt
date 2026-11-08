@@ -99,6 +99,7 @@ import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.theme.ChatMessageLayoutHost
 import app.androidrik.rikkahub.ui.theme.LocalChatFontFamily
 import app.androidrik.rikkahub.ui.theme.LocalChatTextGradient
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
@@ -184,139 +185,145 @@ fun ChatMessage(
     val colorScheme = MaterialTheme.colorScheme
     CompositionLocalProvider(LocalWorkspaceId provides assistant?.workspaceId?.toString(),
         LocalChatTextGradient provides appearance.typography.gradient) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        horizontalAlignment = if (message.role == MessageRole.USER && appearance.layout.userAlignEnd) Alignment.End else Alignment.Start,
-        verticalArrangement = Arrangement.spacedBy(appearance.layout.messageGapDp.dp)
-    ) {
-        // #1812：半截生成失败的草稿横幅——放置在消息上方，重试复用现有 regenerate
-        if (message.annotations.any { it is UIMessageAnnotation.PartialFailure }) {
-            PartialFailureBanner(
-                onRegenerate = onRegenerate,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-
-        // 输出不完整提示（本批）：只挂在**末条**消息上——只有它还能「接着写」。
-        // 三档成因分开表述（成本/可续性不同）：裸断流与撞上限可续写，内容拦截不提供续写按钮。
-        if (lastMessage && message.role == MessageRole.ASSISTANT) {
-            when {
-                message.finishIncomplete -> IncompleteOutputBanner(
-                    text = stringResource(R.string.message_incomplete_output_stream_cut),
-                    onContinue = onContinue,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                isOutputLimitTruncation(message.finishReason) -> IncompleteOutputBanner(
-                    text = stringResource(R.string.message_incomplete_output_limit),
-                    onContinue = onContinue,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                isContentFilterTruncation(message.finishReason) -> IncompleteOutputBanner(
-                    text = stringResource(R.string.message_incomplete_output_filtered),
-                    onContinue = null,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        }
-
-        // #1906：引用块——显示这条消息发出时引用的历史消息快照（不随原消息后续编辑而变）。
-        // 点击跳转原消息；onQuoteClick 为 null 时（如下拉预览）卡片不可点。
-        message.annotations.filterIsInstance<UIMessageAnnotation.QuotedMessage>()
-            .forEach { quote ->
-                MessageQuoteCard(
-                    quote = quote,
-                    onClick = onQuoteClick?.let { jump -> { jump(quote.messageId) } },
-                )
-            }
-
-        if (!message.parts.isEmptyUIMessage()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            ) {
-                ChatMessageAssistantAvatar(
-                    message = message,
-                    model = model,
-                    assistant = assistant,
-                    loading = loading,
-                    modifier = Modifier.weight(1f)
-                )
-                ChatMessageUserAvatar(
-                    message = message,
-                    avatar = settings.userAvatar,
-                    nickname = settings.userNickname,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-        ProvideTextStyle(textStyle) {
-            MessagePartsBlock(
-                assistant = assistant,
-                role = message.role,
-                parts = message.parts,
-                annotations = message.annotations,
-                loading = loading,
-                model = model,
-                onToolApproval = onToolApproval,
-                onToolAnswer = onToolAnswer,
-                onToolSkip = onToolSkip,
-                onApproveAll = onApproveAll,
-                onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
-                onReasoningEditRequest = if (onEditReasoning != null) {
-                    { editingReasoning = it }
-                } else null,
-            )
-
-            message.translation?.let { translation ->
-                CollapsibleTranslationText(
-                    content = translation,
-                    onClickCitation = {}
-                )
-            }
-        }
-
-        val showActions = if (lastMessage) {
-            !loading
-        } else {
-            message.parts.isEmptyUIMessage().not()
-        }
-
-        AnimatedVisibility(
-            visible = showActions,
-            enter = slideInVertically { it / 2 } + fadeIn(),
-            exit = slideOutVertically { it / 2 } + fadeOut()
-        ) {
-            Column(
-                modifier = Modifier.animateContentSize()
-            ) {
-                ChatMessageActionButtons(
-                    message = message,
+    ChatMessageLayoutHost(
+        layout = appearance.layout,
+        isUser = message.role == MessageRole.USER,
+        modifier = modifier,
+        leading = {
+            // #1812：半截生成失败的草稿横幅——放置在消息上方，重试复用现有 regenerate
+            if (message.annotations.any { it is UIMessageAnnotation.PartialFailure }) {
+                PartialFailureBanner(
                     onRegenerate = onRegenerate,
-                    node = node,
-                    onUpdate = onUpdate,
-                    onOpenActionSheet = {
-                        showActionsSheet = true
-                    },
-                    onTranslate = onTranslate,
-                    onClearTranslation = onClearTranslation
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
-        }
 
-        EditedFilesList(
-            parts = message.parts,
-            assistant = assistant,
-        )
+            // 输出不完整提示（本批）：只挂在**末条**消息上——只有它还能「接着写」。
+            // 三档成因分开表述（成本/可续性不同）：裸断流与撞上限可续写，内容拦截不提供续写按钮。
+            if (lastMessage && message.role == MessageRole.ASSISTANT) {
+                when {
+                    message.finishIncomplete -> IncompleteOutputBanner(
+                        text = stringResource(R.string.message_incomplete_output_stream_cut),
+                        onContinue = onContinue,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
 
-        ProvideTextStyle(textStyle) {
-            ChatMessageNerdLine(message = message, loading = loading)
-        }
+                    isOutputLimitTruncation(message.finishReason) -> IncompleteOutputBanner(
+                        text = stringResource(R.string.message_incomplete_output_limit),
+                        onContinue = onContinue,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
 
-    }
+                    isContentFilterTruncation(message.finishReason) -> IncompleteOutputBanner(
+                        text = stringResource(R.string.message_incomplete_output_filtered),
+                        onContinue = null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            // #1906：引用块——显示这条消息发出时引用的历史消息快照（不随原消息后续编辑而变）。
+            // 点击跳转原消息；onQuoteClick 为 null 时（如下拉预览）卡片不可点。
+            message.annotations.filterIsInstance<UIMessageAnnotation.QuotedMessage>()
+                .forEach { quote ->
+                    MessageQuoteCard(
+                        quote = quote,
+                        onClick = onQuoteClick?.let { jump -> { jump(quote.messageId) } },
+                    )
+                }
+
+        },
+        header = {
+            if (!message.parts.isEmptyUIMessage()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    ChatMessageAssistantAvatar(
+                        message = message,
+                        model = model,
+                        assistant = assistant,
+                        loading = loading,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ChatMessageUserAvatar(
+                        message = message,
+                        avatar = settings.userAvatar,
+                        nickname = settings.userNickname,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        },
+        body = {
+            ProvideTextStyle(textStyle) {
+                MessagePartsBlock(
+                    assistant = assistant,
+                    role = message.role,
+                    parts = message.parts,
+                    annotations = message.annotations,
+                    loading = loading,
+                    model = model,
+                    onToolApproval = onToolApproval,
+                    onToolAnswer = onToolAnswer,
+                    onToolSkip = onToolSkip,
+                    onApproveAll = onApproveAll,
+                    onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
+                    onReasoningEditRequest = if (onEditReasoning != null) {
+                        { editingReasoning = it }
+                    } else null,
+                )
+
+                message.translation?.let { translation ->
+                    CollapsibleTranslationText(
+                        content = translation,
+                        onClickCitation = {}
+                    )
+                }
+            }
+
+        },
+        footer = {
+            val showActions = if (lastMessage) {
+                !loading
+            } else {
+                message.parts.isEmptyUIMessage().not()
+            }
+
+            AnimatedVisibility(
+                visible = showActions,
+                enter = slideInVertically { it / 2 } + fadeIn(),
+                exit = slideOutVertically { it / 2 } + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier.animateContentSize()
+                ) {
+                    ChatMessageActionButtons(
+                        message = message,
+                        onRegenerate = onRegenerate,
+                        node = node,
+                        onUpdate = onUpdate,
+                        onOpenActionSheet = {
+                            showActionsSheet = true
+                        },
+                        onTranslate = onTranslate,
+                        onClearTranslation = onClearTranslation
+                    )
+                }
+            }
+
+            EditedFilesList(
+                parts = message.parts,
+                assistant = assistant,
+            )
+
+            ProvideTextStyle(textStyle) {
+                ChatMessageNerdLine(message = message, loading = loading)
+            }
+        },
+    )
     if (showActionsSheet) {
         ChatMessageActionsSheet(
             message = message,

@@ -4,6 +4,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 
 /**
  * debug 变体里的空 Activity，只作为 Compose instrumented 测试
@@ -28,6 +29,9 @@ class SketchTestHostActivity : ComponentActivity() {
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
             )
+        }
+        if (intent.getBooleanExtra("appearancePreview", false)) {
+            setContent { ChatAppearancePreview() }
         }
     }
 }

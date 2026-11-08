@@ -1,5 +1,17 @@
 package app.androidrik.rikkahub.ui.theme
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
 import app.androidrik.rikkahub.data.model.ChatAppearance
 import app.androidrik.rikkahub.data.model.ChatBubble
 import app.androidrik.rikkahub.data.model.ChatBubbleGeometry
@@ -13,9 +25,10 @@ object BuiltinChatAppearancePlugin : PluginChatAppearanceProvider {
     override val id = "builtin.chat_appearance"
     override val displayName = "聊天外观方案"
     override val description = "提供紧凑、阅读、渐变与玻璃方案，启用后可在偏好设置的用户界面页选择"
-    override val version = "1.1.0"
+    override val version = "1.2.0"
     override val author = "Neomix"
     override val enabledByDefault = false
+    override val chatLayouts: List<ChatLayoutRenderer> = listOf(CenteredChatLayout)
     override val chatAppearancePresets = listOf(
         ChatAppearancePreset("compact", "紧凑", ChatAppearance(
             layout = ChatLayout(messageGapDp = 2f),
@@ -37,5 +50,26 @@ object BuiltinChatAppearancePlugin : PluginChatAppearanceProvider {
             userBubble = ChatBubble(material = BubbleMaterial.GLASS, opacity = 0.85f),
             assistantBubble = ChatBubble(visible = true, material = BubbleMaterial.GLASS, opacity = 0.85f),
         )),
+        ChatAppearancePreset("centered", "居中卡片", ChatAppearance(
+            layout = ChatLayout(rendererId = "$id:centered", userAlignEnd = false, contentWidthFraction = 0.85f),
+            userBubble = ChatBubble(visible = false),
+            assistantBubble = ChatBubble(visible = false),
+        )),
     )
+}
+
+/** A real plugin-owned renderer, using the same host slots as built-in layouts. */
+private object CenteredChatLayout : ChatLayoutRenderer {
+    override val id = "centered"
+    override val name = "居中卡片（插件）"
+    @Composable override fun Render(context: ChatLayoutContext, slots: ChatLayoutSlots) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(context.layout.messageGapDp.dp)) {
+            slots.header()
+            Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+                Column(Modifier.padding(12.dp)) { slots.body() }
+            }
+            slots.footer()
+        }
+    }
 }
