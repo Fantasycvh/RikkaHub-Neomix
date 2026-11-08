@@ -203,6 +203,21 @@ class RikkaHubApp : Application() {
             runCatching { PendingRestoreStore.rollbackIfUnconfirmed(filesDir, dbFile) }
                 .onFailure { Log.e(TAG, "rollbackIfUnconfirmed failed", it) }
         }
+        // 第 0.5 步：升级前快照（借鉴 NMoi `65e13bf`，台账 nmoi-agent.md §13.4 候选 4）。
+        // 版本落后时 VACUUM INTO 一份完整库到 migration_snapshots/，给升级迁移链兜底。
+        // **fail-open**：快照失败只记警告不拦启动——失败快照+成功迁移无损，拦启动反而把
+        // 增强变故障（与降级隔离的 fail-closed 语义不同：隔离失败继续开机是数据风险，
+        // 快照失败继续开机至多等于没有快照）。
+        runCatching {
+            app.androidrik.rikkahub.data.sync.MigrationSnapshotStore.snapshotBeforeUpgrade(
+                filesDir, dbFile, AppDatabase.SCHEMA_VERSION, ::readDbVersionReadonly,
+            ) { source, target ->
+                val escaped = target.replace("'", "''")
+                SQLiteDatabase.openDatabase(source, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+                    db.execSQL("VACUUM INTO '$escaped'")
+                }
+            }
+        }.onFailure { Log.w(TAG, "pre-migration snapshot failed (continuing)", it) }
         runCatching {
             ensureKoinStarted()
         }.getOrElse { e ->
