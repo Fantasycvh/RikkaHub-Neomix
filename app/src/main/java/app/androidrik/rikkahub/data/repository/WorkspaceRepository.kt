@@ -82,8 +82,10 @@ class WorkspaceRepository(
         if (!force) diskSizeCache[id]?.let { return@withContext it }
         val workspace = dao.getById(id) ?: return@withContext null
         if (workspace.type != WorkspaceType.LOCAL.name) return@withContext null
-        val root = File(workspace.root)
-        if (!root.isDirectory) return@withContext null
+        // entity.root 是相对名（WorkspaceManager.workspaceDir = File(baseDir, root)），
+        // 不能直接当路径用——直接 File(root).isDirectory 恒 false（真机实测踩过）
+        val root = runCatching { manager.workspaceDir(workspace.root) }.getOrNull()
+        if (root == null || !root.isDirectory) return@withContext null
         runCatching {
             root.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
         }.getOrNull()?.also { diskSizeCache[id] = it }
