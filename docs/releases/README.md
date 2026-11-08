@@ -5,7 +5,9 @@ GitHub 上的权威出处：[Releases](https://github.com/Fantasycvh/RikkaHub-Ne
 
 | 版本 | 日期 | 资产 |
 |---|---|---|
-| [`1.0.28-beta.17.md`](1.0.28-beta.17.md) | 2026-11-03 | ✅ arm64-v8a APK（60,706,538 B；最新，随附 `mapping.txt.gz`） |
+| [`1.0.28-beta.19.md`](1.0.28-beta.19.md) | 2026-11-08 | ⏳ 待 CI 构建后回填 |
+| [`1.0.28-beta.18.md`](1.0.28-beta.18.md) | 2026-11-07 | ✅ arm64-v8a APK（60,912,002 B，随附 `mapping.txt.gz`） |
+| [`1.0.28-beta.17.md`](1.0.28-beta.17.md) | 2026-11-03 | ✅ arm64-v8a APK（60,706,538 B；随附 `mapping.txt.gz`） |
 | [`1.0.28-beta.16.md`](1.0.28-beta.16.md) | 2026-11-02 | ✅ arm64-v8a APK（60,877,202 B） |
 | [`1.0.28-beta.15.md`](1.0.28-beta.15.md) | 2026-11-01 | ✅ arm64-v8a APK（60,667,470 B；重切 318 构建） |
 | [`1.0.28-beta.14.md`](1.0.28-beta.14.md) | 2026-10-31 | ✅ arm64-v8a APK（60,543,538 B） |
