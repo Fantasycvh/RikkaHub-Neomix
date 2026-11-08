@@ -86,6 +86,7 @@ fun <T> ChainOfThought(
     // 步骤图标靠它遮时间线，透明会漏线。
     style: ChainOfThoughtStyle = ChainOfThoughtStyle.CARD,
     custom: ChainOfThoughtCustomStyle? = null,
+    animateSizeChanges: Boolean = true,
     content: @Composable ChainOfThoughtScope.(T) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -111,10 +112,12 @@ fun <T> ChainOfThought(
             Column(
                 modifier = Modifier
                     .padding(horizontal = 12.dp, vertical = 4.dp)
-                    .animateContentSize(
-                        // γ: 用短 tween 替代 expressive 长曲线。步骤列表大时（Workspace 多命令）
-                        // 长尺寸动画 + 反复测量是交互卡顿主因，短动画显著降低卡顿感
-                        animationSpec = tween(durationMillis = MotionTokens.SNAP_MS)
+                    .then(
+                        if (animateSizeChanges) Modifier.animateContentSize(
+                            // γ: 用短 tween 替代 expressive 长曲线。步骤列表大时（Workspace 多命令）
+                            // 长尺寸动画 + 反复测量是交互卡顿主因，短动画显著降低卡顿感
+                            animationSpec = tween(durationMillis = MotionTokens.SNAP_MS)
+                        ) else Modifier
                     ),
             ) {
                 val visibleSteps = if (expanded || !canCollapse) {

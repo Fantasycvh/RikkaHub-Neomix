@@ -67,6 +67,7 @@ internal fun WholeTurnFoldBlock(
     // 思维链容器视觉样式，透传给 ChainOfThought（design-light-personalization.md）
     style: ChainOfThoughtStyle = ChainOfThoughtStyle.CARD,
     custom: ChainOfThoughtCustomStyle? = null,
+    animateSizeChanges: Boolean = true,
     content: @Composable ChainOfThoughtScope.(ThinkingStep) -> Unit,
 ) {
     var expanded by rememberSaveable { mutableStateOf(loading || forceExpand) }
@@ -101,7 +102,7 @@ internal fun WholeTurnFoldBlock(
         }
         if (!folded) {
             ChainOfThought(
-                modifier = Modifier.animateContentSize(),
+                modifier = if (animateSizeChanges) Modifier.animateContentSize() else Modifier,
                 cardColors = cardColors,
                 steps = steps,
                 // 折叠交给外层：关掉组件自己的 takeLast(n)
@@ -109,6 +110,7 @@ internal fun WholeTurnFoldBlock(
                 collapsedAdaptiveWidth = collapsedAdaptiveWidth,
                 style = style,
                 custom = custom,
+                animateSizeChanges = animateSizeChanges,
                 content = content,
             )
         }

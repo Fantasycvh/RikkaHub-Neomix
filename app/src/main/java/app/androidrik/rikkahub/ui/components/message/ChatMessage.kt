@@ -407,6 +407,7 @@ private fun MessagePartsBlock(
     val hapticFeedback = LocalHapticFeedback.current
     val settings = LocalSettings.current
     val appearance = rememberChatAppearance(settings.displaySetting)
+    val animateSizeChanges = !loading || settings.displaySetting.enableGenerationSizeAnimation
     val partsState by rememberUpdatedState(parts)
 
     val handleClickCitation: (String) -> Unit = remember {
@@ -532,16 +533,18 @@ private fun MessagePartsBlock(
                                 collapsedAdaptiveWidth = isReasoningOnlyBlock,
                                 style = cotStyle,
                                 custom = cotCustom,
+                                animateSizeChanges = animateSizeChanges,
                                 content = stepContent,
                             )
                         } else {
                             ChainOfThought(
-                                modifier = Modifier.animateContentSize(),
+                                modifier = if (animateSizeChanges) Modifier.animateContentSize() else Modifier,
                                 steps = block.steps,
                                 collapsedAdaptiveWidth = isReasoningOnlyBlock,
                                 cardColors = cardColors,
                                 style = cotStyle,
                                 custom = cotCustom,
+                                animateSizeChanges = animateSizeChanges,
                                 content = stepContent,
                             )
                         }
@@ -573,7 +576,7 @@ private fun MessagePartsBlock(
                                     defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
                                     padWhenHidden = user,
                                     onClick = if (user) ({ onUserMessageClick?.invoke() }) else null,
-                                    modifier = Modifier.animateContentSize(),
+                                    modifier = if (animateSizeChanges) Modifier.animateContentSize() else Modifier,
                                 ) {
                                     MarkdownBlock(
                                         content = part.text.renderSafe(truncatedNotice).replaceRegexes(
@@ -748,7 +751,7 @@ private fun MessagePartsBlock(
     // Annotations (always rendered at the end)
     if (urlAnnotations.isNotEmpty()) {
         Column(
-            modifier = Modifier.animateContentSize(),
+            modifier = if (animateSizeChanges) Modifier.animateContentSize() else Modifier,
         ) {
             var expand by remember { mutableStateOf(false) }
             if (expand) {

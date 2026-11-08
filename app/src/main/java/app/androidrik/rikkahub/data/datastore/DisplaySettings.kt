@@ -189,6 +189,8 @@ data class DisplaySetting(
     val pasteLongTextThreshold: Int = 1000,
     val sendOnEnter: Boolean = false,
     val enableAutoScroll: Boolean = true,
+    /** Animate content height while generating; old settings retain the existing behavior. */
+    val enableGenerationSizeAnimation: Boolean = true,
     val enableLatexRendering: Boolean = true,
     val enableDiagramRendering: Boolean = true,
     val enableBlurEffect: Boolean = false,

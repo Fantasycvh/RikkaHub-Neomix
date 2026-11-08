@@ -158,6 +158,20 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
+                        headlineContent = { Text("生成时高度动画") },
+                        supportingContent = {
+                            Text("平滑过渡正文和思维链的高度变化。关闭可减少长回复生成时的布局开销。")
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.enableGenerationSizeAnimation,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(enableGenerationSizeAnimation = it))
+                                },
+                            )
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_use_app_icon_style_loading_indicator_title)) },
                         supportingContent = {
                             Text(stringResource(R.string.setting_display_page_use_app_icon_style_loading_indicator_desc))
