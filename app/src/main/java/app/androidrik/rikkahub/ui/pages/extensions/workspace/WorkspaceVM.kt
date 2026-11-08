@@ -20,6 +20,26 @@ class WorkspaceVM(
     val workspaces = repository.listFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    /** 工作区 id → 磁盘占用字节。仅本地工作区有值；SSH 不在本机，列表不标注。 */
+    private val _diskSizes = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val diskSizes = _diskSizes.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            workspaces.collect { list ->
+                list.forEach { workspace ->
+                    if (workspace.id !in _diskSizes.value) {
+                        launch {
+                            runCatching { repository.diskSize(workspace.id) }
+                                .getOrNull()
+                                ?.let { size -> _diskSizes.update { it + (workspace.id to size) } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fun create(name: String) {
         viewModelScope.launch {
             runCatching { repository.create(name) }

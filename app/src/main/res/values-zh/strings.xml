@@ -2455,6 +2455,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_page_type_ssh">SSH 远程工作区</string>
   <string name="workspace_page_type_ssh_desc">通过 SSH 连接你自己的服务器</string>
   <string name="workspace_detail_ssh_connection">SSH 连接</string>
+  <string name="workspace_detail_disk_usage">磁盘占用</string>
+  <string name="workspace_detail_disk_usage_computing">计算中…（点击重算）</string>
   <string name="workspace_detail_ssh_address">地址</string>
   <string name="workspace_detail_ssh_config_missing">配置缺失</string>
   <string name="workspace_detail_ssh_remote_dir">远程目录</string>

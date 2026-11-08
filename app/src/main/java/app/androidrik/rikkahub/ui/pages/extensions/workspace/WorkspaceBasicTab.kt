@@ -8,6 +8,7 @@ package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
 import android.text.format.DateUtils
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -48,6 +49,7 @@ import app.androidrik.workspace.PackageManager
 import app.androidrik.workspace.PackageMirrorPick
 import app.androidrik.workspace.PackageMirrorSetup
 import app.androidrik.workspace.RootfsInstallProgress
+import app.androidrik.workspace.WorkspaceType
 import app.androidrik.workspace.RootfsInstallStage
 import app.androidrik.workspace.WorkspaceShellStatus
 import app.androidrik.workspace.WorkspaceTaskSnapshot
@@ -66,6 +68,8 @@ internal fun WorkspaceBasicPage(
     installProgress: RootfsInstallProgress?,
     tasks: List<WorkspaceTaskSnapshot>,
     tasksNow: Long,
+    diskSize: Long?,
+    onRefreshDiskSize: () -> Unit,
     onKillTask: (String) -> Unit,
     onInstallRootfs: () -> Unit,
     onToolApprovalChange: (String, Boolean) -> Unit,
@@ -111,6 +115,15 @@ internal fun WorkspaceBasicPage(
                     )
                     WorkspaceInfoRow(stringResource(R.string.workspace_detail_name), workspace?.name ?: stringResource(R.string.workspace_detail_loading))
                     WorkspaceInfoRow(stringResource(R.string.workspace_detail_shell_status), workspace?.shellStatus?.toShellStatusLabel() ?: "-")
+                    // 磁盘占用：本地工作区显示 + 点击行重算；SSH 在远端不标注（v1）
+                    if (workspace?.type != WorkspaceType.SSH.name) {
+                        WorkspaceInfoRow(
+                            label = stringResource(R.string.workspace_detail_disk_usage),
+                            value = diskSize?.fileSizeToString()
+                                ?: stringResource(R.string.workspace_detail_disk_usage_computing),
+                            onClick = onRefreshDiskSize,
+                        )
+                    }
 
                     if (hasRootfs) {
                         Row(
@@ -679,9 +692,12 @@ private fun workspaceToolApprovalItems() = listOf(
 internal fun WorkspaceInfoRow(
     label: String,
     value: String,
+    onClick: (() -> Unit)? = null,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

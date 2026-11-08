@@ -56,6 +56,7 @@ import app.androidrik.rikkahub.ui.components.ui.CardGroupIcon
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.utils.fileSizeToString
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 
@@ -63,6 +64,7 @@ import org.koin.androidx.compose.koinViewModel
 fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
     val navController = LocalNavController.current
     val workspaces by vm.workspaces.collectAsStateWithLifecycle()
+    val diskSizes by vm.diskSizes.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var showTypeSheet by rememberSaveable { mutableStateOf(false) }
     var showAddDialog by rememberSaveable { mutableStateOf(false) }
@@ -100,6 +102,7 @@ fun WorkspacePage(vm: WorkspaceVM = koinViewModel()) {
             items(workspaces, key = { it.id }) { workspace ->
                 WorkspaceCard(
                     workspace = workspace,
+                    diskSize = diskSizes[workspace.id],
                     onRename = { editTarget = workspace },
                     onDelete = { deleteTarget = workspace },
                     onOpen = { navController.navigate(Screen.WorkspaceDetail(workspace.id)) },
@@ -210,6 +213,7 @@ private fun EmptyWorkspaceState() {
 @Composable
 private fun WorkspaceCard(
     workspace: WorkspaceEntity,
+    diskSize: Long?,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onOpen: () -> Unit,
@@ -250,7 +254,11 @@ private fun WorkspaceCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = workspace.statusLabel(),
+                        // 状态行尾追加磁盘占用：本地工作区算完即显示（异步计算，未出前不打扰）
+                        text = buildString {
+                            append(workspace.statusLabel())
+                            if (diskSize != null) append(" · ").append(diskSize.fileSizeToString())
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

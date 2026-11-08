@@ -66,6 +66,34 @@ class WorkspaceRepository(
 
     fun listFlow(): Flow<List<WorkspaceEntity>> = dao.listFlow()
 
+    // ---- 磁盘占用标注（列表/详情页展示，进程内缓存） ----
+
+    /** 工作区 id → 最近一次计算的占用字节；进程内缓存，删除/重装 rootfs 时失效。 */
+    private val diskSizeCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    /**
+     * 工作区占用的宿主磁盘大小（递归累加文件长度，Dispatchers.IO）。
+     *
+     * 仅本地工作区可算：SSH 工作区数据在远端，`du` 要占一条连接、
+     * 且列表页逐行连 SSH 的成本不成比例（v1 不做）。缓存未命中时才走文件树，
+     * [force] 供详情页显式刷新。
+     */
+    suspend fun diskSize(id: String, force: Boolean = false): Long? = withContext(Dispatchers.IO) {
+        if (!force) diskSizeCache[id]?.let { return@withContext it }
+        val workspace = dao.getById(id) ?: return@withContext null
+        if (workspace.type != WorkspaceType.LOCAL.name) return@withContext null
+        val root = File(workspace.root)
+        if (!root.isDirectory) return@withContext null
+        runCatching {
+            root.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+        }.getOrNull()?.also { diskSizeCache[id] = it }
+    }
+
+    fun invalidateDiskSize(id: String) {
+        diskSizeCache.remove(id)
+    }
+
+
     suspend fun checkIntegrity() = withContext(Dispatchers.IO) {
         val workspaces = dao.getAll()
         for (workspace in workspaces) {
@@ -216,6 +244,8 @@ class WorkspaceRepository(
                 rootfsInstaller.install(workspace.root, url, onProgress)
             }
             updateShellState(workspace, WorkspaceShellStatus.READY.name)
+            // rootfs 重装会整体替换占用内容，占用缓存必须失效
+            diskSizeCache.remove(id)
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
                 restoreShellState(workspace)
@@ -962,6 +992,7 @@ class WorkspaceRepository(
             sshPool.close(id)
             manager.deleteWorkspace(workspace.root)
         }
+        diskSizeCache.remove(id)
         cleanupAssistantReferences(id)
         return true
     }

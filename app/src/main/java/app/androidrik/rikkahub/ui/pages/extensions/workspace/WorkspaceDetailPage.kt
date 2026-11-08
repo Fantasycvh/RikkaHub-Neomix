@@ -97,6 +97,7 @@ fun WorkspaceDetailPage(id: String) {
     val mirrorPicks by vm.mirrorPicks.collectAsStateWithLifecycle()
     val aptIndexRefresh by vm.aptIndexRefresh.collectAsStateWithLifecycle()
     val aptIndexDetail by vm.aptIndexDetail.collectAsStateWithLifecycle()
+    val diskSize by vm.diskSize.collectAsStateWithLifecycle()
     val mirrorError by vm.mirrorError.collectAsStateWithLifecycle()
     val pagerState = rememberPagerState { 2 }
     // 后台任务的剩余时长需要「现在」这个输入；轮询的每一跳顺带刷新它，避免再挂一个秒级 ticker
@@ -394,6 +395,8 @@ fun WorkspaceDetailPage(id: String) {
                     installProgress = installProgress,
                     tasks = tasks,
                     tasksNow = tasksNow,
+                    diskSize = diskSize,
+                    onRefreshDiskSize = vm::refreshDiskSize,
                     onKillTask = vm::killTask,
                     onInstallRootfs = { showInstallDialog = true },
                     onToolApprovalChange = vm::setToolApproval,

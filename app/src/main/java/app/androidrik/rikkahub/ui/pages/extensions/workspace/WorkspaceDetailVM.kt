@@ -84,9 +84,27 @@ class WorkspaceDetailVM(
     private val _aptIndexDetail = MutableStateFlow<String?>(null)
     val aptIndexDetail = _aptIndexDetail.asStateFlow()
 
+    /** 磁盘占用（仅本地工作区；SSH 在远端不标注）。null = 计算中/不可用。 */
+    private val _diskSize = MutableStateFlow<Long?>(null)
+    val diskSize = _diskSize.asStateFlow()
+
     init {
         loadWorkspace()
         refresh()
+        viewModelScope.launch {
+            runCatching { repository.diskSize(id) }
+                .getOrNull()
+                ?.let { _diskSize.value = it }
+        }
+    }
+
+    /** 显式重算磁盘占用（rootfs 装删、批量导入后可在详情页手动刷） */
+    fun refreshDiskSize() {
+        viewModelScope.launch {
+            runCatching { repository.diskSize(id, force = true) }
+                .getOrNull()
+                ?.let { _diskSize.value = it }
+        }
     }
 
     fun selectArea(area: WorkspaceStorageArea) {
