@@ -760,6 +760,9 @@ class WorkspaceRepository(
             manager.killBackgroundTasksByScope(scope)
         }
 
+    fun retainBackgroundTaskNotices(scope: app.androidrik.workspace.ExecutionScope): List<app.androidrik.workspace.WorkspaceTaskSnapshot> =
+        manager.retainBackgroundTaskNotices(scope)
+
     /** 兼容入口：按 wire 字符串终止（历史调用/测试仍可传字符串）。 */
     suspend fun killBackgroundTasksByOwner(owner: String): Int = withContext(Dispatchers.IO) {
         manager.killBackgroundTasksByOwner(owner)

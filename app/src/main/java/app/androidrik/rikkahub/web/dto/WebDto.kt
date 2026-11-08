@@ -16,6 +16,7 @@ data class SendMessageRequest(
     val parts: List<UIMessagePart>,
     val modeInjectionIds: List<String>? = null,
     val lorebookIds: List<String>? = null,
+    val preserveTasks: Boolean = false,
 )
 
 @Serializable

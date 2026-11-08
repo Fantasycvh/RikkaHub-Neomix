@@ -440,6 +440,9 @@ class WorkspaceManager(
     fun killBackgroundTasksByScope(scope: ExecutionScope): Int =
         backgroundTaskRegistry?.killByScope(scope) ?: 0
 
+    fun retainBackgroundTaskNotices(scope: ExecutionScope): List<WorkspaceTaskSnapshot> =
+        backgroundTaskRegistry?.retainNoticesByScope(scope).orEmpty()
+
     /** 兼容入口：按 wire 字符串终止（内部还原为 [ExecutionScope] 后走 [killBackgroundTasksByScope]）。 */
     fun killBackgroundTasksByOwner(owner: String): Int =
         backgroundTaskRegistry?.killByOwner(owner) ?: 0

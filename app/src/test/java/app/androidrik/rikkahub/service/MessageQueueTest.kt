@@ -10,6 +10,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MessageQueueTest {
+    @Test fun `immediate send precedes queued edits without dropping their contents`() {
+        val queue = MessageQueue()
+        queue.enqueue(text("queued"))
+        val existing = queue.state.value.messages.single().id
+        queue.beginEdit(existing)
+        queue.pause()
+        queue.enqueueFirst(text("new intent"), true, emptyList())
+        queue.resume()
+        assertEquals(text("new intent"), queue.takeNext()!!.parts)
+        assertNull(queue.takeNext())
+        assertEquals(existing, queue.state.value.messages.single().id)
+        queue.finishEdit(existing, text("edited"))
+        assertEquals(text("edited"), queue.takeNext()!!.parts)
+    }
     private fun text(value: String) = listOf(UIMessagePart.Text(value))
 
     @Test

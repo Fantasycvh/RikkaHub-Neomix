@@ -26,7 +26,7 @@ class ImageToolWiringTest {
             ?: error("找不到源码目录，工作目录=${File(".").absolutePath}")
     }
 
-    private fun source(relative: String): String = File(srcRoot(), relative).readText()
+    private fun source(relative: String): String = File(srcRoot(), relative).readText().replace("\r\n", "\n")
 
     @Test
     fun `image tool segment is gated on a configured image model`() {

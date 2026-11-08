@@ -190,6 +190,33 @@ class WorkspaceNoticeInboxTest {
         assertEquals("pending", f.dao.get(f.row.id)!!.deliveryState)
     }
 
+    @Test fun `retained result is deferred during the newer turn and delivered at idle without waking`() = runTest {
+        val f = Fixture(this)
+        f.inbox.suppressAndPersist(f.row.rootScope)
+        f.dao.insert(f.row.copy(wakeState = "suppressed"))
+        f.session.beginNewTurn()
+        val job = Job()
+        f.session.setJob(job)
+        f.inbox.start(backgroundScope); runCurrent()
+        f.inbox.beforeUser(f.session)
+        assertEquals(f.initial.currentMessages, f.inbox.atStep(f.session, f.initial.currentMessages))
+        assertEquals("pending", f.dao.get(f.row.id)!!.deliveryState)
+        job.complete(); f.inbox.request(); runCurrent()
+        assertEquals("delivered", f.dao.get(f.row.id)!!.deliveryState)
+        assertEquals(0, f.wakes)
+    }
+
+    @Test fun `handoff fences delivery while interrupted tool receipts are being restored`() = runTest {
+        val f = Fixture(this)
+        f.session.taskHandoffInProgress = true
+        f.dao.insert(f.row)
+        f.inbox.start(backgroundScope); runCurrent()
+        assertEquals("pending", f.dao.get(f.row.id)!!.deliveryState)
+        f.session.taskHandoffInProgress = false
+        f.inbox.request(); runCurrent()
+        assertEquals("delivered", f.dao.get(f.row.id)!!.deliveryState)
+    }
+
     private class Fixture(test: TestScope) {
         val dao = FakeDAO()
         val assistant = Assistant(workspaceId = Uuid.random())

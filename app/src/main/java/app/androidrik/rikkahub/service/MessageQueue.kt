@@ -65,6 +65,15 @@ class MessageQueue {
     private val mutableState = MutableStateFlow(MessageQueueState())
     val state = mutableState.asStateFlow()
 
+    /** Explicit immediate send takes priority while retaining all previously queued input. */
+    @Synchronized
+    fun enqueueFirst(parts: List<UIMessagePart>, answer: Boolean, annotations: List<UIMessageAnnotation>) {
+        if (parts.isEmptyInputMessage()) return
+        mutableState.value = state.value.copy(messages = listOf(
+            QueuedMessage(parts = parts.toList(), answer = answer, annotations = annotations.toList())
+        ) + state.value.messages)
+    }
+
     /**
      * 入队（**只能追加**：本队列是严格 FIFO，没有插入/重排原语）。
      *

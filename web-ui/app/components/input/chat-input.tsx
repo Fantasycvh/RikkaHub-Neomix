@@ -54,6 +54,7 @@ export interface ChatInputProps {
   onRemovePart: (index: number, part: UIMessagePart) => Promise<void> | void;
   onSend: () => Promise<void> | void;
   onStop?: () => Promise<void> | void;
+  onRetainTasksSend?: () => Promise<void> | void;
   onCancelEdit?: () => void;
   onSuggestionClick?: (suggestion: string) => void;
   onExportConversation?: (includeReasoning: boolean) => void;
@@ -191,6 +192,7 @@ function ChatInputInner({
   onRemovePart,
   onSend,
   onStop,
+  onRetainTasksSend,
   onCancelEdit,
   onSuggestionClick,
   onExportConversation,
@@ -345,6 +347,19 @@ function ChatInputInner({
     },
     [error, onValueChange],
   );
+
+  const handleRetainTasksSend = async () => {
+    if (!ready || disabled || isEmpty || uploading || submitting || !onRetainTasksSend) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onRetainTasksSend();
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : t("chat.send_failed"));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleQuickMessageSelect = React.useCallback(
     (content: string) => {
@@ -717,6 +732,13 @@ function ChatInputInner({
                 onSelect={handleQuickMessageSelect}
               />
             </div>
+            {isGenerating && !isEditing && !isEmpty && onRetainTasksSend && (
+              <Button variant="outline" size="sm"
+                disabled={!ready || disabled || uploading || submitting}
+                onClick={() => { void handleRetainTasksSend(); }}>
+                保留任务并立即发送
+              </Button>
+            )}
             <Button
               onClick={() => {
                 void handlePrimaryAction();

@@ -474,14 +474,14 @@ function useDraftInputController({
     [draftKey, removeDraftPart],
   );
 
-  const handleSubmit = React.useCallback(async () => {
+  const handleSubmit = React.useCallback(async (preserveTasks = false) => {
     if (!draftKey) return;
 
     const parts = getSubmitParts(draftKey);
     if (parts.length === 0) return;
 
     if (activeId) {
-      await api.post<{ status: string }>(`conversations/${activeId}/messages`, { parts });
+      await api.post<{ status: string }>(`conversations/${activeId}/messages`, { parts, preserveTasks });
       clearDraft(draftKey);
       return;
     }
@@ -1109,6 +1109,7 @@ function ConversationsPageInner() {
           shouldDeleteFileOnRemove={shouldDeleteAttachmentFileOnRemove}
           onRemovePart={handleRemoveInputPart}
           onSend={handleSend}
+          onRetainTasksSend={activeId && !editingSession ? () => handleSubmit(true) : undefined}
           onStop={activeId ? handleStop : undefined}
           onExportConversation={
             detail && detail.messages.length > 0

@@ -82,6 +82,9 @@ class AgentRunReconcilerTest {
 
         override suspend fun insertRun(run: AgentRunEntity) = Unit
         override suspend fun updateRun(run: AgentRunEntity) = Unit
+        override suspend fun updateProgress(id: String, status: String, startedAt: Long?, transcript: String, toolEnvelope: String) = Unit
+        override suspend fun retainAwaitedRun(id: String) = 0
+        override suspend fun retainScopeRuns(scope: String) = 0
         override fun observeRun(id: String): Flow<AgentRunEntity?> = emptyFlow()
         override suspend fun getRun(id: String): AgentRunEntity? = null
         override fun observeRuns(): Flow<List<AgentRunEntity>> = emptyFlow()

@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
@@ -188,6 +189,7 @@ class ChatService(
     private val folderRepository: FolderRepository,
     /** 标题 / 建议 / 压缩这些不走 GenerationHandler 的请求，在这里包一层记用量流水 */
     private val usageRecorder: UsageRecorder,
+    private val taskHandoffs: TaskHandoffRegistry = TaskHandoffRegistry(),
 ) {
     private val transformerRegistry = defaultTransformerChainRegistry(
         templateTransformer, WorkspaceReminderTransformer(workspaceRepository),
@@ -283,8 +285,10 @@ class ChatService(
     private val noticeRequests = Channel<Unit>(Channel.CONFLATED)
     private var noticeDeliveryJob: Job? = null
     private val noticeDelivery = NoticeDelivery(
-        enabled = { settingsStore.settingsFlow.value.enableBackgroundSubagent },
-        pending = { database.agentRunDao().observePendingDeliveries().first() },
+        enabled = { true },
+        pending = { database.agentRunDao().observePendingDeliveries().first().filter {
+            settingsStore.settingsFlow.value.enableBackgroundSubagent || it.deliveryMode == AgentRunEntity.DELIVERY_MODE_HANDOFF
+        } },
         orphan = { database.agentRunDao().markOrphaned(it) },
         append = { parent, runs -> appendExternalNotice(parent, runs) },
         onError = { Log.e(TAG, "Subagent notice delivery failed", it) },
@@ -299,7 +303,7 @@ class ChatService(
             launch {
                 combine(settingsStore.settingsFlow, database.agentRunDao().observePendingDeliveries()) { settings, runs ->
                     settings.enableBackgroundSubagent to runs
-                }.collect { (enabled, _) -> if (enabled) noticeRequests.trySend(Unit) }
+                }.collect { noticeRequests.trySend(Unit) }
             }
             for (event in noticeRequests) {
                 try { noticeDelivery.flush(); workspaceNoticeInbox.request() }
@@ -312,7 +316,8 @@ class ChatService(
     /** 会话内存先追加再持久化；消息与投递确认同事务，避免后续 saveMessageNodes 删除 notice。 */
     suspend fun appendExternalNotice(parent: String, runs: List<AgentRunEntity>): AppendNoticeResult =
         withContext(Dispatchers.Main.immediate) {
-            if (!settingsStore.settingsFlow.value.enableBackgroundSubagent) return@withContext AppendNoticeResult.BUSY
+            if (!settingsStore.settingsFlow.value.enableBackgroundSubagent &&
+                runs.any { it.deliveryMode != AgentRunEntity.DELIVERY_MODE_HANDOFF }) return@withContext AppendNoticeResult.BUSY
             val id = runCatching { Uuid.parse(parent) }.getOrNull() ?: return@withContext AppendNoticeResult.MISSING
             if (!ensureConversationLoaded(id)) return@withContext AppendNoticeResult.MISSING
             val session = getOrCreateSession(id)
@@ -646,16 +651,54 @@ class ChatService(
 
         val session = getOrCreateSession(conversationId)
         appScope.launch {
-            // 先打断（含半截落库与待审批收尾），完成后再入队派发
-            stopGeneration(
-                conversationId = conversationId,
-                persistStoppedContent = true,
-                reason = reason,
-            )
-            synchronized(session) {
-                if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
-                session.messageQueue.enqueue(content, answer, annotations = annotations)
-                dispatchNextQueuedMessage(conversationId)
+            session.immediateSendMutex.withLock {
+                // 先打断（含半截落库与待审批收尾），完成后再入队派发
+                stopGeneration(
+                    conversationId = conversationId,
+                    persistStoppedContent = true,
+                    reason = reason,
+                )
+                synchronized(session) {
+                    if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
+                    session.messageQueue.enqueue(content, answer, annotations = annotations)
+                    dispatchNextQueuedMessage(conversationId)
+                }
+            }
+        }
+    }
+
+    /** Yield the parent reply; already-started independent tasks retain their original ownership. */
+    fun sendRetainingTasks(
+        conversationId: Uuid,
+        content: List<UIMessagePart>,
+        answer: Boolean = true,
+        annotations: List<UIMessageAnnotation> = emptyList(),
+    ) {
+        if (content.isEmptyInputMessage()) return
+        val session = getOrCreateSession(conversationId)
+        appScope.launch {
+            session.immediateSendMutex.withLock {
+                session.withRefSuspend {
+                    session.taskHandoffInProgress = true
+                    try {
+                        synchronized(session) { session.messageQueue.enqueueFirst(content, answer, annotations) }
+                        stopGeneration(conversationId, reason = InterruptReason.QueueJumped, preserveTasks = true)
+                        synchronized(session) {
+                            session.messageQueue.resume()
+                            session.taskHandoffInProgress = false
+                            dispatchNextQueuedMessage(conversationId)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Input remains in the paused queue if durable handoff cannot be completed.
+                        addError(e, conversationId)
+                    } finally {
+                        session.taskHandoffInProgress = false
+                        noticeRequests.trySend(Unit)
+                        workspaceNoticeInbox.request()
+                    }
+                }
             }
         }
     }
@@ -1443,12 +1486,13 @@ class ChatService(
                 conversationId = conversationId.toString(),
                 // 后台任务归属 = 本轮 scope（本轮被取消时按它精确收掉这一轮起的进程）
                 turnOwner = app.androidrik.workspace.ExecutionScope.parse(session.backgroundTaskOwner),
-                workspaceNoticeTarget = if (settings.workspaceTaskNoticeEnabled && assistant.workspaceId != null) {
+                workspaceNoticeTarget = if (assistant.workspaceId != null) {
                     conversation.currentMessages.lastOrNull { it.role == MessageRole.USER }?.let { anchor ->
                         app.androidrik.workspace.WorkspaceTaskNoticeTarget(
                             conversationId.toString(), conversation.assistantId.toString(), assistant.workspaceId.toString(),
                             anchor.id.toString(), session.externalNoticeRootScope ?: session.backgroundTaskOwner,
                             session.externalNoticeRootScope == null && session.backgroundTaskOwner.startsWith("turn:"),
+                            deliveryEnabled = settings.workspaceTaskNoticeEnabled,
                         )
                     }
                 } else null,
@@ -1862,11 +1906,16 @@ class ChatService(
     private suspend fun finishInterruptedPendingTools(
         conversationId: Uuid,
         reason: InterruptReason,
+        retainedRuns: List<String> = emptyList(),
+        retainedShellTasks: List<app.androidrik.workspace.WorkspaceTaskSnapshot> = emptyList(),
     ) {
         val currentConversation = getConversationFlow(conversationId).value
         val lastNode = currentConversation.messageNodes.lastOrNull() ?: return
         val lastMessage = lastNode.currentMessage
-        val updatedMessage = lastMessage.finishPendingTools { tool -> cancelToolByUser(tool, reason) }
+        val updatedMessage = lastMessage.finishPendingTools { tool ->
+            retainedSubagentToolResult(tool, retainedRuns) ?: retainedWorkspaceToolResult(tool, retainedShellTasks)
+                ?: cancelToolByUser(tool, reason)
+        }
         if (updatedMessage == lastMessage) {
             return
         }
@@ -2990,24 +3039,36 @@ class ChatService(
         conversationId: Uuid,
         persistStoppedContent: Boolean = true,
         reason: InterruptReason = InterruptReason.UserCancelled,
+        preserveTasks: Boolean = false,
     ) {
         val session = sessions[conversationId] ?: return
         // 「停在工具审批上」也是被打断的一轮，但它**没有活跃 Job**（等用户决定时生成协程已经
         // 正常结束）⇒ 取消回调不会触发。这个状态要在收尾之前判定，收尾之后就看不到了。
         val stoppedRoot = session.externalNoticeRootScope ?: session.backgroundTaskOwner
+        val stoppedOwner = session.backgroundTaskOwner
         workspaceNoticeInbox.suppress(stoppedRoot)
         val awaitingApproval = hasPendingToolApproval(conversationId)
+        var retainedRuns = emptyList<String>()
         val jobs = synchronized(session) {
             // 停止 = 用户介入，队列有意暂停（「继续发送」按钮兜底）。此前这个暂停靠
             // onGenerationFinished 的取消路径「顺便」实现；那里改为不因取消暂停后
             // （同上游 281c9525a），必须在这里显式补上，否则停止后队列会继续自动派发。
             session.messageQueue.pause()
-            session.cancelJobs()
+            if (preserveTasks) retainedRuns = taskHandoffs.retain(stoppedOwner)
+            session.cancelJobs(preserveTasks)
         }
         workspaceNoticeInbox.suppressAndPersist(stoppedRoot)
         if (jobs.isNotEmpty()) {
             jobs.forEach { it.join() }
         }
+        val retainedShellTasks = if (preserveTasks) {
+            database.agentRunDao().retainScopeRuns(stoppedOwner)
+            val tasks = app.androidrik.workspace.ExecutionScope.parse(stoppedOwner)?.let {
+                workspaceRepository.retainBackgroundTaskNotices(it)
+            }.orEmpty()
+            noticeRequests.trySend(Unit)
+            tasks
+        } else emptyList()
         // 已完成、但没送达 collect 端的工具结果（见 GenerationHandler 的 `onMessagesCommitted`）：
         // 回填走的是 `emit` → flow/flowOn 的 channel → collect 端，而这三段都在被取消的
         // 生成 job 里 ⇒ 取消那一下正在回填的那一份结果会从内存态里消失。
@@ -3023,10 +3084,13 @@ class ChatService(
         }
         // 注意：不因 jobs 为空而早退——生成可能刚结束而收尾保存尚未落库，
         // 此时同样需要下面的持久化（见 persistStoppedGeneration 的说明）。
-        finishInterruptedPendingTools(conversationId, reason)
+        val receiptedEvents = app.androidrik.rikkahub.data.task.selectedWorkspaceCompletionEvents(
+            getConversationFlow(conversationId).value.currentMessages)
+        finishInterruptedPendingTools(conversationId, reason, retainedRuns,
+            retainedShellTasks.filter { it.noticeEventId !in receiptedEvents })
         // 审批中被放弃的这一轮同样收掉它起的后台任务（有活跃 Job 时取消回调已经收过了，
         // 这里只补「没有 Job 可取消」的那条路径；两次都调也安全——killByOwner 幂等）。
-        if (jobs.isEmpty() && awaitingApproval) {
+        if (!preserveTasks && jobs.isEmpty() && awaitingApproval) {
             killBackgroundTasksOfCancelledTurn(session.backgroundTaskOwner)
         }
         // 用户主动停止：把**已生成的部分**落库（吸收上游 4a3eefc1 的 finishGeneration 语义）。
@@ -3043,7 +3107,7 @@ class ChatService(
         //
         // 必须放在 finishInterruptedPendingTools 之后：那一步把 pending 工具标记为「已取消」，
         // 若先落库会把未执行工具原样持久化。
-        if (persistStoppedContent) persistStoppedGeneration(conversationId)
+        if (persistStoppedContent) persistStoppedGeneration(conversationId, preserveTasks)
     }
 
     /**
@@ -3061,19 +3125,21 @@ class ChatService(
      */
     private fun messageNodesWithInterruptionNotice(
         nodes: List<MessageNode>,
+        preserveTasks: Boolean = false,
     ): List<MessageNode> {
         val lastIndex = nodes.lastIndex
         if (lastIndex < 0) return nodes
         val node = nodes[lastIndex]
         val selected = node.messages.getOrNull(node.selectIndex) ?: return nodes
         val (updated, appended) = listOf(selected)
-            .appendInterruptionNotice(context.getString(R.string.chat_generation_interrupted_notice))
+            .appendInterruptionNotice(if (preserveTasks) "本轮已让路，已启动的子代理和后台任务继续运行，结果稍后送达。"
+                else context.getString(R.string.chat_generation_interrupted_notice))
         if (!appended) return nodes
         val newMessages = node.messages.toMutableList().also { it[node.selectIndex] = updated.first() }
         return nodes.toMutableList().also { it[lastIndex] = node.copy(messages = newMessages) }
     }
 
-    private suspend fun persistStoppedGeneration(conversationId: Uuid) {
+    private suspend fun persistStoppedGeneration(conversationId: Uuid, preserveTasks: Boolean = false) {
         val conversation = getConversationFlow(conversationId).value
         withContext(NonCancellable) {
             runCatching {
@@ -3083,7 +3149,7 @@ class ChatService(
                 // 生成被打断：给半截回复追加**可见**提示（幂等）——否则回看时那段戛然而止的
                 // 回复看起来就像「卡住了」，用户无从判断是模型抽风、网络断了还是自己点了停止。
                 // 提示带 uiNotice 元数据 ⇒ 发请求前会被过滤掉，不污染模型上下文。
-                val withNotice = messageNodesWithInterruptionNotice(conversation.messageNodes)
+                val withNotice = messageNodesWithInterruptionNotice(conversation.messageNodes, preserveTasks)
                 saveConversation(
                     conversationId,
                     conversation.copy(

@@ -19,6 +19,26 @@ import kotlinx.coroutines.Job
 import kotlin.uuid.Uuid
 
 class NoticeDeliveryTest {
+    @Test fun `handoff delivery waits for the original selected tool branch`() = runTest {
+        val id = Uuid.random()
+        val session = ConversationSession(id, Conversation.ofId(id, Uuid.random()), backgroundScope, {})
+        val retained = run("retained").copy(deliveryMode = AgentRunEntity.DELIVERY_MODE_HANDOFF)
+        var writes = 0
+        assertEquals(AppendNoticeResult.BUSY,
+            appendNoticeToSession(session, listOf(retained), 100_000, 0) { _, _ -> writes++ })
+        assertEquals(0, writes)
+        val source = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(app.androidrik.ai.ui.UIMessagePart.Tool(
+            "call", "dispatch_subagent", "{}", listOf(app.androidrik.ai.ui.UIMessagePart.Text("""{"run_ids":["retained"]}""")))))
+        session.state.value = session.state.value.copy(messageNodes = listOf(
+            app.androidrik.rikkahub.data.model.MessageNode(messages = listOf(source))))
+        session.taskHandoffInProgress = true
+        assertEquals(AppendNoticeResult.BUSY,
+            appendNoticeToSession(session, listOf(retained), 100_000, 0) { _, _ -> writes++ })
+        session.taskHandoffInProgress = false
+        assertEquals(AppendNoticeResult.DELIVERED,
+            appendNoticeToSession(session, listOf(retained), 100_000, 0) { _, _ -> writes++ })
+        assertEquals(1, writes)
+    }
     @Test fun `carrier defaults and unknown stored values use system`() {
         assertEquals(NoticeCarrier.SYSTEM, NoticeCarrier.fromStorage(null))
         assertEquals(NoticeCarrier.SYSTEM, NoticeCarrier.fromStorage("invalid"))

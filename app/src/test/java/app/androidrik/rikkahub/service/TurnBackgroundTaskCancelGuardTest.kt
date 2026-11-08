@@ -37,13 +37,13 @@ class TurnBackgroundTaskCancelGuardTest {
         val tools = source("src/main/java/app/androidrik/rikkahub/data/ai/tools/WorkspaceTools.kt")
         assertTrue(
             "workspace_run_background 必须把轮次归属传给仓库，否则任务没有 owner、取消时收不掉",
-            "startBackgroundCommand(workspaceId, command, cwd, owner = turnOwner)" in tools,
+            "startBackgroundCommand(workspaceId, command, cwd, owner = turnOwner, noticeTarget = noticeTarget)" in tools,
         )
 
         val factory = source("src/main/java/app/androidrik/rikkahub/data/ai/tools/ChatToolFactory.kt")
         assertTrue(
             "装配点必须把 turnOwner 透传到工作区段",
-            "createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, turnOwner)" in factory,
+            "createWorkspaceToolsIfReady(assistant.workspaceId?.toString(), workspaceCwd, turnOwner, workspaceNoticeTarget)" in factory,
         )
 
         val service = source("src/main/java/app/androidrik/rikkahub/service/ChatService.kt")
@@ -78,8 +78,8 @@ class TurnBackgroundTaskCancelGuardTest {
             service.countOccurrences("session.toolLoopGuard.reset()"),
         )
         assertEquals(
-            "beginNewTurn 的调用点应恰好三处：队列派发（新一轮用户消息）、重新生成、继续生成",
-            3,
+            "beginNewTurn 的调用点应恰好四处：队列派发、重新生成、继续生成、工作区 Notice 续跑",
+            4,
             // P0.5 起队列派发那条带归属令牌参数（session.beginNewTurn(queued.turnOwner)），
             // 故只匹配签名前缀，不限定无参形式。
             service.countOccurrences("session.beginNewTurn("),
@@ -113,8 +113,8 @@ class TurnBackgroundTaskCancelGuardTest {
         assertTrue("setJob 没在注册回调前捕获令牌", captureAt >= 0)
         assertTrue("令牌捕获必须在注册回调之前（注册之后现读会拿到下一轮的）", captureAt < registerAt)
         assertTrue(
-            "只有被取消才回调（正常结束要保留后台任务）",
-            "if (cause is CancellationException)" in body && "onTurnCancelled(turnOwner)" in body,
+            "只有被取消且未主动保留任务才回调",
+            "if (cause is CancellationException && !retainTasks)" in body && "onTurnCancelled(turnOwner)" in body,
         )
     }
 
@@ -128,7 +128,7 @@ class TurnBackgroundTaskCancelGuardTest {
         val service = source("src/main/java/app/androidrik/rikkahub/service/ChatService.kt")
         val stopAt = service.indexOf("suspend fun stopGeneration(")
         assertTrue("找不到 stopGeneration", stopAt >= 0)
-        val body = service.substring(stopAt, minOf(service.length, stopAt + 3_000))
+        val body = service.substring(stopAt, minOf(service.length, stopAt + 6_000))
 
         // 判定必须在收尾之前（finishInterruptedPendingTools 会把 pending 抹掉）
         val detectAt = body.indexOf("val awaitingApproval = hasPendingToolApproval(")
@@ -137,7 +137,7 @@ class TurnBackgroundTaskCancelGuardTest {
         assertTrue("判定必须在收尾之前（收尾后 pending 已消失）", detectAt < finishAt)
         assertTrue(
             "停在审批上的一轮也要收掉本轮起的后台任务：$body",
-            "if (jobs.isEmpty() && awaitingApproval)" in body,
+            "if (!preserveTasks && jobs.isEmpty() && awaitingApproval)" in body,
         )
     }
 

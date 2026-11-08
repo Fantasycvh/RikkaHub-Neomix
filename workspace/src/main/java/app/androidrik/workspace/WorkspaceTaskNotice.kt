@@ -8,6 +8,8 @@ data class WorkspaceTaskNoticeTarget(
     val anchorMessageId: String,
     val rootScope: String,
     val allowWake: Boolean,
+    /** Provenance can be captured while automatic notices are disabled, then activated by handoff. */
+    val deliveryEnabled: Boolean = true,
 )
 
 /** Retained until the application acknowledges durable receipt, independently of task-list eviction. */

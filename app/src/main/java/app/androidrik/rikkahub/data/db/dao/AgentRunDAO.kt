@@ -18,6 +18,32 @@ interface AgentRunDAO {
     @Update
     suspend fun updateRun(run: AgentRunEntity)
 
+    /** Progress must not overwrite a concurrent handoff or terminal delivery acknowledgement. */
+    @Query("""
+        UPDATE agent_run SET status = :status, started_at = :startedAt,
+            transcript = :transcript, tool_envelope = :toolEnvelope
+        WHERE id = :id AND finished_at IS NULL
+    """)
+    suspend fun updateProgress(id: String, status: String, startedAt: Long?, transcript: String, toolEnvelope: String)
+
+    /** Handles completion racing with handoff without losing the terminal result. */
+    @Query("""
+        UPDATE agent_run SET delivery_mode = 'handoff',
+            delivery_state = CASE WHEN finished_at IS NOT NULL AND delivery_state = 'none'
+                THEN 'pending' ELSE delivery_state END
+        WHERE id = :id AND delivery_mode = 'await'
+    """)
+    suspend fun retainAwaitedRun(id: String): Int
+
+    @Query("""
+        UPDATE agent_run SET delivery_mode = 'handoff',
+            delivery_state = CASE WHEN finished_at IS NOT NULL AND delivery_state = 'none'
+                THEN 'pending' ELSE delivery_state END
+        WHERE scope_token = :scope AND (delivery_mode = 'notice'
+            OR (delivery_mode = 'await' AND finished_at IS NULL))
+    """)
+    suspend fun retainScopeRuns(scope: String): Int
+
     @Query("SELECT * FROM agent_run WHERE id = :id")
     fun observeRun(id: String): Flow<AgentRunEntity?>
 
@@ -37,7 +63,7 @@ interface AgentRunDAO {
     /** 只暴露已落终态的 notice；不能把半截生成投给父会话。 */
     @Query("""
         SELECT * FROM agent_run
-        WHERE delivery_mode = 'notice' AND delivery_state = 'pending'
+        WHERE delivery_mode IN ('notice', 'handoff') AND delivery_state = 'pending'
           AND status IN ('completed', 'failed', 'cancelled', 'interrupted')
           AND finished_at IS NOT NULL
         ORDER BY finished_at, id
@@ -50,7 +76,7 @@ interface AgentRunDAO {
         SET status = :status, result_summary = :resultSummary, error = :error,
             finished_at = :finishedAt, cancel_reason = :cancelReason,
             delivery_state = CASE
-                WHEN delivery_mode = 'notice' AND delivery_state = 'none' THEN 'pending'
+                WHEN delivery_mode IN ('notice', 'handoff') AND delivery_state = 'none' THEN 'pending'
                 ELSE delivery_state END
         WHERE id = :id AND finished_at IS NULL
           AND status IN ('pending', 'running', 'awaiting_approval')
@@ -67,7 +93,7 @@ interface AgentRunDAO {
     /** 幂等确认；消息落库与此更新须由投递方在同一 Room 事务内完成。 */
     @Query("""
         UPDATE agent_run SET delivery_state = 'delivered', delivered_at = :deliveredAt
-        WHERE id IN (:ids) AND delivery_mode = 'notice' AND delivery_state = 'pending'
+        WHERE id IN (:ids) AND delivery_mode IN ('notice', 'handoff') AND delivery_state = 'pending'
           AND status IN ('completed', 'failed', 'cancelled', 'interrupted')
           AND finished_at IS NOT NULL
     """)
@@ -76,7 +102,7 @@ interface AgentRunDAO {
     /** 父会话消失时保留结果账本，停止重试；不能覆盖已成功投递的记录。 */
     @Query("""
         UPDATE agent_run SET delivery_state = 'orphaned'
-        WHERE id IN (:ids) AND delivery_mode = 'notice' AND delivery_state = 'pending'
+        WHERE id IN (:ids) AND delivery_mode IN ('notice', 'handoff') AND delivery_state = 'pending'
           AND status IN ('completed', 'failed', 'cancelled', 'interrupted')
           AND finished_at IS NOT NULL
     """)
@@ -98,7 +124,7 @@ interface AgentRunDAO {
         SET status = :interruptedStatus, error = :reason, finished_at = :finishedAt,
             cancel_reason = :cancelReason,
             delivery_state = CASE
-                WHEN delivery_mode = 'notice' AND delivery_state = 'none' THEN 'pending'
+                WHEN delivery_mode IN ('notice', 'handoff') AND delivery_state = 'none' THEN 'pending'
                 ELSE delivery_state END
         WHERE status IN (:unfinishedStatuses)
           AND finished_at IS NULL

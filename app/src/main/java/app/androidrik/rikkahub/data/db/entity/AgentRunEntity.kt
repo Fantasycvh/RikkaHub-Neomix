@@ -74,6 +74,8 @@ data class AgentRunEntity(
     companion object {
         const val DELIVERY_MODE_AWAIT = "await"
         const val DELIVERY_MODE_NOTICE = "notice"
+        /** Explicit user handoff: delivery remains enabled independently of automatic background presets. */
+        const val DELIVERY_MODE_HANDOFF = "handoff"
         const val DELIVERY_MODE_NOTIFY = "notify"
         const val DELIVERY_STATE_NONE = "none"
         const val DELIVERY_STATE_PENDING = "pending"

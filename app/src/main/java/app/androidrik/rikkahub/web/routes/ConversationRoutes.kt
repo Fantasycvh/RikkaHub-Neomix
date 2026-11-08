@@ -293,7 +293,8 @@ fun Route.conversationRoutes(
                 modeInjectionIds = request.modeInjectionIds,
                 lorebookIds = request.lorebookIds,
             )
-            chatService.sendMessage(uuid, request.parts, answer = true)
+            if (request.preserveTasks) chatService.sendRetainingTasks(uuid, request.parts)
+            else chatService.sendMessage(uuid, request.parts, answer = true)
 
             call.respond(HttpStatusCode.Accepted, mapOf("status" to "accepted"))
         }

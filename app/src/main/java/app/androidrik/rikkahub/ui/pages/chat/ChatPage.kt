@@ -660,6 +660,14 @@ private fun ChatPageContent(
                         }
                         inputState.clearInput()
                     },
+                    onRetainTasksSendClick = {
+                        vm.handleMessageSendRetainingTasks(
+                            inputState.getContents(),
+                            inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
+                        )
+                        scope.launch { chatListState.requestScrollToItem(conversation.currentMessages.size + 5) }
+                        inputState.clearInput()
+                    },
                     messageQueue = messageQueueState,
                     onRemoveQueuedMessage = vm::removeQueuedMessage,
                     onBeginEditQueuedMessage = vm::beginEditQueuedMessage,

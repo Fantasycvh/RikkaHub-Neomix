@@ -223,6 +223,9 @@ class ConversationSession(
 
     // 所有活动生成/审批协程（含排队等待前任的）：stopGeneration 全链取消
     private val activeJobs = mutableSetOf<Job>()
+    private val retainedTaskJobs = mutableSetOf<Job>()
+    val immediateSendMutex = kotlinx.coroutines.sync.Mutex()
+    @Volatile var taskHandoffInProgress: Boolean = false
 
     // 空闲检查任务
     private var idleCheckJob: Job? = null
@@ -273,7 +276,7 @@ class ConversationSession(
         // 那时再读 backgroundTaskOwner 已经是下一轮的令牌，会漏掉真正的孤儿。
         val turnOwner = backgroundTaskOwner
         job?.invokeOnCompletion { cause ->
-            synchronized(this) {
+            val retainTasks = synchronized(this) {
                 activeJobs.remove(job)
                 // 排队等待前任的协程从未进入体即被取消时，把取消传播给前任——
                 // 避免"等待新审批 → 前任永远留在 activeJobs / 后继不启动"的悬挂
@@ -287,10 +290,11 @@ class ConversationSession(
                     // 队列派发钩子：失败暂停队列，结束后取下一个
                     onGenerationFinished(id, cause)
                 }
+                retainedTaskJobs.remove(job)
             }
             // 被取消（而不是正常走完）⇒ 这一轮不再继续，收掉它起的后台任务。
             // **只在取消时收**：正常结束后后台任务继续跑正是 `workspace_run_background` 的契约。
-            if (cause is CancellationException) {
+            if (cause is CancellationException && !retainTasks) {
                 runCatching { onTurnCancelled(turnOwner) }
             }
             if (refCount.get() <= 0) {
@@ -303,7 +307,8 @@ class ConversationSession(
 
     /** @Synchronized 返回全部活动协程并逆序取消（先取消等待者，防止前任完成启动下一个审批） */
     @Synchronized
-    fun cancelJobs(): List<Job> = activeJobs.toList().also { jobs ->
+    fun cancelJobs(preserveTasks: Boolean = false): List<Job> = activeJobs.toList().also { jobs ->
+        if (preserveTasks) retainedTaskJobs.addAll(jobs)
         jobs.asReversed().forEach { it.cancel() }
     }
 

@@ -234,6 +234,7 @@ val appModule = module {
 
     // 窄接口绑定：解析出的就是同一个 SubagentRunner 单例（不新建实例）
     single<SubagentDispatcher> { get<SubagentRunner>() }
+    single { app.androidrik.rikkahub.service.TaskHandoffRegistry() }
 
     single {
         ChatService(
@@ -253,7 +254,8 @@ val appModule = module {
             filesManager = get(),
             workspaceRepository = get(),
             folderRepository = get(),
-            usageRecorder = get()
+            usageRecorder = get(),
+            taskHandoffs = get(),
         )
     }
 
@@ -266,6 +268,7 @@ val appModule = module {
             chatToolFactory = get(),
             agentRunDAO = get(),
             workspaceRepository = get(),
+            taskHandoffs = get(),
         )
     }
 

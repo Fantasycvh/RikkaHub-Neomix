@@ -26,6 +26,24 @@ import kotlin.uuid.Uuid
  */
 class ConversationSessionTest {
 
+    @Test fun `handoff preserves cancellation ownership only for the old jobs`() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val cancelledOwners = mutableListOf<String>()
+        val session = ConversationSession(Uuid.random(), Conversation.ofId(Uuid.random()), scope,
+            onIdle = {}, onTurnCancelled = { cancelledOwners.add(it) })
+        try {
+            val old = scope.launch { awaitCancellation() }
+            session.setJob(old)
+            session.cancelJobs(preserveTasks = true).forEach { it.join() }
+            assertTrue(cancelledOwners.isEmpty())
+            session.beginNewTurn()
+            val newOwner = session.backgroundTaskOwner
+            session.setJob(scope.launch { awaitCancellation() })
+            session.cancelJobs().forEach { it.join() }
+            assertEquals(listOf(newOwner), cancelledOwners)
+        } finally { session.cleanup(); scope.cancel() }
+    }
+
     private fun newSession(scope: CoroutineScope) = ConversationSession(
         id = Uuid.random(),
         initial = Conversation.ofId(Uuid.random()),

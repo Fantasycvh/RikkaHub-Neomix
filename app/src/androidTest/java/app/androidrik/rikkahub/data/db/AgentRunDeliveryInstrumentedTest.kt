@@ -6,6 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import android.database.sqlite.SQLiteDatabase
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity
+import app.androidrik.rikkahub.data.db.entity.AgentRunEntity.Companion.DELIVERY_STATE_PENDING
+import app.androidrik.rikkahub.data.db.entity.AgentRunEntity.Companion.DELIVERY_STATE_DELIVERED
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity.Companion.DELIVERY_MODE_AWAIT
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity.Companion.DELIVERY_MODE_NOTICE
 import app.androidrik.rikkahub.data.db.entity.AgentRunEntity.Companion.DELIVERY_MODE_NOTIFY
@@ -75,6 +77,44 @@ class AgentRunDeliveryInstrumentedTest {
         error = null, parentConversationId = "parent", createdAt = created, startedAt = created,
         finishedAt = null, scopeToken = "turn:one", deliveryMode = mode,
     )
+
+    @Test fun handoffProgressAndCompletionKeepDurableDeliveryInEitherOrder() = runBlocking {
+        val dao = openMemory().agentRunDao()
+        dao.insertRun(run("before", DELIVERY_MODE_AWAIT))
+        dao.retainAwaitedRun("before")
+        dao.updateProgress("before", STATUS_RUNNING, 101, "[\"progress\"]", "[]")
+        dao.finishRun("before", STATUS_COMPLETED, "answer", null, 1000, null)
+        assertEquals(AgentRunEntity.DELIVERY_MODE_HANDOFF, dao.getRun("before")!!.deliveryMode)
+        assertEquals(DELIVERY_STATE_PENDING, dao.getRun("before")!!.deliveryState)
+        dao.markDelivered(listOf("before"), 2000)
+        dao.updateProgress("before", STATUS_RUNNING, 101, "late", "[]")
+        assertEquals(STATUS_COMPLETED, dao.getRun("before")!!.status)
+        assertEquals(DELIVERY_STATE_DELIVERED, dao.getRun("before")!!.deliveryState)
+
+        dao.insertRun(run("after", DELIVERY_MODE_AWAIT))
+        dao.finishRun("after", STATUS_COMPLETED, "racing result", null, 1001, null)
+        dao.retainAwaitedRun("after")
+        assertEquals(listOf("after"), dao.observePendingDeliveries().first().map { it.id })
+        dao.retainAwaitedRun("after")
+        dao.markDelivered(listOf("after"), 2001)
+        dao.retainAwaitedRun("after")
+        assertTrue(dao.observePendingDeliveries().first().isEmpty())
+    }
+
+    @Test fun scopeHandoffPreservesOnlyItsActiveOrBackgroundRunsAndRecoversAfterRestart() = runBlocking {
+        val dao = openMemory().agentRunDao()
+        dao.insertRun(run("active", DELIVERY_MODE_AWAIT))
+        dao.insertRun(run("finished", DELIVERY_MODE_AWAIT))
+        dao.finishRun("finished", STATUS_COMPLETED, "already consumed", null, 1000, null)
+        dao.insertRun(run("background"))
+        dao.insertRun(run("other", DELIVERY_MODE_AWAIT).copy(scopeToken = "turn:two"))
+        assertEquals(2, dao.retainScopeRuns("turn:one"))
+        assertEquals(DELIVERY_MODE_AWAIT, dao.getRun("finished")!!.deliveryMode)
+        assertEquals(DELIVERY_MODE_AWAIT, dao.getRun("other")!!.deliveryMode)
+        dao.markInterruptedBefore(500, 1500, STATUS_INTERRUPTED, "restart",
+            listOf(STATUS_RUNNING), "process_restart")
+        assertEquals(setOf("active", "background"), dao.observePendingDeliveries().first().map { it.id }.toSet())
+    }
 
     @Test
     fun v57BackupMigratesWithSafeDefaultsAndPreservesTranscript() = runBlocking {

@@ -177,6 +177,7 @@ fun ChatInput(
      * 入口同样显示、语义变为「跳过提问并发送」（design-ask-user-interrupt §3.2）。
      */
     onInterruptSendClick: () -> Unit = {},
+    onRetainTasksSendClick: () -> Unit = {},
     hasPendingInteraction: Boolean = false,
     messageQueue: MessageQueueState = MessageQueueState(),
     onRemoveQueuedMessage: (Uuid) -> Unit = {},
@@ -401,6 +402,17 @@ fun ChatInput(
                         completionProviders = completionProviders,
                         onSendMessage = { sendMessage() }
                     )
+
+                    AnimatedVisibility(visible = (loading || hasPendingInteraction) && !state.isEditing() && !state.isEmpty() && !asrState.isRecording) {
+                        TextButton(
+                            modifier = Modifier.testTag("chat_retain_tasks_send"),
+                            onClick = {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                                onRetainTasksSendClick()
+                            },
+                        ) { Text("保留任务并立即发送") }
+                    }
 
                     Row(
                         modifier = Modifier

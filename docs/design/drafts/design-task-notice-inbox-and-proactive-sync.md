@@ -216,6 +216,7 @@ A/B 是本次缺口的核心；C 不依赖 Notice part；D 不能再按“零开
 
 ## 关联
 
+- [保留任务并立即处理新消息（第二档实施）](design-task-handoff-and-immediate-message.md)
 - [随机触发与记忆同步原稿](design-scheduled-random-trigger-and-memory-sync.md)
 - [Agent task runtime](../in-progress/design-agent-task-runtime.md)
 - [隐形会话与任务管理](../in-progress/design-proactive-task-management.md)

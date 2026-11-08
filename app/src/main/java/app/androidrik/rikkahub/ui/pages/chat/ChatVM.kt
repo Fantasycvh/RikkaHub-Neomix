@@ -294,6 +294,10 @@ class ChatVM(
         )
     }
 
+    fun handleMessageSendRetainingTasks(content: List<UIMessagePart>, annotations: List<UIMessageAnnotation>) {
+        chatService.sendRetainingTasks(_conversationId, content, annotations = annotations)
+    }
+
     // ---- 消息队列（发送不打断生成：入队等当前轮次结束后自动派发） ----
 
     val messageQueue: StateFlow<MessageQueueState> = chatService.getMessageQueueFlow(_conversationId)

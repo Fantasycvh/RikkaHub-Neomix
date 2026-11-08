@@ -101,10 +101,14 @@ class TaskRuntimeAcceptanceTest {
             val model = testModel
             val assistant = Assistant(name = "Runtime acceptance", chatModelId = model.id, enableMemory = false,
                 systemPrompt = "You are a runtime acceptance test. Follow the supplied synthetic test instructions.")
+            val handoffPreset = SubagentPreset(name = "handoff-blocking", modelId = model.id,
+                allowedTools = setOf("runtime_acceptance_wait"), executionMode = SubagentExecutionMode.BLOCKING,
+                systemPrompt = "Call runtime_acceptance_wait, then return its result.")
             store.update { it.copy(providers = listOf(provider), chatModelId = model.id,
-                assistants = listOf(assistant), enableBackgroundSubagent = true, noticeCarrier = carrier,
+                assistants = listOf(assistant), enableBackgroundSubagent = scenario != "handoff", noticeCarrier = carrier,
+                enableSubagentDispatch = scenario == "handoff", subagentPresets = listOf(handoffPreset),
                 enableAutoTitle = false, enableSuggestion = false) }
-            store.settingsFlow.first { it.enableBackgroundSubagent && it.chatModelId == model.id }
+            store.settingsFlow.first { it.enableBackgroundSubagent == (scenario != "handoff") && it.chatModelId == model.id }
             val chat = koin.get<ChatService>()
             val dao = db.agentRunDao()
             val repo = koin.get<ConversationRepository>()
@@ -125,6 +129,8 @@ class TaskRuntimeAcceptanceTest {
             }
             val seconds = if (scenario == "seed") 180 else args.getString("runtimeSeconds")?.toInt() ?: 180
             val toolStarted = CompletableDeferred<Unit>()
+            val releaseHandoffTask = CompletableDeferred<Unit>()
+            var toolExecutions = 0
             koin.get<PluginManager>().register(object : PluginToolProvider {
                 override val id = "test.runtime.acceptance"
                 override val displayName = "Runtime acceptance wait"
@@ -138,7 +144,8 @@ class TaskRuntimeAcceptanceTest {
                     execute = {
                         File(evidence, "tool.started").writeText("$scenario:$seconds")
                         toolStarted.complete(Unit)
-                        delay(seconds * 1000L)
+                        toolExecutions++
+                        if (scenario == "handoff") releaseHandoffTask.await() else delay(seconds * 1000L)
                         listOf(UIMessagePart.Text("RUNTIME_ACCEPTANCE_OK"))
                     }))
             })
@@ -146,6 +153,38 @@ class TaskRuntimeAcceptanceTest {
                 messageNodes = listOf(UIMessage.user("Synthetic runtime acceptance parent").toMessageNode()))
             repo.insertConversation(parent)
             withContext(Dispatchers.Main) { chat.ensureConversationLoaded(parent.id) }
+            if (scenario == "handoff") {
+                check(args.getString("runtimeProtocol") == "openai") { "handoff fixture requires openai protocol" }
+                chat.startNoticeDelivery()
+                withContext(Dispatchers.Main) { chat.sendMessage(parent.id, listOf(UIMessagePart.Text("HANDOFF_OLD_MESSAGE"))) }
+                withTimeout(30_000) { toolStarted.await() }
+                val row = dao.observeRunsByConversation(parent.id.toString()).first().single()
+                notificationRunId = row.id
+                assertEquals(AgentRunEntity.DELIVERY_MODE_AWAIT, row.deliveryMode)
+                assertEquals(AgentRunEntity.STATUS_RUNNING, row.status)
+                assertNotNull(chat.getGenerationJobStateFlow(parent.id).first())
+                withContext(Dispatchers.Main) { chat.sendRetainingTasks(parent.id, listOf(UIMessagePart.Text("HANDOFF_NEW_MESSAGE"))) }
+                withTimeout(30_000) {
+                    chat.getConversationFlow(parent.id).first { conversation ->
+                        conversation.currentMessages.any { it.role == MessageRole.ASSISTANT &&
+                            it.parts.filterIsInstance<UIMessagePart.Text>().any { part -> part.text.contains("NEW_MESSAGE_OK") } }
+                    }
+                    chat.getGenerationJobStateFlow(parent.id).first { it == null }
+                }
+                val retained = dao.getRun(row.id)!!
+                assertEquals(AgentRunEntity.DELIVERY_MODE_HANDOFF, retained.deliveryMode)
+                assertEquals(AgentRunEntity.STATUS_RUNNING, retained.status)
+                assertNull(retained.finishedAt)
+                assertEquals(1, toolExecutions)
+                assertTrue(selectedSubagentRunIds(chat.getConversationFlow(parent.id).value.currentMessages).contains(row.id))
+                releaseHandoffTask.complete(Unit)
+                val terminal = withTimeout(30_000) { dao.observeRun(row.id).first { it?.deliveryState == "delivered" }!! }
+                assertEquals(AgentRunEntity.STATUS_COMPLETED, terminal.status)
+                assertEquals(1, chat.getConversationFlow(parent.id).value.currentMessages.count { it.isSubagentNotice })
+                assertNull(chat.getGenerationJobStateFlow(parent.id).first())
+                File(evidence, "handoff.passed").writeText("new_reply_before_task_finish=true;blocking_run_retained=true;automatic_background_disabled=true;delivered_once=true;tool_executions=$toolExecutions")
+                return@runBlocking
+            }
             val runner = koin.get<SubagentRunner>()
             val started = System.currentTimeMillis()
             val result = runner.dispatchBackground(SubagentPreset(name = "runtime-acceptance", modelId = model.id,

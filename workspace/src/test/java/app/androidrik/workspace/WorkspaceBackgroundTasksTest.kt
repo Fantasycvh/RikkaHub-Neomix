@@ -557,6 +557,39 @@ class WorkspaceBackgroundTasksTest {
 
     private val noticeTarget = WorkspaceTaskNoticeTarget("conversation", "assistant", "workspace", "anchor", "turn:root", true)
 
+    @Test fun `handoff activates dormant completion notices only for the original task scope`() {
+        val launcher = FakeLauncher()
+        val registry = WorkspaceTaskRegistry(launcher)
+        val owner = ExecutionScope.turn("old")
+        val finished = CountDownLatch(1)
+        val first = registry.start(context("echo old"), owner = owner,
+            noticeTarget = noticeTarget.copy(deliveryEnabled = false), onFinished = { finished.countDown() })
+        val other = registry.start(context("echo other"), owner = ExecutionScope.turn("new"),
+            noticeTarget = noticeTarget.copy(deliveryEnabled = false))
+        assertTrue(registry.pendingTerminals.value.isEmpty())
+        assertEquals(listOf(first.id), registry.retainNoticesByScope(owner).map { it.id })
+        launcher.startedProcesses[0].finish(0)
+        assertTrue(finished.await(2, TimeUnit.SECONDS))
+        val event = registry.pendingTerminals.value.single()
+        assertEquals(first.noticeEventId, event.id)
+        assertFalse(event.target.allowWake)
+        assertTrue(event.target.deliveryEnabled)
+        assertTrue(registry.snapshot(other.id)!!.isRunning)
+        registry.kill(other.id)
+    }
+
+    @Test fun `handoff retains an already finished dormant result without restarting the command`() {
+        val launcher = FakeLauncher().apply { failWith = "cannot launch" }
+        val registry = WorkspaceTaskRegistry(launcher)
+        val owner = ExecutionScope.turn("old")
+        val task = registry.start(context("fail"), owner = owner,
+            noticeTarget = noticeTarget.copy(deliveryEnabled = false))
+        assertTrue(registry.pendingTerminals.value.isEmpty())
+        registry.retainNoticesByScope(owner)
+        assertEquals(task.noticeEventId, registry.pendingTerminals.value.single().id)
+        assertEquals(WorkspaceTaskStatus.FAILED, registry.pendingTerminals.value.single().task.status)
+    }
+
     @Test fun `failed launch is retained until durable acknowledgement even with zero finished capacity`() {
         val launcher = FakeLauncher().apply { failWith = "could not launch" }
         val registry = WorkspaceTaskRegistry(launcher, maxFinished = 0)
@@ -611,6 +644,8 @@ class WorkspaceBackgroundTasksTest {
         } catch (expected: IllegalStateException) {
             assertTrue(expected.message!!.contains("inbox is full"))
         }
+        registry.start(context("dormant destination"), noticeTarget = noticeTarget.copy(deliveryEnabled = false))
+        assertEquals(128, registry.pendingTerminals.value.size)
         registry.acknowledgeTerminal(registry.pendingTerminals.value.first().id)
         registry.start(context("has capacity"), noticeTarget = noticeTarget)
         assertEquals(128, registry.pendingTerminals.value.size)

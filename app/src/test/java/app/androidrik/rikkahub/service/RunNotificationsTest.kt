@@ -18,6 +18,8 @@ class RunNotificationsTest {
         }
         assertTrue(shouldNotifyRunCompletion(run("failed").copy(error = "timeout: deadline"), false))
         assertFalse(shouldNotifyRunCompletion(run(mode = "await"), false))
+        assertTrue(shouldNotifyRunCompletion(run(mode = "handoff"), false))
+        assertFalse(shouldNotifyRunCompletion(run(mode = "handoff"), true))
         assertTrue(shouldNotifyRunCompletion(run(mode = "notify", entry = "subagent"), false))
         assertFalse(shouldNotifyRunCompletion(run("running").copy(finishedAt = null), false))
     }

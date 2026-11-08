@@ -59,6 +59,7 @@ import app.androidrik.rikkahub.utils.cancelNotification
 import app.androidrik.rikkahub.utils.NotificationUtil
 import app.androidrik.rikkahub.utils.sendNotification
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -106,6 +107,7 @@ class SubagentRunner(
     private val chatToolFactory: ChatToolFactory,
     private val agentRunDAO: AgentRunDAO,
     private val workspaceRepository: WorkspaceRepository,
+    private val taskHandoffs: TaskHandoffRegistry = TaskHandoffRegistry(),
 ) : SubagentDispatcher {
     private val runNotifications = RunNotifications(context)
 
@@ -271,8 +273,8 @@ class SubagentRunner(
     suspend fun runStatus(runId: String): String? = agentRunDAO.getRun(runId)?.status
 
     /**
-     * [dispatchAndAwait] / [dispatchScheduledAwait] 的唯一实现：手工创建的 runJob 是
-     * 「可单取消、也能被调用方级联取消」的关键；入口只决定账本字段，不复制执行逻辑。
+     * Shared awaited execution. Ordinary waiter cancellation cancels the run; explicit chat handoff
+     * retains the independent worker and promotes its ledger to durable notice delivery.
      */
     private suspend fun dispatchAwaitInternal(
         preset: SubagentPreset,
@@ -303,62 +305,63 @@ class SubagentRunner(
             scopeToken = scopeToken ?: "run:$runId",
         )
 
-        // **挂在调用方 Job 之下的子 Job**：既能"只取消这一个 run"（详情页的取消按钮），
-        // 又能让"用户中断本轮对话"照旧级联取消它（父 Job 取消 → 子 Job 取消）。
-        // 用 Job(parent) 而不是直接复用父 Job：前者取消不会反向杀掉父生成。
-        val runJob = Job(coroutineContext[Job])
-        progressTracker.register(runId, runJob)
-        return try {
-            withContext(runJob) {
-                agentRunDAO.insertRun(run)
-                // 账本行已落库，调用方此刻才拿得到 runId/Job；先取消后 attach 的语义由调用方
-                // （ScheduledRunRegistry.attachJob）保证，这里只检查 Job 是否被当场取消。
-                onStarted(runId, runJob)
-                if (!runJob.isActive) {
-                    // 取消发生在 executeRun 之前：没有取消路径会替我们收账，必须自己落终态。
-                    withContext(NonCancellable) {
-                        finishRun(
-                            runId,
-                            AgentRunEntity.STATUS_CANCELLED,
-                            null,
-                            "scheduled run cancelled before start",
-                        )
+        // A run remains independently cancellable. Chat waits can explicitly hand off ownership.
+        val inserted = CompletableDeferred<Unit>()
+        suspend fun execute(): SubagentRunResult {
+            val runJob = Job(coroutineContext[Job])
+            progressTracker.register(runId, runJob)
+            return try {
+                withContext(runJob) {
+                    try {
+                        agentRunDAO.insertRun(run)
+                    } finally {
+                        inserted.complete(Unit)
                     }
-                    return@withContext SubagentRunResult(
-                        runId = runId.toString(),
-                        status = AgentRunEntity.STATUS_CANCELLED,
-                        summary = null,
-                        error = null,
+                    // Register only after the ledger exists. Scheduled cancellation may precede attachment.
+                    onStarted(runId, runJob)
+                    if (!runJob.isActive) {
+                        withContext(NonCancellable) {
+                            finishRun(runId, AgentRunEntity.STATUS_CANCELLED, null,
+                                "scheduled run cancelled before start")
+                        }
+                        return@withContext SubagentRunResult(runId.toString(),
+                            AgentRunEntity.STATUS_CANCELLED, null, null)
+                    }
+                    val outcome = executeRun(
+                        initial = run,
+                        profile = profile,
+                        allowedTools = preset.allowedTools,
+                        timeoutMillis = timeoutMillis,
+                        toolApproval = preset.toolApproval,
+                        deliverables = preset.deliverables,
+                        parentToolEnvelope = context.parentToolEnvelope,
+                        parentWorkspaceId = context.parentWorkspaceId,
+                    )
+                    val stored = agentRunDAO.getRun(run.id)
+                    SubagentRunResult(
+                        runId = run.id,
+                        status = stored?.status ?: AgentRunEntity.STATUS_FAILED,
+                        summary = (outcome as? RunOutcome.Completed)?.summary,
+                        error = stored?.error,
                     )
                 }
-                val outcome = executeRun(
-                    initial = run,
-                    profile = profile,
-                    allowedTools = preset.allowedTools,
-                    timeoutMillis = timeoutMillis,
-                    toolApproval = preset.toolApproval,
-                    deliverables = preset.deliverables,
-                    parentToolEnvelope = context.parentToolEnvelope,
-                    parentWorkspaceId = context.parentWorkspaceId,
-                )
-                // 状态/失败原因以**落库结果**为准：超时、取消、异常这些路径只有账本知道
-                val stored = agentRunDAO.getRun(run.id)
-                SubagentRunResult(
-                    runId = run.id,
-                    status = stored?.status ?: AgentRunEntity.STATUS_FAILED,
-                    summary = (outcome as? RunOutcome.Completed)?.summary,
-                    error = stored?.error,
-                )
+            } finally {
+                inserted.complete(Unit)
+                // A manually created Job must complete or its parent remains Completing indefinitely.
+                if (runJob.isActive) runJob.complete()
+                gate.release(runId.toString())
+                progressTracker.unregister(runId)
+                progressTracker.clear(runId.toString())
             }
-        } finally {
-            // runJob 是手工创建的裸 Job：withContext 结束不会让它完成，必须显式 complete，
-            // 否则它永远 Active 挂在父生成协程下——外层 flow 生产者停在 Completing 等子 Job，
-            // 整轮生成的收尾永不发生（子代理早已返回、回复早已完成，UI 却一直「正在生成」）。
-            // 取消路径无需处理：取消传播会把 runJob 一并置为 Cancelled，complete 对已完成 Job 是空操作。
-            if (runJob.isActive) runJob.complete()
-            gate.release(runId.toString())
-            progressTracker.unregister(runId)
-            progressTracker.clear(runId.toString())
+        }
+        // Scheduled runs retain their existing parent/registry cancellation contract.
+        return if (entryPoint == AgentRunEntity.ENTRY_POINT_CHAT && scopeToken != null) {
+            taskHandoffs.await(scopeToken, run.id, appScope, onRetained = {
+                inserted.await()
+                agentRunDAO.retainAwaitedRun(run.id)
+            }) { execute() }
+        } else {
+            execute()
         }
     }
 
@@ -502,7 +505,9 @@ class SubagentRunner(
 
         suspend fun update(transform: (AgentRunEntity) -> AgentRunEntity) {
             val current = agentRunDAO.getRun(initial.id) ?: return
-            agentRunDAO.updateRun(transform(current))
+            val updated = transform(current)
+            agentRunDAO.updateProgress(updated.id, updated.status, updated.startedAt,
+                updated.transcript, updated.toolEnvelope)
         }
 
         update { it.copy(status = AgentRunEntity.STATUS_RUNNING, startedAt = System.currentTimeMillis()) }
@@ -694,7 +699,8 @@ class SubagentRunner(
                             label = initial.profileName,
                             pending = pending,
                             parentConversationId = initial.parentConversationId,
-                            background = initial.deliveryMode == AgentRunEntity.DELIVERY_MODE_NOTICE,
+                            background = agentRunDAO.getRun(initial.id)?.deliveryMode in setOf(
+                                AgentRunEntity.DELIVERY_MODE_NOTICE, AgentRunEntity.DELIVERY_MODE_HANDOFF),
                         )
                         currentMessages = applyApprovalDecisions(currentMessages, decisions)
                         update {

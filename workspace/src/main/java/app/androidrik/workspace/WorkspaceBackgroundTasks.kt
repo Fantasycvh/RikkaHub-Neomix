@@ -353,7 +353,7 @@ class WorkspaceTaskRegistry(
         val stderr: TailBuffer,
         /** 启动方 scope（P3）；null = 无归属。 */
         val scope: ExecutionScope? = null,
-        val noticeTarget: WorkspaceTaskNoticeTarget? = null,
+        var noticeTarget: WorkspaceTaskNoticeTarget? = null,
         val noticeId: String = UUID.randomUUID().toString(),
     ) {
         @Volatile
@@ -402,11 +402,22 @@ class WorkspaceTaskRegistry(
 
     private fun retainTerminalLocked(entry: Entry) {
         val target = entry.noticeTarget ?: return
+        if (!target.deliveryEnabled) return
         terminalOutbox.putIfAbsent(entry.noticeId, WorkspaceTaskTerminal(entry.noticeId, target, snapshotOf(entry)))
         _pendingTerminals.value = terminalOutbox.values.toList()
     }
 
     private val _snapshots = MutableStateFlow<List<WorkspaceTaskSnapshot>>(emptyList())
+
+    /** Explicit handoff activates dormant destinations; ownership and task execution stay unchanged. */
+    fun retainNoticesByScope(scope: ExecutionScope): List<WorkspaceTaskSnapshot> = synchronized(lock) {
+        val retained = tasks.values.filter { it.scope == scope && it.noticeTarget != null }
+        retained.forEach { entry ->
+            entry.noticeTarget = entry.noticeTarget!!.copy(deliveryEnabled = true, allowWake = false)
+            if (entry.status != WorkspaceTaskStatus.RUNNING) retainTerminalLocked(entry)
+        }
+        retained.map(::snapshotOf)
+    }
 
     /**
      * 后台任务快照流（P0，design-agent-task-runtime §4.2）：每次任务表变化发一版**不可变**列表。
@@ -446,7 +457,7 @@ class WorkspaceTaskRegistry(
         val entry: Entry
         synchronized(lock) {
             evictFinishedLocked()
-            check(noticeTarget == null || terminalOutbox.size < 128) {
+            check(noticeTarget?.deliveryEnabled != true || terminalOutbox.size < 128) {
                 "Background task result inbox is full; pending results must be saved before starting more tasks."
             }
             val running = tasks.values.count { it.status == WorkspaceTaskStatus.RUNNING }

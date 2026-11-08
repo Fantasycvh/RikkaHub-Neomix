@@ -150,12 +150,15 @@ internal class WorkspaceNoticeInbox(
     private suspend fun process(session: ConversationSession, rows: List<ExternalNoticeEntity>, beforeUser: Boolean) =
         withContext(Dispatchers.Main.immediate) {
             if (rows.isEmpty() || settings.value.init) return@withContext
+            if (session.taskHandoffInProgress) return@withContext
             val original = session.state.value
             val assistant = settings.value.getAssistantById(original.assistantId)
             val selected = original.currentMessages.map { it.id.toString() }.toSet()
             val sourceEvents = app.androidrik.rikkahub.data.task.selectedWorkspaceCompletionEvents(original.currentMessages)
             val applicable = rows.filter {
-                externalNoticeMatches(it, original.assistantId.toString(), assistant?.workspaceId?.toString(), selected) && it.id in sourceEvents
+                externalNoticeMatches(it, original.assistantId.toString(), assistant?.workspaceId?.toString(), selected) && it.id in sourceEvents &&
+                    (!beforeUser || it.wakeState != "suppressed" ||
+                        it.rootScope == (session.externalNoticeRootScope ?: session.backgroundTaskOwner))
             }
             // Branch/assistant changes retain the original destination; never move a result elsewhere.
             if (applicable.isEmpty()) return@withContext
