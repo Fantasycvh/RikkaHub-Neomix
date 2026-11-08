@@ -48,6 +48,7 @@ fun createConversationTools(
                 }
             )
         },
+        concurrentSafe = true,
         execute = {
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 10).coerceIn(1, 30)
             val recent = conversationRepo.getRecentConversations(
@@ -91,6 +92,7 @@ fun createConversationTools(
                 required = listOf("query")
             )
         },
+        concurrentSafe = true,
         execute = {
             val query = it.jsonObject["query"]?.jsonPrimitive?.contentOrNull
                 ?: error("query is required")
@@ -158,6 +160,7 @@ fun createReadConversationTool(
             required = listOf("conversation_id")
         )
     },
+    concurrentSafe = true,
     execute = {
         val conversationId = it.jsonObject["conversation_id"]?.jsonPrimitive?.contentOrNull
             ?: error("conversation_id is required")

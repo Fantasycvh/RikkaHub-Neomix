@@ -47,6 +47,7 @@ fun createKnowledgeBaseTool(
                 required = listOf("query")
             )
         },
+        concurrentSafe = true,
         execute = { args ->
             val json = args.jsonObject
             val query = json["query"]?.jsonPrimitive?.content

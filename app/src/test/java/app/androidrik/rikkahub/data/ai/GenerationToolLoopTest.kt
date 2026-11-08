@@ -81,6 +81,66 @@ class GenerationToolLoopTest {
             .filterIsInstance<UIMessagePart.Text>().any { it.text.contains("\"status\":\"ready\"") } })
     }
 
+    @Test fun `concurrent-safe tools in the same batch execute in parallel and all results commit`() {
+        // 车道并行（借鉴 NMoi D254）：同批连续 concurrentSafe 工具并发执行。
+        // 判据用**在飞计数**钉住：两个各挂 150ms 的只读工具若串行，max in-flight = 1；
+        // 并行则 ≥ 2。回填语义不变：每个 toolCallId 都有结果。
+        val inFlight = AtomicInteger(0)
+        val maxInFlight = AtomicInteger(0)
+        fun laneTool(name: String) = tool(name, concurrentSafe = true) {
+            maxInFlight.updateAndGet { maxOf(it, inFlight.incrementAndGet()) }
+            try {
+                delay(150)
+                listOf(UIMessagePart.Text("done:$name"))
+            } finally {
+                inFlight.decrementAndGet()
+            }
+        }
+        val read1 = laneTool("read_1")
+        val read2 = laneTool("read_2")
+        val provider = ScriptedProvider { index, _ ->
+            if (index == 0) {
+                toolCallStep(toolCall("call-1", read1.name), toolCall("call-2", read2.name))
+            } else {
+                textStep("final answer")
+            }
+        }
+        val sent = runGeneration(provider, listOf(read1, read2))
+        assertEquals(2, provider.calls.get())
+        assertTrue("expected parallel execution, max in-flight was ${maxInFlight.get()}",
+            maxInFlight.get() >= 2)
+        assertTrue(sent.last().last().getTools().all { it.isExecuted })
+        val outputs = sent.last().last().getTools().map { it.output }
+        assertTrue(outputs.any { it.filterIsInstance<UIMessagePart.Text>().any { t -> t.text == "done:read_1" } })
+        assertTrue(outputs.any { it.filterIsInstance<UIMessagePart.Text>().any { t -> t.text == "done:read_2" } })
+    }
+
+    @Test fun `serial tool between concurrent-safe tools flushes the lane first`() {
+        // 车道冲刷语义：只读工具后面跟写类工具时，写类工具等车道全部完成再执行——
+        // 顺序语义与串行一致（读先完成，写不与读并发）。
+        val events = java.util.concurrent.ConcurrentLinkedQueue<String>()
+        val reader = tool("reader", concurrentSafe = true) {
+            events.add("reader-start")
+            try {
+                delay(100)
+                listOf(UIMessagePart.Text("read-done"))
+            } finally {
+                events.add("reader-end")
+            }
+        }
+        val writer = tool("writer") {
+            events.add("writer-start")
+            listOf(UIMessagePart.Text("write-done"))
+        }
+        val provider = ScriptedProvider { _, _ -> toolCallStep(
+            toolCall("r", reader.name), toolCall("w", writer.name)) }
+        val sent = runGeneration(provider, listOf(reader, writer))
+        assertTrue(sent.last().last().getTools().all { it.isExecuted })
+        val sequence = events.toList()
+        assertTrue("expected writer after reader drained, got $sequence",
+            sequence.indexOf("writer-start") > sequence.indexOf("reader-end"))
+    }
+
     // ---- 假 provider ----
 
     private class ScriptedProvider(
@@ -137,6 +197,7 @@ class GenerationToolLoopTest {
     private fun tool(
         name: String,
         needsApproval: Boolean = false,
+        concurrentSafe: Boolean = false,
         execute: suspend () -> List<UIMessagePart>,
     ) = Tool(
         name = name,
@@ -144,6 +205,7 @@ class GenerationToolLoopTest {
         parameters = { InputSchema.Obj(properties = JsonObject(emptyMap())) },
         needsApproval = { needsApproval },
         executionTimeoutMillis = null,
+        concurrentSafe = concurrentSafe,
         execute = { execute() },
     )
 

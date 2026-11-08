@@ -43,6 +43,14 @@ data class Tool(
     val executionTimeoutMillis: Long? = DEFAULT_TOOL_EXECUTION_TIMEOUT_MS,
     /** Successful runtime control tools may release the parent turn after the whole tool batch commits. */
     val endTurnOnSuccess: Boolean = false,
+    /**
+     * 只读、无副作用 ⇒ 与同批其他 concurrentSafe 工具**并行执行**（借鉴 NMoi D254「车道并行」，
+     * 台账 `docs/references/other projects/nmoi-agent.md` §13.4 候选 2）。
+     *
+     * 声明即契约：并发执行时不得读写共享可变状态、结果顺序无关。默认 false（= NMoi 的
+     * Workspace 车道，串行防写冲突）——只有显式声明的读类工具才进并行车道。
+     */
+    val concurrentSafe: Boolean = false,
     val execute: suspend (JsonElement) -> List<UIMessagePart>
 )
 

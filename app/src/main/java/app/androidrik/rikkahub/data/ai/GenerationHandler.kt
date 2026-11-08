@@ -6,7 +6,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.Flow
@@ -76,6 +81,19 @@ import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "GenerationHandler"
+
+/** 并行车道的并发上限（借鉴 NMoi D254 的 Read/Process 车道并发数 4）。 */
+internal const val TOOL_LANE_MAX_CONCURRENCY = 4
+
+/** 已过预检、待执行的工具调用（车道并行与串行共用的执行单元）。 */
+internal data class PreparedTool(
+    val tool: UIMessagePart.Tool,
+    val signature: String,
+    val outputBudget: Int,
+    val hasShellAccess: Boolean,
+    val workspaceBound: Boolean,
+    val toolStartedAt: kotlinx.datetime.LocalDateTime,
+)
 
 // 上下文闸 B 的常量与三件执行体随批次 10 迁至 ToolOutputBudget.kt（闸 A 在 ToolOutputContextGate.kt）
 
@@ -809,9 +827,288 @@ class GenerationHandler(
             // 注意：每个 toolCallId 都必须有 tool 结果（协议要求），故把首条输出复制回填给重复项。
             val executedSignature = mutableMapOf<String, List<UIMessagePart>>()
             var endTurnAfterTools = false
+
+            // —— 车道并行（借鉴 NMoi D254「车道并行」，台账 nmoi-agent.md §13.4 候选 2）——
+            // 批内**连续**的 concurrentSafe（只读）工具进并行车道，遇到串行工具即冲刷——
+            // 写类/审批类工具之间保持原有顺序语义。关键约束：
+            // - **护栏与去重的记录仍在派发前按调用顺序逐条做**（prepareExecutableTool），
+            //   与串行完全一致——LoopGuard/ContextBudget 判定的是「模型要什么」，不是执行序；
+            // - 只有「执行 + 回填」并发，结果按完成序回填（每个子协程算完立即 commit，
+            //   与下方串行的逐个回填同款取消安全语义）；
+            // - 同签名重复下发（Gemini 系实测）：串行靠「先执行先入 map」天然去重，并行车道
+            //   里重复项的预检先于执行——挂起等首调用出结果再复用（deferredDuplicates），
+            //   失败的首调用不进 map，重复项照常重走执行（与串行的失败重试语义一致）；
+            // - endTurnAfterTools/stopNotice 会被并行子协程并发写：都是「置真/设一次」的
+            //   单向写，竞态最坏情形是两个等价 stopNotice 互相覆盖，语义无害。
+            val preparedSignatures = mutableSetOf<String>()
+            val deferredDuplicates = mutableListOf<UIMessagePart.Tool>()
+            val pendingLane = mutableListOf<PreparedTool>()
+            val laneSemaphore = kotlinx.coroutines.sync.Semaphore(TOOL_LANE_MAX_CONCURRENCY)
+            // 车道子协程只「合并进 messages + 写旁路落点」，**不 emit**——flow 的
+            // SafeCollector 禁止跨协程并发发射（`GenerationToolLoopTest` 实测：
+            // "Emission from another coroutine is detected"），发射统一由冲刷点在
+            // join 之后按合并序补发。合并本身串行化在 laneMutex 里（executedSignature
+            // 的并发写同样由它兜住）。
+            val laneMutex = kotlinx.coroutines.sync.Mutex()
+            val lanePendingEmissions = mutableListOf<List<UIMessage>>()
+
+            suspend fun emitLaneSnapshots() {
+                lanePendingEmissions.forEach { snapshot ->
+                    emit(
+                        GenerationChunk.Messages(
+                            snapshot.transforms(
+                                transformers = outputTransformers,
+                                context = context,
+                                model = targetModel,
+                                assistant = assistant,
+                                settings = settings
+                            )
+                        )
+                    )
+                }
+                lanePendingEmissions.clear()
+            }
+
+            /**
+             * 预检（顺序语义与串行一致）：去重 → 规则提醒/LoopGuard/ContextBudget 记录 →
+             * 输出预算与执行窗口起点。返回 null = 该调用已被处理（复用提交或挂起等首调用）。
+             */
+            suspend fun prepareExecutableTool(tool: UIMessagePart.Tool): PreparedTool? {
+                val signature = toolCallSignature(tool.toolName, tool.input, json)
+                executedSignature[signature]?.let { priorOutput ->
+                    Log.i(TAG, "generateText: duplicate ${tool.toolName} call skipped (same args), reused result")
+                    commitToolResult(tool.copy(output = priorOutput))
+                    return null
+                }
+                if (!preparedSignatures.add(signature)) {
+                    // 同批先到的同签名调用还没出结果（并行车道执行中/失败重试中）：挂起，
+                    // 冲刷后按结果复用或重走执行
+                    deferredDuplicates += tool
+                    return null
+                }
+                // 护栏记录发生在**发起时**（而非执行成功后）：判定的是「模型反复要什么」，
+                // 失败时由下方 onFailure 用 forget 撤回（见 ToolCallLoopGuard 约束 2）。
+                ruleEngine.record(tool.toolName, tool.inputAsJson())
+                // 本轮写过计划 ⇒ `plan_missing` 立刻闭嘴（这是该条规则的"落地"形态）
+                if (tool.toolName == TODO_TOOL_NAME) planWrittenThisTurn = true
+                when (val verdict = loopGuard.record(tool.toolName, signature)) {
+                    is ToolCallLoopGuard.Verdict.Loop -> {
+                        if (stopNotice == null) stopNotice = GenerationNotice.ToolLoopStopped(
+                            toolName = verdict.toolName,
+                            repeats = verdict.repeats,
+                        )
+                        Log.w(
+                            TAG,
+                            "generateText: tool loop detected (${verdict.toolName} ×${verdict.repeats}, " +
+                                "failed=${verdict.failed}), will stop this turn after applying results",
+                        )
+                    }
+
+                    ToolCallLoopGuard.Verdict.Continue -> Unit
+                }
+                // 上下文预算：**执行前**判定（与另外两个护栏不同）——撞满窗口是硬墙，
+                // provider 会直接报错，先停能保住已经攒到的结果
+                if (contextGuard != null && stopNotice == null) {
+                    val budget = contextGuard.evaluate(messages, overheadTokens)
+                    Log.i(TAG, "generateText: context budget ${budget.describe()}")
+                    if (budget.verdict is ContextBudget.Verdict.Exhausted) {
+                        Log.w(
+                            TAG,
+                            "generateText: context budget exhausted (${budget.describe()}), " +
+                                "will stop this turn before executing ${tool.toolName}",
+                        )
+                        stopNotice = GenerationNotice.ContextBudgetExhausted(
+                            usedTokens = budget.usedTokens,
+                            windowTokens = budget.windowTokens,
+                        )
+                    }
+                }
+                // 上下文闸 A：per-call 动态限幅（每次执行前按当前窗口占用算预算）；
+                // 能力判定放 runCatching 外——成功/失败两条路径共用
+                val outputBudget = toolOutputBudget(messages, targetModel)
+                val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
+                val workspaceBound = toolsInternal.any { it.name == "workspace_read_file" }
+                // 执行窗口起点：**护栏全过后、真正执行前**（不含审批等待——语义=执行耗时）
+                val toolStartedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                return PreparedTool(
+                    tool = tool,
+                    signature = signature,
+                    outputBudget = outputBudget,
+                    hasShellAccess = hasShellAccess,
+                    workspaceBound = workspaceBound,
+                    toolStartedAt = toolStartedAt,
+                )
+            }
+
+            suspend fun runPreparedTool(prepared: PreparedTool) {
+                val tool = prepared.tool
+                runCatching {
+                    val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
+                        ?: error("Tool ${tool.toolName} not found")
+                    val args = try {
+                        val parsed = parseToolArguments(tool.input.ifBlank { "{}" }, json)
+                        if (parsed.trailingChars > 0 || parsed.lenient) {
+                            // 降级修复命中（#1985 双拼接 / Yuihub `0eaf2057` 同源的宽松
+                            // 兜底）：已恢复执行；记 warning 便于定位是哪家中转/模型的流
+                            // 拼接或畸形输出问题
+                            Log.w(
+                                TAG,
+                                "Tool args for ${tool.toolName} repaired" +
+                                    "(lenient=${parsed.lenient}, trailingChars=${parsed.trailingChars})"
+                            )
+                        }
+                        parsed.args
+                    } catch (t: Throwable) {
+                        // Throwable：深嵌套工具输入抛 StackOverflowError（Error），runCatching 捕不到
+                        error("Invalid tool arguments JSON for ${tool.toolName}: ${t.message}")
+                    }
+                    Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
+                    val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
+                    if (toolDef.shouldEndTurn(result)) endTurnAfterTools = true
+                    // 空输出补占位：否则 isExecuted 仍为假 ⇒ 下一轮又被选出来重复执行
+                    val output = finalizeToolOutput(
+                        maybeTruncateToolOutput(
+                            context,
+                            tool,
+                            result,
+                            maxChars = prepared.outputBudget,
+                            workspaceBound = prepared.workspaceBound,
+                            hasShellAccess = prepared.hasShellAccess,
+                        )
+                    )
+                    executedSignature[prepared.signature] = output
+                    // 车道合并点：只合并不发射（见 laneMutex 处注释）；NonCancellable
+                    // 保持与 commitToolResult 相同的「已完成结果必须落地」语义
+                    withContext(NonCancellable) {
+                        laneMutex.withLock {
+                            val committed = tool.copy(
+                                output = output,
+                                startedAt = prepared.toolStartedAt,
+                                finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
+                            )
+                            messages = applyToolOutput(messages, committed)
+                            executedTools += committed
+                            onMessagesCommitted?.invoke(messages)
+                            lanePendingEmissions += messages
+                        }
+                    }
+                    // workspace 单轮预算：**执行并截断后**计费——计的是「实际进入上下文」
+                    // 的字符数（截断掉的部分写进了 tool_outputs 文件、不进上下文）。
+                    // 执行前拒绝会让本调用的结果变成合成错误文本，与 LoopGuard 的
+                    // 「优雅停止」不一致；此处超限只设提示，本批结果照常回填后停本轮。
+                    if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
+                        val chars = output.filterIsInstance<UIMessagePart.Text>().sumOf { it.text.length }
+                        val verdict = workspaceBudget.record(chars)
+                        if (verdict is WorkspaceTurnBudget.Verdict.Exceeded && stopNotice == null) {
+                            Log.w(
+                                TAG,
+                                "generateText: workspace budget exceeded " +
+                                    "(${verdict.usedChars}/${verdict.budgetChars} chars, " +
+                                    "${verdict.steps} steps, by=${verdict.by}), " +
+                                    "will stop this turn after applying results",
+                            )
+                            stopNotice = GenerationNotice.WorkspaceBudgetExhausted(
+                                usedChars = verdict.usedChars,
+                                budgetChars = verdict.budgetChars,
+                                steps = verdict.steps,
+                                by = verdict.by,
+                            )
+                        }
+                    }
+                }.onFailure {
+                    // 取消必须向上传播，否则停止生成会被误报为工具执行错误
+                    if (it is CancellationException) throw it
+                    // forget() 补丁：把本次标记为**失败**，使「失败调用」不被算作
+                    // 「成功调用的重复」——网络恢复后用相同参数重试是合理恢复路径。
+                    // 注意本仓**不采用**同源实现的「直接移出窗口」：真机实测那样会让
+                    // 「反复撞同一个必然失败」永远不触发（详见 ToolCallLoopGuard 类注释）。
+                    loopGuard.markFailed(prepared.signature)
+                    it.printStackTrace()
+                    // 失败调用的错误文本（含堆栈）同样进入上下文 ⇒ 同样计费——否则
+                    // 「每步换参数、每次都失败」的 shell 调用既不占输出预算也不占步数。
+                    // 判定结果此处不设提示（成功路径统一负责），只记账。
+                    // 错误文本同样受 per-call 限幅（堆栈可以非常长）；JSON 包裹后
+                    // 截断会破坏结构，故在编码前硬切。
+                    val errorText = buildString {
+                        append("[${it.javaClass.name}] ${it.message}")
+                        append("\n${it.stackTraceToString()}")
+                    }.let { text ->
+                        if (text.length > prepared.outputBudget) {
+                            text.take(prepared.outputBudget) +
+                                "\n[... error text truncated at ${prepared.outputBudget} chars]"
+                        } else {
+                            text
+                        }
+                    }
+                    if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
+                        workspaceBudget.record(errorText.length)
+                    }
+                    // 失败输出同样走车道合并点（只合并不发射，冲刷点统一补发）
+                    withContext(NonCancellable) {
+                        laneMutex.withLock {
+                            val committed = tool.copy(
+                                output = listOf(
+                                    UIMessagePart.Text(
+                                        json.encodeToString(
+                                            buildJsonObject {
+                                                put("error", JsonPrimitive(errorText))
+                                            }
+                                        )
+                                    )
+                                ),
+                                startedAt = prepared.toolStartedAt,
+                                finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
+                            )
+                            messages = applyToolOutput(messages, committed)
+                            executedTools += committed
+                            onMessagesCommitted?.invoke(messages)
+                            lanePendingEmissions += messages
+                        }
+                    }
+                }
+            }
+
+            /** 冲刷并行车道（串行单工具路径也走这里以兑现挂起的重复调用）。 */
+            suspend fun flushParallelLane() {
+                if (pendingLane.isEmpty()) return
+                val lane = pendingLane.toList()
+                pendingLane.clear()
+                if (lane.size == 1) {
+                    runPreparedTool(lane.single())
+                    emitLaneSnapshots()
+                } else {
+                    Log.i(TAG, "generateText: parallel lane with ${lane.size} concurrent-safe tools")
+                    coroutineScope {
+                        lane.forEach { prepared ->
+                            launch { laneSemaphore.withPermit { runPreparedTool(prepared) } }
+                        }
+                    }
+                    // join 之后按合并序补发（车道子协程不 emit，见 laneMutex 处注释）
+                    emitLaneSnapshots()
+                }
+                // 兑现挂起的重复调用：首调用已出结果则复用；没出（首调用失败）则重走
+                // 预检+执行，与串行的「失败调用重试」语义一致
+                val deferred = deferredDuplicates.toList()
+                deferredDuplicates.clear()
+                deferred.forEach { tool ->
+                    val signature = toolCallSignature(tool.toolName, tool.input, json)
+                    val priorOutput = executedSignature[signature]
+                    if (priorOutput != null) {
+                        commitToolResult(tool.copy(output = priorOutput))
+                    } else {
+                        prepareExecutableTool(tool)?.let {
+                            runPreparedTool(it)
+                            emitLaneSnapshots()
+                        }
+                    }
+                }
+            }
+
             toolsToProcess.forEach { tool ->
                 when (tool.approvalState) {
                     is ToolApprovalState.Denied -> {
+                        // 冲刷车道：拒绝/应答/待审批的提交先于并行工具的结果进入消息序
+                        flushParallelLane()
                         val reason = (tool.approvalState as ToolApprovalState.Denied).reason
                         // 重复拒绝护栏（仅无头 run 传入）：**不按签名**计数——换参数/换工具
                         // 的连续拒绝是 LoopGuard 的盲区（§9.2.1）。超限 → 优雅停止，
@@ -847,6 +1144,7 @@ class GenerationHandler(
 
                     is ToolApprovalState.Answered -> {
                         // Tool was answered by user (e.g., ask_user tool)
+                        flushParallelLane()
                         val answer = (tool.approvalState as ToolApprovalState.Answered).answer
                         commitToolResult(
                             tool.copy(
@@ -864,173 +1162,26 @@ class GenerationHandler(
 
                     else -> {
                         // Auto or Approved - execute the tool
-                        // 去重：同工具同参数的重复下发只执行一次，其余复用首个结果
-                        val signature = toolCallSignature(tool.toolName, tool.input, json)
-                        executedSignature[signature]?.let { priorOutput ->
-                            Log.i(TAG, "generateText: duplicate ${tool.toolName} call skipped (same args), reused result")
-                            commitToolResult(tool.copy(output = priorOutput))
-                            return@forEach
-                        }
-                        // 护栏记录发生在**发起时**（而非执行成功后）：判定的是「模型反复要什么」，
-                        // 失败时由下方 onFailure 用 forget 撤回（见 ToolCallLoopGuard 约束 2）。
-                        // 注意只在**批内首次**出现时记录：同一响应里的重复下发已被上面的 dedup 收拢，
-                        // 若逐条记录，一次 Gemini 式重复下发就会被算成 2 次、两步即误判。
-                        // 规则提醒的效果窗口：与 LoopGuard 同处记录（上面的批内 dedup 保证
-                        // 一次响应里的重复下发只算一次，窗口密度才不失真）。
-                        ruleEngine.record(tool.toolName, tool.inputAsJson())
-                        // 本轮写过计划 ⇒ `plan_missing` 立刻闭嘴（这是该条规则的"落地"形态）
-                        if (tool.toolName == TODO_TOOL_NAME) planWrittenThisTurn = true
-                        when (val verdict = loopGuard.record(tool.toolName, signature)) {
-                            is ToolCallLoopGuard.Verdict.Loop -> {
-                                if (stopNotice == null) stopNotice = GenerationNotice.ToolLoopStopped(
-                                    toolName = verdict.toolName,
-                                    repeats = verdict.repeats,
-                                )
-                                Log.w(
-                                    TAG,
-                                    "generateText: tool loop detected (${verdict.toolName} ×${verdict.repeats}, " +
-                                        "failed=${verdict.failed}), will stop this turn after applying results",
-                                )
+                        // 预检保持顺序语义（去重/护栏/预算，见 prepareExecutableTool）；
+                        // 只读工具进并行车道，写类/未知工具冲刷车道后照旧串行执行
+                        val prepared = prepareExecutableTool(tool)
+                        if (prepared != null) {
+                            val laneEligible = toolsInternal
+                                .find { it.name == tool.toolName }?.concurrentSafe == true
+                            if (laneEligible) {
+                                pendingLane += prepared
+                            } else {
+                                flushParallelLane()
+                                runPreparedTool(prepared)
+                                emitLaneSnapshots()
                             }
-
-                            ToolCallLoopGuard.Verdict.Continue -> Unit
-                        }
-                        // 上下文预算：**执行前**判定（与另外两个护栏不同）——撞满窗口是硬墙，
-                        // provider 会直接报错，先停能保住已经攒到的结果
-                        if (contextGuard != null && stopNotice == null) {
-                            val budget = contextGuard.evaluate(messages, overheadTokens)
-                            Log.i(TAG, "generateText: context budget ${budget.describe()}")
-                            if (budget.verdict is ContextBudget.Verdict.Exhausted) {
-                                Log.w(
-                                    TAG,
-                                    "generateText: context budget exhausted (${budget.describe()}), " +
-                                        "will stop this turn before executing ${tool.toolName}",
-                                )
-                                stopNotice = GenerationNotice.ContextBudgetExhausted(
-                                    usedTokens = budget.usedTokens,
-                                    windowTokens = budget.windowTokens,
-                                )
-                            }
-                        }
-                        // 上下文闸 A：per-call 动态限幅（每次执行前按当前窗口占用算预算）；
-                        // 能力判定放 runCatching 外——成功/失败两条路径共用
-                        val outputBudget = toolOutputBudget(messages, targetModel)
-                        val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
-                        val workspaceBound = toolsInternal.any { it.name == "workspace_read_file" }
-                        // 执行窗口起点：**护栏全过后、真正执行前**（不含审批等待——语义=执行耗时）
-                        val toolStartedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-                        runCatching {
-                            val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
-                                ?: error("Tool ${tool.toolName} not found")
-                            val args = try {
-                                val parsed = parseToolArguments(tool.input.ifBlank { "{}" }, json)
-                                if (parsed.trailingChars > 0 || parsed.lenient) {
-                                    // 降级修复命中（#1985 双拼接 / Yuihub `0eaf2057` 同源的宽松
-                                    // 兜底）：已恢复执行；记 warning 便于定位是哪家中转/模型的流
-                                    // 拼接或畸形输出问题
-                                    Log.w(
-                                        TAG,
-                                        "Tool args for ${tool.toolName} repaired" +
-                                            "(lenient=${parsed.lenient}, trailingChars=${parsed.trailingChars})"
-                                    )
-                                }
-                                parsed.args
-                            } catch (t: Throwable) {
-                                // Throwable：深嵌套工具输入抛 StackOverflowError（Error），runCatching 捕不到
-                                error("Invalid tool arguments JSON for ${tool.toolName}: ${t.message}")
-                            }
-                            Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
-                            val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
-                            if (toolDef.shouldEndTurn(result)) endTurnAfterTools = true
-                            // 空输出补占位：否则 isExecuted 仍为假 ⇒ 下一轮又被选出来重复执行
-                            val output = finalizeToolOutput(
-                                maybeTruncateToolOutput(
-                                    context,
-                                    tool,
-                                    result,
-                                    maxChars = outputBudget,
-                                    workspaceBound = workspaceBound,
-                                    hasShellAccess = hasShellAccess,
-                                )
-                            )
-                            executedSignature[signature] = output
-                            commitToolResult(
-                                tool.copy(
-                                    output = output,
-                                    startedAt = toolStartedAt,
-                                    finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
-                                )
-                            )
-                            // workspace 单轮预算：**执行并截断后**计费——计的是「实际进入上下文」
-                            // 的字符数（截断掉的部分写进了 tool_outputs 文件、不进上下文）。
-                            // 执行前拒绝会让本调用的结果变成合成错误文本，与 LoopGuard 的
-                            // 「优雅停止」不一致；此处超限只设提示，本批结果照常回填后停本轮。
-                            if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
-                                val chars = output.filterIsInstance<UIMessagePart.Text>().sumOf { it.text.length }
-                                val verdict = workspaceBudget.record(chars)
-                                if (verdict is WorkspaceTurnBudget.Verdict.Exceeded && stopNotice == null) {
-                                    Log.w(
-                                        TAG,
-                                        "generateText: workspace budget exceeded " +
-                                            "(${verdict.usedChars}/${verdict.budgetChars} chars, " +
-                                            "${verdict.steps} steps, by=${verdict.by}), " +
-                                            "will stop this turn after applying results",
-                                    )
-                                    stopNotice = GenerationNotice.WorkspaceBudgetExhausted(
-                                        usedChars = verdict.usedChars,
-                                        budgetChars = verdict.budgetChars,
-                                        steps = verdict.steps,
-                                        by = verdict.by,
-                                    )
-                                }
-                            }
-                        }.onFailure {
-                            // 取消必须向上传播，否则停止生成会被误报为工具执行错误
-                            if (it is CancellationException) throw it
-                            // forget() 补丁：把本次标记为**失败**，使「失败调用」不被算作
-                            // 「成功调用的重复」——网络恢复后用相同参数重试是合理恢复路径。
-                            // 注意本仓**不采用**同源实现的「直接移出窗口」：真机实测那样会让
-                            // 「反复撞同一个必然失败」永远不触发（详见 ToolCallLoopGuard 类注释）。
-                            loopGuard.markFailed(signature)
-                            it.printStackTrace()
-                            // 失败调用的错误文本（含堆栈）同样进入上下文 ⇒ 同样计费——否则
-                            // 「每步换参数、每次都失败」的 shell 调用既不占输出预算也不占步数。
-                            // 判定结果此处不设提示（成功路径统一负责），只记账。
-                            // 错误文本同样受 per-call 限幅（堆栈可以非常长）；JSON 包裹后
-                            // 截断会破坏结构，故在编码前硬切。
-                            val errorText = buildString {
-                                append("[${it.javaClass.name}] ${it.message}")
-                                append("\n${it.stackTraceToString()}")
-                            }.let { text ->
-                                if (text.length > outputBudget) {
-                                    text.take(outputBudget) +
-                                        "\n[... error text truncated at $outputBudget chars]"
-                                } else {
-                                    text
-                                }
-                            }
-                            if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
-                                workspaceBudget.record(errorText.length)
-                            }
-                            commitToolResult(
-                                tool.copy(
-                                    output = listOf(
-                                        UIMessagePart.Text(
-                                            json.encodeToString(
-                                                buildJsonObject {
-                                                    put("error", JsonPrimitive(errorText))
-                                                }
-                                            )
-                                        )
-                                    ),
-                                    startedAt = toolStartedAt,
-                                    finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
-                                )
-                            )
                         }
                     }
                 }
             }
+
+            // 批内工具全部处理完：冲刷尾部车道（批内最后几条是只读工具时它们还挂在车道上）
+            flushParallelLane()
 
             if (executedTools.isEmpty()) {
                 // No results to add (all tools were pending)

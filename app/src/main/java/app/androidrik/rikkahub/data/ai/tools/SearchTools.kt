@@ -57,6 +57,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                     val service = SearchService.getService(options)
                     service.parameters(options)
                 },
+                concurrentSafe = true,
                 execute = {
                     val options = settings.searchServices.getOrElse(
                         index = settings.searchServiceSelected,
@@ -103,6 +104,7 @@ fun createSearchTools(settings: Settings): Set<Tool> {
                         val service = SearchService.getService(options)
                         service.scrapingParameters(options)
                     },
+                    concurrentSafe = true,
                     execute = {
                         val options = settings.searchServices.getOrElse(
                             index = settings.searchServiceSelected,

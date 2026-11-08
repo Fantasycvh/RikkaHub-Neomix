@@ -209,6 +209,7 @@ private fun createReadFileTool(
         )
     },
     needsApproval = { needsApproval("workspace_read_file") },
+    concurrentSafe = true,
     execute = {
         val path = it.jsonObject.absolutePath("path")
         val window = normalizeReadWindow(
@@ -674,6 +675,7 @@ private fun createTaskStatusTool(
         )
     },
     needsApproval = { needsApproval("workspace_task_status") },
+    concurrentSafe = true,
     execute = {
         val taskId = it.jsonObject.string("taskId")?.trim().orEmpty()
         val text = if (taskId.isBlank()) {
