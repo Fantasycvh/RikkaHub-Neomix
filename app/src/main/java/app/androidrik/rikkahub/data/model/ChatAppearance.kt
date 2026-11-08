@@ -41,16 +41,58 @@ data class ChatBubble(
     /** null follows the existing theme role (user primaryContainer / assistant surfaceContainerHigh). */
     val colorHex: String? = null,
     val geometry: ChatBubbleGeometry = ChatBubbleGeometry(),
+    val material: BubbleMaterial = BubbleMaterial.SOLID,
+    val gradient: AppearanceGradient = AppearanceGradient(),
+    val pattern: BubblePattern = BubblePattern(),
+    val noise: BubbleNoise = BubbleNoise(),
 ) {
     fun normalized(): ChatBubble = copy(
         opacity = opacity.bounded(0f, 1f, 1f),
         colorHex = colorHex?.takeIf { COLOR_HEX.matches(it) },
+        gradient = gradient.normalized(),
+        pattern = pattern.copy(
+            spacingDp = pattern.spacingDp.bounded(4f, 64f, 16f),
+            opacity = pattern.opacity.bounded(0f, 1f, 0.15f),
+            colorHex = pattern.colorHex?.takeIf { COLOR_HEX.matches(it) },
+        ),
+        noise = noise.copy(strength = noise.strength.bounded(0f, 1f, 0.12f)),
         geometry = geometry.copy(
             radiusDp = geometry.radiusDp.bounded(0f, 48f, 16f),
             paddingDp = geometry.paddingDp.bounded(0f, 32f, 8f),
         ),
     )
 }
+
+@Serializable
+enum class BubbleMaterial { SOLID, GRADIENT, PATTERN, NOISE }
+
+@Serializable
+enum class GradientDirection { HORIZONTAL, VERTICAL, DIAGONAL }
+
+@Serializable
+data class AppearanceGradient(
+    val colors: List<String> = listOf("#6750A4", "#D0BCFF"),
+    val direction: GradientDirection = GradientDirection.DIAGONAL,
+) {
+    fun normalized(): AppearanceGradient {
+        val valid = colors.filter { COLOR_HEX.matches(it) }.take(8)
+        return copy(colors = valid.takeIf { it.size >= 2 } ?: AppearanceGradient().colors)
+    }
+}
+
+@Serializable
+enum class BubblePatternKind { DOTS, GRID, STRIPES }
+
+@Serializable
+data class BubblePattern(
+    val kind: BubblePatternKind = BubblePatternKind.DOTS,
+    val spacingDp: Float = 16f,
+    val colorHex: String? = null,
+    val opacity: Float = 0.15f,
+)
+
+@Serializable
+data class BubbleNoise(val seed: Int = 0, val strength: Float = 0.12f)
 
 @Serializable
 data class ChatBubbleGeometry(val radiusDp: Float = 16f, val paddingDp: Float = 8f)
@@ -66,6 +108,14 @@ data class ChatAppearanceDetails(
     val assistantGeometry: ChatBubbleGeometry = ChatBubbleGeometry(),
     /** null retains the legacy shared opacity. */
     val assistantOpacity: Float? = null,
+    val userMaterial: BubbleMaterial = BubbleMaterial.SOLID,
+    val assistantMaterial: BubbleMaterial = BubbleMaterial.SOLID,
+    val userGradient: AppearanceGradient = AppearanceGradient(),
+    val assistantGradient: AppearanceGradient = AppearanceGradient(),
+    val userPattern: BubblePattern = BubblePattern(),
+    val assistantPattern: BubblePattern = BubblePattern(),
+    val userNoise: BubbleNoise = BubbleNoise(),
+    val assistantNoise: BubbleNoise = BubbleNoise(),
 )
 
 /** Legacy configurations need no disk migration and render identically. */
@@ -75,10 +125,14 @@ fun DisplaySetting.toChatAppearance(): ChatAppearance = ChatAppearance(
     userBubble = ChatBubble(
         chatAppearanceDetails.userBubbleVisible, bubbleOpacity,
         chatAppearanceDetails.userBubbleColorHex, chatAppearanceDetails.userGeometry,
+        chatAppearanceDetails.userMaterial, chatAppearanceDetails.userGradient,
+        chatAppearanceDetails.userPattern, chatAppearanceDetails.userNoise,
     ),
     assistantBubble = ChatBubble(
         showAssistantBubble, chatAppearanceDetails.assistantOpacity ?: bubbleOpacity,
         chatAppearanceDetails.assistantBubbleColorHex, chatAppearanceDetails.assistantGeometry,
+        chatAppearanceDetails.assistantMaterial, chatAppearanceDetails.assistantGradient,
+        chatAppearanceDetails.assistantPattern, chatAppearanceDetails.assistantNoise,
     ),
 ).normalized()
 
@@ -101,6 +155,14 @@ fun DisplaySetting.withChatAppearance(value: ChatAppearance): DisplaySetting {
             userGeometry = a.userBubble.geometry,
             assistantGeometry = a.assistantBubble.geometry,
             assistantOpacity = a.assistantBubble.opacity.takeIf { it != a.userBubble.opacity },
+            userMaterial = a.userBubble.material,
+            assistantMaterial = a.assistantBubble.material,
+            userGradient = a.userBubble.gradient,
+            assistantGradient = a.assistantBubble.gradient,
+            userPattern = a.userBubble.pattern,
+            assistantPattern = a.assistantBubble.pattern,
+            userNoise = a.userBubble.noise,
+            assistantNoise = a.assistantBubble.noise,
         ),
     )
 }

@@ -7,9 +7,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.data.model.ChatBubble
+import app.androidrik.rikkahub.data.model.BubbleMaterial
 import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 
@@ -26,22 +28,25 @@ fun ChatBubbleSurface(
 ) {
     val bubble = style.normalized()
     val override = bubble.colorHex.toComposeColorOrNull()
-    val color = if (bubble.visible) (override ?: defaultColor).copy(alpha = bubble.opacity) else Color.Transparent
+    val shape = RoundedCornerShape(bubble.geometry.radiusDp.dp)
     val contentColor = when {
         !bubble.visible -> MaterialTheme.colorScheme.onSurface
+        bubble.material == BubbleMaterial.GRADIENT -> adaptiveContentColor(
+            bubble.gradient.colors[bubble.gradient.colors.size / 2].toComposeColorOrNull() ?: defaultColor)
         override != null -> adaptiveContentColor(override)
         else -> defaultContentColor
     }
+    val background = modifier.clip(shape).bubbleMaterialBackground(bubble, override ?: defaultColor, contentColor)
     val body: @Composable () -> Unit = {
         Column(Modifier.padding(if (bubble.visible || padWhenHidden) bubble.geometry.paddingDp.dp else 0.dp)) {
             content()
         }
     }
     if (onClick == null) {
-        Surface(modifier = modifier, shape = RoundedCornerShape(bubble.geometry.radiusDp.dp),
-            color = color, contentColor = contentColor, content = body)
+        Surface(modifier = background, shape = shape,
+            color = Color.Transparent, contentColor = contentColor, content = body)
     } else {
-        Surface(onClick = onClick, modifier = modifier, shape = RoundedCornerShape(bubble.geometry.radiusDp.dp),
-            color = color, contentColor = contentColor, content = body)
+        Surface(onClick = onClick, modifier = background, shape = shape,
+            color = Color.Transparent, contentColor = contentColor, content = body)
     }
 }

@@ -6,9 +6,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
@@ -26,6 +30,7 @@ fun ChatAppearanceSettings(
     onChange: ((ChatAppearance) -> ChatAppearance) -> Unit,
 ) {
     val presets by ChatAppearanceRegistry.shared.presets.collectAsState()
+    var editingUser by remember { mutableStateOf<Boolean?>(null) }
     CardGroup(modifier = Modifier.padding(horizontal = 8.dp), title = { Text("聊天外观") }) {
         item(headlineContent = { Text("外观方案") }, supportingContent = {
             Column {
@@ -64,6 +69,11 @@ fun ChatAppearanceSettings(
                 if (user) it.copy(userBubble = transform(it.userBubble))
                 else it.copy(assistantBubble = transform(it.assistantBubble))
             }
+            item(headlineContent = { Text("${name}气泡材质") }, supportingContent = {
+                Text(if (bubble.visible) bubble.material.label() else "无色")
+            }, trailingContent = {
+                TextButton(onClick = { editingUser = user }) { Text("编辑") }
+            })
             item(headlineContent = { Text("${name}气泡圆角") }, supportingContent = {
                 AppearanceSlider(bubble.geometry.radiusDp, 0f..48f) { value ->
                     change { it.copy(geometry = it.geometry.copy(radiusDp = value)) }
@@ -83,6 +93,17 @@ fun ChatAppearanceSettings(
                 }, valueRange = 0f..1f)
             }
         })
+    }
+    editingUser?.let { user ->
+        BubbleMaterialEditor(
+            title = if (user) "用户气泡" else "助手气泡",
+            initial = if (user) appearance.userBubble else appearance.assistantBubble,
+            onSave = { value ->
+                onChange { if (user) it.copy(userBubble = value) else it.copy(assistantBubble = value) }
+                editingUser = null
+            },
+            onDismiss = { editingUser = null },
+        )
     }
 }
 
