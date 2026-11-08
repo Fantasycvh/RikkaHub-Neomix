@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -47,6 +49,8 @@ import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.ai.ContextUsage
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.components.haze.TopBarCapsule
+import app.androidrik.rikkahub.ui.components.ui.ExpressivePopup
+import app.androidrik.rikkahub.ui.components.ui.ExpressivePopupAlignment
 import app.androidrik.rikkahub.ui.components.haze.liquidGlassChromeEffect
 import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.useEditState
@@ -62,6 +66,7 @@ import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LeftToRightListBullet
 import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
+import me.rerere.hugeicons.stroke.MoreVertical
 import me.rerere.hugeicons.stroke.Share01
 
 /**
@@ -130,31 +135,49 @@ internal fun TopBar(
     // 顶栏 chrome 两套共存（上游 b40d7a273）：CAPSULES 时整条效果让位给浮动胶囊
     val capsuleMode = settings.displaySetting.topBarStyle == TopBarChromeStyle.CAPSULES
 
-    // 右侧操作按钮：FULL_BAR 直挂 actions，CAPSULES 由胶囊包裹（背景随滚动淡入）
+    // 右侧操作按钮：FULL_BAR 直挂 actions，CAPSULES 由胶囊包裹（背景随滚动淡入）。
+    // 「本会话任务」保留一级直达，其余收进「更多」二级展开菜单，压缩顶栏占位
+    var showMoreMenu by remember { mutableStateOf(false) }
     val topBarActions: @Composable RowScope.() -> Unit = {
         IconButton(onClick = { showTasks = true }) { Icon(Lucide.ListTree, stringResource(R.string.conversation_tasks_title)) }
-        IconButton(
-            onClick = {
-                onClickMenu()
+        Box {
+            IconButton(onClick = { showMoreMenu = !showMoreMenu }) {
+                Icon(HugeIcons.MoreVertical, "More")
             }
-        ) {
-            Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
-        }
-
-        IconButton(
-            onClick = {
-                onExport()
+            ExpressivePopup(
+                expanded = showMoreMenu,
+                onDismissRequest = { showMoreMenu = false },
+                alignment = ExpressivePopupAlignment.End,
+                // 顶栏菜单项少、文本短，比 ExpressivePopup 默认的 280dp 再收窄一档
+                modifier = Modifier.widthIn(max = 220.dp),
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.chat_page_more_menu_options)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onClickMenu()
+                    },
+                    leadingIcon = {
+                        Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, null)
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.common_export)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onExport()
+                    },
+                    leadingIcon = { Icon(HugeIcons.Share01, null) }
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.chat_page_new_chat)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onNewChat()
+                    },
+                    leadingIcon = { Icon(HugeIcons.MessageAdd01, null) }
+                )
             }
-        ) {
-            Icon(HugeIcons.Share01, "Export Conversation")
-        }
-
-        IconButton(
-            onClick = {
-                onNewChat()
-            }
-        ) {
-            Icon(HugeIcons.MessageAdd01, "New Message")
         }
     }
 

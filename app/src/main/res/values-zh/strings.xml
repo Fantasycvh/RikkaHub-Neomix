@@ -607,6 +607,7 @@
   <string name="chat_page_message_count">%d 条消息</string>
   <string name="chat_page_move_to_assistant">移至助手</string>
   <string name="chat_page_new_chat">新聊天</string>
+  <string name="chat_page_more_menu_options">聊天选项</string>
   <string name="chat_page_new_message">新消息</string>
   <string name="chat_page_nickname_placeholder">请输入昵称</string>
   <string name="chat_page_no_conversations">没有对话记录</string>

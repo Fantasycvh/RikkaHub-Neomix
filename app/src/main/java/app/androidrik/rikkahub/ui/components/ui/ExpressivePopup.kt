@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -53,7 +54,10 @@ enum class ExpressivePopupAlignment { Start, Center, End }
 fun ExpressivePopup(
     expanded: Boolean,
     onDismissRequest: () -> Unit,
-    modifier: Modifier = Modifier,
+    // M3 expressive（1.5.0-beta02）的 DropdownMenuItem 内置 fillMaxWidth，裸 Column 下会
+    // 撑满弹窗窗口宽 ⇒ 菜单横幅占满整行；默认按 M3 菜单宽度规范收窄，需要更窄/更宽的
+    // 调用点自行覆盖 modifier
+    modifier: Modifier = Modifier.widthIn(min = 112.dp, max = 280.dp),
     placement: ExpressivePopupPlacement = ExpressivePopupPlacement.Below,
     alignment: ExpressivePopupAlignment = ExpressivePopupAlignment.Start,
     anchorGap: Dp = 8.dp,
