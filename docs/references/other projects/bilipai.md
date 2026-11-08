@@ -96,3 +96,5 @@ GLASS 走 `hazeGlass` + `GlassStyle.Material3`（`ChatInputHaze.kt`，铺底 + 3
 ### 不适用
 
 播放器域（竖屏精简/UP 主信息/弹幕样式/耳机 HOOK/媒体键/片尾恢复/直播分块/番剧改版/听视频胶囊）、评论楼中楼与 gRPC、搜索联想隔离重构、WBI key 刷新（`e0306d0cf`）、官方未读 API（`d5c8572b6`）、图标探索归档（`82d037c0f` 等）、发版与致谢件。
+
+> 判决汇总：[docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md)
