@@ -446,7 +446,7 @@ private fun ExportedChatMessage(
                                             defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
                                             padWhenHidden = user,
                                         ) {
-                                            MarkdownBlock(content = part.text)
+                                            MarkdownBlock(content = part.text, textGradient = appearance.typography.gradient)
                                         }
                                     }
                                 }

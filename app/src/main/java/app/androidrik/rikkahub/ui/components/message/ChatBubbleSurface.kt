@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.message
 
+import android.os.Build
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,6 +14,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.data.model.ChatBubble
 import app.androidrik.rikkahub.data.model.BubbleMaterial
+import app.androidrik.rikkahub.ui.components.haze.LocalBubbleBackdrop
+import app.androidrik.rikkahub.ui.components.haze.BubbleGlassBackend
+import app.androidrik.rikkahub.ui.components.haze.bubbleGlassBackend
+import app.androidrik.rikkahub.ui.components.haze.bubbleGlassEffect
+import app.androidrik.rikkahub.ui.components.haze.recoverableBlurEnabled
 import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 
@@ -36,7 +43,12 @@ fun ChatBubbleSurface(
         override != null -> adaptiveContentColor(override)
         else -> defaultContentColor
     }
-    val background = modifier.clip(shape).bubbleMaterialBackground(bubble, override ?: defaultColor, contentColor)
+    val backdrop = LocalBubbleBackdrop.current
+    val liveGlass = bubble.visible && bubble.opacity > 0f && bubble.material == BubbleMaterial.GLASS && backdrop != null &&
+        bubbleGlassBackend(Build.VERSION.SDK_INT, recoverableBlurEnabled(backdrop)) != BubbleGlassBackend.STATIC
+    val glass = if (liveGlass) Modifier.bubbleGlassEffect(requireNotNull(backdrop), override ?: defaultColor, bubble.opacity, shape) else Modifier
+    val background = modifier.clip(shape).then(glass)
+        .bubbleMaterialBackground(bubble, override ?: defaultColor, contentColor, liveGlass)
     val body: @Composable () -> Unit = {
         Column(Modifier.padding(if (bubble.visible || padWhenHidden) bubble.geometry.paddingDp.dp else 0.dp)) {
             content()

@@ -6,23 +6,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import java.io.File
+import app.androidrik.rikkahub.ui.components.haze.LocalBubbleBackdrop
+import dev.chrisbanes.haze.HazeState
 
 val LocalChatFontFamily = staticCompositionLocalOf<FontFamily?> { null }
+val LocalChatTextGradient = compositionLocalOf<app.androidrik.rikkahub.data.model.AppearanceGradient?> { null }
 
 @Composable
 fun ChatFontProvider(
     displaySetting: DisplaySetting,
+    backdropState: HazeState? = null,
     content: @Composable () -> Unit,
 ) {
     ChatAppearanceProvider(displaySetting) {
         val chatFontFamily = rememberChatFontFamily(displaySetting)
-        CompositionLocalProvider(LocalChatFontFamily provides chatFontFamily) {
+        val gradient = rememberChatAppearance(displaySetting).typography.gradient
+        CompositionLocalProvider(LocalChatFontFamily provides chatFontFamily, LocalBubbleBackdrop provides backdropState,
+            LocalChatTextGradient provides gradient) {
             content()
         }
     }

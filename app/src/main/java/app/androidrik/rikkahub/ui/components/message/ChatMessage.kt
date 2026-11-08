@@ -100,6 +100,7 @@ import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.theme.LocalChatFontFamily
+import app.androidrik.rikkahub.ui.theme.LocalChatTextGradient
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
 import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.theme.LocalUserBubbleColor
@@ -181,7 +182,8 @@ fun ChatMessage(
     val navController = LocalNavController.current
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
-    CompositionLocalProvider(LocalWorkspaceId provides assistant?.workspaceId?.toString()) {
+    CompositionLocalProvider(LocalWorkspaceId provides assistant?.workspaceId?.toString(),
+        LocalChatTextGradient provides appearance.typography.gradient) {
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (message.role == MessageRole.USER && appearance.layout.userAlignEnd) Alignment.End else Alignment.Start,

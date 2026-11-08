@@ -69,6 +69,9 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.modifier.onClick
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
+import app.androidrik.rikkahub.ui.theme.LocalChatTextGradient
+import app.androidrik.rikkahub.ui.theme.toBrush
+import app.androidrik.rikkahub.data.model.AppearanceGradient
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -108,6 +111,7 @@ fun MarkdownBlock(
     style: TextStyle = LocalTextStyle.current,
     onClickCitation: (String) -> Unit = {},
     streaming: Boolean = false,
+    textGradient: AppearanceGradient? = LocalChatTextGradient.current,
 ) {
     val displaySetting = LocalSettings.current.displaySetting
     val enableLatexRendering = displaySetting.enableLatexRendering
@@ -168,7 +172,9 @@ fun MarkdownBlock(
     }
 
     val merged = LocalTextStyle.current.merge(style)
-    val resolved = merged.copy(color = merged.color.takeOrElse { LocalContentColor.current })
+    val solid = merged.copy(color = merged.color.takeOrElse { LocalContentColor.current })
+    val brush = remember(textGradient) { textGradient?.toBrush() }
+    val resolved = if (brush != null) solid.copy(brush = brush) else solid
     // 渲染前两步归一化（顺序敏感）：
     // 1. LatexEnvironments.normalize 给裸的 \begin{tikzpicture}/\begin{align} 等补 $$ 定界符
     //    （与导出路径 MarkdownHtml.preProcess 同步；BetterText 迁移时聊天路径漏了这步，

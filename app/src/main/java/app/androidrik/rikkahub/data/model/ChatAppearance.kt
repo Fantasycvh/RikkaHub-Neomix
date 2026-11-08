@@ -13,7 +13,10 @@ data class ChatAppearance(
     val assistantBubble: ChatBubble = ChatBubble(visible = false),
 ) {
     fun normalized(): ChatAppearance = copy(
-        typography = typography.copy(sizeRatio = typography.sizeRatio.bounded(0.5f, 2f, 1f)),
+        typography = typography.copy(
+            sizeRatio = typography.sizeRatio.bounded(0.5f, 2f, 1f),
+            gradient = typography.gradient?.normalized(),
+        ),
         layout = layout.copy(messageGapDp = layout.messageGapDp.bounded(0f, 32f, 4f)),
         userBubble = userBubble.normalized(),
         assistantBubble = assistantBubble.normalized(),
@@ -26,6 +29,7 @@ data class ChatTypography(
     val customFontPath: String = "",
     val customFontName: String = "",
     val sizeRatio: Float = 1f,
+    val gradient: AppearanceGradient? = null,
 )
 
 @Serializable
@@ -64,7 +68,7 @@ data class ChatBubble(
 }
 
 @Serializable
-enum class BubbleMaterial { SOLID, GRADIENT, PATTERN, NOISE }
+enum class BubbleMaterial { SOLID, GRADIENT, PATTERN, NOISE, GLASS }
 
 @Serializable
 enum class GradientDirection { HORIZONTAL, VERTICAL, DIAGONAL }
@@ -116,11 +120,13 @@ data class ChatAppearanceDetails(
     val assistantPattern: BubblePattern = BubblePattern(),
     val userNoise: BubbleNoise = BubbleNoise(),
     val assistantNoise: BubbleNoise = BubbleNoise(),
+    val textGradient: AppearanceGradient? = null,
 )
 
 /** Legacy configurations need no disk migration and render identically. */
 fun DisplaySetting.toChatAppearance(): ChatAppearance = ChatAppearance(
-    typography = ChatTypography(chatFontFamily, chatCustomFontPath, chatCustomFontName, fontSizeRatio),
+    typography = ChatTypography(chatFontFamily, chatCustomFontPath, chatCustomFontName, fontSizeRatio,
+        chatAppearanceDetails.textGradient),
     layout = chatAppearanceDetails.layout,
     userBubble = ChatBubble(
         chatAppearanceDetails.userBubbleVisible, bubbleOpacity,
@@ -163,6 +169,7 @@ fun DisplaySetting.withChatAppearance(value: ChatAppearance): DisplaySetting {
             assistantPattern = a.assistantBubble.pattern,
             userNoise = a.userBubble.noise,
             assistantNoise = a.assistantBubble.noise,
+            textGradient = a.typography.gradient,
         ),
     )
 }

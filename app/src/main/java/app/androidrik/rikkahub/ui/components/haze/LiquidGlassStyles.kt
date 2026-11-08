@@ -53,6 +53,27 @@ private fun liquidGlassTintAlpha(mode: LiquidGlassReadabilityMode): Float = when
     LiquidGlassReadabilityMode.STABLE_CONTENT -> 0.55f
 }
 
+/** Bubble-local glass: the wallpaper is the sole source, and shape/tint follow the bubble contract. */
+@Composable
+fun Modifier.bubbleGlassEffect(
+    state: HazeState,
+    color: Color,
+    opacity: Float,
+    shape: RoundedCornerShape,
+): Modifier = when (bubbleGlassBackend(Build.VERSION.SDK_INT, recoverableBlurEnabled(state))) {
+    BubbleGlassBackend.GLASS -> {
+        @OptIn(ExperimentalHazeApi::class)
+        hazeGlass(
+            input = HazeInput.Sources(state),
+            style = liquidGlassStyle(color, opacity * 0.3f, LocalDarkMode.current, shape),
+        )
+    }
+    BubbleGlassBackend.BLUR -> recoverableHazeBlur(state, HazeBlurStyle.Material3(
+        containerColor = color.copy(alpha = opacity * 0.3f),
+    ) { blurRadius(16.dp) })
+    BubbleGlassBackend.STATIC -> this
+}
+
 /** 输入框/悬浮层的共用玻璃样式（`GlassStyle.Material3` + 明暗预设 + 光学参数）。 */
 @Composable
 private fun liquidGlassStyle(

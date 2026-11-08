@@ -158,6 +158,13 @@ kotlin {
     }
 }
 
+// BetterText v0.1.5 ignores TextStyle.brush. Keep its text API while adding native brush drawing.
+configurations.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute(module("com.github.re-ovo.bettertext:text")).using(project(":bettertext-text"))
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

@@ -426,7 +426,7 @@ private fun ChatListNormal(
             }
         }
 
-        ChatFontProvider(displaySetting = settings.displaySetting) {
+        ChatFontProvider(displaySetting = settings.displaySetting, backdropState = glassHazeState) {
             // 容器不再被顶栏 padding 挡住：列表与玻璃层都延伸到顶栏底下，
             // 滚动时消息从顶栏下穿过被 blur（顶栏消费 hazeState，见 ChatPage.TopBar）
             //

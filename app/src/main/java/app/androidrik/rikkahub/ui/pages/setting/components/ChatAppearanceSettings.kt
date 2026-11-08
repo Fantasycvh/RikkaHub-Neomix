@@ -31,6 +31,7 @@ fun ChatAppearanceSettings(
 ) {
     val presets by ChatAppearanceRegistry.shared.presets.collectAsState()
     var editingUser by remember { mutableStateOf<Boolean?>(null) }
+    var editingTypography by remember { mutableStateOf(false) }
     CardGroup(modifier = Modifier.padding(horizontal = 8.dp), title = { Text("聊天外观") }) {
         item(headlineContent = { Text("外观方案") }, supportingContent = {
             Column {
@@ -45,6 +46,11 @@ fun ChatAppearanceSettings(
                     Text("方案暂不可用，已回退到自定义外观")
                 }
             }
+        })
+        item(headlineContent = { Text("正文字体渐变") }, supportingContent = {
+            Text(if (appearance.typography.gradient == null) "跟随主题文字色" else "已启用")
+        }, trailingContent = {
+            TextButton(onClick = { editingTypography = true }) { Text("编辑") }
         })
         item(headlineContent = { Text("用户消息靠右") }, trailingContent = {
             Switch(checked = appearance.layout.userAlignEnd, onCheckedChange = { value ->
@@ -104,6 +110,12 @@ fun ChatAppearanceSettings(
             },
             onDismiss = { editingUser = null },
         )
+    }
+    if (editingTypography) {
+        TypographyGradientEditor(initial = appearance.typography.gradient, onSave = { gradient ->
+            onChange { it.copy(typography = it.typography.copy(gradient = gradient)) }
+            editingTypography = false
+        }, onDismiss = { editingTypography = false })
     }
 }
 

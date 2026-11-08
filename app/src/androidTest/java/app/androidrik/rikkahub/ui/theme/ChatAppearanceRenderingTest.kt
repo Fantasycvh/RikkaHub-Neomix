@@ -6,6 +6,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.sp
+import me.rerere.bettertext.text.BetterText
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toPixelMap
@@ -49,6 +57,38 @@ class ChatAppearanceRenderingTest {
         val right = pixels[pixels.width * 3 / 4, pixels.height / 2]
         assertTrue("left side must be red", left.red > left.blue)
         assertTrue("right side must be blue", right.blue > right.red)
+    }
+
+    @Test fun betterTextDrawsGradientAndPreservesSolidSpansWhenToggled() {
+        val enabled = mutableStateOf(true)
+        compose.setContent {
+            val text = buildAnnotatedString {
+                append("MMMMMMMM\n")
+                withStyle(SpanStyle(color = Color.Green)) { append("MMMMMMMM") }
+            }
+            BetterText(text, modifier = Modifier.background(Color.White).testTag("text"),
+                style = if (enabled.value) TextStyle(fontSize = 28.sp, brush = Brush.horizontalGradient(listOf(Color.Red, Color.Blue)))
+                else TextStyle(fontSize = 28.sp, color = Color.Black))
+        }
+        fun coloredPixels(): Triple<Int, Int, Int> {
+            val p = compose.onNodeWithTag("text").captureToImage().toPixelMap()
+            var red = 0; var blue = 0; var green = 0
+            for (x in 0 until p.width) for (y in 0 until p.height) {
+                val c = p[x, y]
+                if (c.red > 0.6f && c.green < 0.3f && c.blue < 0.4f) red++
+                if (c.blue > 0.6f && c.green < 0.3f && c.red < 0.4f) blue++
+                if (c.green > 0.6f && c.red < 0.3f && c.blue < 0.3f) green++
+            }
+            return Triple(red, blue, green)
+        }
+        val gradient = coloredPixels()
+        assertTrue("gradient shader was ignored", gradient.first > 10 && gradient.second > 10)
+        assertTrue("solid spans lost their color", gradient.third > 10)
+        compose.runOnIdle { enabled.value = false }
+        val solid = coloredPixels()
+        assertEquals(0, solid.first)
+        assertEquals(0, solid.second)
+        assertTrue(solid.third > 10)
     }
 
     @Test fun hiddenBubblePreservesTheBackground() {

@@ -26,7 +26,7 @@ import kotlin.random.Random
 
 /** Repeating tiles are bounded and cached; tall streaming messages do not allocate per-pixel canvases. */
 @Composable
-internal fun Modifier.bubbleMaterialBackground(bubble: ChatBubble, base: Color, ink: Color): Modifier {
+internal fun Modifier.bubbleMaterialBackground(bubble: ChatBubble, base: Color, ink: Color, liveGlass: Boolean = false): Modifier {
     val density = LocalDensity.current.density
     val pattern = if (bubble.material == BubbleMaterial.PATTERN && bubble.visible) {
         remember(bubble.pattern, density, ink) { patternBrush(bubble.pattern, density, ink) }
@@ -40,6 +40,13 @@ internal fun Modifier.bubbleMaterialBackground(bubble: ChatBubble, base: Color, 
             if (bubble.visible) {
                 if (bubble.material == BubbleMaterial.GRADIENT) {
                     drawRect(brush = gradient, alpha = bubble.opacity)
+                } else if (bubble.material == BubbleMaterial.GLASS) {
+                    if (!liveGlass) {
+                        drawRect(base.copy(alpha = bubble.opacity * 0.35f))
+                    }
+                    drawRect(brush = androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(Color.White.copy(alpha = 0.2f), Color.Transparent, Color.White.copy(alpha = 0.08f))),
+                        alpha = bubble.opacity)
                 } else {
                     drawRect(base.copy(alpha = bubble.opacity))
                     pattern?.let { drawRect(brush = it, alpha = bubble.pattern.opacity * bubble.opacity) }

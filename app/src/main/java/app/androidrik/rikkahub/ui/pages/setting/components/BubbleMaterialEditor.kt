@@ -71,6 +71,7 @@ fun BubbleMaterialEditor(title: String, initial: ChatBubble, onSave: (ChatBubble
                         Slider(value = draft.noise.strength, onValueChange = { draft = draft.copy(noise = draft.noise.copy(strength = it)) })
                     }
                     BubbleMaterial.SOLID -> Unit
+                    BubbleMaterial.GLASS -> Text("玻璃采样聊天背景。预览和图片导出使用静态透光效果；旧系统自动回退。")
                 }
                 Text("不透明度：${(draft.opacity * 100).toInt()}%")
                 Slider(value = draft.opacity, onValueChange = { draft = draft.copy(opacity = it) })
@@ -112,4 +113,5 @@ internal fun BubbleMaterial.label(): String = when (this) {
     BubbleMaterial.GRADIENT -> "渐变"
     BubbleMaterial.PATTERN -> "图案"
     BubbleMaterial.NOISE -> "颗粒噪声"
+    BubbleMaterial.GLASS -> "玻璃"
 }
