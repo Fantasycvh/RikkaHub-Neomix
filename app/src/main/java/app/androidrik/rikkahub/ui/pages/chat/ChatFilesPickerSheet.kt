@@ -52,6 +52,9 @@ internal fun ChatFilesPickerSheet(
     val resources = LocalResources.current
     val toaster = LocalToaster.current
     val filesManager: FilesManager = koinInject()
+    fun importAttachments(uris: List<Uri>): List<Uri> = filesManager.createChatFilesByContents(uris) {
+        toaster.show(it, type = ToastType.Error)
+    }
     var showInjectionSheet by remember { mutableStateOf(false) }
 
     fun dismissAll() {
@@ -66,7 +69,7 @@ internal fun ChatFilesPickerSheet(
     var cameraOutputFile by remember { mutableStateOf<File?>(null) }
     val launchCameraCrop = useCropLauncher(
         onCroppedImageReady = { croppedUri ->
-            inputState.addImages(filesManager.createChatFilesByContents(listOf(croppedUri)))
+            inputState.addImages(importAttachments(listOf(croppedUri)))
             dismissAll()
         },
         onCleanup = {
@@ -78,7 +81,7 @@ internal fun ChatFilesPickerSheet(
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captureSuccessful ->
         if (captureSuccessful && cameraOutputUri != null) {
             if (setting.displaySetting.skipCropImage) {
-                inputState.addImages(filesManager.createChatFilesByContents(listOf(cameraOutputUri!!)))
+                inputState.addImages(importAttachments(listOf(cameraOutputUri!!)))
                 cameraOutputFile?.delete()
                 cameraOutputFile = null
                 cameraOutputUri = null
@@ -106,7 +109,7 @@ internal fun ChatFilesPickerSheet(
 
     val launchImageCrop = useCropLauncher(
         onCroppedImageReady = { croppedUri ->
-            inputState.addImages(filesManager.createChatFilesByContents(listOf(croppedUri)))
+            inputState.addImages(importAttachments(listOf(croppedUri)))
             dismissAll()
         },
     )
@@ -122,7 +125,7 @@ internal fun ChatFilesPickerSheet(
                 if (!setting.displaySetting.skipCropImage && selectedUris.size == 1) {
                     launchImageCrop(selectedUris.first())
                 } else {
-                    inputState.addImages(filesManager.createChatFilesByContents(selectedUris))
+                    inputState.addImages(importAttachments(selectedUris))
                     dismissAll()
                 }
             } else {
@@ -133,7 +136,7 @@ internal fun ChatFilesPickerSheet(
     val videoPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { selectedUris ->
             if (selectedUris.isNotEmpty()) {
-                inputState.addVideos(filesManager.createChatFilesByContents(selectedUris))
+                inputState.addVideos(importAttachments(selectedUris))
                 dismissAll()
             }
         }
@@ -141,7 +144,7 @@ internal fun ChatFilesPickerSheet(
     val audioPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { selectedUris ->
             if (selectedUris.isNotEmpty()) {
-                inputState.addAudios(filesManager.createChatFilesByContents(selectedUris))
+                inputState.addAudios(importAttachments(selectedUris))
                 dismissAll()
             }
         }
@@ -153,7 +156,7 @@ internal fun ChatFilesPickerSheet(
                     val fileName = filesManager.getFileNameFromUri(uri) ?: "file"
                     val mime = filesManager.getFileMimeType(uri) ?: "text/plain"
                     if (isAllowedFileType(fileName, mime)) {
-                        val localUri = filesManager.createChatFilesByContents(listOf(uri)).firstOrNull()
+                        val localUri = importAttachments(listOf(uri)).firstOrNull()
                             ?: run {
                                 toaster.show(
                                     resources.getString(R.string.chat_input_file_read_failed, fileName),

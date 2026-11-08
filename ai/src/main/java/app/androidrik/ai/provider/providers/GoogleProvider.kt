@@ -1,5 +1,6 @@
 package app.androidrik.ai.provider.providers
 
+import app.androidrik.ai.util.checkAttachmentLimit
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -709,7 +710,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
 
         is UIMessagePart.Image -> {
-            encodeBase64(false).getOrNull()?.let { encoded ->
+            encodeBase64(false).checkAttachmentLimit().getOrNull()?.let { encoded ->
                 buildJsonObject {
                     put("inlineData", buildJsonObject {
                         // 裸 base64 输入时 encodeBase64 只能默认 image/png；inlineDataMime
@@ -726,7 +727,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
 
         is UIMessagePart.Video -> {
-            encodeBase64(false).getOrNull()?.let { base64Data ->
+            encodeBase64(false).checkAttachmentLimit().getOrNull()?.let { base64Data ->
                 buildJsonObject {
                     put("inlineData", buildJsonObject {
                         put("mimeType", "video/mp4")
@@ -737,7 +738,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
 
         is UIMessagePart.Audio -> {
-            encodeBase64(false).getOrNull()?.let { base64Data ->
+            encodeBase64(false).checkAttachmentLimit().getOrNull()?.let { base64Data ->
                 buildJsonObject {
                     put("inlineData", buildJsonObject {
                         put("mimeType", "audio/mp3")

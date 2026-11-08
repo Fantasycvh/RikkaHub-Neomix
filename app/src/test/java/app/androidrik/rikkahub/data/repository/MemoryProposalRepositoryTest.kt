@@ -95,6 +95,13 @@ class MemoryProposalRepositoryTest {
         override suspend fun getMemoryById(id: Int) = rows.find { it.id == id }
         override suspend fun getMemoryByPublicId(publicId: String) = rows.find { it.publicId == publicId }
         override suspend fun publicIdExists(publicId: String) = rows.any { it.publicId == publicId }
+        override suspend fun updateDisplayOrder(storeId: String, id: Int, order: Long): Int {
+            val index = rows.indexOfFirst { it.id == id && it.assistantId == storeId }
+            if (index < 0) return 0
+            rows[index] = rows[index].copy(displayOrder = order)
+            return 1
+        }
+
         override suspend fun insertMemory(memory: MemoryEntity): Long {
             val id = memory.id.takeIf { it != 0 } ?: nextId++
             nextId = maxOf(nextId, id + 1)

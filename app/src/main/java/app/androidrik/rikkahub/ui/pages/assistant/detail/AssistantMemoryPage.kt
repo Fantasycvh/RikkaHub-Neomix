@@ -41,6 +41,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import app.androidrik.rikkahub.ui.components.ui.ScrollJumperBar
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.GripVertical
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -154,6 +163,7 @@ fun AssistantMemoryPage(id: String) {
             innerPadding = innerPadding,
             assistant = assistant,
             memories = memories,
+            onMoveMemory = { memoryId, beforeId -> vm.moveMemory(storeId, memoryId, beforeId) },
             onUpdateAssistant = { vm.update(it) },
             onDeleteMemory = { memory -> launchMemoryAction { vm.deleteMemory(storeId, memory) } },
             onAddMemory = { memory ->
@@ -244,10 +254,11 @@ fun AssistantMemoryPage(id: String) {
 }
 
 @Composable
-private fun AssistantMemoryContent(
+internal fun AssistantMemoryContent(
     innerPadding: PaddingValues,
     assistant: Assistant,
     memories: List<AssistantMemory>,
+    onMoveMemory: suspend (String, String?) -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
     onAddMemory: (AssistantMemory) -> Unit,
     onUpdateMemory: (AssistantMemory) -> Unit,
@@ -273,6 +284,30 @@ private fun AssistantMemoryContent(
     var pendingDeleteMemory by remember { mutableStateOf<AssistantMemory?>(null) }
     var pendingDropTask by remember(assistant.memoryId()) { mutableStateOf<AssistantMemory?>(null) }
     var kindFilter by remember(assistant.memoryId()) { mutableStateOf<MemoryKind?>(null) }
+    val listState = rememberLazyListState()
+    val listScope = rememberCoroutineScope()
+    val toaster = LocalToaster.current
+    val sourceOrder = memories.sortedWith(compareBy<AssistantMemory> { it.displayOrder }.thenBy { it.sortKey })
+    var pendingIds by remember(assistant.memoryId()) { mutableStateOf<List<String>?>(null) }
+    var dragging by remember(assistant.memoryId()) { mutableStateOf(false) }
+    val sourceIds = sourceOrder.map { it.id }
+    LaunchedEffect(sourceIds, kindFilter) {
+        if (!dragging) pendingIds = null
+    }
+    val byId = memories.associateBy { it.id }
+    val displayed = (pendingIds ?: sourceIds).mapNotNull { byId[it] }
+    val visibleMemories = filterMemoriesByKind(displayed, kindFilter)
+    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+        if (kindFilter == null) {
+            val ids = (pendingIds ?: sourceIds).toMutableList()
+            val fromIndex = ids.indexOf(from.key)
+            val toIndex = ids.indexOf(to.key)
+            if (fromIndex >= 0 && toIndex >= 0 && fromIndex != toIndex) {
+                ids.add(toIndex, ids.removeAt(fromIndex))
+                pendingIds = ids
+            }
+        }
+    }
     var showTimeReminderIntervalDialog by remember(assistant.id) { mutableStateOf(false) }
     var timeReminderIntervalInput by remember(assistant.id) { mutableStateOf("") }
     // 被点开看详情的建议。按建议本身记住，弹层只读。
@@ -569,15 +604,15 @@ private fun AssistantMemoryContent(
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .padding(innerPadding)
-            .imePadding(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    Box(Modifier.fillMaxSize().padding(innerPadding)) {
+      LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize().imePadding(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        item(key = "memory-settings") {
+          Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         CardGroup {
             item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_memory)) },
@@ -1033,26 +1068,59 @@ private fun AssistantMemoryContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        val visibleMemories = filterMemoriesByKind(memories, kindFilter)
         if (visibleMemories.isEmpty()) {
             Text(stringResource(R.string.assistant_page_memory_filter_empty))
         }
-        // Filtering preserves the repository's stable order; do not regroup or sort.
-        visibleMemories.fastForEach { memory ->
-            key(memory.id) {
+          }
+        }
+        items(visibleMemories, key = { it.id }) { memory ->
+            ReorderableItem(state = reorderState, key = memory.id) {
                 MemoryItem(
                     memory = memory,
-                    onEditMemory = {
-                        memoryDialogState.open(it)
-                    },
-                    onDeleteMemory = {
-                        pendingDeleteMemory = it
-                    },
+                    onEditMemory = { memoryDialogState.open(it) },
+                    onDeleteMemory = { pendingDeleteMemory = it },
                     onTaskDoneChange = onTaskDoneChange,
                     onDropTask = { pendingDropTask = it },
+                    dragHandle = {
+                        if (kindFilter == null) {
+                            IconButton(
+                                onClick = {},
+                                modifier = Modifier.longPressDraggableHandle(
+                                    onDragStarted = { dragging = true },
+                                    onDragStopped = {
+                                        dragging = false
+                                        val ids = pendingIds
+                                        if (ids != null && ids != sourceIds) {
+                                            val index = ids.indexOf(memory.id)
+                                            if (index >= 0) listScope.launch {
+                                                try {
+                                                    onMoveMemory(memory.id, ids.getOrNull(index + 1))
+                                                } catch (cancelled: CancellationException) {
+                                                    throw cancelled
+                                                } catch (failure: Exception) {
+                                                    toaster.show("Unable to reorder memory: ${failure.message}")
+                                                } finally {
+                                                    pendingIds = null
+                                                }
+                                            }
+                                        } else pendingIds = null
+                                    },
+                                ),
+                            ) {
+                                Icon(Lucide.GripVertical, contentDescription = "Drag to reorder")
+                            }
+                        }
+                    },
                 )
             }
         }
+      }
+      ScrollJumperBar(
+          show = listState.canScrollForward || listState.canScrollBackward,
+          onLeft = false,
+          scope = listScope,
+          state = listState,
+      )
     }
 
     RikkaConfirmDialog(
@@ -1149,6 +1217,7 @@ private fun MemoryItem(
     onDeleteMemory: (AssistantMemory) -> Unit,
     onTaskDoneChange: (AssistantMemory, Boolean) -> Unit,
     onDropTask: (AssistantMemory) -> Unit,
+    dragHandle: @Composable () -> Unit = {},
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -1173,6 +1242,7 @@ private fun MemoryItem(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            dragHandle()
             if (memory.kind == MemoryKind.TASK) {
                 Checkbox(
                     checked = closedTask,

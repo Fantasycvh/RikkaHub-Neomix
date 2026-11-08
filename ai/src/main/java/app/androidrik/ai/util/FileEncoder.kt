@@ -111,6 +111,7 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
             if (!file.exists()) {
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
+            AttachmentLimits.requireSize(file.length())
             val mimeType = file.guessMimeType().getOrThrow()
             val cacheKey = mediaCacheKey("img", withPrefix, file)
             mediaEncodeCache.get(cacheKey)?.let { return Result.success(it) }
@@ -124,6 +125,9 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
 
         this.url.startsWith("data:") -> {
             // 从 data URL 提取 mime type
+            val rawPayload = url.substringAfter(";base64,", missingDelimiterValue = "")
+            require(rawPayload.isNotEmpty()) { "Non-base64 image data URL is not supported" }
+            requireImagePayloadSize(rawPayload)
             val mimeType = url.substringAfter("data:").substringBefore(";")
             // withPrefix=false（Claude/Google 直传裸 base64）时必须剥掉前缀，否则发出
             // "data:image/png;base64,data:image/..." 服务端必拒
@@ -143,6 +147,7 @@ fun UIMessagePart.Image.encodeBase64(withPrefix: Boolean = true): Result<Encoded
         // 不再包 data: 前缀。此前落到 else 抛异常，图片被静默从上下文丢弃。
         // mime 无法从内容反推，按最常见形态给 image/png。
         url.isNotBlank() && url.length % 4 == 0 && url.all { it in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=" } -> {
+            requireImagePayloadSize(url)
             EncodedImage(base64 = url, mimeType = "image/png")
         }
         else -> throw IllegalArgumentException("Unsupported URL format: $url")
@@ -158,6 +163,7 @@ fun UIMessagePart.Video.encodeBase64(withPrefix: Boolean = true): Result<String>
             if (!file.exists()) {
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
+            AttachmentLimits.requireSize(file.length())
             val cacheKey = mediaCacheKey("video", withPrefix, file)
             mediaEncodeCache.get(cacheKey)?.let { return Result.success(it.base64) }
             val encoded = file.encodeToBase64Streaming()
@@ -179,6 +185,7 @@ fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String>
             if (!file.exists()) {
                 throw IllegalArgumentException("File does not exist: ${this.url}")
             }
+            AttachmentLimits.requireSize(file.length())
             val cacheKey = mediaCacheKey("audio", withPrefix, file)
             mediaEncodeCache.get(cacheKey)?.let { return Result.success(it.base64) }
             val encoded = file.encodeToBase64Streaming()
@@ -193,13 +200,14 @@ fun UIMessagePart.Audio.encodeBase64(withPrefix: Boolean = true): Result<String>
 
 private fun File.compressAndEncode(
     mimeType: String,
-    maxDimension: Int = 10_000,
-    maxPixels: Long = 16_000_000L,
+    maxDimension: Int = AttachmentLimits.IMAGE_MAX_DIMENSION,
+    maxPixels: Long = AttachmentLimits.IMAGE_MAX_PIXELS,
     quality: Int = 85
 ): Pair<String, String> {
     // GIF 保持原样（可能是动图）
     if (mimeType == "image/gif") {
-        return Pair(encodeToBase64Streaming(), mimeType)
+        AttachmentLimits.requireSize(length(), AttachmentLimits.MAX_IMAGE_BYTES)
+        return Pair(encodeToBase64Streaming(AttachmentLimits.MAX_IMAGE_BYTES), mimeType)
     }
 
     // 读取图片尺寸
@@ -221,12 +229,27 @@ private fun File.compressAndEncode(
     val normalizedBitmap = normalizeByExif(bitmap)
 
     return try {
-        val byteArrayOutputStream = ByteArrayOutputStream()
-        // 强制使用 JPEG 格式，因为很多提供商不支持 webp
-        Base64OutputStream(byteArrayOutputStream, Base64.NO_WRAP).use { base64Stream ->
-            normalizedBitmap.compress(Bitmap.CompressFormat.JPEG, quality, base64Stream)
+        var output = normalizedBitmap
+        try {
+            repeat(12) {
+                for (jpegQuality in listOf(quality, 70, 55, 40)) {
+                    val bytes = ByteArrayOutputStream()
+                    check(output.compress(Bitmap.CompressFormat.JPEG, jpegQuality, bytes)) { "Failed to encode image" }
+                    if (bytes.size() <= AttachmentLimits.MAX_IMAGE_BYTES) {
+                        return Pair(Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP), "image/jpeg")
+                    }
+                }
+                if (output.width <= 1 || output.height <= 1) {
+                    throw AttachmentLimitException("Image cannot fit the 5 MiB sending limit")
+                }
+                val smaller = Bitmap.createScaledBitmap(output, maxOf(1, output.width * 3 / 4), maxOf(1, output.height * 3 / 4), true)
+                if (output !== normalizedBitmap) output.recycle()
+                output = smaller
+            }
+            throw AttachmentLimitException("Image cannot fit the 5 MiB sending limit")
+        } finally {
+            if (output !== normalizedBitmap) output.recycle()
         }
-        Pair(byteArrayOutputStream.toString(Charsets.ISO_8859_1.name()), "image/jpeg")
     } finally {
         if (normalizedBitmap !== bitmap) {
             normalizedBitmap.recycle()
@@ -272,11 +295,11 @@ private fun applyExifTransform(bitmap: Bitmap, transform: ExifTransformType): Bi
     }.getOrElse { bitmap }
 }
 
-private fun File.encodeToBase64Streaming(): String {
+private fun File.encodeToBase64Streaming(maxBytes: Long = AttachmentLimits.MAX_ATTACHMENT_BYTES): String {
     val byteArrayOutputStream = ByteArrayOutputStream()
     Base64OutputStream(byteArrayOutputStream, Base64.NO_WRAP).use { base64Stream ->
         inputStream().use { input ->
-            input.copyTo(base64Stream, bufferSize = 8 * 1024)
+            AttachmentLimits.bounded(input, maxBytes).copyTo(base64Stream, bufferSize = 8 * 1024)
         }
     }
     return byteArrayOutputStream.toString(Charsets.ISO_8859_1.name())
@@ -354,4 +377,10 @@ private fun File.guessMimeType(): Result<String> = runCatching {
             }"
         )
     }
+}
+
+internal fun requireImagePayloadSize(base64: String) {
+    // NO_WRAP wire size, minus final padding; checked without allocating decoded bytes.
+    val padding = base64.takeLast(2).count { it == '=' }
+    AttachmentLimits.requireSize((base64.length.toLong() * 3 / 4) - padding, AttachmentLimits.MAX_IMAGE_BYTES)
 }

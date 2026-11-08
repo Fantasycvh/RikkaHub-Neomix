@@ -36,6 +36,10 @@ interface MemoryDAO {
     @Query("SELECT EXISTS(SELECT 1 FROM memoryentity WHERE public_id = :publicId)")
     suspend fun publicIdExists(publicId: String): Boolean
 
+    /** UI order writes do not change business revisions, timestamps or telemetry. */
+    @Query("UPDATE memoryentity SET display_order = :order WHERE assistant_id = :storeId AND id = :id")
+    suspend fun updateDisplayOrder(storeId: String, id: Int, order: Long): Int
+
     @Insert
     suspend fun insertMemory(memory: MemoryEntity): Long
 

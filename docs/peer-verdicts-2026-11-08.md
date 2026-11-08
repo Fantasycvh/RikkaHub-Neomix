@@ -53,7 +53,7 @@
 
 ### E. 存储与备份
 - **迁移前留 `.v<旧版本>.bak` 副本 + 迁移函数可重执行**（NMoi 65e13bf/D260 duplicate column 真机教训）（2026-11-08 候选 C4）。
-- 备份发布前自校验：VACUUM INTO 快照上跑 `integrity_check` + `foreign_key_check`（integrity_check 不查 FK）通过才发布（NMoi backup.rs，~0.5 天待办）。
+- 备份发布前自校验：**2026-11-08 已实现**，完整 ZIP 与增量备份在快照上跑 `integrity_check` + `foreign_key_check`，通过才继续；详见 [实施记录](design/verification/attachments-backup-memory-order-2026-11-08.md)。
 - 备份 manifest + 双 SHA-256 + **staged 换库启动回滚**（推迟 startKoin 化解检测难题）（yuihub §四.8）。
 - WAL 取证：主库缺失而 -wal/-shm 在 = 同步撕裂拒开；0 字节主库 + WAL 在 = 拒开（SQLite 会静默丢 WAL）——**启动路径**要查，不只恢复路径（NMoi L0）。
 - U+FFFD 拒写二进制；裸 EOF 标 finishIncomplete 不当正常结束（yuihub §四.8/§四.5）。
@@ -110,7 +110,7 @@
 
 - upstream 同步点 `fe5a28f9a`（3.1.2）；本地提交普遍未推送（upstream 侧 ≈1419+）；**推送/发版等授权**。
 - upstream 挂账：任务完成主动通知模型（Notice/收件箱协议，唯一实质缺口）· #2271 Mistral 422 同构风险 · #2304 SSH workspace 待复现 · `ae599e8d7` 磁盘编码缓存增强。
-- peer 候选池见 §五（C1–C7 未拍板）；NMoi 待办：备份自校验 ~0.5 天、内容级脱敏（语义边界待拍板）。
+- peer 候选池见 §五；C1–C6 已在后续本地提交落地，C7 与备份自校验本轮（2026-11-08）已实现；内容级脱敏仍待语义边界拍板。
 - BiliPai 门控层零改动；nmoi/BiliPai 本轮全部细节见 [nmoi-agent.md §13.4](references/other%20projects/nmoi-agent.md) / [bilipai.md](references/other%20projects/bilipai.md)。
 
 ## 五、本轮增量判决（2026-11-08：NMoi 173 提交 + BiliPai 108 提交）
@@ -125,6 +125,6 @@
 | C4 | NMoi 65e13bf/D260 | DB 迁移前 .bak 快照 + 迁移幂等 | **P2** | 本仓降级有隔离重建、升级路径无快照；判据见 §E | Room 迁移包装层 | ~0.5 天 |
 | C5 | BiliPai | 动效令牌收口 | **P3** | 本仓零中央动效令牌；判据见 §F | `ui/components/motion/MotionTokens.kt` | ~0.5 天 |
 | C6 | BiliPai 0125561e6 | TextFieldState 单向同步纪律 | **P3**（规范件非代码） | 判据见 §F；本仓历史坑「丢字符/整对象写丢更新」同族病 | AGENTS.md TextField 规范扩展 | ~0.5 天 |
-| C7 | NMoi 4a7d465 | 发图压缩 + 附件尺寸上限 | **P3** | 本仓发送侧无位图压缩；可与 C1 同批 | 发送路径 | ~0.5 天 |
+| C7 | NMoi 4a7d465 | 发图压缩 + 附件尺寸上限 | **已实现（2026-11-08）** | 纠正旧盘点：原已有 JPEG/采样；本轮收紧像素与字节预算，补附件流式上限与显式报错 | FileEncoder / FilesManager / providers | 见实施记录 |
 
 **修正既有结论**：NMoi「stage 0」停用（原三大未动工项已落地，残留接线 2 处）；§13.1⑤ D46 彻底改判（「工具循环一律非流式」作废）；11-03 的「0.15ap/0.15aq/0.15an 未动工」记账作废。**已有等价勿立项**：世界书核心语义（**本仓是 NMoi 字段超集**——二次收窄/token 预算/多册绑定/ST 导入均我们有它没有，世界书不用跟）、只换一条 regen 与失败三选一（MessageNode 树天然支持）、六角色分模型（本仓 9 角色字段）、代理栈（本仓 per-provider 更细）、「正在生成」卡死修（本仓已根治）。

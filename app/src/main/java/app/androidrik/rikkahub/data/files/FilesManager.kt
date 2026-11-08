@@ -221,7 +221,7 @@ class FilesManager(
             val inputStream = context.contentResolver.openInputStream(uri)
                 ?: error("Failed to open input stream for $uri")
             // 原子写入：拷贝失败不留 0 字节/半截头像；失败时返回 null，调用方保持原头像
-            if (!inputStream.use { writeStreamAtomically(file, it) }) {
+            if (!inputStream.use { writeStreamAtomically(file, app.androidrik.ai.util.AttachmentLimits.bounded(it)) }) {
                 error("Failed to save avatar from $uri")
             }
             trackManagedFile(
@@ -320,7 +320,7 @@ class FilesManager(
         }.getOrNull()
     }
 
-    fun createChatFilesByContents(uris: List<Uri>): List<Uri> {
+    fun createChatFilesByContents(uris: List<Uri>, onRejected: (String) -> Unit = {}): List<Uri> {
         val newUris = mutableListOf<Uri>()
         val dir = context.filesDir.resolve(FileFolders.UPLOAD)
         if (!dir.exists()) {
@@ -336,7 +336,7 @@ class FilesManager(
                     ?: error("Failed to open input stream for $uri")
                 // 原子写入：流为 null / 拷贝失败都不登记（旧实现会留下 0 字节孤儿文件）
                 if (!inputStream.use { writeStreamAtomically(file, it) }) {
-                    error("Failed to save file from $uri")
+                    error("Unable to save attachment (maximum 100 MiB)")
                 }
                 val guessedMime = sourceMime ?: guessMimeType(file, sourceName)
                 trackManagedFile(
@@ -347,6 +347,7 @@ class FilesManager(
                 )
                 newUris.add(file.toUri())
             }.onFailure {
+                onRejected(it.message ?: "Unable to import attachment (maximum 100 MiB)")
                 it.printStackTrace()
                 Log.e(TAG, "createChatFilesByContents: Failed to save file from $uri", it)
                 Logging.log(
@@ -375,6 +376,7 @@ class FilesManager(
             dir.mkdirs()
         }
         byteArrays.forEach { byteArray ->
+            app.androidrik.ai.util.AttachmentLimits.requireSize(byteArray.size.toLong())
             // 本方法所有调用点都是图片/媒体字节（画板草图、工作区读图、base64 转换）：
             // 0 字节图片只会让下游渲染继续失败，显式报错比产出一个「成功」的空附件更可诊断。
             if (byteArray.isEmpty()) {

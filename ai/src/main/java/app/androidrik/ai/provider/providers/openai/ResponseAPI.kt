@@ -1,5 +1,6 @@
 package app.androidrik.ai.provider.providers.openai
 
+import app.androidrik.ai.util.checkAttachmentLimit
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -643,7 +644,7 @@ class ResponseAPI(
                                     tool.output.forEach { part ->
                                         when (part) {
                                             is UIMessagePart.Image -> add(buildJsonObject {
-                                                part.encodeBase64().onSuccess { encoded ->
+                                                part.encodeBase64().checkAttachmentLimit().onSuccess { encoded ->
                                                     put("type", "input_image")
                                                     put("image_url", encoded.base64)
                                                 }.onFailure {
@@ -796,7 +797,7 @@ class ResponseAPI(
 
                             is UIMessagePart.Image -> {
                                 add(buildJsonObject {
-                                    part.encodeBase64().onSuccess { encodedImage ->
+                                    part.encodeBase64().checkAttachmentLimit().onSuccess { encodedImage ->
                                         put("type", "input_image")
                                         put("image_url", encodedImage.base64)
                                     }.onFailure {

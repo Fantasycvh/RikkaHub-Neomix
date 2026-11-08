@@ -1,5 +1,6 @@
 package app.androidrik.ai.provider.providers.openai
 
+import app.androidrik.ai.util.checkAttachmentLimit
 import android.util.Log
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
@@ -740,7 +741,7 @@ class ChatCompletionsAPI(
 
                             is UIMessagePart.Image -> {
                                 add(buildJsonObject {
-                                    part.encodeBase64().onSuccess { encodedImage ->
+                                    part.encodeBase64().checkAttachmentLimit().onSuccess { encodedImage ->
                                         put("type", "image_url")
                                         put("image_url", buildJsonObject {
                                             put("url", encodedImage.base64)
@@ -797,7 +798,7 @@ class ChatCompletionsAPI(
 
                             is UIMessagePart.Image -> {
                                 add(buildJsonObject {
-                                    part.encodeBase64().onSuccess { encodedImage ->
+                                    part.encodeBase64().checkAttachmentLimit().onSuccess { encodedImage ->
                                         put("type", "image_url")
                                         put("image_url", buildJsonObject {
                                             put("url", encodedImage.base64)
@@ -845,7 +846,7 @@ class ChatCompletionsAPI(
 
                         is UIMessagePart.Image -> {
                             add(buildJsonObject {
-                                part.encodeBase64().onSuccess { encodedImage ->
+                                part.encodeBase64().checkAttachmentLimit().onSuccess { encodedImage ->
                                     put("type", "image_url")
                                     put("image_url", buildJsonObject {
                                         put("url", encodedImage.base64)

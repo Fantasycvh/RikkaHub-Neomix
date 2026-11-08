@@ -59,6 +59,13 @@ class MemoryRepositoryTest {
         override suspend fun publicIdExists(publicId: String): Boolean =
             rows.any { it.publicId == publicId }
 
+        override suspend fun updateDisplayOrder(storeId: String, id: Int, order: Long): Int {
+            val index = rows.indexOfFirst { it.id == id && it.assistantId == storeId }
+            if (index < 0) return 0
+            rows[index] = rows[index].copy(displayOrder = order)
+            return 1
+        }
+
         override suspend fun insertMemory(memory: MemoryEntity): Long {
             val id = if (memory.id == 0) nextId++ else memory.id.also { nextId = maxOf(nextId, it + 1) }
             check(rows.none { it.id == id })
@@ -253,6 +260,25 @@ class MemoryRepositoryTest {
     private val history = FakeHistoryDAO()
     private val trash = FakeTrashDAO()
     private val repo = MemoryRepository(dao, DirectMemoryTransactionRunner, history, trash)
+
+    @Test fun `display move preserves injection keys business revision telemetry and store isolation`() = runBlocking {
+        val first = repo.addMemory("a", "first", now = 1)
+        val second = repo.addMemory("a", "second", now = 2)
+        val other = repo.addMemory("b", "private", now = 3)
+        val before = dao.getAllMemories()
+        repo.moveMemory("a", second.id, first.id)
+        val after = repo.getMemoriesOfAssistant("a")
+        assertEquals(listOf(second.id, first.id), after.sortedBy { it.displayOrder }.map { it.id })
+        assertEquals(listOf(first.sortKey, second.sortKey), after.map { it.sortKey })
+        dao.getAllMemories().forEach { row -> assertEquals(before.first { it.id == row.id }, row.copy(displayOrder = before.first { it.id == row.id }.displayOrder)) }
+        assertEquals(other, repo.getMemoryById(other.id))
+        val settled = dao.getAllMemories()
+        repo.moveMemory("a", second.id, first.id)
+        repo.moveMemory("a", first.id, other.id)
+        assertEquals(settled, dao.getAllMemories())
+        val third = repo.addMemory("a", "third")
+        assertTrue(third.displayOrder > after.maxOf { it.displayOrder })
+    }
 
     @Test
     fun `scoped access rejects foreign assistant and global records including legacy ids`() = runBlocking {

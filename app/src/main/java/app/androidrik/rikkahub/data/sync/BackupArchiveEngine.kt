@@ -91,6 +91,7 @@ internal class BackupArchiveEngine(
             if (throttle.shouldEmit(progress)) onProgress(progress)
         }
 
+        try {
         ManifestZipOutputStream(FileOutputStream(backupFile)).use { zipOut ->
             // settings.json 恒含（首个 section；manifest 记其 SHA-256 供恢复侧校验）
             val settingsContent = json.encodeToString(settingsStore.settingsFlow.value)
@@ -145,6 +146,11 @@ internal class BackupArchiveEngine(
                 content = json.encodeToString(manifest),
                 onBytes = ::report,
             )
+        }
+
+        } catch (failure: Throwable) {
+            backupFile.delete()
+            throw failure
         }
 
         // 收尾：确保 UI 到达 100%（节流可能吞掉末次）
@@ -631,8 +637,8 @@ internal class BackupArchiveEngine(
         // 且可能拷到半页）。09-15 的 WAL 修复只治了恢复方向，备份方向的一致性由此补齐。
         // VACUUM INTO 需要 SQLite 3.27+（API 30+）；minSdk 26 的老设备或异常时回退热拷，
         // 恢复路径两种形态都已处理（db-only 时恢复前会清陈旧 -wal/-shm）。
-        val snapshot = File(context.cacheDir, "backup_db_snapshot.db")
-        snapshot.delete() // VACUUM INTO 要求目标文件不存在
+        val snapshotDir = java.nio.file.Files.createTempDirectory(context.cacheDir.toPath(), "backup-db-").toFile()
+        val snapshot = File(snapshotDir, "rikka_hub.db")
         val vacuumed = runCatching {
             appDatabase.openHelper.writableDatabase.execSQL(
                 "VACUUM main INTO ?",
@@ -646,21 +652,35 @@ internal class BackupArchiveEngine(
         try {
             if (vacuumed) {
                 Log.i(TAG, "addDatabaseToZip: consistent snapshot via VACUUM INTO (${snapshot.length()} bytes)")
+                validateBackupDatabase(snapshot)
                 val mainSha = sha256Of(snapshot)
                 addFileToZip(zipOut, snapshot, "rikka_hub.db", onBytes, ::backupLog)
                 // VACUUM 快照已含已提交的 WAL 内容：不打包热 wal/shm（原行为）
                 return mainSha to snapshot.length()
             } else {
-                val mainSha = sha256Of(dbFile)
-                addFileToZip(zipOut, dbFile, "rikka_hub.db", onBytes, ::backupLog)
-                listOf("rikka_hub-wal", "rikka_hub-shm").forEach { name ->
-                    val f = File(dbFile.parentFile, name)
-                    if (f.exists()) addFileToZip(zipOut, f, name, onBytes, ::backupLog)
+                // Old SQLite fallback: recover a private copy of the db/WAL trio, then validate
+                // that exact copy. Never validate one file and subsequently zip the live database.
+                dbFile.copyTo(snapshot, overwrite = true)
+                listOf("-wal", "-shm").forEach { suffix ->
+                    File(dbFile.path + suffix).takeIf { it.exists() }?.copyTo(File(snapshot.path + suffix), overwrite = true)
                 }
-                return mainSha to dbFile.length()
+                android.database.sqlite.SQLiteDatabase.openDatabase(
+                    snapshot.path, null, android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
+                ).use { db ->
+                    db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { cursor ->
+                        check(cursor.moveToFirst() && cursor.getInt(0) == 0) { "Backup snapshot WAL recovery failed" }
+                    }
+                    db.rawQuery("PRAGMA journal_mode=DELETE", null).use { cursor ->
+                        check(cursor.moveToFirst() && cursor.getString(0).equals("delete", ignoreCase = true))
+                    }
+                }
+                validateBackupDatabase(snapshot)
+                val mainSha = sha256Of(snapshot)
+                addFileToZip(zipOut, snapshot, "rikka_hub.db", onBytes, ::backupLog)
+                return mainSha to snapshot.length()
             }
         } finally {
-            snapshot.delete()
+            snapshotDir.deleteRecursively()
         }
     }
 

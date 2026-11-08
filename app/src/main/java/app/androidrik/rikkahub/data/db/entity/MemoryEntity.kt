@@ -108,6 +108,9 @@ data class MemoryEntity(
     val taskStatus: String = "open",
     @ColumnInfo("due_at", defaultValue = "0")
     val dueAt: Long = 0L,
+    /** Display only. Null preserves legacy id order; never used for prompt selection. */
+    @ColumnInfo("display_order")
+    val displayOrder: Long? = null,
 ) {
     companion object {
         /** 缺省重要度（普通偏好档，见 [importance]）。 */

@@ -1,5 +1,6 @@
 package app.androidrik.ai.provider.providers
 
+import app.androidrik.ai.util.checkAttachmentLimit
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -471,7 +472,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         }
 
         is UIMessagePart.Image -> buildJsonObject {
-            encodeBase64(withPrefix = false).onSuccess { encoded ->
+            encodeBase64(withPrefix = false).checkAttachmentLimit().onSuccess { encoded ->
                 put("type", "image")
                 put("source", buildJsonObject {
                     put("type", "base64")

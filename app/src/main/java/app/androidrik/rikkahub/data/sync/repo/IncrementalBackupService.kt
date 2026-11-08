@@ -214,6 +214,7 @@ class IncrementalBackupService(
                         check(context.cacheDir.usableSpace >= size * 4 + RESERVE_BYTES) { "Not enough space for database snapshot" }
                         // Unlike legacy ZIP export, incremental snapshots NEVER fall back to copying a live DB.
                         database.openHelper.writableDatabase.execSQL("VACUUM main INTO ?", arrayOf(snapshotFile.absolutePath))
+                        app.androidrik.rikkahub.data.sync.validateBackupDatabase(snapshotFile)
                         check(snapshotFile.isFile && snapshotFile.length() > 0) { "Consistent database snapshot failed" }
                         // P2：整库不直接上传，改为从同一一致性快照导出按会话/按表的逻辑对象。
                         val staging = File(sourceDir, "db-objects").also { check(it.mkdir()) }

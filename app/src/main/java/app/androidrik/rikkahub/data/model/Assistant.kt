@@ -435,6 +435,8 @@ data class AssistantMemory(
     val isAnchor: Boolean = false,
     @Transient
     val sortKey: Int = 0,
+    @Transient
+    val displayOrder: Long = 0L,
     /** 最近修改时间（epoch millis），时效衰减基准。**不序列化**——对模型是噪声，仅内部打分用。 */
     @Transient
     val updatedAt: Long = 0L,

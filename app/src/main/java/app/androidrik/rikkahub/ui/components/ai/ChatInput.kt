@@ -716,6 +716,7 @@ private fun TextInputRow(
         var isFocused by remember { mutableStateOf(false) }
         var isFullScreen by remember { mutableStateOf(false) }
         var completionList by remember { mutableStateOf<ChatCompletionList?>(null) }
+        val attachmentToaster = LocalToaster.current
         val receiveContentListener = remember(
             settings.displaySetting.pasteLongTextAsFile, settings.displaySetting.pasteLongTextThreshold
         ) {
@@ -727,7 +728,7 @@ private fun TextInputRow(
                             if (uri != null) {
                                 state.addImages(
                                     filesManager.createChatFilesByContents(
-                                        listOf(uri)
+                                        listOf(uri), onRejected = { attachmentToaster.show(it) },
                                     )
                                 )
                             }

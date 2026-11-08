@@ -286,6 +286,9 @@ class AssistantDetailVM(
         )
     }
 
+    suspend fun moveMemory(storeId: String, memoryId: String, beforeId: String?) =
+        memoryRepository.moveMemory(storeId, memoryId, beforeId)
+
     suspend fun deleteMemory(storeId: String, memory: AssistantMemory) {
         check(memoryRepository.deleteMemoryInStore(
             storeId, memory.id, expectedRevision = memory.revision,

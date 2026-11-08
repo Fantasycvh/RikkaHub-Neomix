@@ -53,6 +53,7 @@ class MemoryRepository(
         importance = importance,
         description = description,
         sortKey = id,
+        displayOrder = displayOrder ?: id.toLong() * MEMORY_ORDER_STEP,
         updatedAt = updatedAt,
         readCount = readCount,
         lastReadAt = lastReadAt,
@@ -65,6 +66,29 @@ class MemoryRepository(
         taskStatus = if (MemoryKind.fromStorage(kind) == MemoryKind.TASK) MemoryTaskStatus.fromStorage(taskStatus) else MemoryTaskStatus.OPEN,
         dueAt = if (MemoryKind.fromStorage(kind) == MemoryKind.TASK) dueAt else 0L,
     )
+
+    private suspend fun nextDisplayOrder(storeId: String): Long = Math.addExact(
+        memoryDAO.getMemoriesOfAssistant(storeId).maxOfOrNull { it.displayOrder ?: it.id.toLong() * MEMORY_ORDER_STEP } ?: 0L,
+        MEMORY_ORDER_STEP,
+    )
+
+    /** Insert before a stable id (null = end). Re-read in the transaction to retain concurrent additions. */
+    suspend fun moveMemory(storeId: String, memoryId: String, beforeId: String?) = transactions.run {
+        val rows = memoryDAO.getMemoriesOfAssistant(storeId).sortedWith(
+            compareBy<MemoryEntity> { it.displayOrder ?: it.id.toLong() * MEMORY_ORDER_STEP }.thenBy { it.id }
+        )
+        val moved = rows.firstOrNull { it.publicId.ifBlank { it.id.toString() } == memoryId } ?: return@run
+        val others = rows.filter { it.id != moved.id }
+        val target = if (beforeId == null) others.size else others.indexOfFirst {
+            it.publicId.ifBlank { it.id.toString() } == beforeId
+        }.takeIf { it >= 0 } ?: return@run
+        val reordered = others.toMutableList().apply { add(target, moved) }
+        if (reordered.map { it.id } == rows.map { it.id }) return@run
+        val updates = planMemoryDisplayOrder(reordered.map {
+            it.id to (it.displayOrder ?: it.id.toLong() * MEMORY_ORDER_STEP)
+        }, target)
+        updates.forEach { (id, order) -> check(memoryDAO.updateDisplayOrder(storeId, id, order) == 1) }
+    }
 
     private suspend fun generatePublicId(): String {
         repeat(16) {
@@ -308,6 +332,7 @@ class MemoryRepository(
             updatedAt = now,
             kind = kind.storage,
             dueAt = if (kind == MemoryKind.TASK) dueAt else 0L,
+            displayOrder = nextDisplayOrder(assistantId),
         )
         val insertedId = memoryDAO.insertMemory(newMemory).toInt()
         recordHistory(newMemory.copy(id = insertedId), "CREATE", actor, reason, now)
@@ -424,6 +449,7 @@ class MemoryRepository(
                 importance = source.importance, description = source.description,
                 isAnchor = source.isAnchor, updatedAt = now,
                 kind = source.kind, taskStatus = source.taskStatus, dueAt = source.dueAt,
+                displayOrder = nextDisplayOrder(toAssistantId),
             )
             val id = memoryDAO.insertMemory(copy).toInt()
             recordHistory(copy.copy(id = id), "CREATE", actor, reason, now)
@@ -555,7 +581,7 @@ class MemoryRepository(
         }
         val snapshot = decodeSnapshot(tombstone.snapshot, storeId, memoryId, tombstone.publicId)
         check(tombstone.revision > snapshot.revision) { "Invalid memory trash revision" }
-        val restored = snapshot.copy(revision = tombstone.revision + 1, updatedAt = now)
+        val restored = snapshot.copy(revision = tombstone.revision + 1, updatedAt = now, displayOrder = nextDisplayOrder(storeId))
         memoryDAO.insertMemory(restored)
         requireCas(trashDAO.delete(storeId, memoryId, tombstone.revision))
         recordHistory(restored, "RESTORE_TRASH", actor, reason, now)
