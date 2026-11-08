@@ -29,6 +29,23 @@ import kotlin.uuid.Uuid
  * ④ 结果 JSON：成功带全文摘要 + run_id（指针），失败带原因，忙时如实说"忙"。
  */
 class SubagentToolsTest {
+    @Test fun `automatic completion processing releases a blocking preset without the legacy background switch`() = runBlocking {
+        var dispatched = false
+        val dispatcher = object : SubagentDispatcher {
+            override suspend fun dispatchAndAwait(preset: SubagentPreset, goal: String, timeoutMillis: Long,
+                parentConversationId: String?, context: SubagentDispatchContext): SubagentRunResult? = error("must release the parent")
+            override suspend fun dispatchBackground(preset: SubagentPreset, goal: String, timeoutMillis: Long,
+                parentConversationId: String, context: SubagentDispatchContext): SubagentRunResult {
+                dispatched = true
+                return SubagentRunResult("run", "pending", null, null)
+            }
+        }
+        val tool = createSubagentTools(listOf(SubagentPreset(name = "worker")), dispatcher,
+            "parent", enableBackgroundSubagent = false, autoResume = true).single()
+        val result = tool.execute(buildJsonObject { put("name", "worker"); put("goal", "work") })
+        assertTrue(dispatched)
+        assertTrue((result.single() as UIMessagePart.Text).text.contains("await_background_tasks"))
+    }
 
     private fun tool(name: String) = Tool(name = name, description = "", execute = { emptyList() })
 

@@ -53,7 +53,7 @@ class WorkspaceNoticeInboxTest {
         assertEquals(1, f.wakes)
     }
 
-    @Test fun `another task in the same root is visible but cannot recursively wake`() = runTest {
+    @Test fun `a later independent completion in the same root can wake once more`() = runTest {
         val f = Fixture(this)
         f.dao.insert(f.row)
         f.inbox.start(backgroundScope); runCurrent()
@@ -64,8 +64,8 @@ class WorkspaceNoticeInboxTest {
         val current = f.session.state.value
         f.session.state.value = current.copy(messageNodes = current.messageNodes + source.toMessageNode())
         f.dao.insert(second); runCurrent()
-        assertEquals(1, f.wakes)
-        assertEquals("suppressed", f.dao.get(second.id)!!.wakeState)
+        assertEquals(2, f.wakes)
+        assertEquals("claimed", f.dao.get(second.id)!!.wakeState)
         assertEquals(2, f.session.state.value.currentMessages.count { it.isExternalNotice })
     }
 
@@ -217,6 +217,43 @@ class WorkspaceNoticeInboxTest {
         assertEquals("delivered", f.dao.get(f.row.id)!!.deliveryState)
     }
 
+    @Test fun `a newer intent defers old results until idle even when automatic wake is enabled`() = runTest {
+        val f = Fixture(this)
+        f.session.beginNewTurn()
+        f.dao.insert(f.row)
+        val job = Job(); f.session.setJob(job)
+        f.inbox.start(backgroundScope); runCurrent()
+        f.inbox.beforeUser(f.session)
+        assertEquals(f.initial.currentMessages, f.inbox.atStep(f.session, f.initial.currentMessages))
+        assertEquals("pending", f.dao.get(f.row.id)!!.deliveryState)
+        job.complete(); f.inbox.request(); runCurrent()
+        assertEquals("delivered", f.dao.get(f.row.id)!!.deliveryState)
+        assertEquals(1, f.wakes)
+    }
+
+    @Test fun `eight consumed completion events bound automatic continuation without dropping a ninth result`() = runTest {
+        val f = Fixture(this)
+        repeat(8) { f.dao.insert(f.row.copy(id = Uuid.random().toString(), deliveryState = "delivered", wakeState = "completed", createdAt = System.currentTimeMillis())) }
+        f.dao.insert(f.row)
+        f.inbox.start(backgroundScope); runCurrent()
+        assertEquals("delivered", f.dao.get(f.row.id)!!.deliveryState)
+        assertEquals("suppressed", f.dao.get(f.row.id)!!.wakeState)
+        assertEquals(0, f.wakes)
+    }
+
+    @Test fun `different original tasks do not share their first continuation context`() = runTest {
+        val f = Fixture(this)
+        val second = f.row.copy(id = Uuid.random().toString(), rootScope = "turn:other", sourceId = "other-task")
+        val source = f.tool.copy(id = Uuid.random(), parts = listOf(UIMessagePart.Tool("other-call", "workspace_run_background", "{}",
+            listOf(UIMessagePart.Text("""{"completionEventId":"${second.id}"}""")))))
+        f.session.state.value = f.initial.copy(messageNodes = f.initial.messageNodes + source.toMessageNode())
+        f.dao.insert(f.row); f.dao.insert(second)
+        f.inbox.start(backgroundScope); runCurrent()
+        assertEquals(2, f.wakes)
+        assertEquals(1, f.wakeSnapshots.first().count { it.isExternalNotice })
+        assertEquals(2, f.wakeSnapshots.last().count { it.isExternalNotice })
+    }
+
     private class Fixture(test: TestScope) {
         val dao = FakeDAO()
         val assistant = Assistant(workspaceId = Uuid.random())
@@ -226,7 +263,7 @@ class WorkspaceNoticeInboxTest {
             "call", "workspace_run_background", "{}", listOf(UIMessagePart.Text("""{"completionEventId":"$event"}""")),
         )))
         val initial = Conversation.ofId(Uuid.random(), assistant.id).copy(messageNodes = listOf(user.toMessageNode(), tool.toMessageNode()))
-        val session = ConversationSession(initial.id, initial, test.backgroundScope, {})
+        val session = ConversationSession(initial.id, initial, test.backgroundScope, {}).apply { beginNewTurn("turn:root") }
         val settings = MutableStateFlow(Settings(assistants = listOf(assistant), workspaceTaskNoticeEnabled = true))
         val row = ExternalNoticeEntity(event, initial.id.toString(), assistant.id.toString(), assistant.workspaceId.toString(),
             user.id.toString(), "turn:root", "task", "EXITED", "result", 1L, true)
@@ -234,13 +271,14 @@ class WorkspaceNoticeInboxTest {
         var failCommit = false
         var budget = 100_000
         var wakes = 0
+        val wakeSnapshots = mutableListOf<List<UIMessage>>()
         val inbox = WorkspaceNoticeInbox(dao, { block ->
             val saved = dao.rows.value
             val conversation = persisted
             try { block(); check(!failCommit) }
             catch (e: Throwable) { dao.rows.value = saved; persisted = conversation; throw e }
         }, { true }, { persisted = it }, flowOf(emptyList()), {}, settings,
-            { if (it == session.id) session else null }, { budget }, { _, _, _ -> wakes++; true })
+            { if (it == session.id) session else null }, { budget }, { _, _, _ -> wakes++; wakeSnapshots += session.state.value.currentMessages; true })
     }
 
     private class FakeDAO : ExternalNoticeDAO {
@@ -256,7 +294,9 @@ class WorkspaceNoticeInboxTest {
         override suspend fun delivered(ids: List<String>, state: String) { rows.value = rows.value.map { if (it.id in ids) it.copy(deliveryState = state) else it } }
         override suspend fun wake(ids: List<String>, state: String) { rows.value = rows.value.map { if (it.id in ids) it.copy(wakeState = state) else it } }
         override suspend fun wasWoken(scope: String) = rows.value.any { it.rootScope == scope && it.wakeState in listOf("claimed", "started", "waiting_approval", "completed", "failed") }
+        override suspend fun wakeCount(scope: String) = rows.value.count { it.rootScope == scope && it.wakeState in listOf("claimed", "started", "waiting_approval", "completed", "failed") }
         override suspend fun suppressScope(scope: String) { rows.value = rows.value.map { if (it.rootScope == scope && it.wakeState == "pending") it.copy(wakeState = "suppressed") else it } }
+        override suspend fun isScopeSuppressed(scope: String) = rows.value.any { it.rootScope == scope && it.sourceType == "cancel_scope" }
         override suspend fun recoverInterrupted() { rows.value = rows.value.map { if (it.wakeState in listOf("claimed", "started", "waiting_approval")) it.copy(wakeState = "failed") else it } }
     }
 }

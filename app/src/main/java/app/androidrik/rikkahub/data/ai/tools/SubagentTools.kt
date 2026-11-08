@@ -60,6 +60,7 @@ data class SubagentDispatchContext(
     val parentToolEnvelope: Set<String>? = null,
     val scopeToken: String? = null,
     val parentWorkspaceId: kotlin.uuid.Uuid? = null,
+    val noticeTarget: app.androidrik.rikkahub.data.task.AgentNoticeTarget? = null,
 )
 
 interface SubagentDispatcher {
@@ -157,6 +158,7 @@ fun createSubagentTools(
     parentConversationId: String? = null,
     enableBackgroundSubagent: Boolean = false,
     dispatchContext: () -> SubagentDispatchContext = { SubagentDispatchContext() },
+    autoResume: Boolean = false,
 ): List<Tool> {
     if (presets.isEmpty()) return emptyList()
 
@@ -172,9 +174,9 @@ fun createSubagentTools(
 
                 Use this when a task is long, multi-step, or full of trial and error: done here, that noise would fill your context and stay there. Do not use it for a single lookup you could do yourself.
 
-                Execution mode is set by the preset author. For a background preset, the call returns a run_id immediately and its result arrives later as a system notice. Do not poll or dispatch it again. Other presets block until completion, failure, or timeout. For blocking calls, if the result status is not "completed", decide yourself whether to retry with a better `goal` or to continue without it.
+                ${if (autoResume) "Automatic completion processing is enabled: calls return a run_id immediately. Do independent work, then call await_background_tasks to finish this reply. Completion will resume the original task automatically when idle. Never poll, sleep, or redispatch accepted work." else "Execution mode is set by the preset author. Background presets return a run_id immediately and deliver a notice later; do not poll or redispatch them. Other presets block until completion, failure, or timeout."}
             """.trimIndent(),
-            systemPrompt = { _, _ -> subagentCatalogBlock(presets, enableBackgroundSubagent) },
+            systemPrompt = { _, _ -> subagentCatalogBlock(presets, enableBackgroundSubagent || autoResume, autoResume) },
             parameters = {
                 InputSchema.Obj(
                     properties = buildJsonObject {
@@ -223,15 +225,15 @@ fun createSubagentTools(
                     error("goal is required: the subagent cannot see this conversation, so the task must be stated here.")
                 }
 
-                val result = if (enableBackgroundSubagent &&
-                    preset.executionMode == app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND &&
+                val result = if ((autoResume || (enableBackgroundSubagent &&
+                    preset.executionMode == app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND)) &&
                     parentConversationId != null
                 ) {
                     dispatcher.dispatchBackground(preset, goal, preset.timeoutSeconds * 1000L, parentConversationId, dispatchContext())
                 } else {
                     dispatcher.dispatchAndAwait(preset, goal, preset.timeoutSeconds * 1000L, parentConversationId, dispatchContext())
                 }
-                listOf(UIMessagePart.Text(formatSubagentResult(result)))
+                listOf(UIMessagePart.Text(formatSubagentResult(result, autoResume)))
             },
         )
     )
@@ -243,7 +245,7 @@ fun createSubagentTools(
  * 清单是父模型**唯一**能知道"有哪些子代理、各自能干什么"的地方——
  * 所以派发工具的 schema 里只有名字与任务两个参数，不含任何预设配置。
  */
-internal fun subagentCatalogBlock(presets: List<SubagentPreset>, enableBackgroundSubagent: Boolean = false): String = buildString {
+internal fun subagentCatalogBlock(presets: List<SubagentPreset>, enableBackgroundSubagent: Boolean = false, autoResume: Boolean = false): String = buildString {
     appendLine("**Subagents**")
     appendLine(
         "A subagent is a separate model call with its own context: it cannot see this conversation, " +
@@ -254,8 +256,8 @@ internal fun subagentCatalogBlock(presets: List<SubagentPreset>, enableBackgroun
     presets.forEach { preset ->
         appendLine("  <subagent>")
         appendLine("    <name>${preset.name}</name>")
-        val mode = if (enableBackgroundSubagent && preset.executionMode ==
-            app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND) "background" else "blocking"
+        val mode = if (autoResume || (enableBackgroundSubagent && preset.executionMode ==
+            app.androidrik.rikkahub.data.model.SubagentExecutionMode.BACKGROUND)) "background" else "blocking"
         appendLine("    <execution_mode>$mode</execution_mode>")
         if (preset.description.isNotBlank()) {
             appendLine("    <description>${preset.description}</description>")
@@ -278,7 +280,7 @@ internal fun subagentCatalogBlock(presets: List<SubagentPreset>, enableBackgroun
  * 契约（§1.3）：回传**只带结论与指针，不带子代理的轨迹**。上层接口把 JSON 直接展示为
  * 工具卡内容，模型也直接读它——所以失败原因沿用 run 的机器前缀，与运行详情页同一份口径。
  */
-internal fun formatSubagentResult(result: SubagentRunResult?): String {
+internal fun formatSubagentResult(result: SubagentRunResult?, autoResume: Boolean = false): String {
     if (result == null) {
         return buildJsonObject {
             put("status", JsonPrimitive(SUBAGENT_STATUS_UNAVAILABLE))
@@ -297,7 +299,8 @@ internal fun formatSubagentResult(result: SubagentRunResult?): String {
         put("status", JsonPrimitive(result.status))
         put("run_id", JsonPrimitive(result.runId))
         if (result.status == "pending" || result.status == "running") {
-            put("note", "Accepted in background. The result will arrive as a system notice; do not poll or redispatch.")
+            put("note", if (autoResume) "Accepted in background. Do independent work, then call await_background_tasks to finish this reply. Completion will resume processing automatically; do not poll or redispatch."
+                else "Accepted in background. The result will arrive as a system notice; do not poll or redispatch.")
         }
         val summary = result.summary
         if (summary != null) {

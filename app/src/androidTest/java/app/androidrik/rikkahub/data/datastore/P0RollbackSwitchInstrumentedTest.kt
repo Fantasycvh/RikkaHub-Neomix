@@ -67,6 +67,7 @@ class P0RollbackSwitchInstrumentedTest {
             assertTrue(initial.namespacedNotifications)
             assertTrue(initial.dynamicRunGate)
             assertTrue(initial.killShellTasksOnRunCancel)
+            assertFalse(initial.workspaceTaskNoticeEnabled)
 
             store.update {
                 it.copy(
@@ -74,9 +75,11 @@ class P0RollbackSwitchInstrumentedTest {
                     namespacedNotifications = false,
                     dynamicRunGate = false,
                     killShellTasksOnRunCancel = false,
+                    workspaceTaskNoticeEnabled = true,
                 )
             }
             assertFalse(withTimeout(10_000) { store.settingsFlow.first() }.taskCenterEnabled)
+            assertTrue(withTimeout(10_000) { store.settingsFlow.first { it.workspaceTaskNoticeEnabled } }.workspaceTaskNoticeEnabled)
 
             // DataStore 同一文件在同进程只能有一个活动实例，故复制到新路径再开新实例：
             // 读的是同一份 protobuf 字节，证明写路径与读路径的 key 一致，而不是只改了内存。
@@ -90,6 +93,7 @@ class P0RollbackSwitchInstrumentedTest {
                 assertFalse(persisted.namespacedNotifications)
                 assertFalse(persisted.dynamicRunGate)
                 assertFalse(persisted.killShellTasksOnRunCancel)
+                assertTrue(persisted.workspaceTaskNoticeEnabled)
             } finally {
                 reloadScope.cancel()
             }

@@ -256,6 +256,7 @@ data class WorkspaceTaskSnapshot(
     /** Immutable ownership snapshot for the conversation task tree. */
     val owner: String? = null,
     val noticeEventId: String? = null,
+    val noticeRootScope: String? = null,
 ) {
     val isRunning: Boolean get() = status == WorkspaceTaskStatus.RUNNING
 
@@ -718,6 +719,7 @@ class WorkspaceTaskRegistry(
             stderrLogPath = entry.stderrLogPath,
             owner = entry.scope?.wire,
             noticeEventId = if (entry.noticeTarget != null) entry.noticeId else null,
+            noticeRootScope = entry.noticeTarget?.rootScope,
         )
     }
 }

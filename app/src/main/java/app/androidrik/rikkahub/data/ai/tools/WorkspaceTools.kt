@@ -585,7 +585,11 @@ private fun createRunBackgroundTool(
     description = buildString {
         append("Start a shell command in the assistant's bound workspace Rootfs **in the background** and return a task id immediately. ")
         append("The command keeps running after this answer; its output is NOT included here, so a chatty command cannot flood the context window. ")
-        append("Poll workspace_task_status for the tail of stdout/stderr and stop it with workspace_kill_task. ")
+        if (noticeTarget?.deliveryEnabled == true && noticeTarget.allowWake) {
+            append("Completion will resume this conversation automatically when idle. Do independent work, then call await_background_tasks to finish this reply. Do not poll, sleep, or relaunch accepted work. ")
+        } else {
+            append("Poll workspace_task_status for the tail of stdout/stderr and stop it with workspace_kill_task. ")
+        }
         append("Use this for long builds, downloads or training scripts; use workspace_shell when you need the output in this same turn. ")
         append("Interactive commands are NOT supported (stdin is closed, so anything prompting for input fails immediately) - run those with workspace_shell or the terminal. ")
         append("A task is stopped automatically when it exceeds its time limit, and the full output is written to ")
@@ -637,8 +641,9 @@ private fun createRunBackgroundTool(
                     } else {
                         put(
                             "note",
-                            "Running in the background. Completion is delivered automatically when enabled. Poll workspace_task_status(taskId=\"${task.id}\") " +
-                                "for its output tail and exit code.",
+                            if (noticeTarget?.deliveryEnabled == true && noticeTarget.allowWake)
+                                "Accepted. Do independent work, then call await_background_tasks to finish this reply. Completion will resume processing automatically; do not poll or relaunch."
+                            else "Running in the background. Completion is delivered automatically when enabled. Poll workspace_task_status(taskId=\"${task.id}\") for its output tail and exit code.",
                         )
                     }
                 }.toString()

@@ -35,6 +35,46 @@ import kotlin.uuid.Uuid
 /** Isolated Room + real repository/session; never opens the user's database or invokes a model. */
 @RunWith(AndroidJUnit4::class)
 class WorkspaceNoticeInboxInstrumentedTest {
+    @Test fun subagentCompletionSharesDurableInboxAndAcknowledgesOnlyWithConversationCommit() = fixture { f ->
+        val runId = Uuid.random().toString()
+        prepareAgent(f, runId)
+        f.inbox.start(f.scope)
+        f.await { f.db.agentRunDao().getRun(runId)?.deliveryState == "delivered" }
+        assertEquals("delivered", f.dao.get(runId)!!.deliveryState)
+        assertEquals("subagent", f.dao.get(runId)!!.sourceType)
+        assertEquals(1, f.session.state.value.currentMessages.count { it.isExternalNotice })
+        f.await { f.wakes.get() == 1 }
+        f.inbox.request(); delay(100)
+        assertEquals(1, f.wakes.get())
+    }
+
+    @Test fun stoppedScopeSurvivesInboxRecreationAndSuppressesAFutureAgentCompletion() = fixture { f ->
+        f.inbox.suppressAndPersist("turn:root")
+        val runId = Uuid.random().toString()
+        prepareAgent(f, runId)
+        val restarted = WorkspaceNoticeInbox(f.db, flowOf(emptyList()), {}, f.repo, f.settings,
+            { f.session }, { f.budget }, { _, _, _ -> f.wakes.incrementAndGet(); true })
+        restarted.start(f.scope)
+        f.await { f.db.agentRunDao().getRun(runId)?.deliveryState == "delivered" }
+        assertEquals("suppressed", f.dao.get(runId)!!.wakeState)
+        assertEquals(0, f.wakes.get())
+    }
+
+    private suspend fun prepareAgent(f: Fixture, id: String) {
+        val target = app.androidrik.rikkahub.data.task.AgentNoticeTarget(f.initial.id.toString(), f.assistant.id.toString(),
+            f.assistant.workspaceId.toString(), f.user.id.toString(), "turn:root", true)
+        val source = f.tool.copy(parts = listOf(UIMessagePart.Tool("agent-call", "dispatch_subagent", "{}",
+            listOf(UIMessagePart.Text("""{"run_id":"$id","status":"pending"}""")))))
+        val conversation = f.initial.copy(messageNodes = listOf(f.user.toMessageNode(), source.toMessageNode()))
+        f.session.state.value = conversation
+        f.repo.updateConversation(conversation)
+        f.db.agentRunDao().insertRun(app.androidrik.rikkahub.data.db.entity.AgentRunEntity(
+            id, "chat", "running", "profile", "worker", null, null, "original goal", "[]", "[]", null, null,
+            f.initial.id.toString(), System.currentTimeMillis(), null, null, scopeToken = "turn:root",
+            deliveryMode = "resume", noticeTarget = app.androidrik.rikkahub.utils.JsonInstant.encodeToString(target)))
+        f.db.agentRunDao().finishRun(id, "completed", "bounded result", null, System.currentTimeMillis(), null)
+    }
+
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     @get:Rule val migrations = MigrationTestHelper(InstrumentationRegistry.getInstrumentation(), AppDatabase::class.java)
 
@@ -194,7 +234,7 @@ class WorkspaceNoticeInboxInstrumentedTest {
             "call", "workspace_run_background", "{}", listOf(UIMessagePart.Text("""{"completionEventId":"$eventId"}""")),
         )))
         val initial = Conversation.ofId(Uuid.random(), assistant.id).copy(messageNodes = listOf(user.toMessageNode(), tool.toMessageNode()))
-        val session = ConversationSession(initial.id, initial, scope, {})
+        val session = ConversationSession(initial.id, initial, scope, {}).apply { beginNewTurn("turn:root") }
         val settings = MutableStateFlow(Settings(assistants = listOf(assistant), workspaceTaskNoticeEnabled = true))
         val wakes = AtomicInteger()
         var budget = 100_000

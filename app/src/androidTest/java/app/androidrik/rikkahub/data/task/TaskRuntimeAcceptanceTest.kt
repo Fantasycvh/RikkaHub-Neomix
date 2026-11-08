@@ -13,6 +13,7 @@ import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isSubagentNotice
+import app.androidrik.ai.ui.isExternalNotice
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.AppScope
@@ -65,6 +66,7 @@ class TaskRuntimeAcceptanceTest {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
         check(app.javaClass == Application::class.java && app.packageName.endsWith(".debug"))
         val scenario = args.getString("runtimeScenario") ?: "long"
+            val automatic = scenario.startsWith("auto")
         val approvalMode = args.getString("runtimeApproval") ?: "none"
         val carrier = NoticeCarrier.fromStorage(args.getString("runtimeCarrier"))
         val evidence = File(app.filesDir, "runtime-acceptance").apply { mkdirs() }
@@ -105,10 +107,12 @@ class TaskRuntimeAcceptanceTest {
                 allowedTools = setOf("runtime_acceptance_wait"), executionMode = SubagentExecutionMode.BLOCKING,
                 systemPrompt = "Call runtime_acceptance_wait, then return its result.")
             store.update { it.copy(providers = listOf(provider), chatModelId = model.id,
-                assistants = listOf(assistant), enableBackgroundSubagent = scenario != "handoff", noticeCarrier = carrier,
-                enableSubagentDispatch = scenario == "handoff", subagentPresets = listOf(handoffPreset),
+                assistants = listOf(assistant), enableBackgroundSubagent = scenario != "handoff" && !automatic, noticeCarrier = carrier,
+                workspaceTaskNoticeEnabled = automatic,
+                enableSubagentDispatch = scenario == "handoff" || automatic, subagentPresets = listOf(handoffPreset),
                 enableAutoTitle = false, enableSuggestion = false) }
-            store.settingsFlow.first { it.enableBackgroundSubagent == (scenario != "handoff") && it.chatModelId == model.id }
+            store.settingsFlow.first { it.enableBackgroundSubagent == (scenario != "handoff" && !automatic) &&
+                it.workspaceTaskNoticeEnabled == automatic && it.chatModelId == model.id }
             val chat = koin.get<ChatService>()
             val dao = db.agentRunDao()
             val repo = koin.get<ConversationRepository>()
@@ -130,6 +134,8 @@ class TaskRuntimeAcceptanceTest {
             val seconds = if (scenario == "seed") 180 else args.getString("runtimeSeconds")?.toInt() ?: 180
             val toolStarted = CompletableDeferred<Unit>()
             val releaseHandoffTask = CompletableDeferred<Unit>()
+            val newMessageStarted = CompletableDeferred<Unit>()
+            val releaseNewMessage = CompletableDeferred<Unit>()
             var toolExecutions = 0
             koin.get<PluginManager>().register(object : PluginToolProvider {
                 override val id = "test.runtime.acceptance"
@@ -145,14 +151,65 @@ class TaskRuntimeAcceptanceTest {
                         File(evidence, "tool.started").writeText("$scenario:$seconds")
                         toolStarted.complete(Unit)
                         toolExecutions++
-                        if (scenario == "handoff") releaseHandoffTask.await() else delay(seconds * 1000L)
+                        if (scenario == "handoff" || automatic) releaseHandoffTask.await() else delay(seconds * 1000L)
                         listOf(UIMessagePart.Text("RUNTIME_ACCEPTANCE_OK"))
+                    }), Tool(name = "runtime_new_message_wait", description = "Wait for the new-message test barrier.", execute = {
+                        newMessageStarted.complete(Unit)
+                        releaseNewMessage.await()
+                        listOf(UIMessagePart.Text("NEW_MESSAGE_OK"))
                     }))
             })
             val parent = Conversation.ofId(Uuid.random(), assistant.id).copy(
                 messageNodes = listOf(UIMessage.user("Synthetic runtime acceptance parent").toMessageNode()))
             repo.insertConversation(parent)
             withContext(Dispatchers.Main) { chat.ensureConversationLoaded(parent.id) }
+            if (automatic) {
+                chat.startNoticeDelivery()
+                withContext(Dispatchers.Main) { chat.sendMessage(parent.id, listOf(UIMessagePart.Text("AUTO_OLD_MESSAGE"))) }
+                withTimeout(30_000) { toolStarted.await() }
+                withTimeout(30_000) { chat.getGenerationJobStateFlow(parent.id).first { it == null } }
+                val run = dao.observeRunsByConversation(parent.id.toString()).first().single()
+                notificationRunId = run.id
+                assertEquals(AgentRunEntity.DELIVERY_MODE_RESUME, run.deliveryMode)
+                assertNull(run.finishedAt)
+                assertTrue(chat.getConversationFlow(parent.id).value.currentMessages.flatMap { it.parts }
+                    .filterIsInstance<UIMessagePart.Tool>().any { it.toolName == "await_background_tasks" && it.isExecuted })
+                if (scenario == "auto-stop") withContext(Dispatchers.Main) { chat.stopGeneration(parent.id) }
+                if (scenario == "auto-priority" || scenario == "auto-handoff") {
+                    withContext(Dispatchers.Main) {
+                        val parts = listOf(UIMessagePart.Text("AUTO_NEW_MESSAGE"))
+                        if (scenario == "auto-handoff") chat.sendRetainingTasks(parent.id, parts)
+                        else chat.sendMessage(parent.id, parts)
+                    }
+                    withTimeout(30_000) { newMessageStarted.await() }
+                }
+                releaseHandoffTask.complete(Unit)
+                withTimeout(30_000) { dao.observeRun(run.id).first { it?.finishedAt != null } }
+                if (scenario == "auto-priority" || scenario == "auto-handoff") {
+                    delay(200)
+                    assertEquals("pending", dao.getRun(run.id)!!.deliveryState)
+                    assertEquals(0, chat.getConversationFlow(parent.id).value.currentMessages.count { it.isExternalNotice })
+                    releaseNewMessage.complete(Unit)
+                    withTimeout(30_000) { chat.getConversationFlow(parent.id).first { c -> c.currentMessages.any { m ->
+                        m.parts.filterIsInstance<UIMessagePart.Text>().any { it.text.contains("NEW_MESSAGE_OK") } } } }
+                }
+                withTimeout(30_000) { dao.observeRun(run.id).first { it?.deliveryState == "delivered" } }
+                if (scenario == "auto-stop" || scenario == "auto-handoff") {
+                    delay(300)
+                    assertEquals("suppressed", db.externalNoticeDao().get(run.id)!!.wakeState)
+                    withTimeout(30_000) { chat.getGenerationJobStateFlow(parent.id).first { it == null } }
+                } else {
+                    withTimeout(30_000) { chat.getConversationFlow(parent.id).first { c -> c.currentMessages.any { m ->
+                        m.parts.filterIsInstance<UIMessagePart.Text>().any { it.text.contains("AUTO_RESUME_OK") } } } }
+                    withTimeout(30_000) { chat.getGenerationJobStateFlow(parent.id).first { it == null } }
+                    assertEquals("completed", db.externalNoticeDao().get(run.id)!!.wakeState)
+                }
+                assertEquals(1, toolExecutions)
+                assertEquals(1, chat.getConversationFlow(parent.id).value.currentMessages.count { it.isExternalNotice })
+                assertEquals(0, chat.getConversationFlow(parent.id).value.currentMessages.count { it.isSubagentNotice })
+                File(evidence, "$scenario.passed").writeText("parent_released_before_completion=true;automatic=${scenario != "auto-stop"};new_message_priority=${scenario == "auto-priority"};delivered_once=true;tool_executions=$toolExecutions")
+                return@runBlocking
+            }
             if (scenario == "handoff") {
                 check(args.getString("runtimeProtocol") == "openai") { "handoff fixture requires openai protocol" }
                 chat.startNoticeDelivery()

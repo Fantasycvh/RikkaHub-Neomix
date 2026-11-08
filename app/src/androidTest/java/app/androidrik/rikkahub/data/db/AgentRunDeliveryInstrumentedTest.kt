@@ -78,6 +78,24 @@ class AgentRunDeliveryInstrumentedTest {
         finishedAt = null, scopeToken = "turn:one", deliveryMode = mode,
     )
 
+    @Test fun migration62To63PreservesExistingNoticesAndLeavesLegacyAgentsWithoutWakeAuthority() {
+        val name = "agent-delivery-migration-test"
+        migrations.createDatabase(name, 62).use { old ->
+            old.execSQL("""INSERT INTO external_notice (id,conversationId,assistantId,workspaceId,anchorMessageId,rootScope,sourceId,status,body,createdAt,allowWake,deliveryState,wakeState)
+                VALUES ('legacy','parent','assistant','workspace','anchor','turn:old','task','EXITED','retained',1,1,'pending','pending')""")
+            old.execSQL("""INSERT INTO agent_run (id,entry_point,status,profile_assistant_id,profile_name,model_id,model_name,goal,tool_envelope,transcript,result_summary,error,parent_conversation_id,created_at,started_at,finished_at)
+                VALUES ('legacy-agent','chat','completed','p','worker',NULL,NULL,'old','[]','[]','old result',NULL,'parent',1,1,2)""")
+        }
+        migrations.runMigrationsAndValidate(name, 63, true).use { migrated ->
+            migrated.query("SELECT sourceType,body FROM external_notice WHERE id='legacy'").use { c ->
+                assertTrue(c.moveToFirst()); assertEquals("workspace", c.getString(0)); assertEquals("retained", c.getString(1))
+            }
+            migrated.query("SELECT notice_target,delivery_mode FROM agent_run WHERE id='legacy-agent'").use { c ->
+                assertTrue(c.moveToFirst()); assertTrue(c.isNull(0)); assertEquals("await", c.getString(1))
+            }
+        }
+    }
+
     @Test fun handoffProgressAndCompletionKeepDurableDeliveryInEitherOrder() = runBlocking {
         val dao = openMemory().agentRunDao()
         dao.insertRun(run("before", DELIVERY_MODE_AWAIT))

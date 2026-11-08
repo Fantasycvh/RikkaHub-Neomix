@@ -285,7 +285,7 @@ data class Settings(
      */
     val noticeCarrier: app.androidrik.rikkahub.data.task.NoticeCarrier = app.androidrik.rikkahub.data.task.NoticeCarrier.SYSTEM,
     val enableBackgroundSubagent: Boolean = false,
-    /** Automatically process completed workspace tasks; may make additional model requests. */
+    /** Resume idle chats after background commands/subagents finish; may make additional model requests. */
     val workspaceTaskNoticeEnabled: Boolean = false,
     val enableSubagentDispatch: Boolean = false,
     /** P0 回滚开关（附录 C，默认开）：关 = 隐藏任务中心入口，旧 Agent 运行列表仍可进。 */

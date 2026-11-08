@@ -544,7 +544,7 @@ export const ChatMessage = React.memo(({
   const notice = message.annotations?.find((annotation) => annotation.type === "subagent_notice" || annotation.type === "external_notice");
   if (notice?.type === "subagent_notice" || notice?.type === "external_notice") {
     return (
-      <SubagentNoticeCard title={notice.type === "external_notice" ? "Workspace task results" : undefined} runIds={notice.type === "external_notice" ? notice.sourceIds : notice.runIds} text={message.parts
+      <SubagentNoticeCard title={notice.type === "external_notice" ? (notice.source === "subagent" ? "Subagent results" : "Workspace task results") : undefined} runIds={notice.type === "external_notice" ? notice.sourceIds : notice.runIds} text={message.parts
         .filter((part) => part.type === "text" || part.type === "notice").map((part) => part.text).join("\n")} />
     );
   }

@@ -373,7 +373,8 @@ class SubagentRunner(
         parentConversationId: String,
         context: SubagentDispatchContext,
     ): SubagentRunResult? {
-        if (!settingsStore.settingsFlow.value.enableBackgroundSubagent || goal.isBlank()) return null
+        val resumable = settingsStore.settingsFlow.value.workspaceTaskNoticeEnabled && context.noticeTarget?.allowWake == true
+        if ((!settingsStore.settingsFlow.value.enableBackgroundSubagent && !resumable) || goal.isBlank()) return null
         val parentId = runCatching { Uuid.parse(parentConversationId) }.getOrNull() ?: return null
         val runId = Uuid.random()
         if (!gate.tryAcquire(runId.toString())) return null
@@ -385,8 +386,9 @@ class SubagentRunner(
         }
         val run = newRunEntity(
             AgentRunEntity.ENTRY_POINT_CHAT, profile, goal, preset.allowedTools, runId, parentId.toString(),
-        ).copy(deliveryMode = AgentRunEntity.DELIVERY_MODE_NOTICE,
-            scopeToken = context.scopeToken ?: "run:$runId", transcript = newTranscript(initialMessages))
+        ).copy(deliveryMode = if (resumable) AgentRunEntity.DELIVERY_MODE_RESUME else AgentRunEntity.DELIVERY_MODE_NOTICE,
+            scopeToken = context.scopeToken ?: "run:$runId", transcript = newTranscript(initialMessages),
+            noticeTarget = if (resumable) JsonInstant.encodeToString(context.noticeTarget) else null)
         try {
             // 调用方取消不会留下已占位但未登记/未启动的任务。
             withContext(NonCancellable) {
@@ -700,7 +702,8 @@ class SubagentRunner(
                             pending = pending,
                             parentConversationId = initial.parentConversationId,
                             background = agentRunDAO.getRun(initial.id)?.deliveryMode in setOf(
-                                AgentRunEntity.DELIVERY_MODE_NOTICE, AgentRunEntity.DELIVERY_MODE_HANDOFF),
+                                AgentRunEntity.DELIVERY_MODE_NOTICE, AgentRunEntity.DELIVERY_MODE_HANDOFF,
+                                AgentRunEntity.DELIVERY_MODE_RESUME),
                         )
                         currentMessages = applyApprovalDecisions(currentMessages, decisions)
                         update {

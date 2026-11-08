@@ -39,7 +39,7 @@ fun notificationRouteAvailable(context: Context, channelId: String): Boolean {
 fun shouldNotifyRunCompletion(run: AgentRunEntity, foregroundAndVisible: Boolean): Boolean =
     !foregroundAndVisible && run.finishedAt != null &&
         (run.entryPoint == AgentRunEntity.ENTRY_POINT_SUBAGENT || run.deliveryMode in setOf(
-            AgentRunEntity.DELIVERY_MODE_NOTICE, AgentRunEntity.DELIVERY_MODE_HANDOFF)) &&
+            AgentRunEntity.DELIVERY_MODE_NOTICE, AgentRunEntity.DELIVERY_MODE_HANDOFF, AgentRunEntity.DELIVERY_MODE_RESUME)) &&
         // 定时 headless 的取消是用户自己按的「停止」：与定时注入路径一致，不再推一条
         // 「已取消」通知；失败/完成仍通知（结果摘要只有这里能看到）。
         !(run.entryPoint == AgentRunEntity.ENTRY_POINT_SCHEDULED && run.status == AgentRunEntity.STATUS_CANCELLED) &&

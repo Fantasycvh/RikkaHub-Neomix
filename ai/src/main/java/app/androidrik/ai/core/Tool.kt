@@ -4,6 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
@@ -40,8 +41,14 @@ data class Tool(
      * 上限 7200s，且 runner 自带看门狗 ⇒ 声明 null 交它自管）。
      */
     val executionTimeoutMillis: Long? = DEFAULT_TOOL_EXECUTION_TIMEOUT_MS,
+    /** Successful runtime control tools may release the parent turn after the whole tool batch commits. */
+    val endTurnOnSuccess: Boolean = false,
     val execute: suspend (JsonElement) -> List<UIMessagePart>
 )
+
+/** A control tool can observe already-completed work and continue normally instead of raising an error. */
+fun Tool.shouldEndTurn(result: List<UIMessagePart>): Boolean = endTurnOnSuccess &&
+    result.none { it.metadata?.get("runtimeContinueTurn") == JsonPrimitive(true) }
 
 @Serializable
 sealed class InputSchema {

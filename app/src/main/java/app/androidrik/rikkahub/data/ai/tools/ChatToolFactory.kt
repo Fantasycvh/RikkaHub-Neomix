@@ -133,6 +133,7 @@ class ChatToolFactory(
         memoryDisabled: Boolean = false,
         /** 插件工具与既有段重名时的用户可见报错通道；null = 只记日志（预览/子代理路径） */
         onPluginToolsRejected: PluginToolsRejectedListener? = null,
+        awaitBackgroundTasks: (suspend () -> List<String>)? = null,
     ): List<Tool> = createToolSegments(
         settings = settings,
         assistant = assistant,
@@ -143,6 +144,7 @@ class ChatToolFactory(
         workspaceNoticeTarget = workspaceNoticeTarget,
         memoryDisabled = memoryDisabled,
         onPluginToolsRejected = onPluginToolsRejected,
+        awaitBackgroundTasks = awaitBackgroundTasks,
     )
         .flatMap { it.tools }
 
@@ -184,8 +186,12 @@ class ChatToolFactory(
         memoryDisabled: Boolean = false,
         /** 插件工具跨段重名的报错通道（P2a 拍板 1）；见 [createPluginToolSegments] */
         onPluginToolsRejected: PluginToolsRejectedListener? = null,
+        awaitBackgroundTasks: (suspend () -> List<String>)? = null,
     ): List<ToolSegment> {
         val segments = mutableListOf<ToolSegment>()
+        if (settings.workspaceTaskNoticeEnabled && workspaceNoticeTarget?.allowWake == true && awaitBackgroundTasks != null) {
+            segments += ToolSegment(ToolSource.Local, listOf(createAwaitBackgroundTasksTool(awaitBackgroundTasks)))
+        }
 
         // 记忆工具（原在 GenerationHandler 循环内叠加，现为装配点的一部分）
         // **会话级「不使用记忆」时不装配**（隐身对话，见 docs/design/design-memory-discipline.md §4.4）：
@@ -319,6 +325,7 @@ class ChatToolFactory(
                     createSubagentTools(
                         presets = subagentPresets.map { it.copy(modelId = it.modelId ?: model.id) },
                         enableBackgroundSubagent = settings.enableBackgroundSubagent,
+                        autoResume = settings.workspaceTaskNoticeEnabled && workspaceNoticeTarget?.allowWake == true && awaitBackgroundTasks != null,
                         dispatcher = dispatcher,
                         parentConversationId = conversationId,
                         dispatchContext = {
@@ -327,6 +334,10 @@ class ChatToolFactory(
                                     .flatMap { it.tools }.map { it.name }.toSet(),
                                 scopeToken = turnOwner?.wire,
                                 parentWorkspaceId = assistant.workspaceId,
+                                noticeTarget = workspaceNoticeTarget?.let {
+                                    app.androidrik.rikkahub.data.task.AgentNoticeTarget(it.conversationId, it.assistantId,
+                                        it.workspaceId, it.anchorMessageId, it.rootScope, it.allowWake)
+                                },
                             )
                         },
                     ),

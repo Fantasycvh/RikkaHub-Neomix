@@ -28,6 +28,7 @@ import app.androidrik.ai.core.resolveReasoningPreset
 import app.androidrik.ai.core.withReasoningPreset
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.Tool
+import app.androidrik.ai.core.shouldEndTurn
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.core.accumulateRound
 import app.androidrik.ai.core.merge
@@ -807,6 +808,7 @@ class GenerationHandler(
             // （实测 memory_tool create 被下发 2 条 → 重复建记忆）。
             // 注意：每个 toolCallId 都必须有 tool 结果（协议要求），故把首条输出复制回填给重复项。
             val executedSignature = mutableMapOf<String, List<UIMessagePart>>()
+            var endTurnAfterTools = false
             toolsToProcess.forEach { tool ->
                 when (tool.approvalState) {
                     is ToolApprovalState.Denied -> {
@@ -939,6 +941,7 @@ class GenerationHandler(
                             }
                             Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
                             val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
+                            if (toolDef.shouldEndTurn(result)) endTurnAfterTools = true
                             // 空输出补占位：否则 isExecuted 仍为假 ⇒ 下一轮又被选出来重复执行
                             val output = finalizeToolOutput(
                                 maybeTruncateToolOutput(
@@ -1052,6 +1055,8 @@ class GenerationHandler(
                 Log.i(TAG, "generateText: waiting for tool approval")
                 break
             }
+            // A successful wait releases this generation normally; completed task events resume later.
+            if (endTurnAfterTools) break
         }
 
         // 轮级步数（上游 660b5d65f 面）：落在最后一条 assistant 消息上，>1 时统计行显示徽标。

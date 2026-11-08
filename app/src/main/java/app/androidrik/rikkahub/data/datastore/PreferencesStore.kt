@@ -438,6 +438,7 @@ class SettingsStore(
         // UI 能改、当前进程内生效，**一重启就回到默认值**（正是 2026-09-11 那条教训的形状）。
         val NOTICE_CARRIER = stringPreferencesKey("subagent_notice_carrier")
         val ENABLE_BACKGROUND_SUBAGENT = booleanPreferencesKey("enable_background_subagent")
+        val WORKSPACE_TASK_NOTICE_ENABLED = booleanPreferencesKey("workspace_task_notice_enabled")
         /** P0 回滚开关（附录 C）：关 = 隐藏任务中心页，旧运行列表保留。 */
         val TASK_CENTER_ENABLED = booleanPreferencesKey("task_center_enabled")
         /** P0 回滚开关：关 = 子代理审批通知回旧固定 id/requestCode。 */
@@ -675,6 +676,7 @@ class SettingsStore(
                 } ?: emptyMap(),
                 noticeCarrier = app.androidrik.rikkahub.data.task.NoticeCarrier.fromStorage(preferences[NOTICE_CARRIER]),
                 enableBackgroundSubagent = preferences[ENABLE_BACKGROUND_SUBAGENT] ?: false,
+                workspaceTaskNoticeEnabled = preferences[WORKSPACE_TASK_NOTICE_ENABLED] ?: false,
                 enableSubagentDispatch = preferences[ENABLE_SUBAGENT_DISPATCH] ?: false,
                 taskCenterEnabled = preferences[TASK_CENTER_ENABLED] ?: true,
                 namespacedNotifications = preferences[NAMESPACED_NOTIFICATIONS] ?: true,
@@ -972,6 +974,7 @@ class SettingsStore(
             preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
             preferences[NOTICE_CARRIER] = settings.noticeCarrier.storageValue
             preferences[ENABLE_BACKGROUND_SUBAGENT] = settings.enableBackgroundSubagent
+            preferences[WORKSPACE_TASK_NOTICE_ENABLED] = settings.workspaceTaskNoticeEnabled
             preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
             preferences[TASK_CENTER_ENABLED] = settings.taskCenterEnabled
             preferences[NAMESPACED_NOTIFICATIONS] = settings.namespacedNotifications

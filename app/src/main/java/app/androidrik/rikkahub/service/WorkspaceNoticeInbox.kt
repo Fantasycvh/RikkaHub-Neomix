@@ -24,6 +24,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -43,6 +45,8 @@ internal class WorkspaceNoticeInbox(
     private val loadSession: suspend (Uuid) -> ConversationSession?,
     private val remainingTokens: (ConversationSession) -> Int,
     private val startContinuation: (ConversationSession, String, List<String>) -> Boolean,
+    private val agentTerminals: Flow<List<app.androidrik.rikkahub.data.db.entity.AgentRunEntity>> = flowOf(emptyList()),
+    private val acknowledgeAgents: suspend (List<String>, Boolean) -> Unit = { _, _ -> },
 ) {
     constructor(
         database: AppDatabase,
@@ -55,7 +59,13 @@ internal class WorkspaceNoticeInbox(
         startContinuation: (ConversationSession, String, List<String>) -> Boolean,
     ) : this(database.externalNoticeDao(), { block -> database.withTransaction { block() } },
         conversations::existsConversationById, conversations::updateConversation,
-        terminals, acknowledgeTerminal, settings, loadSession, remainingTokens, startContinuation)
+        terminals, acknowledgeTerminal, settings, loadSession, remainingTokens, startContinuation,
+        database.agentRunDao().observePendingDeliveries().map { rows -> rows.filter {
+            it.deliveryMode == app.androidrik.rikkahub.data.db.entity.AgentRunEntity.DELIVERY_MODE_RESUME
+        } }, { ids, orphaned ->
+            if (orphaned) database.agentRunDao().markOrphaned(ids)
+            else database.agentRunDao().markDelivered(ids, System.currentTimeMillis())
+        })
     private val mutex = Mutex()
     private val requests = Channel<Unit>(Channel.CONFLATED)
     private val cancelledScopes = ConcurrentHashMap.newKeySet<String>()
@@ -67,7 +77,14 @@ internal class WorkspaceNoticeInbox(
 
     suspend fun suppressAndPersist(scope: String) {
         suppress(scope)
-        try { withContext(NonCancellable) { dao.suppressScope(scope) } }
+        try { withContext(NonCancellable) { transaction {
+            // A resolved control record also suppresses completions that do not exist yet, after restart.
+            dao.insert(ExternalNoticeEntity(
+                java.util.UUID.nameUUIDFromBytes("cancel:$scope".toByteArray(Charsets.UTF_8)).toString(),
+                "", "", "", "", scope, scope, "cancelled", "", System.currentTimeMillis(), false,
+                deliveryState = "delivered", wakeState = "suppressed", sourceType = "cancel_scope"))
+            dao.suppressScope(scope)
+        } } }
         catch (e: Exception) { Log.e("WorkspaceInbox", "Suppression retained in memory for retry", e) }
     }
 
@@ -84,7 +101,7 @@ internal class WorkspaceNoticeInbox(
                             transaction {
                                 check(dao.get(notice.id) != null || dao.pendingCount() < 2048) { "Durable task inbox is full; result retained in registry" }
                                 dao.insert(notice)
-                                if (notice.rootScope in cancelledScopes) dao.suppressScope(notice.rootScope)
+                                if (notice.rootScope in cancelledScopes || dao.isScopeSuppressed(notice.rootScope)) dao.suppressScope(notice.rootScope)
                             }
                             acknowledgeTerminal(terminal.id)
                             break
@@ -95,6 +112,24 @@ internal class WorkspaceNoticeInbox(
             }
         }
         launch { dao.observePending().collect { request() } }
+        launch {
+            agentTerminals.collect { runs ->
+                for (run in runs) {
+                    while (true) {
+                        try {
+                            val notice = run.toExternalNotice() ?: error("Resumable run has no captured destination: ${run.id}")
+                            transaction {
+                                check(dao.get(notice.id) != null || dao.pendingCount() < 2048) { "Durable task inbox is full; agent result retained" }
+                                dao.insert(notice)
+                                if (notice.rootScope in cancelledScopes || dao.isScopeSuppressed(notice.rootScope)) dao.suppressScope(notice.rootScope)
+                            }
+                            break
+                        } catch (e: CancellationException) { throw e }
+                        catch (e: Exception) { Log.e("TaskInbox", "Agent completion retained for retry", e); delay(5_000) }
+                    }
+                }
+            }
+        }
         launch { settings.collect { request() } }
         for (ignored in requests) {
             try {
@@ -105,8 +140,11 @@ internal class WorkspaceNoticeInbox(
                         val id = runCatching { Uuid.parse(parent) }.getOrNull()
                         val session = id?.let { loadSession(it) }
                         if (session == null) {
-                            dao.delivered(notices.map { it.id }, "orphaned")
-                            dao.wake(notices.map { it.id }, "suppressed")
+                            transaction {
+                                dao.delivered(notices.map { it.id }, "orphaned")
+                                dao.wake(notices.map { it.id }, "suppressed")
+                                acknowledgeAgents(notices.filter { it.sourceType == "subagent" }.map { it.sourceId }, true)
+                            }
                         } else session.withRefSuspend { process(session, notices, beforeUser = false) }
                     }
                 }
@@ -154,15 +192,19 @@ internal class WorkspaceNoticeInbox(
             val original = session.state.value
             val assistant = settings.value.getAssistantById(original.assistantId)
             val selected = original.currentMessages.map { it.id.toString() }.toSet()
-            val sourceEvents = app.androidrik.rikkahub.data.task.selectedWorkspaceCompletionEvents(original.currentMessages)
-            val applicable = rows.filter {
+            val sourceEvents = app.androidrik.rikkahub.data.task.selectedTaskCompletionEvents(original.currentMessages)
+            val matching = rows.filter {
                 externalNoticeMatches(it, original.assistantId.toString(), assistant?.workspaceId?.toString(), selected) && it.id in sourceEvents &&
-                    (!beforeUser || it.wakeState != "suppressed" ||
+                    (!beforeUser ||
                         it.rootScope == (session.externalNoticeRootScope ?: session.backgroundTaskOwner))
             }
+            // Resume one original task at a time; other roots keep their own unconsumed completion.
+            val applicable = if (beforeUser) matching else matching.filter { it.rootScope == matching.firstOrNull()?.rootScope }
             // Branch/assistant changes retain the original destination; never move a result elsewhere.
             if (applicable.isEmpty()) return@withContext
+            val suppressedRoots = applicable.map { it.rootScope }.distinct().filter { dao.isScopeSuppressed(it) }.toSet()
             if (!beforeUser && (session.getJob() != null || session.processingStatus.value != null ||
+                        session.messageQueue.state.value.messages.isNotEmpty() ||
                         original.currentMessages.any { m -> m.parts.any { it is UIMessagePart.Tool && it.isPending } })) return@withContext
 
             val pending = applicable.filter { it.deliveryState == "pending" }
@@ -186,6 +228,7 @@ internal class WorkspaceNoticeInbox(
                         check(exists(session.id)) { "Notice target was deleted" }
                         if (batch.isNotEmpty()) persist(updated)
                         dao.delivered(batch.map { it.id })
+                        acknowledgeAgents(batch.filter { it.sourceType == "subagent" }.map { it.sourceId }, false)
                     }
                 }
             } catch (e: Throwable) {
@@ -195,7 +238,7 @@ internal class WorkspaceNoticeInbox(
             val delivered = applicable.filter { it.deliveryState == "delivered" || it in batch }
             val wakeable = delivered.filter { it.wakeState == "pending" }
             if (wakeable.isEmpty()) return@withContext
-            val suppressed = wakeable.filter { beforeUser || !it.allowWake || it.rootScope in cancelledScopes ||
+            val suppressed = wakeable.filter { beforeUser || !it.allowWake || it.rootScope in cancelledScopes || it.rootScope in suppressedRoots ||
                 !settings.value.workspaceTaskNoticeEnabled }
             dao.wake(suppressed.map { it.id }, "suppressed")
             val remaining = wakeable - suppressed.toSet()
@@ -203,7 +246,7 @@ internal class WorkspaceNoticeInbox(
                 session.messageQueue.state.value.messages.isNotEmpty()) return@withContext
             val root = remaining.first().rootScope
             val group = remaining.filter { it.rootScope == root }
-            if (dao.wasWoken(root)) {
+            if (dao.wakeCount(root) >= 8) {
                 dao.wake(group.map { it.id }, "suppressed")
                 return@withContext
             }
@@ -213,10 +256,10 @@ internal class WorkspaceNoticeInbox(
             val current = session.state.value
             val currentWorkspace = settings.value.getAssistantById(current.assistantId)?.workspaceId?.toString()
             val currentIds = current.currentMessages.map { it.id.toString() }.toSet()
-            val currentEvents = app.androidrik.rikkahub.data.task.selectedWorkspaceCompletionEvents(current.currentMessages)
+            val currentEvents = app.androidrik.rikkahub.data.task.selectedTaskCompletionEvents(current.currentMessages)
             if (group.any { !externalNoticeMatches(it, current.assistantId.toString(), currentWorkspace, currentIds) || it.id !in currentEvents })
                 dao.wake(ids, "pending")
-            else if (root in cancelledScopes || !settings.value.workspaceTaskNoticeEnabled) dao.wake(ids, "suppressed")
+            else if (root in cancelledScopes || dao.isScopeSuppressed(root) || !settings.value.workspaceTaskNoticeEnabled) dao.wake(ids, "suppressed")
             else if (!startContinuation(session, root, ids)) dao.wake(ids, "pending")
         }
 }

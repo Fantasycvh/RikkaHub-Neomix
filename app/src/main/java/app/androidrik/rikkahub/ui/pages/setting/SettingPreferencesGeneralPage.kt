@@ -778,8 +778,8 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
             },
         )
         item(
-            headlineContent = { Text("后台命令完成后自动处理") },
-            supportingContent = { Text("聊天中新启动的后台命令结束后，送回结果并请求模型继续处理，可能产生额外费用。停止或暂停会阻止续跑；定时任务的命令仅投递结果。") },
+            headlineContent = { Text("后台任务完成后自动处理") },
+            supportingContent = { Text("聊天中的子代理和后台命令立即返回任务 ID，模型可结束本轮等待，完成后在空闲时继续处理，可能产生额外费用。新消息优先；停止或暂停会阻止续跑；定时任务保持原有行为。") },
             trailingContent = {
                 Switch(settings.workspaceTaskNoticeEnabled, { vm.updateSettings(settings.copy(workspaceTaskNoticeEnabled = it)) })
             },

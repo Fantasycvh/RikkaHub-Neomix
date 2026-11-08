@@ -287,7 +287,8 @@ class ChatService(
     private val noticeDelivery = NoticeDelivery(
         enabled = { true },
         pending = { database.agentRunDao().observePendingDeliveries().first().filter {
-            settingsStore.settingsFlow.value.enableBackgroundSubagent || it.deliveryMode == AgentRunEntity.DELIVERY_MODE_HANDOFF
+            it.deliveryMode != AgentRunEntity.DELIVERY_MODE_RESUME &&
+                (settingsStore.settingsFlow.value.enableBackgroundSubagent || it.deliveryMode == AgentRunEntity.DELIVERY_MODE_HANDOFF)
         } },
         orphan = { database.agentRunDao().markOrphaned(it) },
         append = { parent, runs -> appendExternalNotice(parent, runs) },
@@ -1486,16 +1487,37 @@ class ChatService(
                 conversationId = conversationId.toString(),
                 // 后台任务归属 = 本轮 scope（本轮被取消时按它精确收掉这一轮起的进程）
                 turnOwner = app.androidrik.workspace.ExecutionScope.parse(session.backgroundTaskOwner),
-                workspaceNoticeTarget = if (assistant.workspaceId != null) {
+                workspaceNoticeTarget = run {
                     conversation.currentMessages.lastOrNull { it.role == MessageRole.USER }?.let { anchor ->
                         app.androidrik.workspace.WorkspaceTaskNoticeTarget(
-                            conversationId.toString(), conversation.assistantId.toString(), assistant.workspaceId.toString(),
+                            conversationId.toString(), conversation.assistantId.toString(), assistant.workspaceId?.toString().orEmpty(),
                             anchor.id.toString(), session.externalNoticeRootScope ?: session.backgroundTaskOwner,
-                            session.externalNoticeRootScope == null && session.backgroundTaskOwner.startsWith("turn:"),
+                            (session.externalNoticeRootScope ?: session.backgroundTaskOwner).startsWith("turn:"),
                             deliveryEnabled = settings.workspaceTaskNoticeEnabled,
                         )
                     }
-                } else null,
+                },
+                awaitBackgroundTasks = {
+                    val root = session.externalNoticeRootScope ?: session.backgroundTaskOwner
+                    check(database.externalNoticeDao().wakeCount(root) < 8) {
+                        "Automatic continuation limit reached. Summarize available results and let the user continue explicitly."
+                    }
+                    val live = session.lastCommittedMessages.value ?: session.state.value.currentMessages
+                    val runs = app.androidrik.rikkahub.data.task.selectedSubagentRunIds(live)
+                    val events = app.androidrik.rikkahub.data.task.selectedWorkspaceCompletionEvents(live)
+                    buildList {
+                        for (id in runs) {
+                            val run = database.agentRunDao().getRun(id)
+                            if (run?.parentConversationId == conversationId.toString() && run.finishedAt == null &&
+                                run.deliveryMode == AgentRunEntity.DELIVERY_MODE_RESUME && run.noticeTarget?.let {
+                                    app.androidrik.rikkahub.utils.JsonInstant.decodeFromString<app.androidrik.rikkahub.data.task.AgentNoticeTarget>(it).rootScope == root
+                                } == true) add("run:$id")
+                        }
+                        workspaceRepository.observeBackgroundTasks().first().filter {
+                            it.isRunning && it.noticeEventId in events && it.noticeRootScope == root
+                        }.forEach { add("task:${it.id}") }
+                    }
+                },
                 memoryDisabled = conversation.memoryDisabled,
                 // 插件工具与内置/MCP 段重名 → 该插件段拒绝装配（P2a 拍板 1），这里落成用户可见错误
                 onPluginToolsRejected = { pluginId, conflicting ->
@@ -3086,6 +3108,14 @@ class ChatService(
         // 此时同样需要下面的持久化（见 persistStoppedGeneration 的说明）。
         val receiptedEvents = app.androidrik.rikkahub.data.task.selectedWorkspaceCompletionEvents(
             getConversationFlow(conversationId).value.currentMessages)
+        if (preserveTasks) {
+            val receiptedRuns = app.androidrik.rikkahub.data.task.selectedSubagentRunIds(
+                getConversationFlow(conversationId).value.currentMessages)
+            retainedRuns = (retainedRuns + database.agentRunDao().observeRunsByScope(stoppedOwner).first()
+                .filter { it.deliveryMode in setOf(AgentRunEntity.DELIVERY_MODE_NOTICE,
+                    AgentRunEntity.DELIVERY_MODE_HANDOFF, AgentRunEntity.DELIVERY_MODE_RESUME) }
+                .map { it.id }).distinct().filter { it !in receiptedRuns }
+        }
         finishInterruptedPendingTools(conversationId, reason, retainedRuns,
             retainedShellTasks.filter { it.noticeEventId !in receiptedEvents })
         // 审批中被放弃的这一轮同样收掉它起的后台任务（有活跃 Job 时取消回调已经收过了，

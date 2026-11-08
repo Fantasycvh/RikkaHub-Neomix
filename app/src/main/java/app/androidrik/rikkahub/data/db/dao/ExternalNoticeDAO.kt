@@ -36,8 +36,14 @@ interface ExternalNoticeDAO {
     @Query("SELECT EXISTS(SELECT 1 FROM external_notice WHERE rootScope = :scope AND wakeState IN ('claimed','started','waiting_approval','completed','failed'))")
     suspend fun wasWoken(scope: String): Boolean
 
+    @Query("SELECT COUNT(*) FROM external_notice WHERE rootScope = :scope AND wakeState IN ('claimed','started','waiting_approval','completed','failed')")
+    suspend fun wakeCount(scope: String): Int
+
     @Query("UPDATE external_notice SET wakeState = 'suppressed' WHERE rootScope = :scope AND wakeState = 'pending'")
     suspend fun suppressScope(scope: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM external_notice WHERE rootScope = :scope AND sourceType = 'cancel_scope')")
+    suspend fun isScopeSuppressed(scope: String): Boolean
 
     @Query("UPDATE external_notice SET wakeState = 'failed' WHERE wakeState IN ('claimed','started','waiting_approval')")
     suspend fun recoverInterrupted()

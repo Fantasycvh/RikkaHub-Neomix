@@ -153,7 +153,9 @@ fun ChatMessage(
             color = MaterialTheme.colorScheme.secondaryContainer,
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (externalNotice != null) "后台命令结果" else stringResource(R.string.subagent_notice_title, notice!!.runIds.size), style = MaterialTheme.typography.titleSmall)
+                Text(if (externalNotice != null) {
+                    if (externalNotice.source == "subagent") "子代理结果" else "后台命令结果"
+                } else stringResource(R.string.subagent_notice_title, notice!!.runIds.size), style = MaterialTheme.typography.titleSmall)
                 SelectionContainer {
                     Text(message.parts.mapNotNull { when(it) { is UIMessagePart.Text -> it.text; is UIMessagePart.Notice -> it.text; else -> null } }.joinToString("\n"),
                         style = MaterialTheme.typography.bodySmall)

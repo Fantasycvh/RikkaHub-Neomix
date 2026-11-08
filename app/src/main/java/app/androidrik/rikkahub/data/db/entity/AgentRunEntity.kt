@@ -70,10 +70,12 @@ data class AgentRunEntity(
     @ColumnInfo("delivered_at") val deliveredAt: Long? = null,
     /** 人读取消原因，与 error 的机器前缀分开。 */
     @ColumnInfo("cancel_reason") val cancelReason: String? = null,
+    @ColumnInfo("notice_target") val noticeTarget: String? = null,
 ) {
     companion object {
         const val DELIVERY_MODE_AWAIT = "await"
         const val DELIVERY_MODE_NOTICE = "notice"
+        const val DELIVERY_MODE_RESUME = "resume"
         /** Explicit user handoff: delivery remains enabled independently of automatic background presets. */
         const val DELIVERY_MODE_HANDOFF = "handoff"
         const val DELIVERY_MODE_NOTIFY = "notify"

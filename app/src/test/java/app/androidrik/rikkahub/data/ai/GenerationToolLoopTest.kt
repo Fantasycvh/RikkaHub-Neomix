@@ -60,6 +60,26 @@ import kotlin.uuid.Uuid
  * 用例互相独立：三处修复各自回滚一次都能让对应用例变红（见类尾注释里的实测记录）。
  */
 class GenerationToolLoopTest {
+    @Test fun `waiting for background work commits the complete batch and ends without another model call`() {
+        val wait = app.androidrik.rikkahub.data.ai.tools.createAwaitBackgroundTasksTool { listOf("run:pending") }
+        val sibling = tool("independent") { listOf(UIMessagePart.Text("saved")) }
+        val provider = ScriptedProvider { _, _ -> toolCallStep(
+            toolCall("wait", wait.name), toolCall("sibling", sibling.name)) }
+        val sent = runGeneration(provider, listOf(wait, sibling))
+        assertEquals(1, provider.calls.get())
+        assertTrue(sent.last().last().getTools().all { it.isExecuted })
+    }
+
+    @Test fun `a wait racing with task completion continues to process results`() {
+        val wait = app.androidrik.rikkahub.data.ai.tools.createAwaitBackgroundTasksTool { emptyList() }
+        val provider = ScriptedProvider { index, _ ->
+            if (index == 0) toolCallStep(toolCall("wait", wait.name)) else textStep("completed result")
+        }
+        val sent = runGeneration(provider, listOf(wait))
+        assertEquals(2, provider.calls.get())
+        assertTrue(sent.flatten().flatMap { it.getTools() }.any { tool -> tool.output
+            .filterIsInstance<UIMessagePart.Text>().any { it.text.contains("\"status\":\"ready\"") } })
+    }
 
     // ---- 假 provider ----
 
