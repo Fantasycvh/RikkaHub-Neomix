@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.components.message
 
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
+import android.graphics.BlendMode
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -9,6 +10,7 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
@@ -57,7 +59,8 @@ internal fun Modifier.bubbleLayerBackground(
     val layers = stack.layers.filter { it.enabled }
     val painters = layers.map { layer -> key(layer.id) {
         val texture = rememberBubbleTexture(layer.texture.assetId.takeIf { layer.kind == BubbleLayerKind.TEXTURE })
-        remember(layer, density, base, ink, texture) { BubbleLayerPainter(layer, density, base, ink, texture) }
+        val shader = if (layer.kind == BubbleLayerKind.SHADER) remember { BubbleShaderRenderer() } else null
+        remember(layer, density, base, ink, texture, shader) { BubbleLayerPainter(layer, density, base, ink, texture, shader) }
     } }
     return drawWithCache {
         val groupPaint = Paint().apply { alpha = (bubble.opacity * 255).toInt() }
@@ -87,6 +90,7 @@ internal fun Modifier.bubbleLayerBackground(
 
 private class BubbleLayerPainter(
     val layer: BubbleLayer, val density: Float, val base: Color, ink: Color, val bitmap: Bitmap?,
+    val shader: BubbleShaderRenderer?,
 ) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val matrix = Matrix()
@@ -106,7 +110,17 @@ private class BubbleLayerPainter(
     fun draw(canvas: android.graphics.Canvas, size: Size, bounds: Size, offset: Offset, first: Boolean): Boolean {
         if (layer.opacity <= 0f) return false
         paint.shader = null
-        paint.xfermode = if (first) null else blend
+        if (Build.VERSION.SDK_INT >= 29) {
+            // PorterDuff.MULTIPLY is MODULATE: it erases destination alpha for translucent layers.
+            paint.blendMode = if (first) BlendMode.SRC_OVER else when (layer.blend) {
+                BubbleBlend.NORMAL -> BlendMode.SRC_OVER
+                BubbleBlend.MULTIPLY -> BlendMode.MULTIPLY
+                BubbleBlend.SCREEN -> BlendMode.SCREEN
+                BubbleBlend.OVERLAY -> BlendMode.OVERLAY
+            }
+        } else {
+            paint.xfermode = if (first) null else blend
+        }
         paint.color = (layer.colorHex.toComposeColorOrNull() ?: base).toArgb()
         var alpha = layer.opacity
         when (layer.kind) {
@@ -123,6 +137,10 @@ private class BubbleLayerPainter(
             }
             BubbleLayerKind.PATTERN -> { paint.shader = pattern; alpha *= layer.pattern.opacity }
             BubbleLayerKind.NOISE -> { paint.shader = noise; alpha *= layer.noise.strength }
+            BubbleLayerKind.SHADER -> {
+                paint.shader = requireNotNull(shader).prepare(layer.shader, density, offset, canvas.isHardwareAccelerated)
+                paint.isFilterBitmap = true
+            }
             BubbleLayerKind.TEXTURE -> {
                 val image = bitmap ?: return false // Missing assets skip their layer, preserving the remaining material.
                 val scale = if (layer.texture.mode == BubbleTextureMode.COVER)
@@ -138,7 +156,7 @@ private class BubbleLayerPainter(
                 paint.isFilterBitmap = true
             }
         }
-        if (layer.kind != BubbleLayerKind.TEXTURE) {
+        if (layer.kind != BubbleLayerKind.TEXTURE && layer.kind != BubbleLayerKind.SHADER) {
             matrix.setTranslate(-offset.x, -offset.y)
             paint.shader?.setLocalMatrix(matrix)
         }

@@ -92,6 +92,7 @@ fun BubbleLayersEditor(title: String, initial: ChatBubble, onSave: (ChatBubble) 
         BubbleLayerKind.PATTERN -> isAppearanceHex(layer.pattern.colorHex)
         BubbleLayerKind.NOISE -> true
         BubbleLayerKind.TEXTURE -> layer.texture.assetId != null
+        BubbleLayerKind.SHADER -> layer.shader.colors.size == 3 && layer.shader.colors.all { isAppearanceHex(it, false) }
     } }
     ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -179,6 +180,7 @@ private fun BubbleLayerControls(layer: BubbleLayer, busy: Boolean, store: Bubble
             Text("颗粒强度：${(layer.noise.strength * 100).toInt()}%")
             Slider(layer.noise.strength, onValueChange = { value -> update { it.copy(noise = it.noise.copy(strength = value)) } })
         }
+        BubbleLayerKind.SHADER -> BubbleShaderControls(layer.shader) { value -> update { it.copy(shader = value) } }
         BubbleLayerKind.TEXTURE -> {
             val exists = layer.texture.assetId?.let { store.file(it)?.isFile } == true
             Text(if (exists) "已选择图片纹理" else "请选择纹理图片（PNG / JPEG / WebP）")
@@ -201,4 +203,5 @@ private fun BubbleLayerControls(layer: BubbleLayer, busy: Boolean, store: Bubble
 private fun BubbleLayerKind.layerLabel(): String = when (this) {
     BubbleLayerKind.SOLID -> "纯色"; BubbleLayerKind.GRADIENT -> "渐变"; BubbleLayerKind.PATTERN -> "图案"
     BubbleLayerKind.NOISE -> "颗粒噪声"; BubbleLayerKind.TEXTURE -> "图片纹理"
+    BubbleLayerKind.SHADER -> "内置 Shader"
 }

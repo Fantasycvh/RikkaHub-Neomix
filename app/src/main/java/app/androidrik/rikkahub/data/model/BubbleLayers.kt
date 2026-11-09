@@ -17,7 +17,7 @@ data class BubbleStack(val glass: Boolean = false, val layers: List<BubbleLayer>
     companion object { const val MAX_LAYERS = 4 }
 }
 
-@Serializable enum class BubbleLayerKind { SOLID, GRADIENT, PATTERN, NOISE, TEXTURE }
+@Serializable enum class BubbleLayerKind { SOLID, GRADIENT, PATTERN, NOISE, TEXTURE, SHADER }
 @Serializable enum class BubbleBlend { NORMAL, MULTIPLY, SCREEN, OVERLAY }
 @Serializable enum class BubbleTextureMode { TILE, MIRROR, COVER }
 
@@ -49,11 +49,13 @@ data class BubbleLayer(
     val pattern: BubblePattern = BubblePattern(),
     val noise: BubbleNoise = BubbleNoise(),
     val texture: BubbleTexture = BubbleTexture(),
+    val shader: BubbleShaderStyle = BubbleShaderStyle(),
 ) {
     fun normalized(): BubbleLayer {
         val style = ChatBubble(colorHex = colorHex, gradient = gradient, pattern = pattern, noise = noise).normalized()
         return copy(opacity = opacity.bound(0f, 1f, 1f), colorHex = style.colorHex,
-            gradient = style.gradient, pattern = style.pattern, noise = style.noise, texture = texture.normalized())
+            gradient = style.gradient, pattern = style.pattern, noise = style.noise, texture = texture.normalized(),
+            shader = shader.normalized())
     }
 }
 

@@ -44,7 +44,7 @@ fun ChatBubbleSurface(
     val override = bubble.colorHex.toComposeColorOrNull()
     val stack = bubble.stack?.normalized()
     val fill = stack?.layers?.lastOrNull { it.enabled && it.opacity >= 0.5f &&
-        (it.kind == BubbleLayerKind.SOLID || it.kind == BubbleLayerKind.GRADIENT) }
+        (it.kind == BubbleLayerKind.SOLID || it.kind == BubbleLayerKind.GRADIENT || it.kind == BubbleLayerKind.SHADER) }
     val radius = bubble.geometry.radiusDp.dp
     val shape = if (segment == null) RoundedCornerShape(radius) else RoundedCornerShape(
         topStart = if (segment.first) radius else 0.dp, topEnd = if (segment.first) radius else 0.dp,
@@ -52,6 +52,8 @@ fun ChatBubbleSurface(
     )
     val contentColor = when {
         !bubble.visible -> MaterialTheme.colorScheme.onSurface
+        fill?.kind == BubbleLayerKind.SHADER -> adaptiveContentColor(
+            fill.shader.colors[1].toComposeColorOrNull() ?: defaultColor)
         fill?.kind == BubbleLayerKind.GRADIENT -> adaptiveContentColor(
             fill.gradient.colors[fill.gradient.colors.size / 2].toComposeColorOrNull() ?: defaultColor)
         fill?.colorHex != null -> adaptiveContentColor(fill.colorHex.toComposeColorOrNull() ?: defaultColor)
