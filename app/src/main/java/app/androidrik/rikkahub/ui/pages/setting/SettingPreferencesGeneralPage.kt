@@ -172,6 +172,14 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
+                        headlineContent = { Text("长消息按需显示") },
+                        supportingContent = { Text("标准布局的静态长文只排版屏幕附近的区块。关闭后使用完整正文显示。") },
+                        trailingContent = {
+                            Switch(checked = displaySetting.enableLongMessageLazyRendering,
+                                onCheckedChange = { updateDisplaySetting(displaySetting.copy(enableLongMessageLazyRendering = it)) })
+                        },
+                    )
+                    item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_use_app_icon_style_loading_indicator_title)) },
                         supportingContent = {
                             Text(stringResource(R.string.setting_display_page_use_app_icon_style_loading_indicator_desc))

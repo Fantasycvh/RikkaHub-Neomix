@@ -61,6 +61,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.SideEffect
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -96,6 +99,8 @@ import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.ui.components.message.ChatMessage
+import app.androidrik.rikkahub.ui.components.message.MAX_RENDER_TEXT_LENGTH
+import app.androidrik.rikkahub.ui.components.richtext.SharedSelectableContent
 import app.androidrik.rikkahub.ui.components.message.CompactionCheckpointRow
 import app.androidrik.rikkahub.ui.components.ui.ErrorCardsDisplay
 import app.androidrik.rikkahub.ui.components.ui.ListSelectableItem
@@ -171,6 +176,7 @@ fun ChatList(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     /** 会话长期目标（Conversation.goal）编辑回调；null = 不显示入口 */
     onConversationGoalChange: ((String?) -> Unit)? = null,
+    scrollController: ChatListScrollController? = null,
 ) {
     // 「点击消息里的图片 ⇒ 全屏后在**本会话**的图片间左右切换」：
     // 候选集合在这里算一份（当前分支的顶层 Image part），经 CompositionLocal 下发给
@@ -182,6 +188,7 @@ fun ChatList(
             .map { context.normalizeLocalFileUrl(it) }
     }
     CompositionLocalProvider(LocalConversationImageUrls provides conversationImageUrls) {
+        val defaultScrollController = rememberSaveable(conversation.id, saver = ChatListScrollController.Saver) { ChatListScrollController() }
         // 预览搜索跳转：目标以**节点**表达（不是完整列表下标——压缩折叠态的下标空间不同），
         // 交给 ChatListNormal 的 quoteJump 机制解析（含「目标在折叠历史里先展开」）
         var pendingPreviewJump by remember(conversation.id) { mutableStateOf<Uuid?>(null) }
@@ -239,6 +246,7 @@ fun ChatList(
                     onToggleFavorite = onToggleFavorite,
                     onConversationSystemPromptChange = onConversationSystemPromptChange,
                     onConversationGoalChange = onConversationGoalChange,
+                    scrollController = scrollController ?: defaultScrollController,
                 )
             }
         }
@@ -282,11 +290,11 @@ private fun ChatListNormal(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     /** 会话长期目标（Conversation.goal）编辑回调；null = 不显示入口 */
     onConversationGoalChange: ((String?) -> Unit)? = null,
+    scrollController: ChatListScrollController? = null,
 ) {
     val scope = rememberCoroutineScope()
     val loadingState by rememberUpdatedState(loading)
     var isRecentScroll by remember { mutableStateOf(false) }
-    val conversationUpdated by rememberUpdatedState(conversation)
     val density = LocalDensity.current
     val activity = LocalActivity.current as? app.androidrik.rikkahub.RouteActivity
 
@@ -310,6 +318,7 @@ private fun ChatListNormal(
 
     fun List<LazyListItemInfo>.isAtBottom(): Boolean {
         val lastItem = lastOrNull() ?: return false
+        if (lastItem.index != state.layoutInfo.totalItemsCount - 1) return false
         val inputBarHeight = with(density) { innerPadding.calculateBottomPadding().toPx() }
         val lastPos = lastItem.offset + lastItem.size
         val inputPos = (state.layoutInfo.viewportEndOffset - inputBarHeight.roundToInt())
@@ -354,6 +363,59 @@ private fun ChatListNormal(
         conversation.messageNodes
     }
     val lastMessageIndex = visibleNodes.lastIndex
+    val appearance = rememberChatAppearance(settings.displaySetting)
+    val truncatedNotice = stringResource(R.string.chat_message_truncated_notice, MAX_RENDER_TEXT_LENGTH)
+    val staticDocuments = rememberStaticDocuments(conversation.id, visibleNodes, assistant, appearance,
+        settings.displaySetting.enableLongMessageLazyRendering, loading, settings.displaySetting.wholeTurnFolding, truncatedNotice)
+    val tailKeys = buildList {
+        if (!loading && assistant?.allowConversationSystemPrompt == true && onConversationSystemPromptChange != null) add("ConversationSystemPrompt")
+        if (!loading && onConversationGoalChange != null) add("ConversationGoal")
+        if (loading) add(LoadingIndicatorKey)
+        add(ScrollBottomKey)
+    }
+    val renderIndex = remember(visibleNodes, staticDocuments, appearance.layout, activeCheckpoint != null, tailKeys) {
+        buildChatRenderIndex(visibleNodes, staticDocuments, appearance, activeCheckpoint != null, tailKeys)
+    }
+    val renderIndexUpdated by rememberUpdatedState(renderIndex)
+    val initialAnchor = remember(conversation.id) { scrollController?.readAnchor }
+    var initialAnchorConsumed by remember(conversation.id) { mutableStateOf(initialAnchor == null) }
+    val canRecordAnchor by rememberUpdatedState(initialAnchorConsumed && staticDocuments.pending.isEmpty())
+    LaunchedEffect(state, scrollController) {
+        snapshotFlow {
+            if (!canRecordAnchor) null else {
+                val first = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == state.firstVisibleItemIndex }
+                renderIndexUpdated.anchor(first?.key, state.firstVisibleItemScrollOffset)?.let { it to state.layoutInfo.visibleItemsInfo.isAtBottom() }
+            }
+        }.collect { position -> if (position != null) {
+            scrollController?.readAnchor = position.first
+            scrollController?.readAtBottom = position.second
+        } }
+    }
+    val copyDocuments = remember(staticDocuments.ready) {
+        buildMap<Any, String> {
+            staticDocuments.ready.values.forEach { doc -> doc.markdown.keys.forEach { partIndex ->
+                (doc.input.message.parts[partIndex] as? UIMessagePart.Text)?.let {
+                    put(StaticTextGroup(doc.input.message.id, partIndex, doc.epoch), it.text)
+                }
+            } }
+        }
+    }
+    val previousIndex = remember(conversation.id) { arrayOfNulls<ChatRenderIndex>(1) }
+    val restoreAnchor = if (previousIndex[0] !== renderIndex) {
+        val first = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == state.firstVisibleItemIndex }
+        previousIndex[0]?.anchor(first?.key, state.firstVisibleItemScrollOffset)
+    } else null
+    SideEffect {
+        previousIndex[0] = renderIndex
+    }
+    LaunchedEffect(renderIndex) {
+        // Compose keeps surviving keys anchored itself. Only remap keys removed by a document/mode change.
+        if (restoreAnchor != null && restoreAnchor.key !in renderIndex.keyToIndex && !state.isScrollInProgress && scrollController?.request == null) {
+            renderIndex.restore(restoreAnchor)?.let { (index, offset) -> state.requestScrollToItem(index, offset) }
+        }
+    }
+    val dragging by state.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(dragging) { if (dragging) { scrollController?.cancel(); initialAnchorConsumed = true } }
 
     // #1906-B：引用块点击 → 跳到被引用的原消息。
     //
@@ -366,18 +428,34 @@ private fun ChatListNormal(
     //     不自动切换 selectIndex：那会静默改变会话展示分支并影响后续发送，代价远大于收益。
     // 完全找不到（消息已被删除）时放弃，不报错。
     var pendingQuoteJump by remember(conversation.id) { mutableStateOf<Uuid?>(null) }
+    LaunchedEffect(initialAnchor, renderIndex, staticDocuments.pending) {
+        if (initialAnchorConsumed || staticDocuments.pending.isNotEmpty()) return@LaunchedEffect
+        if (initialAnchor != null && scrollController?.request == null && pendingPreviewJump == null && pendingQuoteJump == null) {
+            renderIndex.restore(initialAnchor)?.let { (index, offset) -> state.scrollToItem(index, offset) }
+        }
+        initialAnchorConsumed = true
+    }
     // 预览搜索跳转并入同一条 quoteJump 管线（含检查点行偏移与「折叠历史先展开」）
     LaunchedEffect(pendingPreviewJump) {
         val target = pendingPreviewJump ?: return@LaunchedEffect
         onPreviewJumpConsumed()
         pendingQuoteJump = target
     }
-    LaunchedEffect(pendingQuoteJump, visibleNodes, activeCheckpoint) {
+    LaunchedEffect(scrollController?.request, renderIndex, staticDocuments.pending) {
+        when (val request = scrollController?.request) {
+            is ChatListScrollController.Request.Message -> { pendingQuoteJump = request.id; scrollController.consume(request.serial) }
+            is ChatListScrollController.Request.Bottom -> {
+                if (staticDocuments.pending.isNotEmpty()) return@LaunchedEffect
+                if (request.waitForChange && request.waitForChangeFrom == conversation.currentMessages.lastOrNull()?.id) return@LaunchedEffect
+                state.scrollToItem(renderIndex.lastIndex)
+                scrollController.consume(request.serial)
+            }
+            null -> Unit
+        }
+    }
+    LaunchedEffect(pendingQuoteJump, renderIndex, activeCheckpoint, staticDocuments.pending) {
         val targetId = pendingQuoteJump ?: return@LaunchedEffect
-        val index = visibleNodes.quoteJumpTargetIndex(
-            messageId = targetId,
-            hasCheckpointRow = activeCheckpoint != null,
-        )
+        val index = renderIndex.target(targetId)
         if (index < 0) {
             // 折叠态找不到 ⇒ 目标很可能在折叠的历史里，先展开完整轨迹再重试
             if (activeCheckpoint != null && !showCompressedHistory) {
@@ -402,13 +480,13 @@ private fun ChatListNormal(
             // 视口永远停在中间。闩锁只在**用户拖动**时更新（拖动中贴底=true、离开=false），
             // 非拖动帧只要闩锁在就持续请求贴底；用户上滑 = 明确放手，不再跟随。
             // requestScrollToItem 是瞬时重定位，不会置 isScrollInProgress，无自锁风险。
-            var stickToBottom by remember { mutableStateOf(true) }
+            var stickToBottom by remember { mutableStateOf(initialAnchor == null || scrollController?.readAtBottom == true) }
             LaunchedEffect(state) {
                 snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
                     if (state.isScrollInProgress) {
                         stickToBottom = visibleItemsInfo.isAtBottom()
-                    } else if (loadingState && stickToBottom) {
-                        state.requestScrollToItem(conversationUpdated.messageNodes.lastIndex + 10)
+                    } else if (loadingState && stickToBottom && !visibleItemsInfo.isAtBottom()) {
+                        state.requestScrollToItem(renderIndexUpdated.lastIndex)
                         // Log.i(TAG, "ChatList: scroll to ${conversationUpdated.messageNodes.lastIndex}")
                     }
                 }
@@ -428,7 +506,6 @@ private fun ChatListNormal(
         }
 
         ChatFontProvider(displaySetting = settings.displaySetting, backdropState = glassHazeState) {
-            val appearance = rememberChatAppearance(settings.displaySetting)
             // 容器不再被顶栏 padding 挡住：列表与玻璃层都延伸到顶栏底下，
             // 滚动时消息从顶栏下穿过被 blur（顶栏消费 hazeState，见 ChatPage.TopBar）
             //
@@ -448,6 +525,7 @@ private fun ChatListNormal(
                         ) else Modifier
                     ),
             ) {
+            SharedSelectableContent(documentText = { copyDocuments[it] }, modifier = Modifier.fillMaxSize(), obscuredPadding = innerPadding) {
             LazyColumn(
                 state = state,
                 // top 进 contentPadding 而非容器 padding：静止时首条消息仍从顶栏下缘起排，
@@ -456,7 +534,7 @@ private fun ChatListNormal(
                     PaddingValues(top = innerPadding.calculateTopPadding()) +
                     PaddingValues(bottom = 32.dp + innerPadding.calculateBottomPadding()),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(appearance.layout.listSpacingDp.dp),
+                verticalArrangement = Arrangement.Top,
                 modifier = Modifier
                     .fillMaxSize()
                     .hazeSourceCompat(state = hazeState),
@@ -473,13 +551,15 @@ private fun ChatListNormal(
                 }
             }
 
-            itemsIndexed(
-                items = visibleNodes,
-                key = { index, item -> item.id },
-            ) { index, node ->
+            items(
+                items = renderIndex.rows,
+                key = { it.key },
+            ) { row ->
+                val index = row.nodeIndex
+                val node = visibleNodes[index]
                 // 哨兵只兜异常高度（防 Int.MAX 崩溃），正常长内容不再被裁剪
                 HeightClamp(normalLimit = 100_000.dp) {
-                Column {
+                Column(Modifier.padding(top = row.topGapDp.dp).testTag("chat_row:${row.key}")) {
                     ListSelectableItem(
                         key = node.id,
                         onSelectChange = {
@@ -491,6 +571,7 @@ private fun ChatListNormal(
                         },
                         selectedKeys = selectedItems,
                         enabled = selecting,
+                        showCheckbox = row.firstInMessage,
                     ) {
                         if (node.currentMessage.isContextCheckpoint) {
                             var showCheckpointBody by remember(node.currentMessage.id) { mutableStateOf(false) }
@@ -511,6 +592,7 @@ private fun ChatListNormal(
                                 }
                             }
                         } else ChatMessage(
+                            slice = row.slice,
                             node = node,
                             model = node.currentMessage.modelId?.let(modelById::get),
                             assistant = assistant,
@@ -566,26 +648,30 @@ private fun ChatListNormal(
 
             if (!loading && assistant?.allowConversationSystemPrompt == true && onConversationSystemPromptChange != null) {
                 item(key = "ConversationSystemPrompt") {
+                    Box(Modifier.padding(top = if (renderIndex.keyToIndex.getValue("ConversationSystemPrompt") > 0) appearance.layout.listSpacingDp.dp else 0.dp)) {
                     ConversationSystemPromptButton(
                         customSystemPrompt = conversation.customSystemPrompt,
                         onSystemPromptChange = onConversationSystemPromptChange,
                     )
+                    }
                 }
             }
 
             // 会话目标编辑入口（定时任务 P2）：目标是会话的属性，写在会话上而非任务上
             if (!loading && onConversationGoalChange != null) {
                 item(key = "ConversationGoal") {
+                    Box(Modifier.padding(top = if (renderIndex.keyToIndex.getValue("ConversationGoal") > 0) appearance.layout.listSpacingDp.dp else 0.dp)) {
                     ConversationGoalButton(
                         goal = conversation.goal,
                         onGoalChange = onConversationGoalChange,
                     )
+                    }
                 }
             }
             if (loading) {
                 item(LoadingIndicatorKey) {
                     Row(
-                        modifier = Modifier.padding(8.dp),
+                        modifier = Modifier.padding(top = if (renderIndex.keyToIndex.getValue(LoadingIndicatorKey) > 0) appearance.layout.listSpacingDp.dp else 0.dp).padding(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
@@ -610,8 +696,10 @@ private fun ChatListNormal(
                 Spacer(
                     Modifier
                         .fillMaxWidth()
+                        .padding(top = if (renderIndex.keyToIndex.getValue(ScrollBottomKey) > 0) appearance.layout.listSpacingDp.dp else 0.dp)
                         .height(5.dp)
                 )
+            }
             }
             }
             }
@@ -720,7 +808,9 @@ private fun ChatListNormal(
                 show = isRecentScroll && !state.isScrollInProgress && settings.displaySetting.showMessageJumper && !captureProgress,
                 onLeft = settings.displaySetting.messageJumperOnLeft,
                 scope = scope,
-                state = state
+                state = state,
+                onPrevious = { scope.launch { state.animateScrollToItem(renderIndex.previousMessage(state.firstVisibleItemIndex)) } },
+                onNext = { scope.launch { state.animateScrollToItem(renderIndex.nextMessage(state.firstVisibleItemIndex)) } },
             )
 
             // Suggestion

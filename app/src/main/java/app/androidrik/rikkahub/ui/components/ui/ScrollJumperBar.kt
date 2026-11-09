@@ -56,6 +56,8 @@ fun BoxScope.ScrollJumperBar(
     scope: CoroutineScope,
     state: LazyListState,
     itemLabel: String? = null,
+    onPrevious: (() -> Unit)? = null,
+    onNext: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = show,
@@ -103,6 +105,7 @@ fun BoxScope.ScrollJumperBar(
                 icon = HugeIcons.ArrowUp01,
                 contentDescription = stringResource(R.string.scroll_up_one),
                 onClick = {
+                    if (onPrevious != null) { onPrevious(); return@JumperButton }
                     scope.launch {
                         // 负下标会触发 animateScrollToItem 的 require(index >= 0)，必须显式夹取
                         // （首项时点「上一项」是常见操作，不夹会崩）
@@ -116,6 +119,7 @@ fun BoxScope.ScrollJumperBar(
                 icon = HugeIcons.ArrowDown01,
                 contentDescription = stringResource(R.string.scroll_down_one),
                 onClick = {
+                    if (onNext != null) { onNext(); return@JumperButton }
                     scope.launch {
                         state.animateScrollToItem(state.firstVisibleItemIndex + 1)
                     }

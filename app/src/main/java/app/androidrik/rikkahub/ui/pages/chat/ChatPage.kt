@@ -326,17 +326,13 @@ fun ChatPage(
     }
 
     val chatListState = rememberLazyListState()
+    val chatListScrollController = rememberSaveable(conversation.id, saver = ChatListScrollController.Saver) { ChatListScrollController() }
     LaunchedEffect(nodeId, conversation.messageNodes.size) {
         if (!vm.chatListInitialized && conversation.messageNodes.isNotEmpty()) {
             if (nodeId != null) {
-                val index = conversation.messageNodes.indexOfFirst { it.id == nodeId }
-                if (index >= 0) {
-                    // 压缩检查点行恒为列表第一项 ⇒ 节点下标整体 +1（无检查点则不加）
-                    val checkpointOffset = if (conversation.displayCompression() != null) 1 else 0
-                    chatListState.scrollToItem(index + checkpointOffset)
-                }
-            } else {
-                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                chatListScrollController.scrollToMessage(nodeId)
+            } else if (chatListScrollController.readAnchor == null) {
+                chatListScrollController.scrollToBottom()
             }
             vm.chatListInitialized = true
         }
@@ -366,6 +362,7 @@ fun ChatPage(
                     navController = navController,
                     vm = vm,
                     chatListState = chatListState,
+                    chatListScrollController = chatListScrollController,
                     enableWebSearch = enableWebSearch,
                     currentChatModel = currentChatModel,
                     messageQueueState = messageQueueState,
@@ -404,6 +401,7 @@ fun ChatPage(
                         navController = navController,
                         vm = vm,
                         chatListState = chatListState,
+                        chatListScrollController = chatListScrollController,
                         enableWebSearch = enableWebSearch,
                         currentChatModel = currentChatModel,
                         messageQueueState = messageQueueState,
@@ -434,6 +432,7 @@ private fun ChatPageContent(
     navController: Navigator,
     vm: ChatVM,
     chatListState: LazyListState,
+    chatListScrollController: ChatListScrollController,
     enableWebSearch: Boolean,
     currentChatModel: Model?,
     messageQueueState: MessageQueueState,
@@ -620,7 +619,7 @@ private fun ChatPageContent(
                                 annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
                             )
                             scope.launch {
-                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                                chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                             }
                         }
                         inputState.clearInput()
@@ -638,7 +637,7 @@ private fun ChatPageContent(
                                 annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
                             )
                             scope.launch {
-                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                                chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                             }
                         }
                         inputState.clearInput()
@@ -656,7 +655,7 @@ private fun ChatPageContent(
                             skipQuestion = loadingJob == null && hasPendingInteraction,
                         )
                         scope.launch {
-                            chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                            chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                         }
                         inputState.clearInput()
                     },
@@ -665,7 +664,7 @@ private fun ChatPageContent(
                             inputState.getContents(),
                             inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
                         )
-                        scope.launch { chatListState.requestScrollToItem(conversation.currentMessages.size + 5) }
+                        chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                         inputState.clearInput()
                     },
                     messageQueue = messageQueueState,
@@ -704,6 +703,7 @@ private fun ChatPageContent(
         ) { innerPadding ->
             Box {
             ChatList(
+                scrollController = chatListScrollController,
                 innerPadding = innerPadding,
                 conversation = conversation,
                 state = chatListState,

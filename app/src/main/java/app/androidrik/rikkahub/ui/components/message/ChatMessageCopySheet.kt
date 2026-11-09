@@ -9,9 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -21,27 +18,31 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.platform.testTag
+import app.androidrik.rikkahub.ui.components.richtext.SelectableContent
+import app.androidrik.rikkahub.ui.components.richtext.SharedSelectableContent
+import me.rerere.bettertext.text.BetterText
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.util.fastForEach
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Copy01
 import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.ui.navigation.copyMessageToClipboard
 
 @Composable
 fun ChatMessageCopySheet(
     message: UIMessage,
     onDismissRequest: () -> Unit
 ) {
-    val context = LocalContext.current
+    val copyMessage = rememberMessageCopy(message)
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
@@ -75,7 +76,7 @@ fun ChatMessageCopySheet(
 
                 TextButton(
                     onClick = {
-                        context.copyMessageToClipboard(message)
+                        copyMessage()
                         onDismissRequest()
                     }
                 ) {
@@ -110,18 +111,17 @@ fun ChatMessageCopySheet(
                     )
                 }
             } else {
-                SelectionContainer {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        textParts.fastForEach { textPart ->
-                            Text(
-                                text = textPart.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
+                val source = remember(message) { message.toText() }
+                val chunks = remember(source) { plainTextChunks(source) }
+                val group = remember(message.id) { Any() }
+                SharedSelectableContent(documentText = { if (it == group) source else null },
+                    modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    LazyColumn(Modifier.fillMaxSize().testTag("message_copy_list")) {
+                        items(chunks, key = { "${message.id}:${it.start}" }) { chunk ->
+                            SelectableContent(group = group, separatorBefore = "") {
+                                BetterText(source.substring(chunk.start, chunk.end),
+                                    style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface))
+                            }
                         }
                     }
                 }

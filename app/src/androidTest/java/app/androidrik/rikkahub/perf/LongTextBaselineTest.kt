@@ -175,6 +175,17 @@ class LongTextBaselineTest {
                     awaitDraw(requireNotNull(activity).window) {}
                     val openMs = (System.nanoTime() - opened) / 1e6
                     SystemClock.sleep(750) // settle initial parsing/window animations outside the measured workload
+                    // P3 can prepare a static document off-thread. Do not mix its placeholder swap
+                    // into steady scrolling; P2's first host draw already waited for sync parsing.
+                    val preparationStarted = System.nanoTime()
+                    if (mode == "scroll") {
+                        val deadline = SystemClock.uptimeMillis() + 30_000
+                        while (current.list.layoutInfo.visibleItemsInfo.any { it.key.toString().endsWith(":preparing") }) {
+                            check(SystemClock.uptimeMillis() < deadline) { "static document preparation timed out" }
+                            SystemClock.sleep(50)
+                        }
+                    }
+                    val preparationWaitMs = (System.nanoTime() - preparationStarted) / 1e6
                     if (mode == "edit_handoff_full") {
                         focusEditor(current, requireNotNull(activity).window)
                         openFullScreen()
@@ -244,6 +255,7 @@ class LongTextBaselineTest {
                         .put("fixture_sha256", LongTextFixtures.sha256(text))
                         .put("scope", "production_components_debug_local_replay")
                         .put("scene_switch_to_host_draw_ms", openMs)
+                        .put("static_preparation_wait_ms", preparationWaitMs)
                         .put("stream_update_at_ns", JSONArray(streamTimes.toList()))
                         .put("input_connection_commit_to_draw_ms", latencies).put("selection_to_draw_ms", selections)
                         .put("memory_before", before).put("memory_after", after)

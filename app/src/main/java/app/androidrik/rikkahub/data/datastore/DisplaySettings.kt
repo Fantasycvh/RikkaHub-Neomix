@@ -191,6 +191,8 @@ data class DisplaySetting(
     val enableAutoScroll: Boolean = true,
     /** Animate content height while generating; old settings retain the existing behavior. */
     val enableGenerationSizeAnimation: Boolean = true,
+    /** Static standard-layout long messages can put parser-safe units in the chat list. */
+    val enableLongMessageLazyRendering: Boolean = true,
     val enableLatexRendering: Boolean = true,
     val enableDiagramRendering: Boolean = true,
     val enableBlurEffect: Boolean = false,

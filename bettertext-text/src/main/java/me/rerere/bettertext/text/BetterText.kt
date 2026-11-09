@@ -73,6 +73,8 @@ fun BetterText(
     val registry = LocalSelectionRegistry.current
     val selectable = remember(registry) { registry?.let { SelectableText() } }
     selectable?.pinnableContainer = LocalPinnableContainer.current
+    selectable?.group = LocalSelectionGroup.current
+    selectable?.separatorBefore = LocalSelectionSeparator.current
     if (registry != null && selectable != null) {
         DisposableEffect(registry, selectable) {
             registry.register(selectable)
@@ -92,7 +94,7 @@ fun BetterText(
                     Modifier
                         .onGloballyPositioned {
                             selectable.coordinates = it
-                            registry?.onLayoutChanged()
+                            registry?.onLayoutChanged(selectable)
                         }
                         .nestedScroll(NoScrollConnection, selectable.scrollDispatcher)
                 } else {
@@ -147,7 +149,7 @@ fun BetterText(
         if (selectable != null && (selectable.layout !== layout || selectable.prepared !== prepared)) {
             selectable.prepared = prepared
             selectable.layout = layout
-            registry?.onLayoutChanged()
+            registry?.onLayoutChanged(selectable)
         }
         val width = layout.width.coerceIn(constraints.minWidth, constraints.maxWidth)
         val height = layout.height.coerceIn(constraints.minHeight, constraints.maxHeight)

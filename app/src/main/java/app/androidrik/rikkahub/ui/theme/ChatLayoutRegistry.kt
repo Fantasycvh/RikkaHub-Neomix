@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 data class ChatLayoutContext(val isUser: Boolean, val layout: ChatLayout, val exporting: Boolean)
+enum class ChatLayoutSection { ALL, HEADER, BODY, FOOTER }
 
 /** Host-owned content: a layout arranges slots, without rebuilding message or interaction logic. */
 data class ChatLayoutSlots(
@@ -77,10 +78,26 @@ fun ChatMessageLayoutHost(
     header: @Composable () -> Unit = {},
     body: @Composable () -> Unit,
     footer: @Composable () -> Unit = {},
+    section: ChatLayoutSection = ChatLayoutSection.ALL,
 ) {
+    val alignment = if (isUser && layout.userAlignEnd) Alignment.End else Alignment.Start
+    if (section != ChatLayoutSection.ALL) {
+        // Only the standard static projection requests sections. Other renderers keep their slots.
+        Column(modifier.fillMaxWidth(), horizontalAlignment = alignment,
+            verticalArrangement = Arrangement.spacedBy(layout.messageGapDp.dp)) {
+            when (section) {
+                ChatLayoutSection.HEADER -> { leading(); if (layout.showHeader) header() }
+                ChatLayoutSection.BODY -> Column(Modifier.fillMaxWidth(layout.contentWidthFraction),
+                    horizontalAlignment = alignment, verticalArrangement = Arrangement.spacedBy(layout.messageGapDp.dp)) { body() }
+                ChatLayoutSection.FOOTER -> Column(Modifier.fillMaxWidth(layout.contentWidthFraction),
+                    horizontalAlignment = alignment, verticalArrangement = Arrangement.spacedBy(layout.messageGapDp.dp)) { footer() }
+                ChatLayoutSection.ALL -> Unit
+            }
+        }
+        return
+    }
     val entries by ChatLayoutRegistry.shared.layouts.collectAsState()
     val renderer = resolveChatLayout(layout.rendererId, entries)
-    val alignment = if (isUser && layout.userAlignEnd) Alignment.End else Alignment.Start
     val slots = ChatLayoutSlots(
         header = { if (layout.showHeader) header() },
         body = {

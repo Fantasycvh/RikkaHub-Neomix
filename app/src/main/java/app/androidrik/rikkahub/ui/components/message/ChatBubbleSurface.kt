@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import app.androidrik.rikkahub.data.model.ChatBubble
 import app.androidrik.rikkahub.data.model.BubbleMaterial
 import app.androidrik.rikkahub.ui.components.haze.LocalBubbleBackdrop
@@ -23,6 +24,8 @@ import app.androidrik.rikkahub.ui.theme.adaptiveContentColor
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 
 /** Shared bubble host for chat and image export. Material rendering is isolated from message content. */
+data class BubbleSegment(val first: Boolean, val last: Boolean, val spacing: Dp)
+
 @Composable
 fun ChatBubbleSurface(
     style: ChatBubble,
@@ -31,11 +34,16 @@ fun ChatBubbleSurface(
     defaultContentColor: Color = MaterialTheme.colorScheme.onSurface,
     padWhenHidden: Boolean = false,
     onClick: (() -> Unit)? = null,
+    segment: BubbleSegment? = null,
     content: @Composable () -> Unit,
 ) {
     val bubble = style.normalized()
     val override = bubble.colorHex.toComposeColorOrNull()
-    val shape = RoundedCornerShape(bubble.geometry.radiusDp.dp)
+    val radius = bubble.geometry.radiusDp.dp
+    val shape = if (segment == null) RoundedCornerShape(radius) else RoundedCornerShape(
+        topStart = if (segment.first) radius else 0.dp, topEnd = if (segment.first) radius else 0.dp,
+        bottomStart = if (segment.last) radius else 0.dp, bottomEnd = if (segment.last) radius else 0.dp,
+    )
     val contentColor = when {
         !bubble.visible -> MaterialTheme.colorScheme.onSurface
         bubble.material == BubbleMaterial.GRADIENT -> adaptiveContentColor(
@@ -50,7 +58,11 @@ fun ChatBubbleSurface(
     val background = modifier.clip(shape).then(glass)
         .bubbleMaterialBackground(bubble, override ?: defaultColor, contentColor, liveGlass)
     val body: @Composable () -> Unit = {
-        Column(Modifier.padding(if (bubble.visible || padWhenHidden) bubble.geometry.paddingDp.dp else 0.dp)) {
+        val padding = if (bubble.visible || padWhenHidden) bubble.geometry.paddingDp.dp else 0.dp
+        Column(if (segment == null) Modifier.padding(padding) else Modifier.padding(
+            start = padding, end = padding, top = if (segment.first) padding else segment.spacing,
+            bottom = if (segment.last) padding else 0.dp,
+        )) {
             content()
         }
     }

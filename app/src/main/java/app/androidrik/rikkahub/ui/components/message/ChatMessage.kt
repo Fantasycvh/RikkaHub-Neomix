@@ -30,6 +30,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +47,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.LinkAnnotation
@@ -100,6 +103,8 @@ import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.theme.ChatMessageLayoutHost
+import app.androidrik.rikkahub.ui.theme.ChatLayoutSection
+import me.rerere.bettertext.markdown.MarkdownRenderDocument
 import app.androidrik.rikkahub.ui.theme.LocalChatFontFamily
 import app.androidrik.rikkahub.ui.theme.LocalChatTextGradient
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
@@ -137,6 +142,7 @@ fun ChatMessage(
     onUpdate: (MessageNode) -> Unit,
     isFavorite: Boolean = false,
     onToggleFavorite: (() -> Unit)? = null,
+    slice: ChatMessageSlice? = null,
     onTranslate: ((UIMessage, Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
     onToolApproval: ((toolCallId: String, approved: Boolean, reason: String) -> Unit)? = null,
@@ -180,6 +186,11 @@ fun ChatMessage(
     // #1929 正在编辑的推理 part。**remember 而非 rememberSaveable**：编辑器内容不进
     // saved state（大文本切后台 TransactionTooLargeException，上游 ed3569c7 同款）。
     var editingReasoning by remember { mutableStateOf<UIMessagePart.Reasoning?>(null) }
+    val pinnable = LocalPinnableContainer.current
+    DisposableEffect(showActionsSheet, showSelectCopySheet, editingReasoning != null, pinnable) {
+        val pin = if (showActionsSheet || showSelectCopySheet || editingReasoning != null) pinnable?.pin() else null
+        onDispose { pin?.release() }
+    }
     val navController = LocalNavController.current
     val context = LocalContext.current
     val colorScheme = MaterialTheme.colorScheme
@@ -189,6 +200,12 @@ fun ChatMessage(
         layout = appearance.layout,
         isUser = message.role == MessageRole.USER,
         modifier = modifier,
+        section = when (slice) {
+            null, is ChatMessageSlice.Prepared -> ChatLayoutSection.ALL
+            ChatMessageSlice.Header -> ChatLayoutSection.HEADER
+            ChatMessageSlice.Footer -> ChatLayoutSection.FOOTER
+            else -> ChatLayoutSection.BODY
+        },
         leading = {
             // #1812：半截生成失败的草稿横幅——放置在消息上方，重试复用现有 regenerate
             if (message.annotations.any { it is UIMessageAnnotation.PartialFailure }) {
@@ -259,7 +276,8 @@ fun ChatMessage(
         },
         body = {
             ProvideTextStyle(textStyle) {
-                MessagePartsBlock(
+                if (slice == ChatMessageSlice.Preparing) Text("正在加载正文…", style = MaterialTheme.typography.bodySmall)
+                else if (slice != ChatMessageSlice.Translation) MessagePartsBlock(
                     messageId = message.id,
                     assistant = assistant,
                     role = message.role,
@@ -267,6 +285,7 @@ fun ChatMessage(
                     annotations = message.annotations,
                     loading = loading,
                     model = model,
+                    slice = slice,
                     onToolApproval = onToolApproval,
                     onToolAnswer = onToolAnswer,
                     onToolSkip = onToolSkip,
@@ -277,7 +296,7 @@ fun ChatMessage(
                     } else null,
                 )
 
-                message.translation?.let { translation ->
+                message.translation?.takeIf { slice == null || slice is ChatMessageSlice.Prepared || slice == ChatMessageSlice.Translation }?.let { translation ->
                     CollapsibleTranslationText(
                         content = translation,
                         onClickCitation = {}
@@ -385,6 +404,66 @@ fun ChatMessage(
     }
 }
 
+/** Shared text renderer; static units bypass message grouping and streaming observers entirely. */
+@Composable
+private fun MessageTextContent(
+    role: MessageRole,
+    content: String,
+    documentKey: Any?,
+    loading: Boolean,
+    onClickCitation: (String) -> Unit,
+    onUserMessageClick: (() -> Unit)?,
+    markdownSlice: ChatMessageSlice.Markdown? = null,
+    prepared: MarkdownRenderDocument? = null,
+) {
+    val settings = LocalSettings.current.displaySetting
+    val appearance = rememberChatAppearance(settings)
+    val density = LocalDensity.current
+    val fontSize = LocalTextStyle.current.fontSize
+    val segment = markdownSlice?.let { BubbleSegment(it.first, it.last,
+        if (fontSize.isSp) with(density) { fontSize.toDp() } else 12.dp) }
+    val user = role == MessageRole.USER
+    val baseColor = if (user) LocalUserBubbleColor.current ?: MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerHigh
+    SelectableContent(group = markdownSlice?.group) {
+        ChatBubbleSurface(
+            style = if (user) appearance.userBubble else appearance.assistantBubble,
+            defaultColor = baseColor,
+            defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
+            padWhenHidden = user,
+            onClick = if (user) ({ onUserMessageClick?.invoke() }) else null,
+            modifier = if (markdownSlice != null) Modifier.fillMaxWidth()
+                else if (!loading || settings.enableGenerationSizeAnimation) Modifier.animateContentSize() else Modifier,
+            segment = segment,
+        ) {
+            MarkdownBlock(documentKey = documentKey, content = content, renderUnit = markdownSlice?.unit,
+                renderDocument = prepared, onClickCitation = onClickCitation, streaming = loading)
+        }
+    }
+}
+
+@Composable
+private fun rememberMessageCitationClick(parts: List<UIMessagePart>): (String) -> Unit {
+    val context = LocalContext.current
+    val currentParts by rememberUpdatedState(parts)
+    return remember(context) {
+        handler@{ citationId ->
+            currentParts.forEach { part ->
+                if (part is UIMessagePart.Tool && part.toolName == "search_web" && part.isExecuted) {
+                    val outputText = part.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+                    val items = runCatching { JsonInstant.parseToJsonElement(outputText).jsonObject["items"]?.jsonArray }.getOrNull()
+                        ?: return@forEach
+                    items.forEach { item ->
+                        val id = item.jsonObject["id"]?.jsonPrimitive?.content ?: return@forEach
+                        val url = item.jsonObject["url"]?.jsonPrimitive?.content ?: return@forEach
+                        if (citationId == id) { context.openUrl(url); return@handler }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(FlowPreview::class)
 @Composable
 private fun MessagePartsBlock(
@@ -401,7 +480,14 @@ private fun MessagePartsBlock(
     onApproveAll: (() -> Unit)? = null,
     onUserMessageClick: (() -> Unit)? = null,
     onReasoningEditRequest: ((UIMessagePart.Reasoning) -> Unit)? = null,
+    slice: ChatMessageSlice? = null,
 ) {
+    if (slice is ChatMessageSlice.Markdown) {
+        MessageTextContent(role = role, content = "", documentKey = null,
+            loading = false, onClickCitation = rememberMessageCitationClick(parts),
+            onUserMessageClick = onUserMessageClick, markdownSlice = slice)
+        return
+    }
     val context = LocalContext.current
     val contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
 
@@ -412,27 +498,8 @@ private fun MessagePartsBlock(
     val animateSizeChanges = !loading || settings.displaySetting.enableGenerationSizeAnimation
     val partsState by rememberUpdatedState(parts)
 
-    val handleClickCitation: (String) -> Unit = remember {
-        handler@{ citationId ->
-            partsState.forEach { part ->
-                if (part is UIMessagePart.Tool && part.toolName == "search_web" && part.isExecuted) {
-                    val outputText = part.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
-                    val items =
-                        runCatching { JsonInstant.parseToJsonElement(outputText).jsonObject["items"]?.jsonArray }.getOrNull()
-                            ?: return@forEach
-                    items.forEach { item ->
-                        val id = item.jsonObject["id"]?.jsonPrimitive?.content ?: return@forEach
-                        val url = item.jsonObject["url"]?.jsonPrimitive?.content ?: return@forEach
-                        if (citationId == id) {
-                            context.openUrl(url)
-                            return@handler
-                        }
-                    }
-                }
-            }
-        }
-    }
-    LaunchedEffect(settings.displaySetting) {
+    val handleClickCitation = rememberMessageCitationClick(parts)
+    if (loading) LaunchedEffect(settings.displaySetting) {
         snapshotFlow { partsState }
             .debounce(50.milliseconds)
             .collect { parts ->
@@ -449,7 +516,9 @@ private fun MessagePartsBlock(
     val displayDocument = remember(messageId, parts, role, wholeTurnFolding) {
         messageDisplayDocument(messageId, parts, role, wholeTurnFolding)
     }
-    displayDocument.body.fastForEach { section ->
+    displayDocument.body.fastForEachIndexed { bodyIndex, section ->
+        if (slice is ChatMessageSlice.Part && slice.bodyIndex != bodyIndex) return@fastForEachIndexed
+        if (slice is ChatMessageSlice.Markdown && section.textDocumentId?.partIndex != slice.partIndex) return@fastForEachIndexed
         val block = section.block
         when (block) {
             is MessagePartBlock.ThinkingBlock -> {
@@ -568,37 +637,15 @@ private fun MessagePartsBlock(
                     }
                     is UIMessagePart.Text -> {
                         val truncatedNotice = stringResource(R.string.chat_message_truncated_notice, MAX_RENDER_TEXT_LENGTH)
-                            val textContent = @Composable {
-                                val user = role == MessageRole.USER
-                                val baseColor = if (user) LocalUserBubbleColor.current
-                                    ?: MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceContainerHigh
-                                ChatBubbleSurface(
-                                    style = if (user) appearance.userBubble else appearance.assistantBubble,
-                                    defaultColor = baseColor,
-                                    defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
-                                    padWhenHidden = user,
-                                    onClick = if (user) ({ onUserMessageClick?.invoke() }) else null,
-                                    modifier = if (animateSizeChanges) Modifier.animateContentSize() else Modifier,
-                                ) {
-                                    MarkdownBlock(
-                                        documentKey = section.textDocumentId,
-                                        content = part.text.renderSafe(truncatedNotice).replaceRegexes(
-                                            assistant = assistant,
-                                            scope = if (user) AssistantAffectScope.USER else AssistantAffectScope.ASSISTANT,
-                                            visual = true,
-                                        ),
-                                        onClickCitation = handleClickCitation,
-                                        streaming = loading,
-                                    )
-                                }
+                        val prepared = when (slice) {
+                            is ChatMessageSlice.Part -> slice.prepared[block.index]
+                            is ChatMessageSlice.Prepared -> slice.documents[block.index]
+                            else -> null
                         }
-
-                        // BetterText 自带选择容器：流式生成期间也可以选择（Compose Text 的
-                        // ConcurrentModificationException 问题不再适用），不再需要等生成结束。
-                        SelectableContent {
-                            textContent()
-                        }
+                        MessageTextContent(role = role,
+                            content = if (prepared != null) "" else messageMarkdownText(part.text, truncatedNotice, assistant, role),
+                            documentKey = section.textDocumentId, loading = loading, onClickCitation = handleClickCitation,
+                            onUserMessageClick = onUserMessageClick, prepared = prepared)
                     }
 
                     is UIMessagePart.Video -> {
@@ -889,7 +936,11 @@ private fun IncompleteOutputBanner(
 }
 
 /** 渲染前保护：超长消息文本截断，避免 Compose 测量高度溢出 Int.MAX（vet 图极长空白消息曾触发） */
-private const val MAX_RENDER_TEXT_LENGTH = 1_100_000
+internal const val MAX_RENDER_TEXT_LENGTH = 1_100_000
+internal fun messageMarkdownText(text: String, truncatedNotice: String, assistant: Assistant?, role: MessageRole) =
+    text.renderSafe(truncatedNotice).replaceRegexes(assistant = assistant,
+        scope = if (role == MessageRole.USER) AssistantAffectScope.USER else AssistantAffectScope.ASSISTANT, visual = true)
+
 private fun String.renderSafe(truncatedNotice: String): String {
     if (length <= MAX_RENDER_TEXT_LENGTH) return this
     // 按码点截断（UTF-16 length 会劈开 emoji/代理对/组合字符）

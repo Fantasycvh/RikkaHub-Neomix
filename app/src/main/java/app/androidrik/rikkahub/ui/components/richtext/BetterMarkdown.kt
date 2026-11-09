@@ -86,6 +86,8 @@ import me.rerere.bettertext.markdown.MarkdownTheme
 import me.rerere.bettertext.markdown.TableCell
 import me.rerere.bettertext.markdown.plainText
 import me.rerere.bettertext.markdown.rememberMarkdownRenderDocument
+import me.rerere.bettertext.markdown.MarkdownRenderDocument
+import me.rerere.bettertext.markdown.MarkdownRenderUnit
 import me.rerere.bettertext.text.BetterInline
 import me.rerere.bettertext.text.ComposableInline
 import me.rerere.bettertext.text.InlineAlign
@@ -116,6 +118,8 @@ fun MarkdownBlock(
     textGradient: AppearanceGradient? = LocalChatTextGradient.current,
     // Scope parser state by message + original text-part identity, independent of its content.
     documentKey: Any? = null,
+    renderUnit: MarkdownRenderUnit? = null,
+    renderDocument: MarkdownRenderDocument? = null,
 ) {
     val displaySetting = LocalSettings.current.displaySetting
     val enableLatexRendering = displaySetting.enableLatexRendering
@@ -187,22 +191,23 @@ fun MarkdownBlock(
     //    结束公式块，模型常在块内用空行分隔 \node/\draw。必须后跑，否则刚补上的 $$ 块
     //    内部仍是带空行的原样。
     val normalizedContent = remember(content) {
-        normalizeDisplayMath(LatexEnvironments.normalize(content))
+        normalizeMarkdownForDisplay(content)
     }
     // 插槽里的组件（代码块、表格工具栏等）用 Material 的 Text，让它们也拿到正文样式
     ProvideTextStyle(resolved) {
         key(documentKey) {
-            val document = rememberMarkdownRenderDocument(normalizedContent, streaming = streaming)
-            BetterMarkdown(
-                document = document.document,
-                modifier = modifier.padding(horizontal = 4.dp),
-                style = resolved,
-                theme = theme,
-                components = components,
-            )
+            if (renderUnit != null) BetterMarkdown(unit = renderUnit, modifier = modifier.padding(horizontal = 4.dp),
+                style = resolved, theme = theme, components = components)
+            else {
+                val document = renderDocument ?: rememberMarkdownRenderDocument(normalizedContent, streaming = streaming)
+                BetterMarkdown(document = document.document, modifier = modifier.padding(horizontal = 4.dp),
+                    style = resolved, theme = theme, components = components)
+            }
         }
     }
 }
+
+internal fun normalizeMarkdownForDisplay(content: String) = normalizeDisplayMath(LatexEnvironments.normalize(content))
 
 /** 块级公式：TikZ 图块继续走原来的 TikzJax，普通公式用 BetterText 的 KaTeX 排版（超宽横向滚动）。 */
 @Composable

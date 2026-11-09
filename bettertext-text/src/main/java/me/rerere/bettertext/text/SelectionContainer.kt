@@ -90,7 +90,46 @@ fun BetterSelectionContainer(
     obscuredPadding: PaddingValues = PaddingValues(),
     content: @Composable () -> Unit,
 ) {
+    SelectionContainerImpl(modifier, obscuredPadding, scoped = false, documentText = null, content)
+}
+
+/** A single gesture host for a lazy list. Only explicit [BetterSelectionGroup] descendants join it.
+ * [documentText] supplies complete source on Select All, so offscreen text need not be composed/pinned.
+ */
+@Composable
+fun BetterSelectionContainer(
+    documentText: (group: Any?) -> String?,
+    modifier: Modifier = Modifier,
+    obscuredPadding: PaddingValues = PaddingValues(),
+    content: @Composable () -> Unit,
+) {
+    SelectionContainerImpl(modifier, obscuredPadding, scoped = true, documentText, content)
+}
+
+/** Groups can span lazy items; normal drags stay within one group. Plain source chunks may override
+ * the separator used when copied across layouts (Markdown text retains the default newline).
+ */
+@Composable
+fun BetterSelectionGroup(group: Any, separatorBefore: String = "\n", content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalSelectionRegistry provides (LocalSelectionHost.current ?: LocalSelectionRegistry.current),
+        LocalSelectionGroup provides group,
+        LocalSelectionSeparator provides separatorBefore,
+        content = content,
+    )
+}
+
+@Composable
+private fun SelectionContainerImpl(
+    modifier: Modifier,
+    obscuredPadding: PaddingValues,
+    scoped: Boolean,
+    documentText: ((Any?) -> String?)?,
+    content: @Composable () -> Unit,
+) {
     val registry = remember { SelectionRegistry() }
+    val currentDocumentText by rememberUpdatedState(documentText)
+    registry.documentText = { currentDocumentText?.invoke(it) }
     registry.obscuredPadding = obscuredPadding
     registry.density = LocalDensity.current
     registry.layoutDirection = LocalLayoutDirection.current
@@ -114,7 +153,8 @@ fun BetterSelectionContainer(
         registry.selection = null
     }
 
-    CompositionLocalProvider(LocalSelectionRegistry provides registry) {
+    CompositionLocalProvider(LocalSelectionHost provides registry,
+        LocalSelectionRegistry provides if (scoped) null else registry) {
         Box(
             modifier
                 .onGloballyPositioned {
@@ -160,7 +200,7 @@ fun BetterSelectionContainer(
         ) {
             content()
             val selection = registry.selection
-            if (selection != null) {
+            if (selection != null && registry.documentSelection == null) {
                 val ordered = registry.normalized(selection)
                 if (ordered != null) {
                     for (stored in listOf(true, false)) {

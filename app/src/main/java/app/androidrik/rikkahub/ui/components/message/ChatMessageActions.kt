@@ -29,6 +29,8 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.layout.LocalPinnableContainer
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,7 +70,6 @@ import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalTTSState
-import app.androidrik.rikkahub.ui.navigation.copyMessageToClipboard
 import app.androidrik.rikkahub.utils.extractQuotedContentAsText
 import app.androidrik.rikkahub.utils.removeBracketedContent
 import app.androidrik.rikkahub.utils.toLocalString
@@ -89,6 +90,12 @@ fun ColumnScope.ChatMessageActionButtons(
     val settings = LocalSettings.current
     var isPendingDelete by remember { mutableStateOf(false) }
     var showTranslateDialog by remember { mutableStateOf(false) }
+    val copyMessage = rememberMessageCopy(message)
+    val pinnable = LocalPinnableContainer.current
+    DisposableEffect(showTranslateDialog, pinnable) {
+        val pin = if (showTranslateDialog) pinnable?.pin() else null
+        onDispose { pin?.release() }
+    }
 
     LaunchedEffect(isPendingDelete) {
         if (isPendingDelete) {
@@ -108,7 +115,7 @@ fun ColumnScope.ChatMessageActionButtons(
             contentDescription = stringResource(R.string.copy),
             modifier = Modifier
                 .clip(CircleShape)
-                .clickable { context.copyMessageToClipboard(message) }
+                .clickable { copyMessage() }
                 .padding(8.dp)
                 .size(16.dp),
             tint = actionIconColor

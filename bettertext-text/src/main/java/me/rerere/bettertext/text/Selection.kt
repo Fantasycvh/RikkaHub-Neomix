@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.nestedscroll.NestedScrollDispatcher
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.PinnableContainer
@@ -20,9 +21,14 @@ import androidx.compose.ui.unit.LayoutDirection
 
 /** Provided by [BetterSelectionContainer]; null outside one. */
 internal val LocalSelectionRegistry = staticCompositionLocalOf<SelectionRegistry?> { null }
+internal val LocalSelectionHost = staticCompositionLocalOf<SelectionRegistry?> { null }
+internal val LocalSelectionGroup = staticCompositionLocalOf<Any?> { null }
+internal val LocalSelectionSeparator = staticCompositionLocalOf { "\n" }
 
 /** One [BetterText] taking part in selection. Offsets are in its laid-out text, where inline items are U+FFFC. */
 internal class SelectableText {
+    var group: Any? = null
+    var separatorBefore: String = "\n"
     var prepared: PreparedText? = null
     var layout: StaticLayout? = null
     var coordinates: LayoutCoordinates? = null
@@ -130,11 +136,20 @@ internal class SelectionRegistry {
 
     private var currentSelection: Selection? by mutableStateOf(null)
     private val pins = HashMap<SelectableText, PinnableContainer.PinnedHandle>()
+    private data class Geometry(val bounds: Rect, val layout: StaticLayout?, val prepared: PreparedText?)
+    private val geometry = HashMap<SelectableText, Geometry>()
+    private var containerBounds: Rect? = null
+    var documentText: ((Any?) -> String?)? = null
+    var documentSelection: String? by mutableStateOf(null)
+        private set
 
     var selection: Selection?
         get() = currentSelection
         set(value) {
+            documentSelection = null
             currentSelection = value
+            geometry.clear()
+            containerBounds = null
             updatePins()
         }
 
@@ -148,17 +163,34 @@ internal class SelectionRegistry {
 
     fun unregister(text: SelectableText) {
         texts.remove(text)
+        geometry.remove(text)
         pins.remove(text)?.release()
         val s = selection
-        if (s != null && (s.start.text === text || s.end.text === text)) selection = null
+        if (documentSelection == null && s != null && (s.start.text === text || s.end.text === text)) selection = null
     }
 
-    fun onLayoutChanged() {
-        if (selection != null) layoutVersion++
+    fun onLayoutChanged(text: SelectableText? = null) {
+        val group = selection?.start?.text?.group
+        if (documentSelection != null && documentText?.invoke(group) == null) selection = null
+        if (selection == null) return
+        val coordinates = (text?.coordinates ?: containerCoordinates)?.takeIf { it.isAttached } ?: return
+        if (text != null && text.group != group) return
+        val position = coordinates.localToWindow(Offset.Zero)
+        val bounds = Rect(position, Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat()))
+        val changed = if (text == null) {
+            (containerBounds != bounds).also { containerBounds = bounds }
+        } else {
+            val next = Geometry(bounds, text.layout, text.prepared)
+            (geometry.put(text, next) != next)
+        }
+        // Popup/toolbar composition can invoke global-position callbacks without a geometry change.
+        // Unconditionally bumping state here creates a recompose/layout feedback loop.
+        if (changed) layoutVersion++
     }
 
     /** Pins the texts from the selection's start to its end and releases the others, as Compose's selection does. */
     private fun updatePins() {
+        if (documentSelection != null) { releasePins(); return }
         val texts = ordered()
         val ends = selection?.let { normalized(it, texts) }
         val selected = if (ends == null) emptySet() else texts.subList(texts.indexOf(ends.first.text), texts.indexOf(ends.second.text) + 1).toSet()
@@ -202,9 +234,10 @@ internal class SelectionRegistry {
     }
 
     /** Attached texts in document order. */
-    fun ordered(): List<SelectableText> {
+    fun ordered(allGroups: Boolean = false): List<SelectableText> {
         val container = containerCoordinates?.takeIf { it.isAttached } ?: return emptyList()
-        return texts.filter { it.isAttached }.sortedWith(
+        val group = selection?.start?.text?.group
+        return texts.filter { it.isAttached && (allGroups || selection == null || it.group == group) }.sortedWith(
             compareBy<SelectableText>({ container.localPositionOf(it.coordinates!!, Offset.Zero).y })
                 .thenBy { container.localPositionOf(it.coordinates!!, Offset.Zero).x },
         )
@@ -213,7 +246,7 @@ internal class SelectionRegistry {
     /** The text under [position] (container coordinates) and the position local to it. */
     fun textAt(position: Offset): Pair<SelectableText, Offset>? {
         val container = containerCoordinates?.takeIf { it.isAttached } ?: return null
-        for (text in ordered()) {
+        for (text in ordered(allGroups = true)) {
             val coordinates = text.coordinates!!
             val local = coordinates.localPositionOf(container, position)
             val size = coordinates.size
@@ -255,6 +288,8 @@ internal class SelectionRegistry {
     /** The selected range of [text], snapped to whole inline items, or null if none of it is selected. */
     fun rangeOf(text: SelectableText): IntRange? {
         val s = selection ?: return null
+        if (text.group != s.start.text.group) return null
+        if (documentSelection != null) return (0 until text.length).takeUnless { it.isEmpty() }
         val texts = ordered()
         val (first, last) = normalized(s, texts) ?: return null
         val index = texts.indexOf(text)
@@ -275,18 +310,29 @@ internal class SelectionRegistry {
     }
 
     fun selectedText(): String {
+        documentSelection?.let { return it }
         val texts = ordered()
-        return texts.mapNotNull { text -> rangeOf(text)?.let { text.copyText(it.first, it.last + 1) } }
-            .joinToString("\n")
+        return buildString {
+            var first = true
+            for (text in texts) rangeOf(text)?.let {
+                if (!first) append(text.separatorBefore)
+                append(text.copyText(it.first, it.last + 1))
+                first = false
+            }
+        }
     }
 
     fun selectAll() {
         val texts = ordered()
         if (texts.isEmpty()) return
         selection = Selection(SelectionPoint(texts.first(), 0), SelectionPoint(texts.last(), texts.last().length))
+        documentSelection = documentText?.invoke(texts.first().group)
+        if (documentSelection != null) releasePins()
     }
 
     fun isAllSelected(): Boolean {
+        if (documentSelection != null) return true
+        if (selection != null && documentText?.invoke(selection!!.start.text.group) != null) return false
         val texts = ordered()
         return texts.isNotEmpty() && texts.all { text -> rangeOf(text).let { it != null && it.first == 0 && it.last + 1 == text.length } }
     }

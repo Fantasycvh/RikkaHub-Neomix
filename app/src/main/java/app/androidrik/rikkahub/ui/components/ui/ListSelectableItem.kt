@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Checkbox
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -16,20 +18,21 @@ fun ListSelectableItem(
     onSelectChange: (Any) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    showCheckbox: Boolean = true,
     content: @Composable () -> Unit
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        if (enabled) {
+        if (enabled && showCheckbox) {
             Checkbox(
                 checked = key in selectedKeys,
                 onCheckedChange = {
                     onSelectChange(key)
                 }
             )
-        }
+        } else if (enabled) Spacer(Modifier.width(48.dp))
         Box(
             modifier = Modifier.weight(1f)
         ) {
