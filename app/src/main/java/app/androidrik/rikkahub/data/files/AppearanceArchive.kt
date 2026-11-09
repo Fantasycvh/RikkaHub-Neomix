@@ -26,7 +26,7 @@ data class AppearanceArchive(val manifest: String, val textures: Map<String, Byt
     companion object {
         const val MAX_TOTAL = 32 * 1024 * 1024
         const val MAX_MANIFEST = 256 * 1024
-        const val MAX_ASSETS = 8
+        const val MAX_ASSETS = 32
         fun decode(bytes: ByteArray): AppearanceArchive {
             require(bytes.size <= MAX_TOTAL + MAX_MANIFEST + 65536) { "材质包过大" }
             var manifest: String? = null

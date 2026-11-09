@@ -91,6 +91,7 @@ import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.components.message.LocalBubbleTextureBitmaps
 import app.androidrik.rikkahub.data.files.BubbleTextureStore
 import app.androidrik.rikkahub.data.model.textureIds
+import app.androidrik.rikkahub.ui.theme.resolveAppSkin
 import app.androidrik.rikkahub.ui.theme.resolveChatAppearance
 import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
 import app.androidrik.rikkahub.ui.components.message.ChatBubbleSurface
@@ -165,7 +166,8 @@ internal suspend fun exportToImage(
         global = settings.exportDisplayConfig,
     )
     val resolvedAppearance = resolveChatAppearance(settings.displaySetting, ChatAppearanceRegistry.shared.presets.value)
-    val textureIds = resolvedAppearance.userBubble.textureIds() + resolvedAppearance.assistantBubble.textureIds()
+    val textureIds = resolvedAppearance.userBubble.textureIds() + resolvedAppearance.assistantBubble.textureIds() +
+        resolveAppSkin(settings.displaySetting).skin.textureIds()
     val textureBitmaps = withContext(Dispatchers.IO) {
         val store = BubbleTextureStore(context)
         textureIds.mapNotNull { id -> store.load(id)?.let { id to it } }.toMap()

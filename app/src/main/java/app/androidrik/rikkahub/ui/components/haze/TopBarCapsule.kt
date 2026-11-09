@@ -5,6 +5,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -18,6 +21,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import dev.chrisbanes.haze.HazeState
+import app.androidrik.rikkahub.ui.theme.*
 
 /**
  * 顶栏按钮的浮动胶囊容器（上游 b40d7a273 ChatTopBarCapsule，两套共存方案的 CAPSULES 档）。
@@ -35,6 +39,9 @@ fun TopBarCapsule(
     content: @Composable RowScope.() -> Unit,
 ) {
     val containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+    val panel = LocalAppSkin.current.skin.topBar.panel
+    val shape = panel.radiusDp?.let { RoundedCornerShape(it.dp) } ?: CircleShape
+    val ink = panel.ink(MaterialTheme.colorScheme.onSurface, containerColor)
     val backgroundAlpha by animateFloatAsState(
         targetValue = if (showBackground) 1f else 0f,
         label = "TopBarCapsuleBackground",
@@ -45,21 +52,23 @@ fun TopBarCapsule(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer { alpha = backgroundAlpha }
-                    .clip(CircleShape)
-                    .chatInputBackgroundEffect(
+                    .clip(shape)
+                    .then(if (panel.background == null) Modifier.chatInputBackgroundEffect(
                         hazeState = hazeState,
                         displaySetting = displaySetting,
                         containerColor = containerColor,
                         // GlassStyleScope.shape 只收 RoundedCornerShape；CircleShape 是 50% 圆角，可直传
-                        shape = CircleShape,
-                    ),
-                shape = CircleShape,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                color = if (displaySetting.enableBlurEffect) Color.Transparent else containerColor,
+                        shape = shape,
+                    ) else Modifier.appSkinPanelBackground(panel, containerColor, ink, shape)),
+                shape = shape,
+                border = if (panel.borderWidthDp == null) BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)) else panel.border(),
+                color = if (displaySetting.enableBlurEffect || panel.background != null) Color.Transparent else containerColor,
                 content = {},
             )
         }
         Row(
+            modifier = Modifier.padding(horizontal = (panel.paddingHorizontalDp ?: 0f).dp, vertical = (panel.paddingVerticalDp ?: 0f).dp),
+            horizontalArrangement = Arrangement.spacedBy((panel.gapDp ?: 0f).dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )

@@ -13,6 +13,12 @@ import me.rerere.hugeicons.stroke.Share01
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.appSkinPanelBackground
+import app.androidrik.rikkahub.ui.theme.shape
+import app.androidrik.rikkahub.ui.theme.ink
+import app.androidrik.rikkahub.ui.theme.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -301,8 +307,13 @@ private fun ConversationItem(
     onClick: (Conversation) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val panel = LocalAppSkin.current.skin.drawer.item
+    val itemShape = panel.shape(RoundedCornerShape(50f))
+    val itemInk = panel.ink(MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.surfaceContainerLow)
+    val itemBorder = panel.border()
     val backgroundColor = if (selected) {
-        MaterialTheme.colorScheme.surfaceColorAtElevation(8.dp)
+        if (panel.background != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        else MaterialTheme.colorScheme.surfaceColorAtElevation(8.dp)
     } else {
         Color.Transparent
     }
@@ -311,7 +322,7 @@ private fun ConversationItem(
     }
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(50f))
+            .clip(itemShape)
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
@@ -320,16 +331,19 @@ private fun ConversationItem(
                     showDropdownMenu = true
                 }
             )
-            .background(backgroundColor),
+            .appSkinPanelBackground(panel, MaterialTheme.colorScheme.surfaceContainerLow, itemInk, itemShape)
+            .background(backgroundColor)
+            .then(if (itemBorder != null) Modifier.border(itemBorder, itemShape) else Modifier),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = (panel.paddingHorizontalDp ?: 12f).dp, vertical = (panel.paddingVerticalDp ?: 6f).dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = conversation.title.ifBlank { stringResource(id = R.string.chat_page_new_message) },
+                color = itemInk,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

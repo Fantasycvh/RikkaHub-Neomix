@@ -55,11 +55,15 @@ import app.androidrik.rikkahub.ui.hooks.rememberSharedPreferenceBoolean
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
+import app.androidrik.rikkahub.ui.theme.rememberAppSkin
+import app.androidrik.rikkahub.ui.theme.topBarMode
+import app.androidrik.rikkahub.ui.theme.withTopBarMode
 
 @Composable
 fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var displaySetting by remember(settings) { mutableStateOf(settings.displaySetting) }
+    val skin = rememberAppSkin(displaySetting).skin
 
     fun updateDisplaySetting(setting: DisplaySetting) {
         displaySetting = setting
@@ -268,9 +272,10 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                                 )
                                 SegmentedPill(
                                     options = TopBarChromeStyle.entries,
-                                    selectedOption = displaySetting.topBarStyle,
-                                    onOptionSelected = {
-                                        updateDisplaySetting(displaySetting.copy(topBarStyle = it))
+                                    selectedOption = skin.topBarMode(displaySetting),
+                                    onOptionSelected = { mode ->
+                                        displaySetting = displaySetting.withTopBarMode(mode)
+                                        vm.updateSettings { current -> current.copy(displaySetting = current.displaySetting.withTopBarMode(mode)) }
                                     },
                                     optionToString = { style ->
                                         when (style) {

@@ -12,8 +12,12 @@ data class AppSkin(
     val motion: AppSkinMotion = AppSkinMotion.EXPRESSIVE,
     /** null retains the existing dynamic/preset/custom palette selection. */
     val palette: CustomTheme? = null,
+    val topBar: AppSkinTopBar = AppSkinTopBar(),
+    val drawer: AppSkinDrawer = AppSkinDrawer(),
+    val cards: AppSkinCards = AppSkinCards(),
 ) {
-    fun normalized() = copy(typography = typography.normalized(), shapes = shapes.normalized(), spacing = spacing.normalized())
+    fun normalized() = copy(typography = typography.normalized(), shapes = shapes.normalized(), spacing = spacing.normalized(),
+        topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized())
 }
 
 @Serializable
@@ -73,9 +77,13 @@ data class AppSkinOverrides(
     val spacing: AppSkinSpacing? = null,
     val motion: AppSkinMotion? = null,
     val palette: CustomTheme? = null,
+    val topBar: AppSkinTopBar? = null,
+    val drawer: AppSkinDrawer? = null,
+    val cards: AppSkinCards? = null,
 ) {
     fun applyTo(base: AppSkin) = AppSkin(typography ?: base.typography, shapes ?: base.shapes,
-        spacing ?: base.spacing, motion ?: base.motion, palette ?: base.palette).normalized()
+        spacing ?: base.spacing, motion ?: base.motion, palette ?: base.palette,
+        topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards).normalized()
 
     /** Only edited groups become overrides; untouched groups continue following the selected skin. */
     fun withEdits(before: AppSkin, after: AppSkin): AppSkinOverrides = after.normalized().let { value -> copy(
@@ -84,10 +92,14 @@ data class AppSkinOverrides(
         spacing = if (before.spacing != value.spacing) value.spacing else spacing,
         motion = if (before.motion != value.motion) value.motion else motion,
         palette = if (before.palette != value.palette) value.palette else palette,
+        topBar = if (before.topBar != value.topBar) value.topBar else topBar,
+        drawer = if (before.drawer != value.drawer) value.drawer else drawer,
+        cards = if (before.cards != value.cards) value.cards else cards,
     ) }
 
     companion object {
-        fun from(skin: AppSkin) = AppSkinOverrides(skin.typography, skin.shapes, skin.spacing, skin.motion, skin.palette)
+        fun from(skin: AppSkin) = AppSkinOverrides(skin.typography, skin.shapes, skin.spacing, skin.motion, skin.palette,
+            skin.topBar, skin.drawer, skin.cards)
     }
 }
 

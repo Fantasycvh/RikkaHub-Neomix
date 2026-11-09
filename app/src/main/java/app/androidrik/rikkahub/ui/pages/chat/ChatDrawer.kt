@@ -29,6 +29,14 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.DrawerDefaults
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.border
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.appSkinPanelBackground
+import app.androidrik.rikkahub.ui.theme.shape
+import app.androidrik.rikkahub.ui.theme.ink
+import app.androidrik.rikkahub.ui.theme.border
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -328,12 +336,20 @@ fun ChatDrawerContent(
         }
     }
 
+    val drawerPanel = LocalAppSkin.current.skin.drawer.panel
+    val drawerShape = drawerPanel.shape(DrawerDefaults.shape)
+    val drawerInk = drawerPanel.ink(MaterialTheme.colorScheme.onSurface, DrawerDefaults.modalContainerColor)
+    val drawerBorder = drawerPanel.border()
     ModalDrawerSheet(
-        modifier = Modifier.width(300.dp)
+        modifier = Modifier.width(300.dp).appSkinPanelBackground(drawerPanel, DrawerDefaults.modalContainerColor, drawerInk, drawerShape)
+            .then(if (drawerBorder != null) Modifier.border(drawerBorder, drawerShape) else Modifier),
+        drawerShape = drawerShape,
+        drawerContainerColor = if (drawerPanel.background == null) DrawerDefaults.modalContainerColor else Color.Transparent,
+        drawerContentColor = drawerInk,
     ) {
         Column(
-            modifier = Modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = (drawerPanel.paddingHorizontalDp ?: 8f).dp, vertical = (drawerPanel.paddingVerticalDp ?: 8f).dp),
+            verticalArrangement = Arrangement.spacedBy((drawerPanel.gapDp ?: 8f).dp),
         ) {
             if (!headerInList) drawerHeader()
 

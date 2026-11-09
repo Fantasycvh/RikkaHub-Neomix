@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.chat
 // 批次 7 拆出：TopBar + ContextUsageReadout 自 ChatPage.kt 拆出（同包，private→internal）
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +36,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.layout.Arrangement
+import app.androidrik.rikkahub.ui.theme.*
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -133,7 +137,12 @@ internal fun TopBar(
         onUpdateTitle(it)
     }
     // 顶栏 chrome 两套共存（上游 b40d7a273）：CAPSULES 时整条效果让位给浮动胶囊
-    val capsuleMode = settings.displaySetting.topBarStyle == TopBarChromeStyle.CAPSULES
+    val skin = LocalAppSkin.current.skin
+    val panel = skin.topBar.panel
+    val barShape = panel.shape(RectangleShape)
+    val barInk = panel.ink(MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.surfaceContainerLow)
+    val barBorder = panel.border()
+    val capsuleMode = skin.topBarMode(settings.displaySetting) == TopBarChromeStyle.CAPSULES
 
     // 右侧操作按钮：FULL_BAR 直挂 actions，CAPSULES 由胶囊包裹（背景随滚动淡入）。
     // 「本会话任务」保留一级直达，其余收进「更多」二级展开菜单，压缩顶栏占位
@@ -182,18 +191,20 @@ internal fun TopBar(
     }
 
     TopAppBar(
-        modifier = Modifier.then(
+        modifier = Modifier.then(if (!capsuleMode && panel.radiusDp != null) Modifier.clip(barShape) else Modifier).then(
             // 与输入栏同款机制（BackgroundEffectType BLUR/GLASS 二选一）：消费 hazeState
             // （背景 + 穿底内容）——列表经 contentPadding 从顶栏底下穿过，穿过的部分被
             // 实时模糊/玻璃化（上游截图同款效果）。顶栏是悬浮层，采样聊天内容不踩
             // 「blur 容器含可滚动子节点」坑。胶囊档不挂整条效果（按钮各自带胶囊背景）。
-            if (settings.displaySetting.enableTopBarBlur && !capsuleMode) Modifier.liquidGlassChromeEffect(
+            if (settings.displaySetting.enableTopBarBlur && !capsuleMode && panel.background == null) Modifier.liquidGlassChromeEffect(
                 hazeState = hazeState,
                 effectType = settings.displaySetting.topBarEffectType,
                 readabilityMode = settings.displaySetting.liquidGlassReadabilityMode,
             ) else Modifier
-        ),
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+        ).then(if (!capsuleMode) Modifier.appSkinPanelBackground(panel, MaterialTheme.colorScheme.surfaceContainerLow, barInk, barShape)
+            .then(if (barBorder != null) Modifier.border(barBorder, barShape) else Modifier) else Modifier),
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent,
+            titleContentColor = barInk, navigationIconContentColor = barInk, actionIconContentColor = barInk),
         navigationIcon = {
             if (!bigScreen) {
                 if (capsuleMode) {
@@ -226,7 +237,8 @@ internal fun TopBar(
                 },
                 color = Color.Transparent,
             ) {
-                Column {
+                Column(Modifier.padding(horizontal = (panel.paddingHorizontalDp ?: 0f).dp,
+                    vertical = (panel.paddingVerticalDp ?: 0f).dp), verticalArrangement = Arrangement.spacedBy((panel.gapDp ?: 0f).dp)) {
                     val assistant = settings.getCurrentAssistant()
                     val model = settings.getCurrentChatModel()
                     val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)

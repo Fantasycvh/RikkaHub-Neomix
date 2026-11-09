@@ -70,6 +70,8 @@ import app.androidrik.rikkahub.ui.components.message.tools.ToolUIContext
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRegistry
 import app.androidrik.rikkahub.ui.components.richtext.ZoomableAsyncImage
 import app.androidrik.rikkahub.ui.components.ui.ChainOfThoughtScope
+import app.androidrik.rikkahub.ui.theme.AppSkinPanelBox
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
 import app.androidrik.rikkahub.ui.components.ui.DotLoading
 import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -275,32 +277,34 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         onClick = { showResult = true },
         content = if (hasExtraContent) {
             {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    renderer.Summary(context)
-                    if (images.isNotEmpty()) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.wrapContentWidth(),
-                        ) {
-                            items(images) { image ->
-                                ZoomableAsyncImage(
-                                    model = image.url,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .height(64.dp)
-                                        .wrapContentWidth(),
-                                )
+                AppSkinPanelBox(LocalAppSkin.current.skin.cards.tool) {
+                    Column(verticalArrangement = Arrangement.spacedBy((LocalAppSkin.current.skin.cards.tool.gapDp ?: 4f).dp)) {
+                        renderer.Summary(context)
+                        if (images.isNotEmpty()) {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.wrapContentWidth(),
+                            ) {
+                                items(images) { image ->
+                                    ZoomableAsyncImage(
+                                        model = image.url,
+                                        contentDescription = null,
+                                        modifier = Modifier
+                                            .height(64.dp)
+                                            .wrapContentWidth(),
+                                    )
+                                }
                             }
                         }
-                    }
-                    if (isDenied) {
-                        val reason = (tool.approvalState as ToolApprovalState.Denied).reason
-                        Text(
-                            text = stringResource(R.string.chat_message_tool_denied) +
-                                if (reason.isNotBlank()) ": $reason" else "",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                        if (isDenied) {
+                            val reason = (tool.approvalState as ToolApprovalState.Denied).reason
+                            Text(
+                                text = stringResource(R.string.chat_message_tool_denied) +
+                                    if (reason.isNotBlank()) ": $reason" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
             }
@@ -327,13 +331,15 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             ),
             onDismissRequest = { showResult = false },
             content = {
-                if (outputUnparsable) {
-                    DefaultToolPreview(context = context)
-                } else {
-                    renderer.Preview(
-                        context = context,
-                        onDismissRequest = { showResult = false },
-                    )
+                AppSkinPanelBox(LocalAppSkin.current.skin.cards.tool) {
+                    if (outputUnparsable) {
+                        DefaultToolPreview(context = context)
+                    } else {
+                        renderer.Preview(
+                            context = context,
+                            onDismissRequest = { showResult = false },
+                        )
+                    }
                 }
             },
         )

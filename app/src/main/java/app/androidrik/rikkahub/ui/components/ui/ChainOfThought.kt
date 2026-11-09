@@ -17,6 +17,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Card
+import app.androidrik.rikkahub.data.model.AppSkinPanel
+import app.androidrik.rikkahub.ui.theme.*
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -92,6 +94,9 @@ fun <T> ChainOfThought(
     var expanded by remember { mutableStateOf(false) }
     val canCollapse = steps.size > collapsedVisibleCount
     val shouldFillCollapseControlWidth = expanded || !collapsedAdaptiveWidth
+    val panel = if (style == ChainOfThoughtStyle.CARD && custom == null) LocalAppSkin.current.skin.cards.reasoning else AppSkinPanel()
+    val panelShape = panel.shape(RoundedCornerShape((custom?.cornerRadiusDp ?: if (style == ChainOfThoughtStyle.CARD) 16f else 8f).dp))
+    val panelInk = panel.ink(cardColors.contentColor, cardColors.containerColor)
 
     CompositionLocalProvider(
         LocalCardColor provides cardColors.containerColor
@@ -99,19 +104,20 @@ fun <T> ChainOfThought(
         val customContainer = custom?.containerColorHex?.toComposeColorOrNull()
             ?.copy(alpha = cardColors.containerColor.alpha)
         Card(
-            modifier = modifier,
+            modifier = modifier.appSkinPanelBackground(panel, cardColors.containerColor, panelInk, panelShape),
             colors = when {
                 customContainer != null -> cardColors.copy(containerColor = customContainer)
-                style == ChainOfThoughtStyle.CARD -> cardColors
+                style == ChainOfThoughtStyle.CARD -> cardColors.copy(
+                    containerColor = if (panel.background != null) Color.Transparent else cardColors.containerColor,
+                    contentColor = panelInk)
                 else -> cardColors.copy(containerColor = Color.Transparent)
             },
-            shape = RoundedCornerShape(
-                (custom?.cornerRadiusDp ?: if (style == ChainOfThoughtStyle.CARD) 16f else 8f).dp
-            ),
+            shape = panelShape,
+            border = panel.border(),
         ) {
             Column(
                 modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .padding(horizontal = (panel.paddingHorizontalDp ?: 12f).dp, vertical = (panel.paddingVerticalDp ?: 4f).dp)
                     .then(
                         if (animateSizeChanges) Modifier.animateContentSize(
                             // γ: 用短 tween 替代 expressive 长曲线。步骤列表大时（Workspace 多命令）
@@ -205,7 +211,7 @@ fun <T> ChainOfThought(
                         }
                     }
                 ) {
-                    Column {
+                    Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy((panel.gapDp ?: 0f).dp)) {
                         visibleSteps.fastForEach { step ->
                             scope.content(step)
                         }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -33,6 +34,8 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.ui.Tooltip
 import app.androidrik.rikkahub.ui.context.Navigator
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.AppSkinPanelSurface
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Image02
@@ -121,32 +124,33 @@ internal fun DrawerEntry(
     trailingDescription: String? = null,
     onTrailingClick: () -> Unit = {},
 ) {
-    Surface(
+    val panel = LocalAppSkin.current.skin.drawer.item
+    AppSkinPanelSurface(panel = panel,
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        defaultShape = MaterialTheme.shapes.medium,
+        defaultColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Row(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                    .padding(horizontal = (panel.paddingHorizontalDp ?: 8f).dp, vertical = (panel.paddingVerticalDp ?: 10f).dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy((panel.gapDp ?: 12f).dp),
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurface,
+                    tint = LocalContentColor.current,
                 )
                 Text(
                     text = text,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = LocalContentColor.current,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -165,7 +169,8 @@ internal fun DrawerEntry(
                         imageVector = trailingIcon,
                         contentDescription = trailingDescription,
                         modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (panel.background != null || panel.contentColorHex != null) LocalContentColor.current.copy(alpha = 0.7f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
