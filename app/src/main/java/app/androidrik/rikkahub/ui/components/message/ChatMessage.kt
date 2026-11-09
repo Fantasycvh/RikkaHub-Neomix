@@ -174,6 +174,14 @@ fun ChatMessage(
         return
     }
     val settings = LocalSettings.current.displaySetting
+    // A split reply has one persistent header. Observe haptics once here, not once per body row.
+    if (slice == ChatMessageSlice.Header && loading && settings.enableMessageGenerationHapticEffect) {
+        val currentParts by rememberUpdatedState(message.parts)
+        val feedback = LocalHapticFeedback.current
+        LaunchedEffect(message.id) { snapshotFlow { currentParts }.collect {
+            if (it.isNotEmpty()) feedback.performHapticFeedback(HapticFeedbackType.KeyboardTap)
+        } }
+    }
     val appearance = rememberChatAppearance(settings)
     val chatFontFamily = LocalChatFontFamily.current ?: rememberChatFontFamily(settings)
     val textStyle = LocalTextStyle.current.copy(

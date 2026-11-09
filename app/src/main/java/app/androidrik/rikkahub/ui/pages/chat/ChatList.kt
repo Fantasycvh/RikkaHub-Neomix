@@ -62,6 +62,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
@@ -373,11 +374,23 @@ private fun ChatListNormal(
         if (loading) add(LoadingIndicatorKey)
         add(ScrollBottomKey)
     }
-    val renderIndex = remember(visibleNodes, staticDocuments, appearance.layout, activeCheckpoint != null, tailKeys) {
-        buildChatRenderIndex(visibleNodes, staticDocuments, appearance, activeCheckpoint != null, tailKeys)
+    val alreadySplit = remember(conversation.id) { mutableSetOf<Uuid>() }
+    val lastNode by rememberUpdatedState(visibleNodes.lastOrNull()?.id)
+    // A whole-message row has no source coordinate for its interior pixel offset. Defer its
+    // first split while the reader is inside it; promote at its start/bottom instead of jumping.
+    val readingWholeTail by remember(state) { derivedStateOf {
+        lastNode?.takeIf { state.firstVisibleItemScrollOffset > 0 && state.canScrollForward &&
+            state.layoutInfo.visibleItemsInfo.firstOrNull()?.key == it.toString() }
+    } }
+    val deferredNodes = setOfNotNull(readingWholeTail).filterNot { it in alreadySplit }.toSet()
+    val renderIndex = remember(visibleNodes, staticDocuments, appearance.layout, activeCheckpoint != null, tailKeys, deferredNodes) {
+        buildChatRenderIndex(visibleNodes, staticDocuments, appearance, activeCheckpoint != null, tailKeys, deferredNodes)
     }
+    SideEffect { renderIndex.rows.filter { it.slice is app.androidrik.rikkahub.ui.components.message.ChatMessageSlice.Markdown }
+        .forEach { alreadySplit += it.nodeId } }
     val renderIndexUpdated by rememberUpdatedState(renderIndex)
     val initialAnchor = remember(conversation.id) { scrollController?.readAnchor }
+    var stickToBottom by remember(conversation.id) { mutableStateOf(initialAnchor == null || scrollController?.readAtBottom == true) }
     var initialAnchorConsumed by remember(conversation.id) { mutableStateOf(initialAnchor == null) }
     val canRecordAnchor by rememberUpdatedState(initialAnchorConsumed && staticDocuments.pending.isEmpty())
     LaunchedEffect(state, scrollController) {
@@ -391,10 +404,10 @@ private fun ChatListNormal(
             scrollController?.readAtBottom = position.second
         } }
     }
-    val copyDocuments = remember(staticDocuments.ready) {
+    val copyDocuments = remember(staticDocuments.ready, visibleNodes) {
         buildMap<Any, String> {
             staticDocuments.ready.values.forEach { doc -> doc.markdown.keys.forEach { partIndex ->
-                (doc.input.message.parts[partIndex] as? UIMessagePart.Text)?.let {
+                (visibleNodes.firstOrNull { it.id == doc.input.nodeId }?.currentMessage?.parts?.getOrNull(partIndex) as? UIMessagePart.Text)?.let {
                     put(StaticTextGroup(doc.input.message.id, partIndex, doc.epoch), it.text)
                 }
             } }
@@ -415,7 +428,7 @@ private fun ChatListNormal(
         }
     }
     val dragging by state.interactionSource.collectIsDraggedAsState()
-    LaunchedEffect(dragging) { if (dragging) { scrollController?.cancel(); initialAnchorConsumed = true } }
+    LaunchedEffect(dragging) { if (dragging) { stickToBottom = false; scrollController?.cancel(); initialAnchorConsumed = true } }
 
     // #1906-B：引用块点击 → 跳到被引用的原消息。
     //
@@ -443,11 +456,12 @@ private fun ChatListNormal(
     }
     LaunchedEffect(scrollController?.request, renderIndex, staticDocuments.pending) {
         when (val request = scrollController?.request) {
-            is ChatListScrollController.Request.Message -> { pendingQuoteJump = request.id; scrollController.consume(request.serial) }
+            is ChatListScrollController.Request.Message -> { stickToBottom = false; pendingQuoteJump = request.id; scrollController.consume(request.serial) }
             is ChatListScrollController.Request.Bottom -> {
                 if (staticDocuments.pending.isNotEmpty()) return@LaunchedEffect
                 if (request.waitForChange && request.waitForChangeFrom == conversation.currentMessages.lastOrNull()?.id) return@LaunchedEffect
-                state.scrollToItem(renderIndex.lastIndex)
+                state.requestScrollToItem(renderIndex.lastIndex)
+                stickToBottom = true
                 scrollController.consume(request.serial)
             }
             null -> Unit
@@ -455,6 +469,7 @@ private fun ChatListNormal(
     }
     LaunchedEffect(pendingQuoteJump, renderIndex, activeCheckpoint, staticDocuments.pending) {
         val targetId = pendingQuoteJump ?: return@LaunchedEffect
+        stickToBottom = false
         val index = renderIndex.target(targetId)
         if (index < 0) {
             // 折叠态找不到 ⇒ 目标很可能在折叠的历史里，先展开完整轨迹再重试
@@ -480,12 +495,15 @@ private fun ChatListNormal(
             // 视口永远停在中间。闩锁只在**用户拖动**时更新（拖动中贴底=true、离开=false），
             // 非拖动帧只要闩锁在就持续请求贴底；用户上滑 = 明确放手，不再跟随。
             // requestScrollToItem 是瞬时重定位，不会置 isScrollInProgress，无自锁风险。
-            var stickToBottom by remember { mutableStateOf(initialAnchor == null || scrollController?.readAtBottom == true) }
+            var hasGenerated by remember(conversation.id) { mutableStateOf(false) }
+            SideEffect { if (loading) hasGenerated = true }
             LaunchedEffect(state) {
                 snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { visibleItemsInfo ->
                     if (state.isScrollInProgress) {
-                        stickToBottom = visibleItemsInfo.isAtBottom()
-                    } else if (loadingState && stickToBottom && !visibleItemsInfo.isAtBottom()) {
+                        // An animated logical/volume jump is a request to read elsewhere. Only
+                        // an actual finger drag reaching the bottom opts back into following.
+                        stickToBottom = dragging && visibleItemsInfo.isAtBottom()
+                    } else if ((loadingState || hasGenerated) && stickToBottom && !visibleItemsInfo.isAtBottom()) {
                         state.requestScrollToItem(renderIndexUpdated.lastIndex)
                         // Log.i(TAG, "ChatList: scroll to ${conversationUpdated.messageNodes.lastIndex}")
                     }
@@ -809,6 +827,8 @@ private fun ChatListNormal(
                 onLeft = settings.displaySetting.messageJumperOnLeft,
                 scope = scope,
                 state = state,
+                onTop = { stickToBottom = false; state.requestScrollToItem(0) },
+                onBottom = { stickToBottom = true; state.requestScrollToItem(renderIndex.lastIndex) },
                 onPrevious = { scope.launch { state.animateScrollToItem(renderIndex.previousMessage(state.firstVisibleItemIndex)) } },
                 onNext = { scope.launch { state.animateScrollToItem(renderIndex.nextMessage(state.firstVisibleItemIndex)) } },
             )

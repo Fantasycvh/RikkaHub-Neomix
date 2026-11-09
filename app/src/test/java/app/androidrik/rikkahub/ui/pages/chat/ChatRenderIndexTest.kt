@@ -16,6 +16,23 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 class ChatRenderIndexTest {
+    @Test fun `stream session retains prefix identity and finalizes syntax without changing epoch`() = runBlocking {
+        val message = UIMessage.assistant(("early paragraph\n\n".repeat(600)))
+        val input = StaticMessageInput(Uuid.random(), message, null, false, "truncated", streaming = true)
+        val session = MessageDocumentSession(72)
+        val first = session.prepare(input)
+        val nextInput = input.copy(message = message.copy(parts = listOf(UIMessagePart.Text(message.toText() + "\n\n```kotlin\nval a = 1"))))
+        val next = session.prepare(nextInput)
+        assertSame(first.markdown.getValue(0).units.first(), next.markdown.getValue(0).units.first())
+        assertEquals(first.epoch, next.epoch)
+        assertTrue(nextInput.canRetain(input))
+        val finished = session.prepare(nextInput.copy(streaming = false))
+        assertEquals(next.epoch, finished.epoch)
+        assertEquals(nextInput.message.toText(), finished.markdown.getValue(0).document.source)
+        assertFalse(nextInput.copy(message = UIMessage.assistant("different branch")).canRetain(input))
+        assertFalse(nextInput.copy(message = message.copy(parts = listOf(UIMessagePart.Text("edited")))).canRetain(input))
+    }
+
     private val longText = (0..149).joinToString("\n\n") { "段落 $it：" + "正文与内容。".repeat(18) }
     private val appearance = ChatAppearance()
     private fun prepared(node: MessageNode, epoch: Long = 1) = runBlocking {
@@ -93,14 +110,24 @@ class ChatRenderIndexTest {
         assertSame(document.markdown[0], (ready.rows.single().slice as ChatMessageSlice.Prepared).documents[0])
     }
 
-    @Test fun `static standard solids qualify while streaming and unsupported layouts and materials fall back`() {
+    @Test fun `all layouts prepare while slicing requires standard solid geometry`() {
         val message = UIMessage.assistant(longText)
         assertTrue(canPrepareStaticMessage(message, appearance, true, false))
         assertTrue(canPrepareStaticMessage(message, appearance.copy(assistantBubble = ChatBubble()), true, false))
-        assertFalse(canPrepareStaticMessage(message, appearance, true, true))
+        assertTrue(canPrepareStaticMessage(message, appearance, true, true))
         assertFalse(canPrepareStaticMessage(message, appearance, false, false))
-        assertFalse(canPrepareStaticMessage(message, appearance.copy(layout = ChatLayout(rendererId = "builtin.card")), true, false))
-        assertFalse(canPrepareStaticMessage(message, appearance.copy(assistantBubble = ChatBubble(material = BubbleMaterial.GRADIENT)), true, false))
+        assertTrue(canPrepareStaticMessage(message, appearance.copy(layout = ChatLayout(rendererId = "builtin.card")), true, false))
+        assertFalse(canSliceMessage(message, appearance.copy(layout = ChatLayout(rendererId = "builtin.card"))))
+        assertFalse(canSliceMessage(message, appearance.copy(assistantBubble = ChatBubble(material = BubbleMaterial.GRADIENT))))
+    }
+
+    @Test fun `reading whole message can defer promotion without dropping prepared content`() {
+        val node = UIMessage.assistant(longText).toMessageNode()
+        val document = prepared(node)
+        val result = buildChatRenderIndex(listOf(node), StaticDocuments(listOf(document.input), mapOf(node.id to document), emptySet()),
+            appearance, false, listOf("ScrollBottomKey"), deferredNodes = setOf(node.id))
+        assertEquals(1, result.rows.size)
+        assertTrue(result.rows.single().slice is ChatMessageSlice.Prepared)
     }
 
     @Test fun `multiple text parts and original attachments stay in order without losing source`() {

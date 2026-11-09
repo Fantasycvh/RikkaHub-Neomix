@@ -36,6 +36,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
@@ -198,16 +199,60 @@ class ChatLazyRenderingInstrumentedTest {
         assertEquals(offset, state.firstVisibleItemScrollOffset)
     }
 
-    @Test fun streamingReplyKeepsItsHostUntilANewStaticSession() {
-        val restoration = StateRestorationTester(compose)
-        mountList(listOf(UIMessage.assistant(text).toMessageNode()), restoration, internalController = true,
-            initiallyLoading = true, expectSplit = false)
-        assertTrue(state.layoutInfo.totalItemsCount < 10)
+    @Test fun streamingReplyKeepsItsPrefixAndReadingAnchorThroughCompletion() {
+        val node = UIMessage.assistant(text).toMessageNode()
+        mountList(listOf(node), initiallyLoading = true)
+        compose.runOnIdle { controller.scrollToMessage(node.id) }
+        compose.waitUntil(10_000) { controller.request == null && state.firstVisibleItemIndex == 0 }
+        compose.waitForIdle()
+        scroll(10, 29)
+        val key = state.layoutInfo.visibleItemsInfo.first { it.index == state.firstVisibleItemIndex }.key
+        val offset = state.firstVisibleItemScrollOffset
+        val appended = text + "\n\nstream_tail_marker " + "新段落。".repeat(40)
+        compose.runOnIdle { conversation.value = conversation.value.copy(messageNodes = listOf(
+            node.copy(messages = listOf(node.currentMessage.copy(parts = listOf(UIMessagePart.Text(appended))))))) }
+        compose.waitForIdle()
+        compose.runOnIdle { loading.value = false }
+        compose.waitForIdle()
+        assertEquals(key, state.layoutInfo.visibleItemsInfo.first { it.index == state.firstVisibleItemIndex }.key)
+        assertEquals(offset, state.firstVisibleItemScrollOffset)
+        compose.runOnIdle { controller.scrollToBottom() }
+        compose.waitUntil(20_000) { controller.request == null }
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("stream_tail_marker", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("stream_tail_marker", substring = true).assertExists()
+    }
+
+    @Test fun streamingReplyFollowsTailThroughFinalLayout() {
+        val node = UIMessage.assistant(text).toMessageNode()
+        mountList(listOf(node), initiallyLoading = true)
+        val appended = text + "\n\nfinal_follow_marker " + "追加内容。".repeat(60)
+        compose.runOnIdle { conversation.value = conversation.value.copy(messageNodes = listOf(
+            node.copy(messages = listOf(node.currentMessage.copy(parts = listOf(UIMessagePart.Text(appended))))))) }
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("final_follow_marker", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { loading.value = false }
+        compose.waitForIdle()
+        compose.waitUntil(20_000) { !state.canScrollForward &&
+            state.layoutInfo.visibleItemsInfo.lastOrNull()?.key == "ScrollBottomKey" }
+    }
+
+    @Test fun firstSplitWaitsUntilReaderLeavesWholeMessageInterior() {
+        val short = text.take(6500)
+        val node = UIMessage.assistant(short).toMessageNode()
+        mountList(listOf(node), initiallyLoading = true, expectSplit = false)
+        compose.runOnIdle { controller.scrollToMessage(node.id) }
+        compose.waitUntil(10_000) { controller.request == null && state.firstVisibleItemIndex == 0 }
+        compose.waitForIdle()
+        scroll(0, 180)
+        val appended = text + "\n\npromotion_marker"
+        compose.runOnIdle { conversation.value = conversation.value.copy(messageNodes = listOf(
+            node.copy(messages = listOf(node.currentMessage.copy(parts = listOf(UIMessagePart.Text(appended))))))) }
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("promotion_marker", substring = true).fetchSemanticsNodes().isNotEmpty() }
         compose.runOnIdle { loading.value = false }
         compose.waitForIdle()
         assertTrue(state.layoutInfo.totalItemsCount < 10)
-        restoration.emulateSavedInstanceStateRestore()
-        compose.waitUntil(20_000) { state.layoutInfo.totalItemsCount > 20 }
+        assertEquals(180, state.firstVisibleItemScrollOffset)
+        compose.runOnIdle { controller.scrollToBottom() }
+        compose.waitUntil(20_000) { state.layoutInfo.totalItemsCount > 20 && !state.canScrollForward }
     }
 
     @Test fun quoteJumpAndBranchCopyUseCompleteLogicalMessage() {

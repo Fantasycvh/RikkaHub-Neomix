@@ -58,6 +58,8 @@ fun BoxScope.ScrollJumperBar(
     itemLabel: String? = null,
     onPrevious: (() -> Unit)? = null,
     onNext: (() -> Unit)? = null,
+    onTop: (() -> Unit)? = null,
+    onBottom: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = show,
@@ -97,7 +99,7 @@ fun BoxScope.ScrollJumperBar(
             JumperButton(
                 icon = HugeIcons.ArrowUpDouble,
                 contentDescription = stringResource(R.string.chat_page_scroll_to_top),
-                onClick = { scope.launch { state.scrollToItem(0) } },
+                onClick = { if (onTop != null) onTop() else scope.launch { state.scrollToItem(0) } },
                 color = chipColor,
                 contentColor = chipContentColor,
             )
@@ -131,6 +133,7 @@ fun BoxScope.ScrollJumperBar(
                 icon = HugeIcons.ArrowDownDouble,
                 contentDescription = stringResource(R.string.chat_page_scroll_to_bottom),
                 onClick = {
+                    if (onBottom != null) { onBottom(); return@JumperButton }
                     scope.launch {
                         state.scrollToItem(state.layoutInfo.totalItemsCount - 1)
                     }

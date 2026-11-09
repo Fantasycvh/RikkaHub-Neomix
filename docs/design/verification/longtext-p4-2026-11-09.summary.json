@@ -1,0 +1,138 @@
+{
+  "date": "2026-11-09",
+  "base_commit": "d5ac31b45",
+  "git_status_at_verification": {
+    "committed": false,
+    "pushed": false
+  },
+  "scope": "Debug mixed 50000 offline stream replay, 3 repetitions per side; not Release FPS",
+  "final_before": "p4_before_stream50k_20261109",
+  "final_after": "p4_after_controls_stream50k_20261109",
+  "native_tests": {
+    "tests": 21,
+    "failures": 0
+  },
+  "cohorts": {
+    "p4_before_stream50k_20261109": {
+      "path": "_measure/longtext/p4_before_stream50k_20261109",
+      "application_sha256": "ed1e132826d946195871e60819f0c5b5b1ea2acdea9a587b65b8d56e64a75c86",
+      "tests_sha256": "704c91fc4839138c5540e550f9dd517070546ea36ce9dc34aa82891b1735bd68",
+      "target_artifact_origin": "F:\\build\\projects\\RikkaHub-Neomix\\_measure\\longtext\\p3_after_packed_matrix_20261109",
+      "metrics": [
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "stream",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 387,
+          "frame_p95_ms": 146.075096,
+          "frame_p99_ms": 257.370546,
+          "layout_p95_ms": 0.046093,
+          "deadline_miss_percent": 7.751937984496124,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 221.0897979736328,
+          "pss_before_mib": 552.2431640625,
+          "pss_after_mib": 507.490234375,
+          "gc_count_delta": 1,
+          "allocated_bytes_delta": 114761824,
+          "stream_update_interval_p95_ms": 306.41599,
+          "callback_drops": 0
+        }
+      ]
+    },
+    "p4_after_controls_stream50k_20261109": {
+      "path": "_measure/longtext/p4_after_controls_stream50k_20261109",
+      "application_sha256": "e9028f4ce4b5b21dc1550c57e9096e5a4c5fb4b023f551c636408b16af58e809",
+      "tests_sha256": "aa682d92b848fd3105e281c466355bd645c0d18264d29562a89eb7457bffabfe",
+      "target_artifact_origin": null,
+      "metrics": [
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "stream",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 151,
+          "frame_p95_ms": 26.387636,
+          "frame_p99_ms": 47.738034,
+          "layout_p95_ms": 0.086198,
+          "deadline_miss_percent": 5.960264900662252,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 202.2226104736328,
+          "pss_before_mib": 552.6845703125,
+          "pss_after_mib": 519.7158203125,
+          "gc_count_delta": 1,
+          "allocated_bytes_delta": 68046944,
+          "stream_update_interval_p95_ms": 84.868855,
+          "callback_drops": 0
+        }
+      ]
+    },
+    "p4_after_stream50k_20261109": {
+      "path": "_measure/longtext/p4_after_stream50k_20261109",
+      "application_sha256": "80dbaa81182b7402a9e87fe454d62a00a305a10fab55ce4b163eea5e7d8e83dc",
+      "tests_sha256": "aa682d92b848fd3105e281c466355bd645c0d18264d29562a89eb7457bffabfe",
+      "target_artifact_origin": null,
+      "metrics": [
+        {
+          "kind": "mixed",
+          "length": 50000,
+          "scenario": "stream",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 152,
+          "frame_p95_ms": 22.44361,
+          "frame_p99_ms": 40.512704,
+          "layout_p95_ms": 0.076354,
+          "deadline_miss_percent": 3.289473684210526,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 198.3437042236328,
+          "pss_before_mib": 548.4013671875,
+          "pss_after_mib": 569.4755859375,
+          "gc_count_delta": 1,
+          "allocated_bytes_delta": 67756128,
+          "stream_update_interval_p95_ms": 69.441458,
+          "callback_drops": 0
+        }
+      ]
+    }
+  },
+  "jvm": {
+    "app": {
+      "tests": 3250,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2
+    },
+    "bettertext-markdown": {
+      "tests": 44,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "source_sha256": {
+    "app/src/androidTest/java/app/androidrik/rikkahub/ui/pages/chat/ChatLazyRenderingInstrumentedTest.kt": "8801d9ce5296b9c41ba13d5df2157d9cbb32f5933fc963cf3b1f7191971de022",
+    "app/src/main/java/app/androidrik/rikkahub/data/datastore/DisplaySettings.kt": "b9fd39c32bcedc5d571ef0fc0fbe8ca07cebd341ae5318d5d77a02dae5afc29a",
+    "app/src/main/java/app/androidrik/rikkahub/ui/components/message/ChatMessage.kt": "1528c6626d6bc7c56b85f97a70d5b226cb3260da45088b2f80addb3dbff0bee7",
+    "app/src/main/java/app/androidrik/rikkahub/ui/components/ui/ScrollJumperBar.kt": "abd92fa1b32bbea636f34acfbd1f5f641e247a308bce9527e9516be9142547ac",
+    "app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ChatList.kt": "ad0fd1f0be54a6af84185171ed87af36693e65a421402be04236fc6eff1cc604",
+    "app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ChatRenderIndex.kt": "2da9e926ff99927287e2f193bb6159928d677789c29b170a1b4ce7e7feef512d",
+    "app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/SettingPreferencesGeneralPage.kt": "07f3067d1d14632834fd5ed6c91290257cad284f7f838903ad1c7ba4bc9e2504",
+    "app/src/test/java/app/androidrik/rikkahub/ui/pages/chat/ChatRenderIndexTest.kt": "15152f314b7c110f336dffd040f275d29e61ff8dd8f98c2169b116fa2be198f8"
+  },
+  "ime": {
+    "A": 0,
+    "A_prime": 0,
+    "existing_B_warnings": 4,
+    "existing_C_warnings": 32
+  },
+  "original_aar_parser_snapshots_identical": 40
+}

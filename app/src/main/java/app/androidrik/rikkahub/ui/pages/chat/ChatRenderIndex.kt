@@ -2,7 +2,11 @@ package app.androidrik.rikkahub.ui.pages.chat
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
@@ -24,6 +28,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.conflate
 import me.rerere.bettertext.markdown.MarkdownRenderDocument
 import me.rerere.bettertext.markdown.MarkdownRenderRange
 import me.rerere.bettertext.markdown.MarkdownRenderUnit
@@ -35,16 +40,22 @@ import kotlin.uuid.Uuid
 internal const val LONG_MESSAGE_MIN_CHARS = 8_000
 private const val MIN_LAZY_UNITS = 4
 
+@Suppress("UNUSED_PARAMETER") // Layout/loading constrain slicing, not background preparation.
 internal fun canPrepareStaticMessage(message: UIMessage, appearance: ChatAppearance, enabled: Boolean, loading: Boolean): Boolean {
-    if (!enabled || (loading && message.role == MessageRole.ASSISTANT) || appearance.layout.rendererId != "builtin.standard" || message.isContextCheckpoint) return false
+    if (!enabled || message.isContextCheckpoint) return false
     if (message.role !in setOf(MessageRole.USER, MessageRole.ASSISTANT)) return false
     if (message.annotations.any { it is UIMessageAnnotation.SubagentNotice || it is UIMessageAnnotation.ExternalNotice }) return false
-    val bubble = if (message.role == MessageRole.USER) appearance.userBubble else appearance.assistantBubble
-    if (bubble.visible && bubble.opacity > 0f && bubble.material != BubbleMaterial.SOLID) return false
     return message.parts.any { it is UIMessagePart.Text && it.text.length >= LONG_MESSAGE_MIN_CHARS }
 }
 
-internal data class StaticMessageInput(val nodeId: Uuid, val message: UIMessage, val assistant: Assistant?, val folding: Boolean, val notice: String)
+internal fun canSliceMessage(message: UIMessage, appearance: ChatAppearance): Boolean {
+    val bubble = if (message.role == MessageRole.USER) appearance.userBubble else appearance.assistantBubble
+    return appearance.layout.rendererId == "builtin.standard" &&
+        (!bubble.visible || bubble.opacity <= 0f || bubble.material == BubbleMaterial.SOLID)
+}
+
+internal data class StaticMessageInput(val nodeId: Uuid, val message: UIMessage, val assistant: Assistant?, val folding: Boolean, val notice: String,
+    val streaming: Boolean = false, val retainHostWhilePreparing: Boolean = streaming)
 internal data class StaticTextGroup(val messageId: Uuid, val partIndex: Int, val epoch: Long)
 internal data class StaticMessageDocument(
     val input: StaticMessageInput,
@@ -81,17 +92,37 @@ internal fun packStaticUnits(units: List<MarkdownRenderUnit>): List<MarkdownRend
 }
 
 /** Called off the UI thread. No message copies, persistence changes or per-slice reparsing. */
-internal suspend fun prepareStaticMessage(input: StaticMessageInput, epoch: Long): StaticMessageDocument {
+internal suspend fun prepareStaticMessage(input: StaticMessageInput, epoch: Long,
+    parsers: MutableMap<Int, MarkdownStreamParser> = mutableMapOf()): StaticMessageDocument {
     val markdown = linkedMapOf<Int, MarkdownRenderDocument>()
     input.message.parts.forEachIndexed { index, part ->
         coroutineContext.ensureActive()
         if (part is UIMessagePart.Text && part.text.length >= LONG_MESSAGE_MIN_CHARS) {
             val source = messageMarkdownText(part.text, input.notice, input.assistant, input.message.role)
-            markdown[index] = MarkdownStreamParser().parseRenderDocument(normalizeMarkdownForDisplay(source))
+            markdown[index] = parsers.getOrPut(index) { MarkdownStreamParser() }
+                .parseRenderDocument(normalizeMarkdownForDisplay(source), streaming = input.streaming)
         }
     }
     return StaticMessageDocument(input, epoch,
         messageDisplayDocument(input.message.id, input.message.parts, input.message.role, input.folding), markdown)
+}
+
+/** Safe to keep the preceding display while an append is parsed. Structural edits never borrow it. */
+internal fun StaticMessageInput.canRetain(previous: StaticMessageInput): Boolean =
+    nodeId == previous.nodeId && message.id == previous.message.id && message.role == previous.message.role &&
+        assistant == previous.assistant && folding == previous.folding && notice == previous.notice &&
+        message.parts.size == previous.message.parts.size && message.parts.zip(previous.message.parts).all { (next, old) ->
+            if (next is UIMessagePart.Text && old is UIMessagePart.Text) next.text.startsWith(old.text) else next == old
+        }
+
+/** Owned exclusively by one serial background collector; parsers are never shared across jobs. */
+internal class MessageDocumentSession(private val epoch: Long) {
+    private val parsers = mutableMapOf<Int, MarkdownStreamParser>()
+    private var previous: StaticMessageDocument? = null
+    suspend fun prepare(input: StaticMessageInput): StaticMessageDocument {
+        previous?.takeIf { it.input == input }?.let { return it }
+        return prepareStaticMessage(input, epoch, parsers).also { previous = it }
+    }
 }
 
 internal data class StaticDocuments(val inputs: List<StaticMessageInput>, val ready: Map<Uuid, StaticMessageDocument>, val failed: Set<Uuid>) {
@@ -109,36 +140,42 @@ internal fun rememberStaticDocuments(
     folding: Boolean,
     notice: String,
 ): StaticDocuments {
-    // P3 is static-only: don't replace a reply the user has been reading while it streamed with a
-    // short preparation placeholder when generation stops. P4 owns that in-session transition.
     val streamed = remember(conversationId) { mutableSetOf<Uuid>() }
     if (loading) nodes.lastOrNull()?.currentMessage?.takeIf { it.role == MessageRole.ASSISTANT }?.let { streamed += it.id }
     val inputs = remember(nodes, assistant, appearance, enabled, loading, folding, notice) {
         nodes.mapIndexedNotNull { index, node ->
-            node.currentMessage.takeIf { it.id !in streamed && canPrepareStaticMessage(it, appearance, enabled, loading && index == nodes.lastIndex) }
-                ?.let { StaticMessageInput(node.id, it, assistant, folding, notice) }
+            node.currentMessage.takeIf { canPrepareStaticMessage(it, appearance, enabled, loading && index == nodes.lastIndex) }
+                ?.let { StaticMessageInput(node.id, it, assistant, folding, notice,
+                    streaming = loading && index == nodes.lastIndex && it.role == MessageRole.ASSISTANT,
+                    retainHostWhilePreparing = it.id in streamed) }
         }
     }
     val sequence = remember(conversationId) { AtomicLong() }
-    val result by produceState<Pair<Map<Uuid, StaticMessageDocument>, Set<Uuid>>>(emptyMap<Uuid, StaticMessageDocument>() to emptySet(),
-        conversationId, inputs) {
-        val previous = value.first
-        value = withContext(Dispatchers.Default) {
+    val latestInputs by rememberUpdatedState(inputs)
+    var result by remember(conversationId) { mutableStateOf(emptyMap<Uuid, StaticMessageDocument>() to emptySet<Uuid>()) }
+    LaunchedEffect(conversationId) {
+        val sessions = mutableMapOf<Uuid, Pair<StaticMessageInput, MessageDocumentSession>>()
+        snapshotFlow { latestInputs }.conflate().collect { snapshot ->
+        result = withContext(Dispatchers.Default) {
+            sessions.keys.retainAll(snapshot.map { it.nodeId }.toSet())
             val prepared = linkedMapOf<Uuid, StaticMessageDocument>()
             val failed = mutableSetOf<Uuid>()
-            for (input in inputs) {
+            for (input in snapshot) {
                 ensureActive()
-                val old = previous[input.nodeId]?.takeIf { it.input == input }
-                if (old != null) prepared[input.nodeId] = old
-                else try { prepared[input.nodeId] = prepareStaticMessage(input, sequence.incrementAndGet()) }
+                val session = sessions[input.nodeId]?.takeIf { input.canRetain(it.first) }?.second
+                    ?: MessageDocumentSession(sequence.incrementAndGet())
+                sessions[input.nodeId] = input to session
+                try { prepared[input.nodeId] = session.prepare(input) }
                 catch (e: CancellationException) { throw e }
-                catch (_: Exception) { failed += input.nodeId } // Preserve the complete legacy path on failure.
+                catch (_: Exception) { failed += input.nodeId; sessions.remove(input.nodeId) }
             }
             prepared to failed
         }
+        }
     }
     val valid = remember(inputs, result) {
-        inputs.mapNotNull { input -> result.first[input.nodeId]?.takeIf { it.input == input }?.let { input.nodeId to it } }.toMap()
+        inputs.mapNotNull { input -> result.first[input.nodeId]?.takeIf { input.canRetain(it.input) }
+            ?.let { input.nodeId to it } }.toMap()
     }
     return StaticDocuments(inputs, valid, result.second.intersect(inputs.map { it.nodeId }.toSet()))
 }
@@ -207,18 +244,21 @@ internal fun buildChatRenderIndex(
     appearance: ChatAppearance,
     hasCheckpoint: Boolean,
     tailKeys: List<String>,
+    deferredNodes: Set<Uuid> = emptySet(),
 ): ChatRenderIndex {
     val rows = mutableListOf<ChatRenderRow>()
     val pending = documents.pending
     nodes.forEachIndexed { nodeIndex, node ->
         val message = node.currentMessage
         val document = documents.ready[node.id]
-        val lazy = document?.display?.body?.any { it.textDocumentId?.partIndex?.let(document::lazyUnits) != null } == true
+        val lazy = node.id !in deferredNodes && canSliceMessage(message, appearance) &&
+            document?.display?.body?.any { it.textDocumentId?.partIndex?.let(document::lazyUnits) != null } == true
         val boundaryGap = if (nodeIndex > 0 || hasCheckpoint) appearance.layout.listSpacingDp else 0f
         fun add(suffix: String, slice: ChatMessageSlice?, gap: Float, first: Boolean = false) {
             rows += ChatRenderRow(if (first) node.id.toString() else "${node.id}:${message.id}:$suffix", nodeIndex, node.id, message.id, slice, gap, first)
         }
-        if (!lazy && node.id !in pending) {
+        if (!lazy && (node.id !in pending || node.id in deferredNodes ||
+                documents.inputs.any { it.nodeId == node.id && it.retainHostWhilePreparing } || !canSliceMessage(message, appearance))) {
             add("full", document?.let { ChatMessageSlice.Prepared(it.markdown) }, boundaryGap, true)
             return@forEachIndexed
         }
