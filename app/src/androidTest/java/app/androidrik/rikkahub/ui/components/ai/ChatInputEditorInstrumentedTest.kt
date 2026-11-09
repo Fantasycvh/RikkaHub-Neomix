@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.room.Room
@@ -182,6 +183,32 @@ class ChatInputEditorInstrumentedTest {
         compose.onNodeWithTag("chat_fullscreen_done").performClick()
         compose.runOnIdle { assertEquals(expected + "续", state.textContent.text.toString()) }
         compose.waitUntil(10_000) { calls.get() > before }
+    }
+
+    @Test fun segmentedDraftComposesAcrossPagesAndAppliesToCompleteSource() {
+        val original = "正文".repeat(30_000)
+        val state = ChatInputState().apply { setMessageText(original) }
+        mount(state)
+        compose.onNodeWithTag("chat_input_expand").performClick()
+        compose.onNodeWithTag("chat_segmented_open").performClick()
+        nativeEdit { it.setSelection(0, 0); it.setComposingText("组合", 1) }
+        compose.onNodeWithText("下一段").performClick()
+        nativeEdit { it.setSelection(0, 0); it.commitText("第二", 1) }
+        compose.runOnIdle { assertEquals(original, state.textContent.text.toString()) }
+        compose.onNodeWithTag("segmented_apply").performClick()
+        compose.runOnIdle { assertEquals("组合" + original.take(4096) + "第二" + original.drop(4096), state.textContent.text.toString()) }
+    }
+
+    @Test fun cancellingSegmentedDraftKeepsOriginalDocument() {
+        val original = "内容".repeat(14_000)
+        val state = ChatInputState().apply { setMessageText(original) }
+        mount(state)
+        compose.onNodeWithTag("chat_input_expand").performClick()
+        compose.onNodeWithTag("chat_segmented_open").performClick()
+        nativeEdit { it.setComposingText("未应用", 1) }
+        compose.onNodeWithText("取消分段编辑").performClick()
+        compose.runOnIdle { assertEquals(original, state.textContent.text.toString()); assertNull(state.segmentedDraft) }
+        compose.onNodeWithTag("chat_fullscreen_done").performClick()
     }
 
     @Test fun longDocumentMiddleEditSurvivesRoundTrip() {

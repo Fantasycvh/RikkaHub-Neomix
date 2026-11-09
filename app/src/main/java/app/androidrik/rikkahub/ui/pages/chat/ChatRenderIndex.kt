@@ -39,6 +39,19 @@ import kotlin.uuid.Uuid
 
 internal const val LONG_MESSAGE_MIN_CHARS = 8_000
 private const val MIN_LAZY_UNITS = 4
+internal const val LARGE_ATOMIC_BLOCK_CHARS = 24_000
+
+/** Literal display preview only; never parse a truncated Markdown fragment or edit these offsets. */
+internal fun atomicBlockPreview(document: MarkdownRenderDocument, unit: MarkdownRenderUnit): String? {
+    // Measurements show plain StaticLayout paragraphs are already cheap to scroll. Keep their
+    // complete reading flow; the costly code/list/table (and rich inline) atoms use the fallback.
+    val paragraph = unit.blocks.singleOrNull() as? me.rerere.bettertext.markdown.MarkdownBlock.Paragraph
+    if (paragraph != null && paragraph.content.all { it is me.rerere.bettertext.markdown.MarkdownInline.Text }) return null
+    if (unit.sourceRange.end - unit.sourceRange.start <= LARGE_ATOMIC_BLOCK_CHARS) return null
+    var end = (unit.sourceRange.start + 3000).coerceAtMost(unit.sourceRange.end)
+    if (end < document.renderSource.length && document.renderSource[end].isLowSurrogate() && document.renderSource[end - 1].isHighSurrogate()) end--
+    return document.renderSource.substring(unit.sourceRange.start, end)
+}
 
 @Suppress("UNUSED_PARAMETER") // Layout/loading constrain slicing, not background preparation.
 internal fun canPrepareStaticMessage(message: UIMessage, appearance: ChatAppearance, enabled: Boolean, loading: Boolean): Boolean {
@@ -67,7 +80,8 @@ internal data class StaticMessageDocument(
     // atomic; a large unit stands alone. Prepared off-thread along with the document, never per frame.
     private val lazyRows = markdown.mapValues { (_, document) ->
         document.takeIf { it.renderSource.length >= LONG_MESSAGE_MIN_CHARS }?.units
-            ?.filter { it.blocks.isNotEmpty() }?.takeIf { it.size >= MIN_LAZY_UNITS }?.let(::packStaticUnits)
+            ?.filter { it.blocks.isNotEmpty() }?.takeIf { units -> units.size >= MIN_LAZY_UNITS ||
+                units.any { atomicBlockPreview(document, it) != null } }?.let(::packStaticUnits)
     }
     fun lazyUnits(part: Int) = lazyRows[part]
 }
@@ -275,7 +289,8 @@ internal fun buildChatRenderIndex(
             if (partIndex != null && units != null) units.forEachIndexed { index, unit ->
                 val group = StaticTextGroup(message.id, partIndex, document.epoch)
                 add("text:$partIndex:${document.epoch}:${unit.id}", ChatMessageSlice.Markdown(partIndex, unit,
-                    first = index == 0, last = index == units.lastIndex, group = group), if (index == 0) gap else 0f)
+                    first = index == 0, last = index == units.lastIndex, group = group,
+                    preview = atomicBlockPreview(document.markdown.getValue(partIndex), unit)), if (index == 0) gap else 0f)
             } else add("part:${section.key}", ChatMessageSlice.Part(bodyIndex, document.markdown), gap)
         }
         if (message.translation != null && document != null) add("translation", ChatMessageSlice.Translation, appearance.layout.messageGapDp)

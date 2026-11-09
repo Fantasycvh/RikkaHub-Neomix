@@ -98,7 +98,7 @@ class ChatRenderIndexTest {
     }
 
     @Test fun `placeholder does not duplicate parsing in a giant atomic paragraph fallback`() {
-        val long = UIMessage.assistant("文".repeat(50_000)).toMessageNode()
+        val long = UIMessage.assistant("文".repeat(16_000)).toMessageNode()
         val document = prepared(long)
         val pending = buildChatRenderIndex(listOf(long), StaticDocuments(listOf(document.input), emptyMap(), emptySet()),
             appearance, false, listOf("ScrollBottomKey"))
@@ -119,6 +119,26 @@ class ChatRenderIndexTest {
         assertTrue(canPrepareStaticMessage(message, appearance.copy(layout = ChatLayout(rendererId = "builtin.card")), true, false))
         assertFalse(canSliceMessage(message, appearance.copy(layout = ChatLayout(rendererId = "builtin.card"))))
         assertFalse(canSliceMessage(message, appearance.copy(assistantBubble = ChatBubble(material = BubbleMaterial.GRADIENT))))
+    }
+
+    @Test fun `giant atoms preview literal source without changing parsed nodes or original data`() {
+        for (source in listOf("文".repeat(100_000), "```kotlin\n" + "val a = 1\n".repeat(5000) + "```",
+            "- item\n".repeat(5000), "|a|b|\n|---|---|\n" + "|one|two|\n".repeat(5000))) {
+            val node = UIMessage.assistant(source).toMessageNode()
+            val document = prepared(node)
+            val result = index(listOf(node), document)
+            val slices = result.rows.mapNotNull { it.slice as? ChatMessageSlice.Markdown }
+            if (source == "文".repeat(100_000)) {
+                assertTrue(result.rows.single().slice is ChatMessageSlice.Prepared)
+                assertEquals(source, document.markdown.getValue(0).document.source)
+                continue
+            }
+            assertTrue(slices.any { it.preview != null })
+            assertTrue(slices.filter { it.preview != null }.all { it.preview!!.length <= 3000 })
+            assertEquals(source, document.markdown.getValue(0).document.source)
+            assertEquals(document.markdown.getValue(0).document.blocks, slices.flatMap { it.unit.blocks })
+            assertEquals(source, node.currentMessage.toText())
+        }
     }
 
     @Test fun `reading whole message can defer promotion without dropping prepared content`() {

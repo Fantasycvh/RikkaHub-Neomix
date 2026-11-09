@@ -17,5 +17,6 @@ sealed interface ChatMessageSlice {
         val first: Boolean,
         val last: Boolean,
         val group: Any,
+        val preview: String? = null,
     ) : ChatMessageSlice
 }

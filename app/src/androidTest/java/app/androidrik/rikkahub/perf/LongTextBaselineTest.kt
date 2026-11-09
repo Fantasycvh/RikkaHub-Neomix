@@ -122,6 +122,8 @@ class LongTextBaselineTest {
             displaySetting = DisplaySetting(enableGenerationSizeAnimation = animation),
         )
         val input = ChatInputState().apply { setMessageText(text) }
+        init { if (mode == "edit_segmented") input.segmentedDraft = app.androidrik.rikkahub.ui.components.ai.SegmentedEditSession(input.textContent) }
+        val editState get() = input.segmentedDraft?.let { it.pages[it.index] } ?: input.textContent
         val list = LazyListState()
         val haze = HazeState()
         val glass = HazeState()
@@ -153,7 +155,7 @@ class LongTextBaselineTest {
         val iterations = arguments.getString("iterations", "3").toInt().also { require(it in 1..10) }
         val animation = arguments.getString("animation", "true").toBooleanStrict()
         require(kinds.all { it in LongTextFixtures.kinds } && sizes.all { it in LongTextFixtures.sizes })
-        require(modes.all { it in setOf("scroll", "stream", "edit_inline", "edit_full", "edit_handoff_full") })
+        require(modes.all { it in setOf("scroll", "stream", "edit_inline", "edit_full", "edit_handoff_full", "edit_segmented") })
         ActivityScenario.launch<SketchTestHostActivity>(android.content.Intent(context, SketchTestHostActivity::class.java)).use { scenario ->
             scenario.onActivity {
                 activity = it
@@ -232,16 +234,16 @@ class LongTextBaselineTest {
                                 assertEquals(text, current.conversation.currentMessages.last().toText())
                             }
                             else -> repeat(18) { index ->
-                                val length = current.input.textContent.text.length
+                                val length = current.editState.text.length
                                 val position = when (index % 3) { 0 -> 0; 1 -> length / 2; else -> length }
                                 selections.put(awaitDraw(window) {
                                     instrumentation.runOnMainSync { check(connection!!.setSelection(position, position)) }
                                 })
-                                assertEquals(position, current.input.textContent.selection.start)
+                                assertEquals(position, current.editState.selection.start)
                                 latencies.put(awaitDraw(window) {
                                     instrumentation.runOnMainSync { check(connection!!.commitText("x", 1)) }
                                 })
-                                assertEquals(length + 1, current.input.textContent.text.length)
+                                assertEquals(length + 1, current.editState.text.length)
                                 peakHeap = maxOf(peakHeap, heap())
                             }
                         }
@@ -254,6 +256,8 @@ class LongTextBaselineTest {
                         .put("iteration", iteration).put("animation", animation)
                         .put("fixture_sha256", LongTextFixtures.sha256(text))
                         .put("scope", "production_components_debug_local_replay")
+                        .put("active_editor_length_before", if (mode.startsWith("edit")) current.editState.text.length - 18 else JSONObject.NULL)
+                        .put("editor_page_count", current.input.segmentedDraft?.pages?.size ?: 1)
                         .put("scene_switch_to_host_draw_ms", openMs)
                         .put("static_preparation_wait_ms", preparationWaitMs)
                         .put("stream_update_at_ns", JSONArray(streamTimes.toList()))
@@ -294,7 +298,7 @@ class LongTextBaselineTest {
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
                 when (current.mode) {
-                    "edit_full" -> FullScreenEditor(current.input) {}
+                    "edit_full", "edit_segmented" -> FullScreenEditor(current.input) {}
                     "edit_inline", "edit_handoff_full" -> ChatInput(
                         state = current.input, loading = false, settings = current.settings,
                         hazeState = current.haze, enableSearch = false, onToggleSearch = {},
@@ -347,7 +351,7 @@ class LongTextBaselineTest {
     }
 
     private fun currentWindow(mode: String): Window {
-        if (mode !in setOf("edit_full", "edit_handoff_full")) return requireNotNull(activity).window
+        if (mode !in setOf("edit_full", "edit_handoff_full", "edit_segmented")) return requireNotNull(activity).window
         fun find(view: View): Window? {
             if (view is DialogWindowProvider) return view.window
             if (view is ViewGroup) for (index in 0 until view.childCount) find(view.getChildAt(index))?.let { return it }

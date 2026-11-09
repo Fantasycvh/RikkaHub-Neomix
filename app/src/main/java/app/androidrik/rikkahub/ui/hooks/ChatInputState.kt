@@ -12,6 +12,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import kotlin.uuid.Uuid
 
 class ChatInputState {
+    var segmentedDraft: app.androidrik.rikkahub.ui.components.ai.SegmentedEditSession? = null
     val textContent = TextFieldState()
     var messageContent by mutableStateOf(listOf<UIMessagePart>())
     var editingMessage by mutableStateOf<Uuid?>(null)
@@ -48,6 +49,7 @@ class ChatInputState {
     private var replacedAttachments: Map<UIMessagePart, UIMessagePart> = emptyMap()
 
     fun clearInput() {
+        segmentedDraft = null
         textContent.setTextAndPlaceCursorAtEnd("")
         messageContent = emptyList()
         editingMessage = null
@@ -88,6 +90,7 @@ class ChatInputState {
         val text = (resolvedIndex.takeIf { it >= 0 }?.let { contents[it] } as? UIMessagePart.Text)?.text ?: ""
         // Equal text may skip the buffer update, but must not carry undo across editing targets.
         if (editingMessage != loadedEditingMessage || resolvedIndex.takeIf { it >= 0 } != editingTextIndex) {
+            segmentedDraft = null
             textContent.undoState.clearHistory()
         }
         setMessageText(text)

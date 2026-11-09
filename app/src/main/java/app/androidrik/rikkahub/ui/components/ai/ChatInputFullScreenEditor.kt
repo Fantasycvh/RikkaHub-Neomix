@@ -25,6 +25,10 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +48,12 @@ internal fun FullScreenEditor(
     scrollState: ScrollState = rememberScrollState(),
     onDone: () -> Unit,
 ) {
+    var segmented by remember(state) { mutableStateOf(state.segmentedDraft != null) }
+    val offerSegmented by remember(state) { derivedStateOf { state.textContent.text.length >= 24_000 } }
+    if (segmented) {
+        SegmentedTextEditor(state, onDone = onDone, onCancel = { state.segmentedDraft = null; segmented = false })
+        return
+    }
     val focusRequester = remember { FocusRequester() }
     BasicAlertDialog(
         onDismissRequest = {
@@ -74,6 +84,8 @@ internal fun FullScreenEditor(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Row {
+                        if (offerSegmented) TextButton(onClick = { segmented = true },
+                            modifier = Modifier.testTag("chat_segmented_open")) { Text("分段编辑") }
                         TextButton(
                             modifier = Modifier.testTag("chat_fullscreen_done"),
                             onClick = {

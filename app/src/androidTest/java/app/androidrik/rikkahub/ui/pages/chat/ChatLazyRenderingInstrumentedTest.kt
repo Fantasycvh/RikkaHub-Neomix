@@ -255,6 +255,30 @@ class ChatLazyRenderingInstrumentedTest {
         compose.waitUntil(20_000) { state.layoutInfo.totalItemsCount > 20 && !state.canScrollForward }
     }
 
+    @Test fun visibleStreamingAtomDoesNotCollapseWhenItCrossesPreviewThreshold() {
+        val source = text + "\n\n```text\n" + "文".repeat(20_000)
+        val node = UIMessage.assistant(source).toMessageNode()
+        mountList(listOf(node), initiallyLoading = true)
+        compose.runOnIdle { controller.scrollToBottom() }
+        compose.waitUntil(20_000) { !state.canScrollForward }
+        compose.runOnIdle { conversation.value = conversation.value.copy(messageNodes = listOf(
+            node.copy(messages = listOf(node.currentMessage.copy(parts = listOf(UIMessagePart.Text(source + "文".repeat(10_000)))))))) }
+        compose.runOnIdle { loading.value = false }
+        compose.waitForIdle()
+        compose.onNodeWithText("超长内容已折叠").assertDoesNotExist()
+    }
+
+    @Test fun giantBlockPreviewOpensOriginalAndCopiesAllOffscreenContent() {
+        val source = "```text\n" + "原文".repeat(50_000) + "\n```"
+        val node = UIMessage.assistant(source).toMessageNode()
+        mountList(listOf(node), expectSplit = false)
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("超长内容已折叠").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("查看完整原文").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText(context.getString(R.string.copy_all)).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText(context.getString(R.string.copy_all)).performClick()
+        awaitClipboard(source)
+    }
+
     @Test fun quoteJumpAndBranchCopyUseCompleteLogicalMessage() {
         val original = UIMessage.assistant(text)
         val alternate = UIMessage.assistant(text.replace("paragraph_", "alternate_"))

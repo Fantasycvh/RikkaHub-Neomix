@@ -1,0 +1,390 @@
+{
+  "date": "2026-11-09",
+  "base_commit": "2457fb826",
+  "git_status_at_verification": {
+    "committed": false,
+    "pushed": false
+  },
+  "native": {
+    "tests": 25,
+    "failures": 0
+  },
+  "jvm": {
+    "app": {
+      "tests": 3262,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 2
+    },
+    "bettertext-markdown": {
+      "tests": 44,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "cohorts": {
+    "p5_head_atoms100k_20261109": {
+      "path": "_measure/longtext/p5_head_atoms100k_20261109",
+      "application_sha256": "61a71eef4b4b1726f4fd64d86a284f26e7f5b27b79c44b28f5217cb7887d96a2",
+      "tests_sha256": "b68e46ce242f38fbd8ce2ed106e48881f0f7ecb13b6563acb4cdecb349de773b",
+      "rows": 12,
+      "metrics": [
+        {
+          "kind": "code",
+          "length": 100000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 134,
+          "frame_p95_ms": 30.38857,
+          "frame_p99_ms": 38.756636,
+          "layout_p95_ms": 0.109584,
+          "deadline_miss_percent": 6.7164179104477615,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 36.244110107421875,
+          "pss_before_mib": 382.21484375,
+          "pss_after_mib": 384.5625,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 3113008,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "dense",
+          "length": 100000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 132,
+          "frame_p95_ms": 27.0687,
+          "frame_p99_ms": 37.781186,
+          "layout_p95_ms": 0.104948,
+          "deadline_miss_percent": 9.448818897637794,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 25.712860107421875,
+          "pss_before_mib": 361.8203125,
+          "pss_after_mib": 362.3701171875,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2916400,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "list",
+          "length": 100000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 128,
+          "frame_p95_ms": 33.052972,
+          "frame_p99_ms": 42.262033,
+          "layout_p95_ms": 0.081823,
+          "deadline_miss_percent": 17.96875,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 76.89376831054688,
+          "pss_before_mib": 418.4619140625,
+          "pss_after_mib": 422.857421875,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2691120,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "table",
+          "length": 100000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 121,
+          "frame_p95_ms": 58.222068,
+          "frame_p99_ms": 67.041167,
+          "layout_p95_ms": 0.05625,
+          "deadline_miss_percent": 24.390243902439025,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 187.6514434814453,
+          "pss_before_mib": 543.419921875,
+          "pss_after_mib": 540.443359375,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2822240,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        }
+      ],
+      "active_editors": []
+    },
+    "p5_complete_atoms100k_20261109": {
+      "path": "_measure/longtext/p5_complete_atoms100k_20261109",
+      "application_sha256": "1bbfdc662aab33fa5f41a697f882226e8ec6dec052c383a5ed58b9581e686526",
+      "tests_sha256": "7c2465d2ffffa6d2d6ce711c7460b775bd6d849a2ed76a9a443dd5bfa63f3a6c",
+      "rows": 12,
+      "metrics": [
+        {
+          "kind": "code",
+          "length": 100000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 131,
+          "frame_p95_ms": 29.033107,
+          "frame_p99_ms": 57.534707,
+          "layout_p95_ms": 0.093438,
+          "deadline_miss_percent": 6.299212598425197,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 27.29498291015625,
+          "pss_before_mib": 364.7041015625,
+          "pss_after_mib": 367.806640625,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 3256368,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "dense",
+          "length": 100000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 129,
+          "frame_p95_ms": 23.389273,
+          "frame_p99_ms": 34.868942,
+          "layout_p95_ms": 0.107031,
+          "deadline_miss_percent": 13.178294573643411,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 25.65045166015625,
+          "pss_before_mib": 361.2255859375,
+          "pss_after_mib": 361.9560546875,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2719792,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "list",
+          "length": 100000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 131,
+          "frame_p95_ms": 28.830587,
+          "frame_p99_ms": 43.146083,
+          "layout_p95_ms": 0.095469,
+          "deadline_miss_percent": 6.7669172932330826,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 31.288116455078125,
+          "pss_before_mib": 371.5576171875,
+          "pss_after_mib": 371.0732421875,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 3252272,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "table",
+          "length": 100000,
+          "scenario": "scroll",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 129,
+          "frame_p95_ms": 28.465748,
+          "frame_p99_ms": 42.629416,
+          "layout_p95_ms": 0.103542,
+          "deadline_miss_percent": 7.751937984496124,
+          "commit_to_draw_p95_ms": null,
+          "selection_to_draw_p95_ms": null,
+          "sampled_peak_java_heap_mib": 27.073272705078125,
+          "pss_before_mib": 363.8046875,
+          "pss_after_mib": 367.572265625,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 3047568,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        }
+      ],
+      "active_editors": []
+    },
+    "p5_edit100k_before_20261109": {
+      "path": "_measure/longtext/p5_edit100k_before_20261109",
+      "application_sha256": "61a71eef4b4b1726f4fd64d86a284f26e7f5b27b79c44b28f5217cb7887d96a2",
+      "tests_sha256": "b68e46ce242f38fbd8ce2ed106e48881f0f7ecb13b6563acb4cdecb349de773b",
+      "rows": 3,
+      "metrics": [
+        {
+          "kind": "dense",
+          "length": 100000,
+          "scenario": "edit_handoff_full",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 61,
+          "frame_p95_ms": 119.571427,
+          "frame_p99_ms": 132.552885,
+          "layout_p95_ms": 0.105573,
+          "deadline_miss_percent": 59.01639344262295,
+          "commit_to_draw_p95_ms": 127.045104,
+          "selection_to_draw_p95_ms": 109.885365,
+          "sampled_peak_java_heap_mib": 37.48150634765625,
+          "pss_before_mib": 367.5712890625,
+          "pss_after_mib": 372.03125,
+          "gc_count_delta": 2,
+          "allocated_bytes_delta": 86286480,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        }
+      ],
+      "active_editors": [
+        {
+          "scenario": "edit_handoff_full",
+          "iteration": 0,
+          "active_editor_length_before": null,
+          "editor_page_count": null
+        },
+        {
+          "scenario": "edit_handoff_full",
+          "iteration": 1,
+          "active_editor_length_before": null,
+          "editor_page_count": null
+        },
+        {
+          "scenario": "edit_handoff_full",
+          "iteration": 2,
+          "active_editor_length_before": null,
+          "editor_page_count": null
+        }
+      ]
+    },
+    "p5_complete_edit100k_20261109": {
+      "path": "_measure/longtext/p5_complete_edit100k_20261109",
+      "application_sha256": "1bbfdc662aab33fa5f41a697f882226e8ec6dec052c383a5ed58b9581e686526",
+      "tests_sha256": "7c2465d2ffffa6d2d6ce711c7460b775bd6d849a2ed76a9a443dd5bfa63f3a6c",
+      "rows": 6,
+      "metrics": [
+        {
+          "kind": "dense",
+          "length": 100000,
+          "scenario": "edit_handoff_full",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 59,
+          "frame_p95_ms": 121.093514,
+          "frame_p99_ms": 139.66575,
+          "layout_p95_ms": 0.12276,
+          "deadline_miss_percent": 61.016949152542374,
+          "commit_to_draw_p95_ms": 130.60474,
+          "selection_to_draw_p95_ms": 104.484167,
+          "sampled_peak_java_heap_mib": 37.673583984375,
+          "pss_before_mib": 367.6875,
+          "pss_after_mib": 370.1611328125,
+          "gc_count_delta": 3,
+          "allocated_bytes_delta": 86523952,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        },
+        {
+          "kind": "dense",
+          "length": 100000,
+          "scenario": "edit_segmented",
+          "animation": true,
+          "repetitions": 3,
+          "quality_issues": [],
+          "frame_count": 54,
+          "frame_p95_ms": 12.170529,
+          "frame_p99_ms": 19.222547,
+          "layout_p95_ms": 0.133698,
+          "deadline_miss_percent": 1.8518518518518519,
+          "commit_to_draw_p95_ms": 24.142708,
+          "selection_to_draw_p95_ms": 30.040208,
+          "sampled_peak_java_heap_mib": 29.6820068359375,
+          "pss_before_mib": 370.4970703125,
+          "pss_after_mib": 372.1728515625,
+          "gc_count_delta": 0,
+          "allocated_bytes_delta": 2326576,
+          "stream_update_interval_p95_ms": null,
+          "callback_drops": 0
+        }
+      ],
+      "active_editors": [
+        {
+          "scenario": "edit_handoff_full",
+          "iteration": 0,
+          "active_editor_length_before": 100000,
+          "editor_page_count": 1
+        },
+        {
+          "scenario": "edit_handoff_full",
+          "iteration": 1,
+          "active_editor_length_before": 100000,
+          "editor_page_count": 1
+        },
+        {
+          "scenario": "edit_handoff_full",
+          "iteration": 2,
+          "active_editor_length_before": 100000,
+          "editor_page_count": 1
+        },
+        {
+          "scenario": "edit_segmented",
+          "iteration": 0,
+          "active_editor_length_before": 1696,
+          "editor_page_count": 25
+        },
+        {
+          "scenario": "edit_segmented",
+          "iteration": 1,
+          "active_editor_length_before": 1696,
+          "editor_page_count": 25
+        },
+        {
+          "scenario": "edit_segmented",
+          "iteration": 2,
+          "active_editor_length_before": 1696,
+          "editor_page_count": 25
+        }
+      ]
+    }
+  },
+  "source_sha256": {
+    "app/src/androidTest/java/app/androidrik/rikkahub/perf/LongTextBaselineTest.kt": "b03d97e84df20e7f75f41f75cd6c82f2d447af10f664c39654c47f5a5c7aa020",
+    "app/src/androidTest/java/app/androidrik/rikkahub/ui/components/ai/ChatInputEditorInstrumentedTest.kt": "a20f6da86047a79f8d871d8005183efcd0c99fc853b480be85049d3d5bd0e06b",
+    "app/src/androidTest/java/app/androidrik/rikkahub/ui/pages/chat/ChatLazyRenderingInstrumentedTest.kt": "74d9c937e6d59162d252bc410c4975793f8a6e39e1008037246f0d66041e4e4a",
+    "app/src/main/java/app/androidrik/rikkahub/ui/components/ai/ChatInputFullScreenEditor.kt": "385f0be63ca27955dad72ff8982ab8a0615ef6deebf5dd084bb702a8bcaf060d",
+    "app/src/main/java/app/androidrik/rikkahub/ui/components/ai/SegmentedEditSession.kt": "c9329925825bf87b1f76258b5391e5c98f92650431488ba175d9919b7b9499d7",
+    "app/src/main/java/app/androidrik/rikkahub/ui/components/ai/SegmentedTextEditor.kt": "e8a9f94002e0dff473c7ba0a3b4096a94f72e151874548b2e70b9a3b758ed7f2",
+    "app/src/main/java/app/androidrik/rikkahub/ui/components/message/ChatMessage.kt": "6bfcb8d59b67af22148b82b35ee71d1eb9e05a4770518bfed6a1ce43b2499c8c",
+    "app/src/main/java/app/androidrik/rikkahub/ui/components/message/ChatMessageSlice.kt": "066ab34c0af4c8334319b48e40020871fa2c66333350000ae15a63f894a08521",
+    "app/src/main/java/app/androidrik/rikkahub/ui/hooks/ChatInputState.kt": "4d5fb513b77589340427d2c9db692a1eb90b35269ebb1b0620840cc48e36b804",
+    "app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ChatRenderIndex.kt": "98b4d9584267a5ad5dbcb5fe245f2e5a7c59e537352a8239612acd4da93ebc1c",
+    "app/src/test/java/app/androidrik/rikkahub/ui/components/ai/SegmentedEditSessionTest.kt": "cccbba140a5202f16aa1aecb8f05fe61954029e9c3038e8df12834c8a8c00711",
+    "app/src/test/java/app/androidrik/rikkahub/ui/pages/chat/ChatRenderIndexTest.kt": "13a406cc46fddfe3c3787bfa69b2a4dd47a1734a2364df1ed08f754ac3d384b9"
+  },
+  "ime": {
+    "A": 0,
+    "A_prime": 0,
+    "existing_B_warnings": 4,
+    "existing_C_warnings": 32
+  },
+  "original_aar_parser_cases_identical": 40,
+  "explorations_not_pooled": [
+    "p5_before_atoms100k_20261109 (older P4 app, excludes later bubble commits)",
+    "p5_after_atoms100k_20261109 (initial folded plain paragraphs)",
+    "p5_segmented100k_20261109 (initial editor probe)",
+    "p5_final_atoms100k_20261109 (before plain paragraph exemption)",
+    "p5_final_edit100k_20261109 (independent preceding editor run)"
+  ]
+}

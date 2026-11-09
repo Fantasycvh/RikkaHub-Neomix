@@ -294,6 +294,7 @@ fun ChatMessage(
                     loading = loading,
                     model = model,
                     slice = slice,
+                    onReadFullText = { showSelectCopySheet = true },
                     onToolApproval = onToolApproval,
                     onToolAnswer = onToolAnswer,
                     onToolSkip = onToolSkip,
@@ -423,6 +424,7 @@ private fun MessageTextContent(
     onUserMessageClick: (() -> Unit)?,
     markdownSlice: ChatMessageSlice.Markdown? = null,
     prepared: MarkdownRenderDocument? = null,
+    onReadFullText: (() -> Unit)? = null,
 ) {
     val settings = LocalSettings.current.displaySetting
     val appearance = rememberChatAppearance(settings)
@@ -444,8 +446,24 @@ private fun MessageTextContent(
                 else if (!loading || settings.enableGenerationSizeAnimation) Modifier.animateContentSize() else Modifier,
             segment = segment,
         ) {
-            MarkdownBlock(documentKey = documentKey, content = content, renderUnit = markdownSlice?.unit,
-                renderDocument = prepared, onClickCitation = onClickCitation, streaming = loading)
+            // Do not collapse an already visible streamed block as it crosses the threshold.
+            var expanded by androidx.compose.runtime.saveable.rememberSaveable(markdownSlice?.unit?.id) {
+                mutableStateOf(markdownSlice?.preview == null)
+            }
+            if (markdownSlice?.preview != null && !expanded) {
+                Column {
+                    Text("超长内容已折叠", style = MaterialTheme.typography.labelLarge)
+                    Row {
+                        TextButton(onClick = { onReadFullText?.invoke() }) { Text("查看完整原文") }
+                        TextButton(onClick = { expanded = true }) { Text("展开完整排版") }
+                    }
+                    me.rerere.bettertext.text.BetterText(markdownSlice.preview, style = LocalTextStyle.current, maxLines = 64)
+                }
+            } else {
+                if (markdownSlice?.preview != null) TextButton(onClick = { expanded = false }) { Text("折叠超长内容") }
+                MarkdownBlock(documentKey = documentKey, content = content, renderUnit = markdownSlice?.unit,
+                    renderDocument = prepared, onClickCitation = onClickCitation, streaming = loading)
+            }
         }
     }
 }
@@ -489,11 +507,12 @@ private fun MessagePartsBlock(
     onUserMessageClick: (() -> Unit)? = null,
     onReasoningEditRequest: ((UIMessagePart.Reasoning) -> Unit)? = null,
     slice: ChatMessageSlice? = null,
+    onReadFullText: (() -> Unit)? = null,
 ) {
     if (slice is ChatMessageSlice.Markdown) {
         MessageTextContent(role = role, content = "", documentKey = null,
             loading = false, onClickCitation = rememberMessageCitationClick(parts),
-            onUserMessageClick = onUserMessageClick, markdownSlice = slice)
+            onUserMessageClick = onUserMessageClick, markdownSlice = slice, onReadFullText = onReadFullText)
         return
     }
     val context = LocalContext.current
