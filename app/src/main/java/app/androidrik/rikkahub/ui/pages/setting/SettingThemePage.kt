@@ -26,7 +26,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -37,12 +37,12 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
@@ -113,6 +113,7 @@ import app.androidrik.rikkahub.data.files.readLimited
 import app.androidrik.rikkahub.ui.theme.textureIds
 import app.androidrik.rikkahub.ui.theme.exportTheme
 import app.androidrik.rikkahub.ui.theme.importTheme
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
@@ -138,6 +139,7 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
     var showImportDialog by remember { mutableStateOf(false) }
     var deletingTheme by remember { mutableStateOf<CustomTheme?>(null) }
     val context = LocalContext.current
+    val skinSpacing = LocalAppSkin.current.skin.spacing
     val textureStore = remember(context) { BubbleTextureStore(context.applicationContext) }
     var pendingThemeArchive by remember { mutableStateOf<ByteArray?>(null) }
     var importedThemeJson by remember { mutableStateOf("") }
@@ -188,8 +190,8 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
                 .fillMaxSize()
                 // 键盘弹起时让列表内容上移，避免遮住覆写槽位输入框
                 .imePadding(),
-            contentPadding = innerPadding + PaddingValues(8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = innerPadding + PaddingValues(skinSpacing.pageDp.dp),
+            verticalArrangement = Arrangement.spacedBy(skinSpacing.sectionDp.dp),
         ) {
             item(key = "theme_texture_archive") {
                 TextButton(enabled = !archiveBusy, onClick = { openThemeArchive.launch(arrayOf("application/zip", "application/octet-stream")) }) {

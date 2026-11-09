@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -68,6 +68,9 @@ import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
 import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.theme.resolveChatAppearance
 import app.androidrik.rikkahub.ui.pages.setting.components.ChatAppearanceSettings
+import app.androidrik.rikkahub.ui.pages.setting.components.AppSkinSettings
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.data.model.AppSkinOverrides
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
 import app.androidrik.rikkahub.utils.plus
@@ -76,7 +79,7 @@ import java.io.File
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.TextButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.ui.text.style.TextOverflow
 import app.androidrik.rikkahub.data.datastore.AvatarFrameStyle
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtStyle
@@ -106,6 +109,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     val scope = rememberCoroutineScope()
     val appearance = rememberChatAppearance(displaySetting)
     val chatFontFamily = rememberChatFontFamily(displaySetting)
+    val skinSpacing = LocalAppSkin.current.skin.spacing
 
     fun updateAppearance(transform: (ChatAppearance) -> ChatAppearance) {
         displaySetting = displaySetting.withChatAppearance(transform(appearance))
@@ -209,9 +213,18 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     ) { contentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding + PaddingValues(8.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            contentPadding = contentPadding + PaddingValues(skinSpacing.pageDp.dp),
+            verticalArrangement = Arrangement.spacedBy(skinSpacing.sectionDp.dp)
         ) {
+            item(key = "app_skin") {
+                AppSkinSettings(displaySetting,
+                    onSelect = { id -> updateDisplaySetting { it.copy(appSkinId = id) } },
+                    onEdit = { before, after -> updateDisplaySetting { current ->
+                        current.copy(appSkinOverrides = current.appSkinOverrides.withEdits(before, after))
+                    } },
+                    onReset = { updateDisplaySetting { it.copy(appSkinId = null, appSkinOverrides = AppSkinOverrides()) } },
+                    onClearOverrides = { updateDisplaySetting { it.copy(appSkinOverrides = AppSkinOverrides()) } })
+            }
             item(key = "chat_appearance") {
                 ChatAppearanceSettings(
                     display = displaySetting,
