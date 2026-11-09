@@ -429,7 +429,7 @@ private fun MessageTextContent(
     val density = LocalDensity.current
     val fontSize = LocalTextStyle.current.fontSize
     val segment = markdownSlice?.let { BubbleSegment(it.first, it.last,
-        if (fontSize.isSp) with(density) { fontSize.toDp() } else 12.dp) }
+        if (fontSize.isSp) with(density) { fontSize.toDp() } else 12.dp, it.group, it.unit.id) }
     val user = role == MessageRole.USER
     val baseColor = if (user) LocalUserBubbleColor.current ?: MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surfaceContainerHigh

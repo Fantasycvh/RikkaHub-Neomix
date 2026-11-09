@@ -57,7 +57,7 @@ internal fun Modifier.bubbleMaterialBackground(bubble: ChatBubble, base: Color, 
     }
 }
 
-private fun patternBrush(pattern: BubblePattern, density: Float, fallback: Color): ShaderBrush {
+internal fun patternBrush(pattern: BubblePattern, density: Float, fallback: Color): ShaderBrush {
     val side = (pattern.spacingDp * density).roundToInt().coerceIn(4, 256)
     val bitmap = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
@@ -81,7 +81,7 @@ private fun patternBrush(pattern: BubblePattern, density: Float, fallback: Color
     return ShaderBrush(ImageShader(bitmap.asImageBitmap(), TileMode.Repeated, TileMode.Repeated))
 }
 
-private fun noiseBrush(noise: BubbleNoise): ShaderBrush {
+internal fun noiseBrush(noise: BubbleNoise): ShaderBrush {
     val random = Random(noise.seed)
     val pixels = IntArray(64 * 64) {
         val value = if (random.nextBoolean()) 0x00FFFFFF else 0

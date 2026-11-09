@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.graphics.Bitmap
 import android.util.Log
 import java.io.ByteArrayOutputStream
@@ -86,6 +88,11 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.Navigator
 import com.dokar.sonner.rememberToasterState
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.components.message.LocalBubbleTextureBitmaps
+import app.androidrik.rikkahub.data.files.BubbleTextureStore
+import app.androidrik.rikkahub.data.model.textureIds
+import app.androidrik.rikkahub.ui.theme.resolveChatAppearance
+import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
 import app.androidrik.rikkahub.ui.components.message.ChatBubbleSurface
 import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.theme.rememberChatFontFamily
@@ -157,8 +164,14 @@ internal suspend fun exportToImage(
         conversationOverride = conversation.exportDisplayConfig,
         global = settings.exportDisplayConfig,
     )
+    val resolvedAppearance = resolveChatAppearance(settings.displaySetting, ChatAppearanceRegistry.shared.presets.value)
+    val textureIds = resolvedAppearance.userBubble.textureIds() + resolvedAppearance.assistantBubble.textureIds()
+    val textureBitmaps = withContext(Dispatchers.IO) {
+        val store = BubbleTextureStore(context)
+        textureIds.mapNotNull { id -> store.load(id)?.let { id to it } }.toMap()
+    }
     val exportContent: @Composable () -> Unit = {
-        CompositionLocalProvider(LocalSettings provides settings) {
+        CompositionLocalProvider(LocalSettings provides settings, LocalBubbleTextureBitmaps provides textureBitmaps) {
             ExportedChatImage(
                 conversation = conversation,
                 messages = messages,

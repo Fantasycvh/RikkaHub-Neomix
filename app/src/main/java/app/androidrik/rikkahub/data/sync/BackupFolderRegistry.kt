@@ -64,6 +64,7 @@ internal val BACKUP_FOLDER_SPECS: List<BackupFolderSpec> = listOf(
     // 2026-11-03（P0）：头像框素材此前既不进备份也不在豁免清单，属「静默不备份」。
     // 它是用户配置的持久图片，体积小，按平铺进备份（旧的备份包没有该目录，恢复时自然跳过）。
     BackupFolderSpec(FileFolders.AVATAR_FRAMES, recursive = false, restoreKind = BackupRestoreKind.FLAT),
+    BackupFolderSpec(FileFolders.BUBBLE_TEXTURES, recursive = false, restoreKind = BackupRestoreKind.FLAT),
     BackupFolderSpec(FileFolders.FONTS, recursive = false, restoreKind = BackupRestoreKind.FONTS),
     BackupFolderSpec(FileFolders.SKILLS, recursive = true, restoreKind = BackupRestoreKind.SKILLS),
     BackupFolderSpec(FileFolders.MEDIA_CREATION, recursive = true, restoreKind = BackupRestoreKind.FLAT),

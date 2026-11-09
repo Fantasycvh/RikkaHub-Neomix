@@ -60,6 +60,7 @@ data class ChatBubble(
     val gradient: AppearanceGradient = AppearanceGradient(),
     val pattern: BubblePattern = BubblePattern(),
     val noise: BubbleNoise = BubbleNoise(),
+    val stack: BubbleStack? = null,
 ) {
     fun normalized(): ChatBubble = copy(
         opacity = opacity.bounded(0f, 1f, 1f),
@@ -71,6 +72,7 @@ data class ChatBubble(
             colorHex = pattern.colorHex?.takeIf { COLOR_HEX.matches(it) },
         ),
         noise = noise.copy(strength = noise.strength.bounded(0f, 1f, 0.12f)),
+        stack = stack?.normalized(),
         geometry = geometry.copy(
             radiusDp = geometry.radiusDp.bounded(0f, 48f, 16f),
             paddingDp = geometry.paddingDp.bounded(0f, 32f, 8f),
@@ -132,6 +134,8 @@ data class ChatAppearanceDetails(
     val userNoise: BubbleNoise = BubbleNoise(),
     val assistantNoise: BubbleNoise = BubbleNoise(),
     val textGradient: AppearanceGradient? = null,
+    val userStack: BubbleStack? = null,
+    val assistantStack: BubbleStack? = null,
 )
 
 /** Legacy configurations need no disk migration and render identically. */
@@ -144,12 +148,14 @@ fun DisplaySetting.toChatAppearance(): ChatAppearance = ChatAppearance(
         chatAppearanceDetails.userBubbleColorHex, chatAppearanceDetails.userGeometry,
         chatAppearanceDetails.userMaterial, chatAppearanceDetails.userGradient,
         chatAppearanceDetails.userPattern, chatAppearanceDetails.userNoise,
+        chatAppearanceDetails.userStack,
     ),
     assistantBubble = ChatBubble(
         showAssistantBubble, chatAppearanceDetails.assistantOpacity ?: bubbleOpacity,
         chatAppearanceDetails.assistantBubbleColorHex, chatAppearanceDetails.assistantGeometry,
         chatAppearanceDetails.assistantMaterial, chatAppearanceDetails.assistantGradient,
         chatAppearanceDetails.assistantPattern, chatAppearanceDetails.assistantNoise,
+        chatAppearanceDetails.assistantStack,
     ),
 ).normalized()
 
@@ -181,6 +187,8 @@ fun DisplaySetting.withChatAppearance(value: ChatAppearance): DisplaySetting {
             userNoise = a.userBubble.noise,
             assistantNoise = a.assistantBubble.noise,
             textGradient = a.typography.gradient,
+            userStack = a.userBubble.stack,
+            assistantStack = a.assistantBubble.stack,
         ),
     )
 }

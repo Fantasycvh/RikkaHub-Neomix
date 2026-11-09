@@ -15,6 +15,8 @@ import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import java.io.File
 import app.androidrik.rikkahub.ui.components.haze.LocalBubbleBackdrop
 import dev.chrisbanes.haze.HazeState
+import app.androidrik.rikkahub.ui.components.message.BubbleCoordinateRegistry
+import app.androidrik.rikkahub.ui.components.message.LocalBubbleCoordinates
 
 val LocalChatFontFamily = staticCompositionLocalOf<FontFamily?> { null }
 val LocalChatTextGradient = compositionLocalOf<app.androidrik.rikkahub.data.model.AppearanceGradient?> { null }
@@ -26,10 +28,11 @@ fun ChatFontProvider(
     content: @Composable () -> Unit,
 ) {
     ChatAppearanceProvider(displaySetting) {
+        val coordinates = remember { BubbleCoordinateRegistry() }
         val chatFontFamily = rememberChatFontFamily(displaySetting)
         val gradient = rememberChatAppearance(displaySetting).typography.gradient
         CompositionLocalProvider(LocalChatFontFamily provides chatFontFamily, LocalBubbleBackdrop provides backdropState,
-            LocalChatTextGradient provides gradient) {
+            LocalChatTextGradient provides gradient, LocalBubbleCoordinates provides coordinates) {
             content()
         }
     }
