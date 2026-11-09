@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.assistant
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Copy01
 import me.rerere.hugeicons.stroke.Add01
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -194,7 +195,7 @@ fun AssistantPage(vm: AssistantVM = koinViewModel()) {
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                shape = appSkinRoundedShape(12f)
             )
 
             // 标签过滤器
@@ -382,7 +383,7 @@ private fun AssistantTagsFilterRow(
                                 Text(tag.name)
                             },
                             selected = tag.id in selectedTagIds,
-                            shape = RoundedCornerShape(50),
+                            shape = appSkinButtonShape(),
                             modifier = Modifier
                                 .scale(if (isDragging) 0.95f else 1f)
                                 .longPressDraggableHandle(
@@ -542,7 +543,7 @@ private fun AssistantItem(
                             val tag = settings.assistantTags.find { it.id == tagId }
                                 ?: return@fastForEach
                             Surface(
-                                shape = RoundedCornerShape(50),
+                                shape = appSkinButtonShape(),
                                 color = MaterialTheme.colorScheme.tertiaryContainer,
                             ) {
                                 Text(

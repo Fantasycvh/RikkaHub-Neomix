@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.ClipData
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -157,7 +158,7 @@ fun MarkdownBlock(
                     model = rememberBetterWorkspaceImageUrl(image.url),
                     contentDescription = image.alt,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(appSkinRoundedShape(8f))
                         .widthIn(min = 120.dp)
                         .heightIn(min = 120.dp),
                 )
@@ -290,8 +291,8 @@ private fun citationWidget(link: MarkdownInline.Link, onClick: (String) -> Unit)
             Text(
                 text = domain,
                 style = TextStyle(
-                    fontSize = 10.sp,
-                    lineHeight = 10.sp,
+                    fontSize = appSkinTextSize(10.sp),
+                    lineHeight = appSkinTextSize(10.sp),
                     fontFamily = JetbrainsMono,
                     color = MaterialTheme.colorScheme.onTertiaryContainer,
                     fontWeight = FontWeight.Medium,
@@ -448,8 +449,8 @@ private fun TableCard(table: MarkdownBlock.Table) {
         ) {
             Text(
                 text = androidx.compose.ui.res.stringResource(R.string.markdown_table_title),
-                fontSize = 12.sp,
-                lineHeight = 12.sp,
+                fontSize = appSkinTextSize(12.sp),
+                lineHeight = appSkinTextSize(12.sp),
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -466,7 +467,7 @@ private fun TableCard(table: MarkdownBlock.Table) {
                     contentDescription = "Copy",
                     tint = iconTint,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(appSkinRoundedShape(4f))
                         .onClick {
                             scope.launch {
                                 clipboardManager.setClipEntry(ClipEntry(ClipData.newPlainText("table", tableText)))
@@ -481,7 +482,7 @@ private fun TableCard(table: MarkdownBlock.Table) {
                     contentDescription = "Download",
                     tint = iconTint,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(appSkinRoundedShape(4f))
                         .onClick {
                             createDocumentLauncher.launch(
                                 "table_${

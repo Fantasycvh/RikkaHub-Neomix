@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,7 +31,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -348,7 +349,7 @@ private fun ExportedChatImage(
                     Column {
                         Text(
                             text = stringResource(R.string.export_image_warning),
-                            fontSize = 10.sp,
+                            fontSize = appSkinTextSize(10.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                         )
                     }
@@ -479,7 +480,7 @@ private fun ExportedChatMessage(
                                     contentDescription = "Image",
                                     modifier = Modifier
                                         .sizeIn(maxHeight = 300.dp)
-                                        .clip(RoundedCornerShape(12.dp)),
+                                        .clip(appSkinRoundedShape(12f)),
                                 )
                             }
 

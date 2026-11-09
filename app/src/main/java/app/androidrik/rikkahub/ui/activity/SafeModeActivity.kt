@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.activity
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
 import app.androidrik.rikkahub.RikkaHubApp
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -22,7 +23,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.Card
@@ -229,7 +229,7 @@ private fun AssistantPickerSheet(
                             },
                             label = { Text(tag.name) },
                             selected = tag.id in selectedTagIds,
-                            shape = RoundedCornerShape(50),
+                            shape = appSkinButtonShape(),
                         )
                     }
                 }

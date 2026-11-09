@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.favorite
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.CheckmarkCircle02
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -196,7 +197,7 @@ fun FavoritePage(vm: FavoriteVM = koinViewModel()) {
                                 }
                             },
                             label = { Text(tag.name) },
-                            shape = RoundedCornerShape(50),
+                            shape = appSkinButtonShape(),
                         )
                     }
                 }
@@ -294,7 +295,7 @@ private fun SwipeableFavoriteCard(
                     .fillMaxSize()
                     .background(
                         MaterialTheme.colorScheme.errorContainer,
-                        RoundedCornerShape(12.dp)
+                        appSkinRoundedShape(12f)
                     )
                     .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.CenterEnd,
@@ -409,7 +410,7 @@ private fun FavoriteTagPickerDialog(
                                 working = if (tag.id in working) working - tag.id else working + tag.id
                             },
                             label = { Text(tag.name) },
-                            shape = RoundedCornerShape(50),
+                            shape = appSkinButtonShape(),
                         )
                     }
                 }
@@ -449,7 +450,7 @@ private fun FavoriteTagManagerDialog(
             onDismissRequest = { renaming = null },
             title = { Text(stringResource(R.string.favorite_page_rename_tag)) },
             text = {
-                androidx.compose.material3.OutlinedTextField(
+                app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField(
                     value = renameText,
                     onValueChange = { renameText = it },
                     singleLine = true,
@@ -474,7 +475,7 @@ private fun FavoriteTagManagerDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.OutlinedTextField(
+                    app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField(
                         value = newName,
                         onValueChange = { newName = it },
                         singleLine = true,

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.history;
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Pin
 import me.rerere.hugeicons.stroke.PinOff
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -202,7 +202,7 @@ private fun SwipeableConversationItem(
                     .fillMaxSize()
                     .background(
                         MaterialTheme.colorScheme.errorContainer,
-                        RoundedCornerShape(25)
+                        appSkinRoundedShape(20f)
                     )
                     .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.CenterEnd
@@ -235,7 +235,7 @@ private fun ConversationItem(
     Surface(
         onClick = onClick,
         tonalElevation = 2.dp,
-        shape = RoundedCornerShape(25),
+        shape = appSkinRoundedShape(20f),
         modifier = modifier
     ) {
         ListItem(

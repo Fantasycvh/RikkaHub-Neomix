@@ -21,10 +21,22 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import app.androidrik.rikkahub.ui.theme.LocalAppSkin
 
 @Composable
-fun appSkinButtonShape(): Shape = LocalAppSkin.current.skin.shapes.buttonDp?.let { RoundedCornerShape(it.dp) } ?: ButtonDefaults.shape
+fun appSkinButtonShape(fallback: Shape = ButtonDefaults.shape): Shape =
+    LocalAppSkin.current.skin.shapes.buttonDp?.let { RoundedCornerShape(it.dp) } ?: fallback
+
+/** Host-specific radii keep their default appearance and interpolate between the Material tokens. */
+@Composable
+fun appSkinRoundedShape(defaultDp: Float): RoundedCornerShape =
+    RoundedCornerShape(LocalAppSkin.current.skin.shapes.scaledCornerRadius(defaultDp).dp)
+
+/** Size for compact host text (code, counters); em/unspecified already inherit their surrounding style. */
+@Composable
+fun appSkinTextSize(defaultSize: TextUnit): TextUnit =
+    if (defaultSize.isSp) defaultSize * LocalAppSkin.current.skin.typography.sizeRatio else defaultSize
 
 @Composable
 fun appSkinInputShape(): Shape = RoundedCornerShape(LocalAppSkin.current.skin.shapes.inputDp.dp)
@@ -195,7 +207,7 @@ fun AppTextButton(
 fun AppOutlinedTextField(
     state: TextFieldState, modifier: Modifier = Modifier, enabled: Boolean = true, readOnly: Boolean = false,
     textStyle: TextStyle = LocalTextStyle.current,
-    labelPosition: TextFieldLabelPosition = TextFieldLabelPosition.Attached(),
+    labelPosition: TextFieldLabelPosition = TextFieldLabelPosition.Cutout(),
     label: @Composable (TextFieldLabelScope.() -> Unit)? = null,
     placeholder: @Composable (() -> Unit)? = null, leadingIcon: @Composable (() -> Unit)? = null,
     trailingIcon: @Composable (() -> Unit)? = null, prefix: @Composable (() -> Unit)? = null,
@@ -206,7 +218,8 @@ fun AppOutlinedTextField(
     onTextLayout: (Density.(() -> TextLayoutResult?) -> Unit)? = null,
     scrollState: ScrollState = rememberScrollState(), shape: Shape = appSkinInputShape(),
     colors: TextFieldColors = OutlinedTextFieldDefaults.colors(),
-    contentPadding: PaddingValues = OutlinedTextFieldDefaults.contentPadding(),
+    contentPadding: PaddingValues = if (label != null && labelPosition is TextFieldLabelPosition.Inside)
+        OutlinedTextFieldDefaults.contentPaddingWithLabel() else OutlinedTextFieldDefaults.contentPaddingWithoutLabel(),
     interactionSource: MutableInteractionSource? = null,
 ) = OutlinedTextField(state = state, modifier = modifier, enabled = enabled, readOnly = readOnly,
     textStyle = textStyle, labelPosition = labelPosition, label = label, placeholder = placeholder,
@@ -221,7 +234,7 @@ fun AppOutlinedTextField(
 fun AppTextField(
     state: TextFieldState, modifier: Modifier = Modifier, enabled: Boolean = true, readOnly: Boolean = false,
     textStyle: TextStyle = LocalTextStyle.current,
-    labelPosition: TextFieldLabelPosition = TextFieldLabelPosition.Attached(),
+    labelPosition: TextFieldLabelPosition = TextFieldLabelPosition.Inside(),
     label: @Composable (TextFieldLabelScope.() -> Unit)? = null,
     placeholder: @Composable (() -> Unit)? = null, leadingIcon: @Composable (() -> Unit)? = null,
     trailingIcon: @Composable (() -> Unit)? = null, prefix: @Composable (() -> Unit)? = null,
@@ -232,7 +245,9 @@ fun AppTextField(
     onTextLayout: (Density.(() -> TextLayoutResult?) -> Unit)? = null,
     scrollState: ScrollState = rememberScrollState(), shape: Shape = appSkinFilledInputShape(),
     colors: TextFieldColors = TextFieldDefaults.colors(),
-    contentPadding: PaddingValues = if (label == null || labelPosition is TextFieldLabelPosition.Above) TextFieldDefaults.contentPaddingWithoutLabel() else TextFieldDefaults.contentPaddingWithLabel(),
+    contentPadding: PaddingValues = if (label != null && (labelPosition is TextFieldLabelPosition.Inside ||
+        labelPosition is TextFieldLabelPosition.Attached)) TextFieldDefaults.contentPaddingWithLabel()
+        else TextFieldDefaults.contentPaddingWithoutLabel(),
     interactionSource: MutableInteractionSource? = null,
 ) = TextField(state = state, modifier = modifier, enabled = enabled, readOnly = readOnly,
     textStyle = textStyle, labelPosition = labelPosition, label = label, placeholder = placeholder,

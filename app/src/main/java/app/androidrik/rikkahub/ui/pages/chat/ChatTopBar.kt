@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.pages.chat
 
 // 批次 7 拆出：TopBar + ContextUsageReadout 自 ChatPage.kt 拆出（同包，private→internal）
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -108,7 +109,7 @@ internal fun ContextUsageReadout(
             ),
             maxLines = 1,
             color = if (isWarning) MaterialTheme.colorScheme.error else LocalContentColor.current.copy(0.65f),
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = appSkinTextSize(8.sp)),
         )
     }
 }
@@ -258,7 +259,7 @@ internal fun TopBar(
                                 modifier = Modifier.weight(1f, fill = false),
                                 color = LocalContentColor.current.copy(0.65f),
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 8.sp,
+                                    fontSize = appSkinTextSize(8.sp),
                                 )
                             )
                             ContextUsageReadout(

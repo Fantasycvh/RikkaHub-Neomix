@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.assistant.detail
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -1289,7 +1289,7 @@ private fun MemoryItem(
                 // id 是随机 opaque token、不便记忆——整行可点复制，方便用户粘到对话里引用该条记忆
                 Row(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(appSkinRoundedShape(6f))
                         .clickable {
                             context.writeClipboardText(memory.id)
                             toaster.show(copiedText)

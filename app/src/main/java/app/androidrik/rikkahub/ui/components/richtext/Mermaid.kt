@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.graphics.BitmapFactory
 import android.util.Base64
 import android.webkit.JavascriptInterface
@@ -9,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -119,7 +119,7 @@ fun Mermaid(
         WebView(
             state = webViewState,
             modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
+                .clip(appSkinRoundedShape(4f))
                 .height(200.dp),
         )
 

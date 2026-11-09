@@ -129,7 +129,7 @@ fun rememberWorkspaceFileActions(
                 }
             },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { report = null }) { androidx.compose.material3.Text(stringResource(R.string.common_got_it)) }
+                app.androidrik.rikkahub.ui.components.ui.AppTextButton(onClick = { report = null }) { androidx.compose.material3.Text(stringResource(R.string.common_got_it)) }
             },
         )
     }

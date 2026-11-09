@@ -9,6 +9,23 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AppSkinTest {
+    @Test fun `custom host radii and expressive shape tiers follow the global shape scale`() {
+        val defaults = AppSkinShapes()
+        for (radius in listOf(2f, 4f, 6f, 8f, 10f, 12f, 16f, 18f, 20f, 24f, 28f, 32f, 48f)) {
+            assertEquals(radius, defaults.scaledCornerRadius(radius), .0001f)
+        }
+        val square = AppSkinShapes(extraSmallDp = 0f, smallDp = 0f, mediumDp = 0f, largeDp = 0f, extraLargeDp = 0f)
+        for (radius in listOf(6f, 18f, 20f, 32f, 48f)) assertEquals(0f, square.scaledCornerRadius(radius))
+        assertEquals(androidx.compose.material3.Shapes(), appSkinShapes(defaults))
+        val shapes = appSkinShapes(square)
+        assertEquals(shapes.large, shapes.largeIncreased)
+        assertEquals(shapes.large, shapes.extraLargeIncreased)
+        assertEquals(shapes.large, shapes.extraExtraLarge)
+        assertEquals(0f, defaults.scaledCornerRadius(Float.NaN))
+        assertEquals(0f, defaults.scaledCornerRadius(-1f))
+        assertEquals(64f, defaults.scaledCornerRadius(Float.MAX_VALUE))
+    }
+
     @Test fun `legacy configuration resolves unchanged global defaults and chat appearance`() {
         val display = DisplaySetting(chatAppearanceDetails = ChatAppearanceDetails(userBubbleColorHex = "#123456"))
         val resolved = resolveAppSkin(display, emptyList(), emptyList())

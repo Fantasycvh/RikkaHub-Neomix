@@ -16,7 +16,7 @@ import os
 import re
 import sys
 
-TF = re.compile(r'\b(OutlinedTextField|TextField|BasicTextField)\b')
+TF = re.compile(r'\b(?:App)?(OutlinedTextField|TextField|BasicTextField)\b')
 HASH_KEY = re.compile(r'key\s*=\s*[^\n]*hashCode\(\)')
 CARDGROUP_ITEM = re.compile(
     r'headlineContent|supportingContent|overlineContent|trailingContent|'

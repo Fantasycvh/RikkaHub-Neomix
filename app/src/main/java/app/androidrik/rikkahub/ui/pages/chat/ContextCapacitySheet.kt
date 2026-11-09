@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -144,7 +146,7 @@ fun ContextCapacitySheet(
             Surface(
                 onClick = onCompress,
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(50),
+                shape = appSkinButtonShape(),
                 color = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ) {
@@ -160,7 +162,7 @@ fun ContextCapacitySheet(
             }
             OutlinedButton(
                 onClick = onDismiss,
-                shape = RoundedCornerShape(50),
+                shape = appSkinButtonShape(),
             ) {
                 Text(stringResource(R.string.context_capacity_confirm))
             }
@@ -181,7 +183,7 @@ private fun UsageCard(capacity: ContextCapacity?) {
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = appSkinRoundedShape(16f),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
     ) {
         Column(
@@ -283,7 +285,7 @@ private fun EstimateCard(capacity: ContextCapacity) {
     val rounds = capacity.estimatedRounds
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = appSkinRoundedShape(16f),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
     ) {
         Row(
@@ -327,7 +329,7 @@ private fun BreakdownCard(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = appSkinRoundedShape(16f),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
     ) {
         Column(modifier = Modifier.padding(vertical = 6.dp)) {

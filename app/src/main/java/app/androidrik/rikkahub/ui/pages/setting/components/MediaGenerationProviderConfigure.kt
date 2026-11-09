@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -135,7 +135,7 @@ fun MediaGenerationProviderConfigure(
         modifier = modifier.verticalScroll(rememberScrollState()),
     ) {
         Card(
-            shape = RoundedCornerShape(20.dp),
+            shape = appSkinRoundedShape(20f),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         ) {
             Column(

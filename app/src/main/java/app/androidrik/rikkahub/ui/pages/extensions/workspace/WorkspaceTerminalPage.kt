@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.graphics.Typeface
 import android.view.MotionEvent
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -23,7 +25,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -103,7 +104,7 @@ fun WorkspaceTerminalPage(id: String) {
                                 contentDescription = newTabDescription
                             },
                         ) {
-                            Text(text = "+", fontSize = 24.sp)
+                            Text(text = "+", fontSize = appSkinTextSize(24.sp))
                         }
                     },
                 )
@@ -227,7 +228,7 @@ private fun WorkspaceTerminalContent(
                                         contentDescription = closeDescription
                                     },
                             ) {
-                                Text(text = "×", fontSize = 18.sp)
+                                Text(text = "×", fontSize = appSkinTextSize(18.sp))
                             }
                         }
                     }
@@ -386,7 +387,7 @@ private fun TerminalExtraKey(
                 } else {
                     MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
                 },
-                shape = RoundedCornerShape(6.dp),
+                shape = appSkinRoundedShape(6f),
             )
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),

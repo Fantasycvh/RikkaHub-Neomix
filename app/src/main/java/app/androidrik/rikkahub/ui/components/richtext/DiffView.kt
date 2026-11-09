@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
@@ -8,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -68,7 +69,7 @@ fun DiffView(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(appSkinRoundedShape(8f))
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .horizontalScroll(rememberScrollState())
             .width(IntrinsicSize.Max)
@@ -82,8 +83,8 @@ fun DiffView(
                 text = "… +$truncated lines",
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 fontFamily = FontFamily.Monospace,
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
+                fontSize = appSkinTextSize(11.sp),
+                lineHeight = appSkinTextSize(16.sp),
                 modifier = Modifier.padding(horizontal = 8.dp),
             )
         }
@@ -112,8 +113,8 @@ private fun DiffLine(line: String) {
         text = line.ifEmpty { " " },
         color = textColor,
         fontFamily = FontFamily.Monospace,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
+        fontSize = appSkinTextSize(11.sp),
+        lineHeight = appSkinTextSize(16.sp),
         softWrap = false,
         modifier = Modifier
             .fillMaxWidth()

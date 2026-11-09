@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.components.ai
 // 批次 7 拆出：CompletionPopup + ChatInputState.applyCompletion 扩展 + QuickMessageButton
 // 自 ChatInput.kt 拆出（同包，private→internal；CompletionPopup 的 item key（label:insertText）原样保留）
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,7 +49,7 @@ internal fun CompletionPopup(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(max = 280.dp),
-        shape = RoundedCornerShape(18.dp),
+        shape = appSkinRoundedShape(18f),
         tonalElevation = 2.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.debug
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.ClipData
 import android.content.Intent
 import android.provider.Settings
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.HorizontalDivider
@@ -141,7 +141,7 @@ fun PerfPage(vm: PerfVM = koinViewModel()) {
         }
 
         Surface(
-            shape = RoundedCornerShape(12.dp),
+            shape = appSkinRoundedShape(12f),
             color = MaterialTheme.colorScheme.surfaceVariant,
             modifier = Modifier.fillMaxWidth(),
         ) {

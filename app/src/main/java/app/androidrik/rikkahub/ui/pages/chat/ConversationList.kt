@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Anchor
 import me.rerere.hugeicons.stroke.CheckmarkCircle02
@@ -152,7 +153,7 @@ fun ColumnScope.ConversationList(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    shape = RoundedCornerShape(8.dp),
+                    shape = appSkinRoundedShape(8f),
                     color = MaterialTheme.colorScheme.surfaceContainerLow
                 ) {
                     Text(

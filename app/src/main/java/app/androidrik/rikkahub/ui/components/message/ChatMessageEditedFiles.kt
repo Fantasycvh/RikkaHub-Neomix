@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.message
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -109,7 +109,7 @@ internal fun EditedFilesList(
             val fileName = remember(path) { path.substringAfterLast('/') }
             Surface(
                 onClick = { selectedPath = path },
-                shape = RoundedCornerShape(50),
+                shape = appSkinButtonShape(),
                 color = MaterialTheme.colorScheme.tertiaryContainer,
             ) {
                 Row(
@@ -135,7 +135,7 @@ internal fun EditedFilesList(
         if (hasMore && !expanded) {
             Surface(
                 onClick = { expanded = true },
-                shape = RoundedCornerShape(50),
+                shape = appSkinButtonShape(),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 Text(

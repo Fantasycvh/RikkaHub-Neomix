@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,7 +31,7 @@ fun <T> SegmentedPill(
     Row(
         modifier = modifier
             .selectableGroup()
-            .clip(RoundedCornerShape(24.dp))
+            .clip(appSkinButtonShape(appSkinRoundedShape(24f)))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -43,7 +42,7 @@ fun <T> SegmentedPill(
                     .weight(1f)
                     .padding(vertical = 2.dp)
                     .heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(22.dp))
+                    .clip(appSkinButtonShape(appSkinRoundedShape(22f)))
                     .background(
                         if (isSelected) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.surfaceContainerHighest

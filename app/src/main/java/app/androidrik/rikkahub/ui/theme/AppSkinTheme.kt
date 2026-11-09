@@ -39,7 +39,10 @@ fun AppSkinTheme(resolved: ResolvedAppSkin, colorScheme: ColorScheme, content: @
 
 internal fun appSkinShapes(value: AppSkinShapes): Shapes = value.normalized().run {
     Shapes(extraSmall = RoundedCornerShape(extraSmallDp.dp), small = RoundedCornerShape(smallDp.dp),
-        medium = RoundedCornerShape(mediumDp.dp), large = RoundedCornerShape(largeDp.dp), extraLarge = RoundedCornerShape(extraLargeDp.dp))
+        medium = RoundedCornerShape(mediumDp.dp), large = RoundedCornerShape(largeDp.dp), extraLarge = RoundedCornerShape(extraLargeDp.dp),
+        largeIncreased = RoundedCornerShape(scaledCornerRadius(20f).dp),
+        extraLargeIncreased = RoundedCornerShape(scaledCornerRadius(32f).dp),
+        extraExtraLarge = RoundedCornerShape(scaledCornerRadius(48f).dp))
 }
 
 internal fun appSkinTypography(base: Typography, tokens: AppSkinTypography, family: FontFamily?): Typography {

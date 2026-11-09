@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.message.tools
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -212,7 +213,7 @@ fun DefaultToolPreview(
             HighlightCodeBlock(
                 code = JsonInstantPretty.encodeToString(context.arguments),
                 language = "json",
-                style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)
+                style = TextStyle(fontSize = appSkinTextSize(10.sp), lineHeight = appSkinTextSize(12.sp))
             )
         }
         if (context.tool.output.isNotEmpty()) {
@@ -231,7 +232,7 @@ fun DefaultToolPreview(
                                     )
                                 }.getOrElse { part.text },
                                 language = "json",
-                                style = TextStyle(fontSize = 10.sp, lineHeight = 12.sp)
+                                style = TextStyle(fontSize = appSkinTextSize(10.sp), lineHeight = appSkinTextSize(12.sp))
                             )
 
                             is UIMessagePart.Image -> ZoomableAsyncImage(

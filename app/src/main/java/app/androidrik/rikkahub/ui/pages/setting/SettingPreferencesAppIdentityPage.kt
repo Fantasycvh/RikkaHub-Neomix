@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -22,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -324,7 +324,7 @@ private fun ShortcutDialog(
                         contentDescription = null,
                         modifier = Modifier
                             .size(48.dp)
-                            .clip(RoundedCornerShape(12.dp)),
+                            .clip(appSkinRoundedShape(12f)),
                     )
                     OutlinedButton(
                         onClick = {

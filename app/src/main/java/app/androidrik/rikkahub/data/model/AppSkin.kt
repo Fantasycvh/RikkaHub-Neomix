@@ -45,6 +45,25 @@ data class AppSkinShapes(
     val buttonDp: Float? = null,
     val inputDp: Float = 4f,
 ) {
+    /** Preserve host radii between the five Material reference sizes while following skin tokens. */
+    fun scaledCornerRadius(defaultDp: Float): Float {
+        if (!defaultDp.isFinite() || defaultDp <= 0f) return 0f
+        fun between(start: Float, end: Float, fraction: Float) = start + (end - start) * fraction
+        val xs = extraSmallDp.bound(0f, 48f, 4f)
+        val sm = smallDp.bound(0f, 48f, 8f)
+        val md = mediumDp.bound(0f, 48f, 12f)
+        val lg = largeDp.bound(0f, 48f, 16f)
+        val xl = extraLargeDp.bound(0f, 64f, 28f)
+        return when {
+            defaultDp <= 4f -> xs * defaultDp / 4f
+            defaultDp <= 8f -> between(xs, sm, (defaultDp - 4f) / 4f)
+            defaultDp <= 12f -> between(sm, md, (defaultDp - 8f) / 4f)
+            defaultDp <= 16f -> between(md, lg, (defaultDp - 12f) / 4f)
+            defaultDp <= 28f -> between(lg, xl, (defaultDp - 16f) / 12f)
+            else -> (xl * defaultDp / 28f).coerceIn(0f, 64f)
+        }
+    }
+
     fun normalized() = copy(extraSmallDp = extraSmallDp.bound(0f, 48f, 4f), smallDp = smallDp.bound(0f, 48f, 8f),
         mediumDp = mediumDp.bound(0f, 48f, 12f), largeDp = largeDp.bound(0f, 48f, 16f),
         extraLargeDp = extraLargeDp.bound(0f, 64f, 28f), cardGroupOuterDp = cardGroupOuterDp.bound(0f, 48f, 20f),

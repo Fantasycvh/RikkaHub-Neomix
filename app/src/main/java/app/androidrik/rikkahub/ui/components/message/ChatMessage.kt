@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.message
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -158,7 +159,7 @@ fun ChatMessage(
     if (notice != null || externalNotice != null) {
         Surface(
             modifier = modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
+            shape = appSkinRoundedShape(12f),
             color = MaterialTheme.colorScheme.secondaryContainer,
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -659,7 +660,7 @@ private fun MessagePartsBlock(
             is MessagePartBlock.ContentBlock -> key(block.index) {
                 when (val part = block.part) {
                     is UIMessagePart.Notice -> Surface(color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        shape = appSkinRoundedShape(12f), modifier = Modifier.fillMaxWidth()) {
                         SelectionContainer { Text(part.text, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodySmall) }
                     }
                     is UIMessagePart.Text -> {
@@ -690,7 +691,7 @@ private fun MessagePartsBlock(
                                 context.startActivity(chooserIndent)
                             },
                             modifier = Modifier,
-                            shape = RoundedCornerShape(8.dp),
+                            shape = appSkinRoundedShape(8f),
                         ) {
                             Box(modifier = Modifier.size(72.dp), contentAlignment = Alignment.Center) {
                                 Icon(HugeIcons.Video01, null)
@@ -713,7 +714,7 @@ private fun MessagePartsBlock(
                                 context.startActivity(chooserIndent)
                             },
                             modifier = Modifier,
-                            shape = RoundedCornerShape(50),
+                            shape = appSkinButtonShape(),
                             color = MaterialTheme.colorScheme.secondaryContainer
                         ) {
                             ProvideTextStyle(MaterialTheme.typography.labelSmall) {
@@ -769,7 +770,7 @@ private fun MessagePartsBlock(
                                 context.startActivity(chooserIndent)
                             },
                             modifier = Modifier,
-                            shape = RoundedCornerShape(50),
+                            shape = appSkinButtonShape(),
                             color = MaterialTheme.colorScheme.tertiaryContainer
                         ) {
                             ProvideTextStyle(MaterialTheme.typography.labelSmall) {
@@ -898,7 +899,7 @@ private fun PartialFailureBanner(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.55f),
     ) {
         Row(
@@ -937,7 +938,7 @@ private fun IncompleteOutputBanner(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.55f),
     ) {
         Row(

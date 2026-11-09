@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.message
 
+import androidx.compose.foundation.shape.CornerSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -19,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Icon
@@ -359,7 +360,7 @@ internal fun ReasoningEditDialog(
                 modifier = Modifier
                     .widthIn(max = 800.dp)
                     .fillMaxHeight(0.9f),
-                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                shape = appSkinRoundedShape(16f).copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
             ) {
                 Column(
                     modifier = Modifier
@@ -396,7 +397,7 @@ internal fun ReasoningEditDialog(
                         modifier = Modifier
                             .imePadding()
                             .fillMaxSize(),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = appSkinRoundedShape(16f),
                         placeholder = {
                             Text(stringResource(R.string.chat_message_reasoning_edit))
                         },

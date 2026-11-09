@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.graphics.Bitmap
 import android.util.Log
 import androidx.activity.compose.LocalActivity
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -163,7 +164,7 @@ fun TikzJax(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(aspectRatio)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(appSkinRoundedShape(4f))
             ) {
                 // native SVG 黑色笔画在暗色主题不可见：衬白底
                 drawRect(color = Color.White)
@@ -236,7 +237,7 @@ fun TikzJax(
         // 回退链第 3 级：渲染失败降级显示原始 TikZ 代码
         Text(
             text = code,
-            fontSize = 12.sp,
+            fontSize = appSkinTextSize(12.sp),
             modifier = modifier.padding(8.dp),
         )
     }

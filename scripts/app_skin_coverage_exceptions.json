@@ -1,0 +1,250 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "path": "StartupGate.kt",
+      "kind": "control",
+      "expression": "Button(...)",
+      "count": 1,
+      "reason": "Startup/recovery runs before settings are available; GateTheme must not depend on AppSkin loading."
+    },
+    {
+      "path": "StartupGate.kt",
+      "kind": "control",
+      "expression": "TextButton(...)",
+      "count": 3,
+      "reason": "Startup/recovery runs before settings are available; GateTheme must not depend on AppSkin loading."
+    },
+    {
+      "path": "ui/components/ai/AsrButton.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(barWidth / 2)",
+      "count": 1,
+      "reason": "Audio waveform bar caps follow the bar width; these are visualization geometry."
+    },
+    {
+      "path": "ui/components/ai/ReasoningPicker.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(999.dp)",
+      "count": 1,
+      "reason": "Small level-indicator tick; intrinsic fully round data mark, not a card or action surface."
+    },
+    {
+      "path": "ui/components/charts/ChartCard.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(2.dp)",
+      "count": 1,
+      "reason": "Legend color mark geometry, independent of the surrounding skinned chart card."
+    },
+    {
+      "path": "ui/components/charts/ChartTable.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(2.dp)",
+      "count": 1,
+      "reason": "Table column color mark geometry; does not control the skinned container."
+    },
+    {
+      "path": "ui/components/drawer/ChatScalingDrawer.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(ChatDrawerSpec.CORNER_RADIUS_END * p)",
+      "count": 1,
+      "reason": "Gesture progress drives the outer navigation transform; drawer content has its own AppSkin slot."
+    },
+    {
+      "path": "ui/components/haze/TopBarCapsule.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(it.dp)",
+      "count": 1,
+      "reason": "Already reads the dedicated top-bar panel radius; explicit slot geometry wins."
+    },
+    {
+      "path": "ui/components/message/ChatBubbleSurface.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape( topStart = if (segment.first) radius else 0.dp, topEnd = if (segment.first) radius else 0.dp, bottomStart = if (segment.last) radius else 0.dp, bottomEnd = if (segment.last) radius else 0.dp, )",
+      "count": 1,
+      "reason": "Already reads the ChatAppearance bubble radius and continuous slice edges."
+    },
+    {
+      "path": "ui/components/message/ChatBubbleSurface.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(radius)",
+      "count": 1,
+      "reason": "Already reads the ChatAppearance bubble radius and continuous slice edges."
+    },
+    {
+      "path": "ui/components/message/MessageQuoteCard.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(2.dp)",
+      "count": 1,
+      "reason": "Thin quote accent bar cap, retained as a structural marker."
+    },
+    {
+      "path": "ui/components/ui/AppSkinComponents.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape((radius * .7f).dp)",
+      "count": 1,
+      "reason": "Token-to-shape adapter; values come from AppSkin, not a fixed host style."
+    },
+    {
+      "path": "ui/components/ui/AppSkinComponents.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(LocalAppSkin.current.skin.shapes.inputDp.dp)",
+      "count": 1,
+      "reason": "Token-to-shape adapter; values come from AppSkin, not a fixed host style."
+    },
+    {
+      "path": "ui/components/ui/AppSkinComponents.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(LocalAppSkin.current.skin.shapes.scaledCornerRadius(defaultDp).dp)",
+      "count": 1,
+      "reason": "Token-to-shape adapter; values come from AppSkin, not a fixed host style."
+    },
+    {
+      "path": "ui/components/ui/AppSkinComponents.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(it.dp)",
+      "count": 1,
+      "reason": "Token-to-shape adapter; values come from AppSkin, not a fixed host style."
+    },
+    {
+      "path": "ui/components/ui/AppSkinComponents.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(radius.dp)",
+      "count": 1,
+      "reason": "Token-to-shape adapter; values come from AppSkin, not a fixed host style."
+    },
+    {
+      "path": "ui/components/ui/AppSkinComponents.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(topStart = it, topEnd = it)",
+      "count": 1,
+      "reason": "Token-to-shape adapter; values come from AppSkin, not a fixed host style."
+    },
+    {
+      "path": "ui/components/ui/CardGroup.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape( topStart = topCorner, topEnd = topCorner, bottomStart = bottomCorner, bottomEnd = bottomCorner, )",
+      "count": 1,
+      "reason": "Already reads grouped-card tokens and animates the resolved corners."
+    },
+    {
+      "path": "ui/components/ui/CardGroup.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)",
+      "count": 1,
+      "reason": "Already reads grouped-card tokens and animates the resolved corners."
+    },
+    {
+      "path": "ui/components/ui/ChainOfThought.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(it.dp)",
+      "count": 1,
+      "reason": "Explicit reasoning appearance override; otherwise uses global shape tokens and the reasoning panel slot."
+    },
+    {
+      "path": "ui/components/ui/Favicon.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(25)",
+      "count": 1,
+      "reason": "Site identity image mask; an explicit caller shape remains supported."
+    },
+    {
+      "path": "ui/components/ui/ImagePreviewDialog.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(50)",
+      "count": 1,
+      "reason": "Image-viewer counter contrast capsule; content overlay geometry is retained."
+    },
+    {
+      "path": "ui/components/ui/Switch.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(50)",
+      "count": 1,
+      "reason": "Switch track geometry stays proportional to the thumb and track dimensions."
+    },
+    {
+      "path": "ui/pages/chat/ContextCapacitySheet.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(50)",
+      "count": 1,
+      "reason": "Progress track end caps; action surfaces already use AppSkin button shapes."
+    },
+    {
+      "path": "ui/pages/chat/ConversationList.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(50f)",
+      "count": 1,
+      "reason": "Default capsule fallback for the dedicated drawer-item slot; explicit panel radius wins."
+    },
+    {
+      "path": "ui/theme/AppSkinPanel.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(it.dp)",
+      "count": 1,
+      "reason": "Already reads the requested panel radius; host fallback applies only when it is absent."
+    },
+    {
+      "path": "ui/theme/AppSkinTheme.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(extraLargeDp.dp)",
+      "count": 1,
+      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+    },
+    {
+      "path": "ui/theme/AppSkinTheme.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(extraSmallDp.dp)",
+      "count": 1,
+      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+    },
+    {
+      "path": "ui/theme/AppSkinTheme.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(largeDp.dp)",
+      "count": 1,
+      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+    },
+    {
+      "path": "ui/theme/AppSkinTheme.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(mediumDp.dp)",
+      "count": 1,
+      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+    },
+    {
+      "path": "ui/theme/AppSkinTheme.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(scaledCornerRadius(20f).dp)",
+      "count": 1,
+      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+    },
+    {
+      "path": "ui/theme/AppSkinTheme.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(scaledCornerRadius(32f).dp)",
+      "count": 1,
+      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+    },
+    {
+      "path": "ui/theme/AppSkinTheme.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(scaledCornerRadius(48f).dp)",
+      "count": 1,
+      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+    },
+    {
+      "path": "ui/theme/AppSkinTheme.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(smallDp.dp)",
+      "count": 1,
+      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+    },
+    {
+      "path": "ui/theme/BuiltinChatAppearancePlugin.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(24.dp)",
+      "count": 1,
+      "reason": "Demonstration plugin renderer explicitly owns this badge shape; plugin renderers can override host defaults."
+    }
+  ]
+}

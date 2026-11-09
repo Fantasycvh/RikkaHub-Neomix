@@ -1,6 +1,8 @@
 # AppSkin 契约、统一解析与基础组件
 
 顶栏、抽屉与复杂卡片的后续接入见 [AppSkin 槽位说明](design-app-skin-panels.md)。
+其余原生组件接入见 [组件迁移说明](design-app-skin-component-migration.md) 与
+[覆盖清单](app-skin-component-coverage.md)。
 
 ## 本轮范围
 

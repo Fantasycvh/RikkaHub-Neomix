@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.ClipData
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -24,7 +25,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.Checkbox
@@ -229,7 +229,7 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(appSkinRoundedShape(20f))
                                 .background(MaterialTheme.colorScheme.surfaceBright)
                         ) {
                             PresetThemeButtonGroup(
@@ -434,7 +434,7 @@ private fun CustomThemeItem(
     ListItem(
         modifier = Modifier
             .padding(horizontal = 8.dp)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(appSkinRoundedShape(16f))
             .clickable { onSelect() },
         headlineContent = { Text(theme.name.ifEmpty { "Unnamed" }) },
         leadingContent = {
@@ -761,7 +761,7 @@ private fun RoleOverridesSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
+                .clip(appSkinRoundedShape(20f))
                 .background(MaterialTheme.colorScheme.surfaceBright)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1165,7 +1165,7 @@ private fun ThemePreview(theme: CustomTheme) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
+                .clip(appSkinRoundedShape(16f))
                 .background(scheme.surface)
                 .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
@@ -424,7 +424,7 @@ private fun MediaProviderItem(
     Card(
         onClick = onEdit,
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = appSkinRoundedShape(20f),
         colors = CardDefaults.cardColors(containerColor = CustomColors.listItemColors.containerColor),
     ) {
         Row(

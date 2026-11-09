@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.message.tools
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -459,8 +460,8 @@ private fun FileContentSummary(text: String, path: String?, loading: Boolean) {
         CodeHighlightText(
             code = preview,
             language = languageOf(path),
-            fontSize = 11.sp,
-            lineHeight = 14.sp,
+            fontSize = appSkinTextSize(11.sp),
+            lineHeight = appSkinTextSize(14.sp),
             maxLines = FILE_SUMMARY_MAX_LINES,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth(),
@@ -538,8 +539,8 @@ object ShellToolUI : ToolUIRenderer {
                     Text(
                         text = combined.lineSequence().take(SUMMARY_MAX_LINES).joinToString("\n"),
                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
+                        fontSize = appSkinTextSize(11.sp),
+                        lineHeight = appSkinTextSize(14.sp),
                         maxLines = SUMMARY_MAX_LINES,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -778,7 +779,7 @@ private fun PresentFileCard(
 
     Surface(
         onClick = { navController.navigate(Screen.WorkspaceFileEditor(workspaceId, presentArea(path).name, presentRelativePath(path))) },
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         color = MaterialTheme.colorScheme.surfaceBright,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
         modifier = Modifier.fillMaxWidth(),
@@ -917,7 +918,7 @@ object BackgroundRunToolUI : ToolUIRenderer {
                 Text(
                     text = listOf(taskId, status).filter { it.isNotBlank() }.joinToString(" · "),
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    fontSize = 11.sp,
+                    fontSize = appSkinTextSize(11.sp),
                 )
             }
         }
@@ -982,8 +983,8 @@ object TaskStatusToolUI : ToolUIRenderer {
                     Text(
                         text = lines.lineSequence().toList().takeLast(SUMMARY_MAX_LINES).joinToString("\n"),
                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
+                        fontSize = appSkinTextSize(11.sp),
+                        lineHeight = appSkinTextSize(14.sp),
                         maxLines = SUMMARY_MAX_LINES,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -1039,7 +1040,7 @@ private fun TaskStatusLine(status: String, exitCode: Int?) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-        fontSize = 11.sp,
+        fontSize = appSkinTextSize(11.sp),
         color = when {
             // TIMED_OUT 也是「没跑完」，与 FAILED 同色：用户需要一眼看出任务没正常结束
             status == "FAILED" || status == "TIMED_OUT" -> MaterialTheme.colorScheme.error

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.ai
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -16,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -188,7 +188,7 @@ internal fun MediaFileInputRow(
                         leading = {
                             Surface(
                                 modifier = Modifier.size(34.dp),
-                                shape = RoundedCornerShape(10.dp),
+                                shape = appSkinRoundedShape(10f),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             ) {
                                 AsyncImage(
@@ -258,9 +258,9 @@ private fun AttachmentChip(
 ) {
     Surface(
         modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
+            .clip(appSkinRoundedShape(18f))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(18.dp),
+        shape = appSkinRoundedShape(18f),
         tonalElevation = 1.dp,
         shadowElevation = 0.dp,
         color = MaterialTheme.colorScheme.surface,
@@ -321,7 +321,7 @@ private fun AttachmentLeadingIcon(
 ) {
     Surface(
         modifier = Modifier.size(34.dp),
-        shape = RoundedCornerShape(10.dp),
+        shape = appSkinRoundedShape(10f),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Box(

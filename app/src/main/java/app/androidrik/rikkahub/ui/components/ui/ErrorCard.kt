@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,7 +67,7 @@ fun ErrorCardsDisplay(
             if (errors.size > 1) {
                 Surface(
                     onClick = onClearAllErrors,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = appSkinRoundedShape(8f),
                     color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
                 ) {
                     Row(
@@ -122,7 +121,7 @@ fun ErrorCard(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         color = MaterialTheme.colorScheme.errorContainer,
         shadowElevation = 4.dp,
     ) {

@@ -106,7 +106,7 @@ fun AssistantKnowledgeBasePage(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
                             )
-                            androidx.compose.material3.TextButton(
+                            app.androidrik.rikkahub.ui.components.ui.AppTextButton(
                                 onClick = { nav.navigate(Screen.SettingKnowledgeBase) },
                             ) {
                                 Text(stringResource(R.string.assistant_kb_manage))

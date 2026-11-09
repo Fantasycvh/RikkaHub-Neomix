@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import org.koin.compose.koinInject
 import app.androidrik.rikkahub.ui.pages.assistant.detail.CardDuplicateConfirmDialog
 import app.androidrik.rikkahub.ui.pages.assistant.detail.TavernCardImport
@@ -31,7 +33,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
@@ -124,8 +125,8 @@ fun HighlightCodeBlock(
     modifier: Modifier = Modifier,
     completeCodeBlock: Boolean = true,
     style: TextStyle? = TextStyle(
-        fontSize = 12.sp,
-        lineHeight = 16.sp,
+        fontSize = appSkinTextSize(12.sp),
+        lineHeight = appSkinTextSize(16.sp),
     ),
 ) {
     val darkMode = LocalDarkMode.current
@@ -429,8 +430,8 @@ private fun HighlightCodeActions(
     ) {
         Text(
             text = language,
-            fontSize = 12.sp,
-            lineHeight = 12.sp,
+            fontSize = appSkinTextSize(12.sp),
+            lineHeight = appSkinTextSize(12.sp),
             fontFamily = JetbrainsMono,
             color = MaterialTheme.colorScheme.onSurfaceVariant
                 .copy(alpha = 0.5f),
@@ -494,7 +495,7 @@ private fun HighlightCodeActions(
                     contentDescription = stringResource(id = R.string.code_block_add_assistant),
                     tint = iconTint,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(appSkinRoundedShape(4f))
                         .onClick {
                             scope.launch {
                                 runCatching {
@@ -541,7 +542,7 @@ private fun HighlightCodeActions(
                 contentDescription = stringResource(id = R.string.chat_page_save),
                 tint = iconTint,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(appSkinRoundedShape(4f))
                     .onClick {
                         val extension = when (language.lowercase()) {
                             "kotlin" -> "kt"
@@ -577,7 +578,7 @@ private fun HighlightCodeActions(
                 contentDescription = stringResource(id = R.string.code_block_copy),
                 tint = iconTint,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(appSkinRoundedShape(4f))
                     .onClick {
                         scope.launch {
                             clipboardManager.setClipEntry(ClipEntry(ClipData.newPlainText("code", code)))
@@ -594,7 +595,7 @@ private fun HighlightCodeActions(
                     contentDescription = if (previewMode) "Code" else stringResource(id = R.string.code_block_preview),
                     tint = iconTint,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(appSkinRoundedShape(4f))
                         .onClick {
                             onTogglePreviewMode()
                         }
@@ -609,7 +610,7 @@ private fun HighlightCodeActions(
                     contentDescription = stringResource(id = R.string.code_block_preview),
                     tint = iconTint,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(appSkinRoundedShape(4f))
                         .onClick {
                             val content = buildCodePreviewHtml(code = code, language = normalizedLanguage)
                             val contentId = WebViewContentCache.store(context.cacheDir, content)
@@ -643,7 +644,7 @@ private fun CodeBlockPreview(
 
     WebView(
         state = state,
-        modifier = modifier.clip(RoundedCornerShape(4.dp)),
+        modifier = modifier.clip(appSkinRoundedShape(4f)),
     )
 }
 

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.debug
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.ClipData
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -62,7 +62,7 @@ fun PerfOverlay(
             .statusBarsPadding()
             .padding(top = 8.dp, end = 8.dp)
             .widthIn(max = 380.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
         tonalElevation = 4.dp,
         shadowElevation = 6.dp,

@@ -1,6 +1,5 @@
 package app.androidrik.rikkahub.ui.components.ui
 
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
@@ -14,7 +13,7 @@ import androidx.compose.ui.unit.dp
 fun ToggleSurface(
     checked: Boolean,
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(50),
+    shape: Shape = appSkinButtonShape(),
     onClick: () -> Unit = {},
     content: @Composable () -> Unit
 ) {

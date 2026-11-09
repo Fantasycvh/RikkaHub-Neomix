@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -175,8 +176,8 @@ fun WorkspaceFileEditorPage(
                 lineLimits = TextFieldLineLimits.MultiLine(),
                 textStyle = LocalTextStyle.current.copy(
                     fontFamily = JetbrainsMono,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                    fontSize = appSkinTextSize(13.sp),
+                    lineHeight = appSkinTextSize(18.sp),
                 ),
             )
         }

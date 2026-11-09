@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.imggen
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,7 +35,6 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
@@ -292,7 +292,7 @@ private fun ImageGenScreen(
                         modifier = Modifier
                             .weight(1f)
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(appSkinRoundedShape(8f))
                             .clickable { showPreview = true },
                         contentScale = ContentScale.Crop
                     )
@@ -488,7 +488,7 @@ private fun ReferenceImagesRow(
         images.forEach { image ->
             Surface(
                 modifier = Modifier.size(56.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = appSkinRoundedShape(12f),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
@@ -776,7 +776,7 @@ private fun ImageGalleryScreen(
                                                 .border(
                                                     width = 3.dp,
                                                     color = MaterialTheme.colorScheme.primary,
-                                                    shape = RoundedCornerShape(12.dp)
+                                                    shape = appSkinRoundedShape(12f)
                                                 )
                                         )
                                         Box(

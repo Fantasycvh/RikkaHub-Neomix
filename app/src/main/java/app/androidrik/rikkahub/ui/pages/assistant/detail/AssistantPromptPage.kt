@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.assistant.detail
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
@@ -327,9 +328,9 @@ private fun AssistantPromptContent(
                             { Text(stringResource(R.string.assistant_page_message_template_missing_message)) }
                         } else null,
                         textStyle = LocalTextStyle.current.copy(
-                            fontSize = 12.sp,
+                            fontSize = appSkinTextSize(12.sp),
                             fontFamily = JetbrainsMono,
-                            lineHeight = 16.sp
+                            lineHeight = appSkinTextSize(16.sp)
                         )
                     )
                 },
@@ -408,9 +409,9 @@ private fun AssistantPromptContent(
                             Text("<|{{ role }}|>\n{{ message }}")
                         },
                         textStyle = LocalTextStyle.current.copy(
-                            fontSize = 12.sp,
+                            fontSize = appSkinTextSize(12.sp),
                             fontFamily = JetbrainsMono,
-                            lineHeight = 16.sp
+                            lineHeight = appSkinTextSize(16.sp)
                         )
                     )
                 },

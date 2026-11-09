@@ -71,12 +71,16 @@ class AppSkinControlCoverageTest {
                         TextField(rememberTextFieldState("Value"), readOnly = true, label = { Text("Label") })
                         TextField(rememberTextFieldState("Value"), readOnly = true, label = { Text("Label") },
                             labelPosition = TextFieldLabelPosition.Above())
+                        OutlinedTextField(rememberTextFieldState("Value"), readOnly = true, label = { Text("Label") },
+                            labelPosition = TextFieldLabelPosition.Inside())
                     }
                     Column(Modifier.width(160.dp).testTag("skin")) {
                         AppOutlinedTextField(rememberTextFieldState("Value"), readOnly = true, label = { Text("Label") })
                         AppTextField(rememberTextFieldState("Value"), readOnly = true, label = { Text("Label") })
                         AppTextField(rememberTextFieldState("Value"), readOnly = true, label = { Text("Label") },
                             labelPosition = TextFieldLabelPosition.Above())
+                        AppOutlinedTextField(rememberTextFieldState("Value"), readOnly = true, label = { Text("Label") },
+                            labelPosition = TextFieldLabelPosition.Inside())
                     }
                 }
             }

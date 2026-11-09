@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.floating
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.app.AppOpsManager
 import android.app.Application
 import android.content.ClipData
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -208,7 +208,7 @@ private fun PerfHudCard(
 ) {
     Surface(
         modifier = Modifier.widthIn(max = 380.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
         tonalElevation = 4.dp,
         shadowElevation = 6.dp,

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.message.tools
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -7,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -97,7 +97,7 @@ object GenerateImageToolUI : ToolUIRenderer {
                     modifier = Modifier
                         .width(tileWidth)
                         .height(tileWidth)
-                        .clip(RoundedCornerShape(12.dp)),
+                        .clip(appSkinRoundedShape(12f)),
                     contentScale = ContentScale.Crop,
                 )
             }

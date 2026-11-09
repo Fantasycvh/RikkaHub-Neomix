@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.mediacreation
 
+import androidx.compose.foundation.shape.CornerSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShapes
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -41,7 +43,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
@@ -543,7 +544,8 @@ private fun AssetRow(
 }
 
 private val AssetTileSize = 60.dp
-private val AssetTileShape = RoundedCornerShape(12.dp)
+private val AssetTileShape
+    @Composable get() = appSkinRoundedShape(12f)
 
 @Composable
 private fun AssetTile(
@@ -576,7 +578,7 @@ private fun AssetTile(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp))
+                    .clip(appSkinRoundedShape(12f).copy(topStart = CornerSize(0.dp), topEnd = CornerSize(0.dp)))
                     .background(Color.Black.copy(alpha = 0.5f))
                     .padding(vertical = 1.dp),
             )
@@ -729,7 +731,7 @@ private fun AssetPickerSheet(
                         poster = item.output.posterPath?.let(resolve),
                         modifier = Modifier
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(appSkinRoundedShape(8f))
                             .clickable { onSelect(item.output) },
                     )
                 }
@@ -812,7 +814,7 @@ private fun ModelRow(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
     ) {
         Row(

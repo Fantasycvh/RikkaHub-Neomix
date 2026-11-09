@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.chat
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.CursorPointer01
@@ -39,7 +40,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
@@ -1052,7 +1052,7 @@ private fun ChatSuggestionsRow(
         items(conversation.chatSuggestions) { suggestion ->
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(50))
+                    .clip(appSkinButtonShape())
                     .clickable {
                         onClickSuggestion(suggestion)
                     }

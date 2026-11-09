@@ -2,6 +2,8 @@ package app.androidrik.rikkahub.ui.components.ai
 
 // 批次 7 拆出：ContextUsage data class + ContextUsageRingButton 自 ChatInput.kt 拆出（同包，private→internal）
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -10,7 +12,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,7 +79,7 @@ internal fun ContextUsageRingButton(
         Box(
             modifier = Modifier
                 .height(28.dp)
-                .clip(RoundedCornerShape(percent = 50))
+                .clip(appSkinButtonShape())
                 .clickable { onClick() }
                 .padding(horizontal = 5.dp),
             contentAlignment = Alignment.Center,
@@ -112,8 +113,8 @@ internal fun ContextUsageRingButton(
                 Text(
                     text = percent.toString(),
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 9.sp,
-                        lineHeight = 10.sp,
+                        fontSize = appSkinTextSize(9.sp),
+                        lineHeight = appSkinTextSize(10.sp),
                         fontWeight = FontWeight.SemiBold,
                         fontFeatureSettings = "tnum",
                     ),

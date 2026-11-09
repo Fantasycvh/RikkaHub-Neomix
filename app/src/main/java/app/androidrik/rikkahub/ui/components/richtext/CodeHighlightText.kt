@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.richtext
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -25,7 +26,7 @@ fun CodeHighlightText(
     language: String,
     modifier: Modifier = Modifier,
     colors: HighlightTextColorPalette = HighlightTextColorPalette.Default,
-    fontSize: TextUnit = 12.sp,
+    fontSize: TextUnit = appSkinTextSize(12.sp),
     lineHeight: TextUnit = TextUnit.Unspecified,
     fontFamily: FontFamily = FontFamily.Monospace,
     @Suppress("UNUSED_PARAMETER") overflow: TextOverflow = TextOverflow.Clip,

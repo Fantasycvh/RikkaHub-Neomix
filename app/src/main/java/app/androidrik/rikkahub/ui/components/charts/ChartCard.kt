@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.charts
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -63,7 +64,7 @@ fun ChartCard(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = appSkinRoundedShape(16f),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
@@ -163,7 +164,7 @@ private fun ChartModeToggle(
     onModeChange: (ChartDisplayMode) -> Unit,
 ) {
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = appSkinRoundedShape(8f),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
@@ -199,7 +200,7 @@ private fun ChartModeButton(
     onClick: () -> Unit,
 ) {
     // 不用 Surface(onClick): 它会强制 48dp 最小触控尺寸, 把紧凑的切换条撑大
-    val shape = RoundedCornerShape(6.dp)
+    val shape = appSkinRoundedShape(6f)
     Box(
         modifier = Modifier
             .then(if (selected) Modifier.shadow(1.dp, shape) else Modifier)

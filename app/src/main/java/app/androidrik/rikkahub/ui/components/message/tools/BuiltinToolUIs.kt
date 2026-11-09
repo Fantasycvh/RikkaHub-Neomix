@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.message.tools
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import app.androidrik.rikkahub.data.ai.tools.local.parseTodoPlanArgs
 import app.androidrik.rikkahub.data.ai.tools.local.TODO_STATUS_IN_PROGRESS
 import app.androidrik.rikkahub.data.ai.tools.local.TODO_STATUS_COMPLETED
@@ -18,7 +20,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
@@ -830,7 +831,7 @@ private fun SearchWebPreview(
                             else -> value.jsonPrimitiveOrNull?.contentOrNull ?: value.toString()
                         }
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = appSkinRoundedShape(8f),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ) {
@@ -877,7 +878,7 @@ private fun SearchWebPreview(
                             modifier = Modifier
                                 .height(120.dp)
                                 .width(160.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(appSkinRoundedShape(12f))
                                 .clickable { context.openUrl(imageUrl) },
                         )
                     }
@@ -948,7 +949,7 @@ private fun SearchWebPreview(
                 CodeHighlightText(
                     code = JsonInstantPretty.encodeToString(content),
                     language = "json",
-                    fontSize = 12.sp
+                    fontSize = appSkinTextSize(12.sp)
                 )
             }
         }

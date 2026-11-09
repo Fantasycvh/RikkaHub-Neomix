@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.message
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,7 +62,7 @@ fun MessageQuoteCard(
         modifier = modifier
             .fillMaxWidth()
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
-        shape = RoundedCornerShape(8.dp),
+        shape = appSkinRoundedShape(8f),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(

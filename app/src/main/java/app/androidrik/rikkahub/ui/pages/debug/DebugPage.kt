@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.debug
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +18,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.HorizontalDivider
@@ -424,7 +424,7 @@ private fun ColorsPage() {
 
 @Composable
 private fun ColorTokenItem(name: String, color: Color) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = appSkinRoundedShape(8f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -438,9 +438,9 @@ private fun ColorTokenItem(name: String, color: Color) {
             modifier = Modifier
                 .height(40.dp)
                 .weight(1f)
-                .clip(RoundedCornerShape(4.dp))
+                .clip(appSkinRoundedShape(4f))
                 .background(color)
-                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(4.dp))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, appSkinRoundedShape(4f))
         )
         Column(modifier = Modifier.weight(2f)) {
             Text(name, style = MaterialTheme.typography.bodyMedium)

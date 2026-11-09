@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.mediacreation
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShapes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -24,7 +25,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -277,7 +277,7 @@ private fun InputThumbnail(
     Box(
         modifier = Modifier
             .size(48.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(appSkinRoundedShape(8f))
             .clickable { onPreview(MediaPreview(file, isVideo)) },
     ) {
         MediaThumbnail(
@@ -313,7 +313,7 @@ private fun RecordProgress(record: MediaCreationRecord) {
     }
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -346,7 +346,7 @@ private fun RecordFailure(record: MediaCreationRecord) {
         } else {
             MaterialTheme.colorScheme.onErrorContainer
         },
-        shape = RoundedCornerShape(12.dp),
+        shape = appSkinRoundedShape(12f),
         modifier = Modifier.fillMaxWidth(),
     ) {
         SelectionContainer {
@@ -425,7 +425,7 @@ private fun OutputTile(
     Box(
         modifier = modifier
             .aspectRatio(output.aspectRatio())
-            .clip(RoundedCornerShape(12.dp))
+            .clip(appSkinRoundedShape(12f))
             .clickable { onPreview(MediaPreview(file, output.isVideo)) },
     ) {
         MediaThumbnail(
@@ -442,7 +442,7 @@ private fun OutputTile(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .padding(8.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.5f), appSkinRoundedShape(4f))
                     .padding(horizontal = 4.dp, vertical = 1.dp),
             )
         }

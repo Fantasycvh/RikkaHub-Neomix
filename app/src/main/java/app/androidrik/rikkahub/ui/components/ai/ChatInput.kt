@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.components.ai
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import coil3.compose.AsyncImage
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
@@ -46,7 +47,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.BasicAlertDialog
@@ -700,7 +700,7 @@ private fun TextInputRow(
     ) {
         if (state.isEditing()) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = appSkinRoundedShape(16f),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 Row(

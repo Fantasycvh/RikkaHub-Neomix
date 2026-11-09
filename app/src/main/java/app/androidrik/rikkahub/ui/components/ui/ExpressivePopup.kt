@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.contentColorFor
@@ -32,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
 
 /** Popup 相对锚点优先出现的一侧, 空间不足时自动翻转 */
 enum class ExpressivePopupPlacement { Above, Below }
@@ -62,12 +62,12 @@ fun ExpressivePopup(
     alignment: ExpressivePopupAlignment = ExpressivePopupAlignment.Start,
     anchorGap: Dp = 8.dp,
     windowMargin: Dp = 16.dp,
-    shape: Shape = RoundedCornerShape(16.dp),
+    shape: Shape = appSkinRoundedShape(16f),
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     contentColor: Color = contentColorFor(containerColor),
     tonalElevation: Dp = 3.dp,
     shadowElevation: Dp = 6.dp,
-    contentPadding: PaddingValues = PaddingValues(8.dp),
+    contentPadding: PaddingValues = PaddingValues(LocalAppSkin.current.skin.spacing.pageDp.dp),
     properties: PopupProperties = PopupProperties(focusable = true),
     content: @Composable ColumnScope.() -> Unit,
 ) {

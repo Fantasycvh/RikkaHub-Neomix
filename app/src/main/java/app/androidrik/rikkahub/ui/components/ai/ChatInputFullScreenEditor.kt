@@ -3,6 +3,8 @@ package app.androidrik.rikkahub.ui.components.ai
 // 批次 7 拆出：FullScreenEditor 自 ChatInput.kt 拆出（同包，private→internal；
 // 与主输入共享 state.textContent，纯搬）
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
@@ -14,7 +16,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Surface
@@ -74,7 +75,7 @@ internal fun FullScreenEditor(
                 modifier = Modifier
                     .widthIn(max = 800.dp)
                     .fillMaxHeight(0.9f),
-                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                shape = appSkinRoundedShape(16f).copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
             ) {
                 Column(
                     modifier = Modifier
@@ -102,7 +103,7 @@ internal fun FullScreenEditor(
                             .fillMaxSize()
                             .testTag("chat_fullscreen_input")
                             .focusRequester(focusRequester),
-                        shape = RoundedCornerShape(32.dp),
+                        shape = appSkinRoundedShape(32f),
                         placeholder = {
                             Text(stringResource(R.string.chat_input_placeholder))
                         },

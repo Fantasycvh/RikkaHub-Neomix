@@ -106,7 +106,7 @@ internal fun WorkspaceFilesPanel(
             title = { Text(stringResource(R.string.chat_drawer_delete_title, deleteEntries.size)) },
             text = { Text(stringResource(R.string.chat_drawer_delete_unrecoverable)) },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
+                app.androidrik.rikkahub.ui.components.ui.AppTextButton(onClick = {
                     val entries = deleteEntries.also { deleteEntries = emptyList() }
                     scope.launch {
                         val failed = mutableListOf<String>()
@@ -125,7 +125,7 @@ internal fun WorkspaceFilesPanel(
                     }
                 }) { Text(stringResource(R.string.common_delete)) }
             },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { deleteEntries = emptyList() }) { Text(stringResource(R.string.common_cancel)) } },
+            dismissButton = { app.androidrik.rikkahub.ui.components.ui.AppTextButton(onClick = { deleteEntries = emptyList() }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 4.dp)) {

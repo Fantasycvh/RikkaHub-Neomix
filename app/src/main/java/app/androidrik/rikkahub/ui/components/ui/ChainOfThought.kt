@@ -95,7 +95,8 @@ fun <T> ChainOfThought(
     val canCollapse = steps.size > collapsedVisibleCount
     val shouldFillCollapseControlWidth = expanded || !collapsedAdaptiveWidth
     val panel = if (style == ChainOfThoughtStyle.CARD && custom == null) LocalAppSkin.current.skin.cards.reasoning else AppSkinPanel()
-    val panelShape = panel.shape(RoundedCornerShape((custom?.cornerRadiusDp ?: if (style == ChainOfThoughtStyle.CARD) 16f else 8f).dp))
+    val panelShape = panel.shape(custom?.cornerRadiusDp?.let { RoundedCornerShape(it.dp) }
+        ?: appSkinRoundedShape(if (style == ChainOfThoughtStyle.CARD) 16f else 8f))
     val panelInk = panel.ink(cardColors.contentColor, cardColors.containerColor)
 
     CompositionLocalProvider(

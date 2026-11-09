@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.floating
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.infiniteRepeatable
@@ -25,7 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -444,7 +444,7 @@ private fun ReplyBar(conversationId: Uuid, generating: Boolean, onSend: (String)
                 Text(stringResource(if (generating) R.string.floating_chat_reply_queued_placeholder else R.string.floating_chat_reply_placeholder))
             },
             maxLines = 4,
-            shape = RoundedCornerShape(24.dp),
+            shape = appSkinRoundedShape(24f),
             colors = TextFieldDefaults.colors(
                 focusedIndicatorColor = Color.Transparent,
                 unfocusedIndicatorColor = Color.Transparent,

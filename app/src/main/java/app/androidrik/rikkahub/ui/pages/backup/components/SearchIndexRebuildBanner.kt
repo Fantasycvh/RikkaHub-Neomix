@@ -1,12 +1,12 @@
 package app.androidrik.rikkahub.ui.pages.backup.components
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -39,7 +39,7 @@ fun SearchIndexRebuildBanner(content: @Composable () -> Unit) {
         when (val current = state) {
             is SearchIndexRebuildState.Running -> Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(12.dp),
+                shape = appSkinRoundedShape(12f),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
@@ -63,7 +63,7 @@ fun SearchIndexRebuildBanner(content: @Composable () -> Unit) {
             }
             is SearchIndexRebuildState.Failed -> Surface(
                 color = MaterialTheme.colorScheme.errorContainer,
-                shape = RoundedCornerShape(12.dp),
+                shape = appSkinRoundedShape(12f),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
