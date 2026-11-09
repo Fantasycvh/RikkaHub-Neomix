@@ -238,6 +238,8 @@ data class DisplaySetting(
     val avatarFrameParams: AvatarFrameParams? = null,
     /** 思维链 CUSTOM 档的样式（JSON 可导入导出）。 */
     val chainOfThoughtCustomStyle: ChainOfThoughtCustomStyle? = null,
+    val appSkinId: String? = null,
+    val appSkinOverrides: app.androidrik.rikkahub.data.model.AppSkinOverrides = app.androidrik.rikkahub.data.model.AppSkinOverrides(),
 )
 
 @Serializable

@@ -21,11 +21,15 @@ import app.androidrik.rikkahub.data.model.AppearanceGradient
 import app.androidrik.rikkahub.data.model.BubbleMaterial
 
 /** Minimal native provider example, available in the plugin center but disabled by default. */
-object BuiltinChatAppearancePlugin : PluginChatAppearanceProvider {
+object BuiltinChatAppearancePlugin : PluginChatAppearanceProvider, PluginAppSkinProvider {
     override val id = "builtin.chat_appearance"
     override val displayName = "聊天外观方案"
     override val description = "提供紧凑、阅读、渐变与玻璃方案，启用后可在偏好设置的用户界面页选择"
-    override val version = "1.2.0"
+    override val version = "1.3.0"
+    override val appSkins = listOf(AppSkinPreset("soft", "柔和阅读（插件）",
+        app.androidrik.rikkahub.data.model.AppSkin(
+            typography = app.androidrik.rikkahub.data.model.AppSkinTypography(family = app.androidrik.rikkahub.data.datastore.ChatFontFamily.SERIF),
+            shapes = app.androidrik.rikkahub.data.model.AppSkinShapes(cardGroupOuterDp = 28f, cardGroupInnerDp = 8f, buttonDp = 20f, inputDp = 12f))))
     override val author = "Neomix"
     override val enabledByDefault = false
     override val chatLayouts: List<ChatLayoutRenderer> = listOf(CenteredChatLayout)

@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
@@ -43,18 +44,26 @@ fun rememberChatFontFamily(displaySetting: DisplaySetting): FontFamily {
     val context = LocalContext.current
     val appearance = rememberChatAppearance(displaySetting)
     val typography = appearance.typography
+    val inherited = MaterialTheme.typography.bodyLarge.fontFamily ?: FontFamily.Default
     return remember(
         typography.family,
         typography.customFontPath,
+        inherited,
     ) {
-        resolveChatFontFamily(context, typography.family, typography.customFontPath)
+        if (typography.family == ChatFontFamily.DEFAULT) inherited else
+            resolveChatFontFamily(context, typography.family, typography.customFontPath)
     }
 }
 
-fun DisplaySetting.resolveChatFontFamily(context: Context): FontFamily =
-    resolveChatFontFamily(context, chatFontFamily, chatCustomFontPath)
+fun DisplaySetting.resolveChatFontFamily(context: Context): FontFamily {
+    val resolved = resolveAppSkin(this)
+    val chat = resolved.chat.typography
+    val font = if (chat.family == ChatFontFamily.DEFAULT) resolved.skin.typography.let { it.family to it.customFontPath }
+        else chat.family to chat.customFontPath
+    return resolveChatFontFamily(context, font.first, font.second)
+}
 
-private fun resolveChatFontFamily(context: Context, family: ChatFontFamily, path: String): FontFamily = when (family) {
+internal fun resolveChatFontFamily(context: Context, family: ChatFontFamily, path: String): FontFamily = when (family) {
     ChatFontFamily.DEFAULT -> FontFamily.Default
     ChatFontFamily.SERIF -> FontFamily.Serif
     ChatFontFamily.MONOSPACE -> FontFamily.Monospace

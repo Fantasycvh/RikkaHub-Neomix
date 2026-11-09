@@ -45,10 +45,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
 
-private val CardGroupCorner = 20.dp
-private val CardGroupItemSpacing = 2.dp
-private val CardGroupInnerCorner = 4.dp
+private val CardGroupCorner @Composable get() = LocalAppSkin.current.skin.shapes.cardGroupOuterDp.dp
+private val CardGroupItemSpacing @Composable get() = LocalAppSkin.current.skin.spacing.groupItemDp.dp
+private val CardGroupInnerCorner @Composable get() = LocalAppSkin.current.skin.shapes.cardGroupInnerDp.dp
 
 private data class CardGroupItem(
     val onClick: (() -> Unit)?,
@@ -142,6 +143,7 @@ private class CardGroupScopeImpl : CardGroupScope {
 }
 
 /** 分组里第 index 项的形状，给不方便走 CardGroup 的列表（比如可拖拽排序的）用 */
+@Composable
 fun cardGroupItemShape(index: Int, count: Int): Shape {
     val top = if (index == 0) CardGroupCorner else CardGroupInnerCorner
     val bottom = if (index == count - 1) CardGroupCorner else CardGroupInnerCorner
@@ -186,14 +188,15 @@ private fun CardGroupFormItem(
     count: Int,
     index: Int,
 ) {
+    val spacing = LocalAppSkin.current.skin.spacing
     Surface(
         modifier = item.modifier.fillMaxWidth(),
         shape = cardGroupItemShape(index, count),
         color = CustomColors.listItemColors.containerColor,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = spacing.formHorizontalDp.dp, vertical = spacing.formVerticalDp.dp),
+            verticalArrangement = Arrangement.spacedBy(spacing.formGapDp.dp),
         ) {
             if (item.headlineContent != null || item.leadingContent != null || item.trailingContent != null) {
                 Row(

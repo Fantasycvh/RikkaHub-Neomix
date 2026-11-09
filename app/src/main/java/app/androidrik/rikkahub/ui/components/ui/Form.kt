@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
 
 @Composable
 fun FormItem(
@@ -29,7 +30,7 @@ fun FormItem(
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy((LocalAppSkin.current.skin.spacing.formGapDp * 2f / 3f).dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(

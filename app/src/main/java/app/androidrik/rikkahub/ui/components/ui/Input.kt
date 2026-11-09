@@ -24,7 +24,7 @@ fun <T : Number> OutlinedNumberInput(
     colors: TextFieldColors = OutlinedTextFieldDefaults.colors()
 ) {
     var textFieldValue by remember(value) { mutableStateOf(value.toString()) }
-    OutlinedTextField(
+    AppOutlinedTextField(
         modifier = modifier,
         value = textFieldValue,
         onValueChange = { newValue ->
@@ -61,6 +61,7 @@ fun <T : Number> NumberInput(
 ) {
     var textFieldValue by remember(value) { mutableStateOf(value.toString()) }
     TextField(
+        shape = appSkinInputShape(),
         modifier = modifier,
         value = textFieldValue,
         onValueChange = { newValue ->

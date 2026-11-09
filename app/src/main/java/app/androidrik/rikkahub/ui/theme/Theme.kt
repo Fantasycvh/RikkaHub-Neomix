@@ -4,9 +4,7 @@ import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.LocalOverscrollFactory
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
@@ -60,6 +58,7 @@ fun RikkahubTheme(
     content: @Composable () -> Unit
 ) {
     val settings by rememberUserSettingsState()
+    val skin = rememberAppSkin(settings.displaySetting)
 
     val darkTheme = when (colorMode) {
         ColorMode.SYSTEM -> isSystemInDarkTheme()
@@ -69,6 +68,9 @@ fun RikkahubTheme(
     val amoledDarkMode by rememberAmoledDarkMode()
 
     val colorScheme = when {
+        skin.skin.palette != null -> remember(skin.skin.palette, darkTheme) {
+            requireNotNull(skin.skin.palette).generateColorScheme(darkTheme)
+        }
         settings.dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             val seed = settings.dynamicColorSeedColor
@@ -178,11 +180,10 @@ fun RikkahubTheme(
         LocalUserBubbleColor provides userBubbleColor,
         LocalOverscrollFactory provides null
     ) {
-        MaterialExpressiveTheme(
+        AppSkinTheme(
+            resolved = skin,
             colorScheme = colorSchemeConverted,
-            typography = Typography,
             content = content,
-            motionScheme = MotionScheme.expressive()
         )
     }
 }

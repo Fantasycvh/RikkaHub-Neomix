@@ -162,6 +162,7 @@ fun TextArea(
 
             // Multi-line text input
             OutlinedTextField(
+                shape = appSkinInputShape(),
                 state = state,
                 modifier = Modifier
                     .fillMaxWidth(),

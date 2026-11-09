@@ -5,6 +5,8 @@ import app.androidrik.rikkahub.data.model.ChatAppearanceDetails
 import app.androidrik.rikkahub.data.model.withChatAppearance
 import app.androidrik.rikkahub.data.model.CustomTheme
 import app.androidrik.rikkahub.data.model.ThemeRoleOverrides
+import app.androidrik.rikkahub.data.model.AppSkin
+import app.androidrik.rikkahub.data.model.AppSkinOverrides
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.datastore.LiquidGlassReadabilityMode
@@ -45,6 +47,8 @@ data class ThemeAppearanceSnapshot(
     val bubbleOpacity: Float = 1.0f,
     val fontSizeRatio: Float = 1.0f,
     val themeRoleOverrides: ThemeRoleOverrides = ThemeRoleOverrides(),
+    /** null in old snapshots leaves the current global skin untouched. */
+    val appSkin: AppSkin? = null,
 )
 
 /** Export the currently resolved appearance; plugin IDs and local font paths are not portable. */
@@ -65,6 +69,11 @@ fun DisplaySetting.toAppearanceSnapshot(): ThemeAppearanceSnapshot {
             bubbleOpacity = bubbleOpacity,
             fontSizeRatio = fontSizeRatio,
             themeRoleOverrides = themeRoleOverrides,
+            appSkin = if (appSkinId == null && appSkinOverrides == AppSkinOverrides()) null else resolveAppSkin(this).skin.let { skin ->
+                // Font files are still local-only until skin packages own font assets.
+                skin.copy(typography = skin.typography.copy(customFontPath = "", customFontName = "",
+                    family = if (skin.typography.family == ChatFontFamily.CUSTOM) ChatFontFamily.DEFAULT else skin.typography.family))
+            },
         )
     }
 }
@@ -85,4 +94,6 @@ fun DisplaySetting.withAppearanceSnapshot(a: ThemeAppearanceSnapshot): DisplaySe
     bubbleOpacity = a.bubbleOpacity,
     fontSizeRatio = a.fontSizeRatio,
     themeRoleOverrides = a.themeRoleOverrides,
+    appSkinId = if (a.appSkin != null) null else appSkinId,
+    appSkinOverrides = a.appSkin?.let { AppSkinOverrides.from(it.normalized()) } ?: appSkinOverrides,
 )

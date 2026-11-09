@@ -131,7 +131,7 @@ fun <T> SelectTextField(
     val density = LocalDensity.current
 
     Box(modifier = modifier) {
-        OutlinedTextField(
+        AppOutlinedTextField(
             value = value,
             onValueChange = onValueChange,
             readOnly = readOnly,

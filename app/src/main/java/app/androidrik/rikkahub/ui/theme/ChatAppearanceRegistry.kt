@@ -1,17 +1,14 @@
 package app.androidrik.rikkahub.ui.theme
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.getValue
 import app.androidrik.plugin.api.RikkaPlugin
 import app.androidrik.plugin.manager.PluginLifecycleObserver
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.plugin.manager.PluginResources
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.model.ChatAppearance
-import app.androidrik.rikkahub.data.model.toChatAppearance
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -55,8 +52,7 @@ class ChatAppearanceRegistry {
 fun resolveChatAppearance(
     display: DisplaySetting,
     presets: List<ChatAppearancePreset>,
-): ChatAppearance = presets.firstOrNull { it.id == display.chatAppearancePresetId }
-    ?.appearance?.normalized() ?: display.toChatAppearance()
+): ChatAppearance = resolveAppSkin(display, chatPresets = presets).chat
 
 private data class ProvidedAppearance(val display: DisplaySetting, val appearance: ChatAppearance)
 private val LocalChatAppearance = compositionLocalOf<ProvidedAppearance?> { null }
@@ -64,8 +60,7 @@ private val LocalChatAppearance = compositionLocalOf<ProvidedAppearance?> { null
 @Composable
 fun rememberChatAppearance(display: DisplaySetting): ChatAppearance {
     LocalChatAppearance.current?.takeIf { it.display == display }?.let { return it.appearance }
-    val presets by ChatAppearanceRegistry.shared.presets.collectAsState()
-    return resolveChatAppearance(display, presets)
+    return rememberAppSkin(display).chat
 }
 
 @Composable
@@ -78,9 +73,13 @@ fun installPluginChatAppearanceBridge(
     manager: PluginManager,
     registry: ChatAppearanceRegistry = ChatAppearanceRegistry.shared,
     layoutRegistry: ChatLayoutRegistry = ChatLayoutRegistry.shared,
+    skinRegistry: AppSkinRegistry = AppSkinRegistry.shared,
 ) {
     manager.addObserver(object : PluginLifecycleObserver {
         override suspend fun onPluginEnabled(plugin: RikkaPlugin, resources: PluginResources) {
+            if (plugin is PluginAppSkinProvider) {
+                resources.register { skinRegistry.register(plugin.id, plugin.appSkins) }
+            }
             if (plugin is PluginChatAppearanceProvider) {
                 resources.register { registry.register(plugin.id, plugin.chatAppearancePresets) }
                 resources.register { layoutRegistry.register(plugin.id, plugin.chatLayouts) }
