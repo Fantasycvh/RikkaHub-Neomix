@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun BubbleLayersEditor(title: String, initial: ChatBubble, onSave: (ChatBubble) -> Unit, onDismiss: () -> Unit) {
+fun BubbleLayersEditor(title: String, initial: ChatBubble, onSave: (ChatBubble) -> Unit, onDismiss: () -> Unit, staticGlass: Boolean = false) {
     var draft by remember { mutableStateOf(initial.copy(stack = initial.effectiveStack())) }
     var newKind by remember { mutableStateOf(BubbleLayerKind.TEXTURE) }
     var selectingLayer by remember { mutableStateOf<String?>(null) }
@@ -121,7 +121,7 @@ fun BubbleLayersEditor(title: String, initial: ChatBubble, onSave: (ChatBubble) 
                 Text("玻璃背景")
                 Switch(checked = stack.glass, onCheckedChange = { value -> alterStack { it.copy(glass = value) } })
             }
-            if (stack.glass) Text("玻璃采样聊天背景；此处预览和图片导出使用静态透光效果。")
+            if (stack.glass) Text(if (staticGlass) "此槽位使用静态透光效果。" else "玻璃采样聊天背景；此处预览和图片导出使用静态透光效果。")
             Text("图层：${stack.layers.size}/${BubbleStack.MAX_LAYERS}（后面的图层绘制在上方）")
             stack.layers.forEachIndexed { index, layer -> key(layer.id) {
                 OutlinedCard(Modifier.fillMaxWidth()) {

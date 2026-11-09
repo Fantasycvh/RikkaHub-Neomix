@@ -15,8 +15,8 @@ import app.androidrik.rikkahub.data.model.GradientDirection
 import app.androidrik.rikkahub.ui.components.ui.Select
 
 @Composable
-fun BubbleMaterialEditor(title: String, initial: ChatBubble, onSave: (ChatBubble) -> Unit, onDismiss: () -> Unit) {
-    BubbleLayersEditor(title, initial, onSave, onDismiss)
+fun BubbleMaterialEditor(title: String, initial: ChatBubble, onSave: (ChatBubble) -> Unit, onDismiss: () -> Unit, staticGlass: Boolean = false) {
+    BubbleLayersEditor(title, initial, onSave, onDismiss, staticGlass)
 }
 
 @Composable

@@ -1,5 +1,7 @@
 # AppSkin 契约、统一解析与基础组件
 
+顶栏、抽屉与复杂卡片的后续接入见 [AppSkin 槽位说明](design-app-skin-panels.md)。
+
 ## 本轮范围
 
 `AppSkin` 提供全局字体/字号、Material 五级形状、分组卡片/按钮/输入框圆角、
