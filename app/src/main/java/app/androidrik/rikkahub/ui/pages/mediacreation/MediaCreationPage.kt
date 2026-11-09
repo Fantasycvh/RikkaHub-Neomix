@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.mediacreation
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShapes
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -30,9 +31,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilledTonalButton
+import app.androidrik.rikkahub.ui.components.ui.AppFilledTonalButton as FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
@@ -40,7 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
@@ -365,7 +366,7 @@ private fun TimelineEmpty(
             )
             Button(
                 onClick = onOpenMediaSettings,
-                shapes = ButtonDefaults.shapes(),
+                shapes = appSkinButtonShapes(),
             ) {
                 Text(stringResource(R.string.media_creation_page_go_configure))
             }
@@ -410,7 +411,7 @@ private fun MediaCreationSelectionBar(
             }
             TextButton(
                 onClick = { if (allSelected) vm.clearSelection() else vm.selectAll() },
-                shapes = ButtonDefaults.shapes(),
+                shapes = appSkinButtonShapes(),
             ) {
                 Text(
                     stringResource(
@@ -431,7 +432,7 @@ private fun MediaCreationSelectionBar(
                     }
                 },
                 enabled = selectedCount > 0 && !saving,
-                shapes = ButtonDefaults.shapes(),
+                shapes = appSkinButtonShapes(),
                 contentPadding = ButtonDefaults.ButtonWithIconContentPadding,
             ) {
                 Icon(HugeIcons.Download01, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
@@ -443,7 +444,7 @@ private fun MediaCreationSelectionBar(
             Button(
                 onClick = onDelete,
                 enabled = selectedCount > 0 && !saving,
-                shapes = ButtonDefaults.shapes(),
+                shapes = appSkinButtonShapes(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError,

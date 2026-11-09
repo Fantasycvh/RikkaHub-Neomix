@@ -11,7 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults

@@ -25,7 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -33,12 +33,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.MultiChoiceSegmentedButtonRow
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedButton as OutlinedButton
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable

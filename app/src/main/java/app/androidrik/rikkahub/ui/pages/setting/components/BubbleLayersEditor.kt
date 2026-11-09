@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
+import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*

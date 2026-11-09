@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.components.ai
 
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedButton as OutlinedButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState

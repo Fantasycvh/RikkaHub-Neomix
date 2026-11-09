@@ -29,7 +29,7 @@ import androidx.compose.material3.AlertDialog
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
+import app.androidrik.rikkahub.ui.components.ui.AppFilledTonalButton as FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton

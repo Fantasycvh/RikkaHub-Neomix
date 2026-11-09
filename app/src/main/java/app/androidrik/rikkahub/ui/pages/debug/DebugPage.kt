@@ -19,10 +19,10 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab

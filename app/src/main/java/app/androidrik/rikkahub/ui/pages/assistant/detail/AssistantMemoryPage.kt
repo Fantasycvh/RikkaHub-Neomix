@@ -38,8 +38,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextField as TextField
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.lazy.LazyColumn

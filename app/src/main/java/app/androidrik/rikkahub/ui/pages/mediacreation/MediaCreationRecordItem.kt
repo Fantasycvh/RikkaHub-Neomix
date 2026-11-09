@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.mediacreation
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShapes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,7 +31,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledTonalButton
+import app.androidrik.rikkahub.ui.components.ui.AppFilledTonalButton as FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -732,7 +733,7 @@ private fun ActionChip(text: String, icon: ImageVector, onClick: () -> Unit) {
     FilledTonalButton(
         onClick = onClick,
         // 按下时圆角收紧
-        shapes = ButtonDefaults.shapesFor(height),
+        shapes = appSkinButtonShapes(height),
         modifier = Modifier.heightIn(min = height),
         colors = ButtonDefaults.filledTonalButtonColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,

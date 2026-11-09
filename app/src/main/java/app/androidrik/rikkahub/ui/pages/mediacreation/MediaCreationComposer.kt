@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.mediacreation
 
+import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShapes
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -50,20 +51,20 @@ import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalButton
+import app.androidrik.rikkahub.ui.components.ui.AppFilledTonalButton as FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedButton as OutlinedButton
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextField as TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.rememberBottomSheetState
@@ -454,7 +455,7 @@ private fun ComposerChip(
     FilledTonalButton(
         onClick = onClick,
         // 按下时圆角收紧
-        shapes = ButtonDefaults.shapes(),
+        shapes = appSkinButtonShapes(),
         modifier = modifier,
         contentPadding = ButtonDefaults.contentPaddingFor(ButtonDefaults.MinHeight, hasStartIcon = true),
     ) {

@@ -37,14 +37,14 @@ import app.androidrik.rikkahub.ui.theme.appSkinPanelBackground
 import app.androidrik.rikkahub.ui.theme.shape
 import app.androidrik.rikkahub.ui.theme.ink
 import app.androidrik.rikkahub.ui.theme.border
-import androidx.compose.material3.OutlinedTextField
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable

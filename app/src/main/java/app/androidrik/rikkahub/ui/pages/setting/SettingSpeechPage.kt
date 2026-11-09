@@ -45,7 +45,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
