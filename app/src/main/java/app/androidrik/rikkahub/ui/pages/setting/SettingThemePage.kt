@@ -104,6 +104,19 @@ import org.koin.androidx.compose.koinViewModel
 import kotlin.math.roundToInt
 import kotlin.uuid.Uuid
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import app.androidrik.rikkahub.data.files.BubbleTextureStore
+import app.androidrik.rikkahub.data.files.AppearanceArchive
+import app.androidrik.rikkahub.data.files.readLimited
+import app.androidrik.rikkahub.ui.theme.textureIds
+import app.androidrik.rikkahub.ui.theme.exportTheme
+import app.androidrik.rikkahub.ui.theme.importTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+
 private val themeJson = Json {
     ignoreUnknownKeys = true
     prettyPrint = true
@@ -124,6 +137,39 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
     var editingTheme by remember { mutableStateOf<CustomTheme?>(null) }
     var showImportDialog by remember { mutableStateOf(false) }
     var deletingTheme by remember { mutableStateOf<CustomTheme?>(null) }
+    val context = LocalContext.current
+    val textureStore = remember(context) { BubbleTextureStore(context.applicationContext) }
+    var pendingThemeArchive by remember { mutableStateOf<ByteArray?>(null) }
+    var importedThemeJson by remember { mutableStateOf("") }
+    var archiveBusy by remember { mutableStateOf(false) }
+    val saveThemeArchive = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        val bytes = pendingThemeArchive
+        pendingThemeArchive = null
+        if (uri != null && bytes != null) scope.launch {
+            try {
+                withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) } ?: error("无法保存主题包") }
+                toaster.show(exportSuccessMsg, type = ToastType.Success)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { toaster.show("主题包保存失败：${failure.message.orEmpty()}") }
+        }
+    }
+    val openThemeArchive = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            archiveBusy = true
+            try {
+                val snapshot = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use {
+                        textureStore.importTheme(readLimited(it, AppearanceArchive.MAX_TOTAL + 1024 * 1024))
+                    } ?: error("无法读取主题包")
+                }
+                importedThemeJson = themeJson.encodeToString(ThemeSnapshot.serializer(), snapshot)
+                showImportDialog = true
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (failure: Exception) { toaster.show("主题包读取失败：${failure.message.orEmpty()}") }
+            finally { archiveBusy = false }
+        }
+    }
+
 
     Scaffold(
         topBar = {
@@ -145,6 +191,11 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
             contentPadding = innerPadding + PaddingValues(8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            item(key = "theme_texture_archive") {
+                TextButton(enabled = !archiveBusy, onClick = { openThemeArchive.launch(arrayOf("application/zip", "application/octet-stream")) }) {
+                    Text(if (archiveBusy) "正在读取主题包…" else "导入主题包（含图片纹理）")
+                }
+            }
             if (settings.dynamicColor) {
                 item("dynamicColorHint") {
                     Box(
@@ -248,20 +299,26 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
                         isSelected = settings.themeId == theme.id,
                         onSelect = {
                             vm.updateSettings(settings.copy(themeId = theme.id))
-                        },                        onExport = {
+                        },
+                        onExport = export@ {
+                            if (archiveBusy || pendingThemeArchive != null) return@export
+                            archiveBusy = true
                             // 快照格式（design-custom-theme.md §4.3）：色板 + 外观子集；导入端双兼容旧裸主题
-                            val json = themeJson.encodeToString(
-                                ThemeSnapshot(
-                                    theme = theme,
-                                    appearance = settings.displaySetting.toAppearanceSnapshot(),
-                                )
-                            )
+                            val snapshot = ThemeSnapshot(theme = theme, appearance = settings.displaySetting.toAppearanceSnapshot())
                             scope.launch {
-                                clipboardManager.setClipEntry(
-                                    ClipEntry(ClipData.newPlainText("theme", json))
-                                )
+                                try {
+                                    if (snapshot.textureIds().isNotEmpty()) {
+                                        pendingThemeArchive = withContext(Dispatchers.IO) { textureStore.exportTheme(snapshot) }
+                                        saveThemeArchive.launch("theme.neomix.zip")
+                                    } else {
+                                        val json = themeJson.encodeToString(ThemeSnapshot.serializer(), snapshot)
+                                        clipboardManager.setClipEntry(ClipEntry(ClipData.newPlainText("theme", json)))
+                                        toaster.show(exportSuccessMsg, type = ToastType.Success)
+                                    }
+                                } catch (cancelled: CancellationException) { throw cancelled }
+                                catch (failure: Exception) { pendingThemeArchive = null; toaster.show("主题导出失败：${failure.message.orEmpty()}") }
+                                finally { archiveBusy = false }
                             }
-                            toaster.show(exportSuccessMsg, type = ToastType.Success)
                         },
                         onEdit = {
                             editingTheme = theme
@@ -317,7 +374,8 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
 
     if (showImportDialog) {
         ImportThemeDialog(
-            onDismiss = { showImportDialog = false },
+            initialJson = importedThemeJson,
+            onDismiss = { showImportDialog = false; importedThemeJson = "" },
             onImport = { theme, appearance ->
                 val importedTheme = theme.copy(id = Uuid.random().toString())
                 vm.updateSettings { s ->
@@ -332,6 +390,7 @@ fun SettingThemePage(vm: SettingVM = koinViewModel()) {
                     )
                 }
                 showImportDialog = false
+                importedThemeJson = ""
                 toaster.show(importSuccessMsg, type = ToastType.Success)
             }
         )
@@ -571,13 +630,14 @@ private fun CustomThemeEditSheet(
 
 @Composable
 private fun ImportThemeDialog(
+    initialJson: String = "",
     onDismiss: () -> Unit,
     onImport: (CustomTheme, ThemeAppearanceSnapshot?) -> Unit,
 ) {
-    var jsonText by remember { mutableStateOf("") }
+    var jsonText by remember { mutableStateOf(initialJson) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     // 快照携带外观子集时显示「同时应用外观」勾选（默认不勾：主题色共享是常态，外观子集是侵入性操作）
-    var hasAppearance by remember { mutableStateOf(false) }
+    var hasAppearance by remember { mutableStateOf(runCatching { themeJson.decodeFromString<ThemeSnapshot>(initialJson).appearance != null }.getOrDefault(false)) }
     var applyAppearance by remember { mutableStateOf(false) }
 
     AlertDialog(

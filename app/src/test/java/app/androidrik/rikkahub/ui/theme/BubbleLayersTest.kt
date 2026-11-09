@@ -67,6 +67,17 @@ class BubbleLayersTest {
         assertThrows(IllegalArgumentException::class.java) { AppearanceArchive.decode(zip("textures/../../bad.png")) }
         assertThrows(IllegalArgumentException::class.java) { AppearanceArchive.decode(zip("textures/${"a".repeat(64)}.png")) }
         assertThrows(IllegalArgumentException::class.java) { AppearanceArchive.decode(zip("unknown")) }
+        assertThrows(IllegalArgumentException::class.java) { AppearanceArchive.decode(zip("textures/${textureDigest(bytes)}.png")) }
+        val duplicate = zip("manifest.json", "manifesx.json").toString(Charsets.ISO_8859_1)
+            .replace("manifesx.json", "manifest.json").toByteArray(Charsets.ISO_8859_1)
+        assertThrows(IllegalArgumentException::class.java) { AppearanceArchive.decode(duplicate) }
+        val oversized = ByteArrayOutputStream().use { out ->
+            ZipOutputStream(out).use { z ->
+                z.putNextEntry(ZipEntry("manifest.json")); z.write(ByteArray(AppearanceArchive.MAX_MANIFEST + 1)); z.closeEntry()
+            }
+            out.toByteArray()
+        }
+        assertThrows(IllegalArgumentException::class.java) { AppearanceArchive.decode(oversized) }
     }
 
     @Test fun `adjacent lazy slices share phase while scrolling and after anchor disposal`() {

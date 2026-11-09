@@ -110,7 +110,7 @@ fun ChatAppearanceSettings(
                 else it.copy(assistantBubble = transform(it.assistantBubble))
             }
             item(headlineContent = { Text("${name}气泡材质") }, supportingContent = {
-                Text(if (bubble.visible) bubble.material.label() else "无色")
+                Text(if (!bubble.visible) "无色" else bubble.stack?.let { "${it.layers.size} 个图层${if (it.glass) " · 玻璃背景" else ""}" } ?: bubble.material.label())
             }, trailingContent = {
                 TextButton(onClick = { editingUser = user }) { Text("编辑") }
             })

@@ -17,6 +17,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -25,6 +31,9 @@ import app.androidrik.rikkahub.SketchTestHostActivity
 import app.androidrik.rikkahub.data.files.*
 import app.androidrik.rikkahub.data.model.*
 import app.androidrik.rikkahub.ui.components.message.*
+import app.androidrik.rikkahub.ui.pages.setting.components.BubbleMaterialEditor
+import app.androidrik.rikkahub.ui.context.LocalToaster
+import com.dokar.sonner.rememberToasterState
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -87,6 +96,64 @@ class BubbleLayersRenderingTest {
         val decoded = requireNotNull(store.load(store.importImage(source)))
         assertEquals(0, android.graphics.Color.alpha(decoded.getPixel(0, 0)))
         assertEquals(128, android.graphics.Color.alpha(decoded.getPixel(1, 1)))
+    }
+
+    @Test fun textureThemeArchiveRestoresAssetsBeforeApplyingTheAppearance() {
+        val store = BubbleTextureStore(context)
+        val id = store.importImage(png())
+        val snapshot = ThemeSnapshot(theme = CustomTheme(name = "Texture"), appearance =
+            app.androidrik.rikkahub.data.datastore.DisplaySetting().withChatAppearance(ChatAppearance(
+                userBubble = ChatBubble(stack = BubbleStack(layers = listOf(BubbleLayer(kind = BubbleLayerKind.TEXTURE,
+                    texture = BubbleTexture(id))))))).toAppearanceSnapshot())
+        val pack = store.exportTheme(snapshot)
+        val targetDir = File(directory, "theme-copy").apply { mkdirs() }
+        val copy = BubbleTextureStore(object : ContextWrapper(context) { override fun getFilesDir() = targetDir })
+        val imported = copy.importTheme(pack)
+        assertEquals(snapshot, imported)
+        assertNotNull(copy.load(id))
+        assertEquals(setOf(id), imported.textureIds())
+    }
+
+    @Test fun materialEditorKeepsTheDraftLocalUntilSave() {
+        val initial = ChatBubble(stack = BubbleStack(layers = listOf(BubbleLayer(id = "base", colorHex = "#112233"))))
+        var saved: ChatBubble? = null
+        compose.setContent {
+            CompositionLocalProvider(LocalToaster provides rememberToasterState()) {
+                MaterialTheme { BubbleMaterialEditor("Test bubble", initial, onSave = { saved = it }, onDismiss = {}) }
+            }
+        }
+        compose.onNode(hasSetTextAction() and hasText("#112233")).performTextReplacement("#445566")
+        compose.runOnIdle { assertNull(saved); assertEquals("#112233", initial.stack!!.layers.single().colorHex) }
+        compose.onNodeWithText("保存").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("#445566", saved!!.stack!!.layers.single().colorHex) }
+    }
+
+    @Test fun explicitLayerStacksPreserveLegacyMaterialPixels() {
+        compose.setContent {
+            MaterialTheme {
+                Column {
+                    BubbleMaterial.entries.forEach { material ->
+                        val old = ChatBubble(material = material)
+                        Row {
+                            ChatBubbleSurface(old, Color(0xFFD1C4E9), Modifier.size(64.dp, 40.dp).testTag("old-$material")) {}
+                            ChatBubbleSurface(old.copy(stack = old.effectiveStack()), Color(0xFFD1C4E9),
+                                Modifier.size(64.dp, 40.dp).testTag("new-$material")) {}
+                        }
+                    }
+                }
+            }
+        }
+        BubbleMaterial.entries.forEach { material ->
+            val old = compose.onNodeWithTag("old-$material").captureToImage().toPixelMap()
+            val new = compose.onNodeWithTag("new-$material").captureToImage().toPixelMap()
+            listOf(0.25f, 0.5f, 0.75f).forEach { f ->
+                val a = old[(old.width * f).toInt(), old.height / 2]
+                val b = new[(new.width * f).toInt(), new.height / 2]
+                assertEquals("$material red changed", a.red, b.red, 0.02f)
+                assertEquals("$material green changed", a.green, b.green, 0.02f)
+                assertEquals("$material blue changed", a.blue, b.blue, 0.02f)
+            }
+        }
     }
 
     @Test fun layerOrderAndGlobalOpacityApplyToTheComposedGroup() {
