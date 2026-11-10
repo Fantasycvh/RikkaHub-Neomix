@@ -38,7 +38,8 @@ data class AppSkinCards(val reasoning: AppSkinPanel = AppSkinPanel(), val tool: 
 }
 
 fun AppSkin.panels(): List<AppSkinPanel> = listOf(topBar.panel, drawer.panel, drawer.item, cards.reasoning, cards.tool)
-fun AppSkin.textureIds(): Set<String> = panels().flatMap { it.background?.textureIds().orEmpty() }.toSet()
+fun AppSkin.textureIds(): Set<String> = panels().flatMap { it.background?.textureIds().orEmpty() }.toSet() +
+    listOfNotNull(resources.logo, resources.chatBackground)
 
 enum class AppSkinPanelSlot { TOP_BAR, DRAWER, DRAWER_ITEM, REASONING, TOOL }
 fun AppSkin.panel(slot: AppSkinPanelSlot): AppSkinPanel = when (slot) {

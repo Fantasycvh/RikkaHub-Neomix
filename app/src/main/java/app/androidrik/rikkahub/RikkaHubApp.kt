@@ -132,6 +132,7 @@ class RikkaHubApp : Application() {
         // 全部应用初始化：isolatedProcess 无大部分系统服务（WorkManager 依赖的
         // JobScheduler 为 null 直接崩溃），Koin/DB/WorkManager 与编译无关
         if (isIsolatedProcess()) return
+        Thread { runCatching { app.androidrik.rikkahub.data.files.SkinPackageStore(this).reload() } }.start()
 
         // 本次进程启动时刻（P0.5 启动对账的判据）：必须早于任何 run 创建；
         // 放在通知渠道/DB 之前，重试 boot 也不会把它改晚。

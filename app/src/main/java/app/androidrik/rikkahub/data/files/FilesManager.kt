@@ -912,6 +912,7 @@ object FileFolders {
     const val AVATAR_FRAMES = "avatar-frames"
     /** Persistent, content-addressed bubble textures; ordinary attachment cleanup must not touch them. */
     const val BUBBLE_TEXTURES = "bubble-textures"
+    const val SKIN_PACKAGES = "skin-packages"
 
     /**
      * 用户配置的**助手聊天背景**图。

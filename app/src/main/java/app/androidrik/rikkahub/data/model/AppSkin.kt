@@ -16,9 +16,10 @@ data class AppSkin(
     val drawer: AppSkinDrawer = AppSkinDrawer(),
     val cards: AppSkinCards = AppSkinCards(),
     val embedded: AppSkinEmbedded = AppSkinEmbedded(),
+    val resources: AppSkinResources = AppSkinResources(),
 ) {
     fun normalized() = copy(typography = typography.normalized(), shapes = shapes.normalized(), spacing = spacing.normalized(),
-        topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized(), embedded = embedded.normalized())
+        topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized(), embedded = embedded.normalized(), resources = resources.normalized())
 }
 
 @Serializable
@@ -101,10 +102,11 @@ data class AppSkinOverrides(
     val drawer: AppSkinDrawer? = null,
     val cards: AppSkinCards? = null,
     val embedded: AppSkinEmbedded? = null,
+    val resources: AppSkinResources? = null,
 ) {
     fun applyTo(base: AppSkin) = AppSkin(typography ?: base.typography, shapes ?: base.shapes,
         spacing ?: base.spacing, motion ?: base.motion, palette ?: base.palette,
-        topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards, embedded ?: base.embedded).normalized()
+        topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards, embedded ?: base.embedded, resources ?: base.resources).normalized()
 
     /** Only edited groups become overrides; untouched groups continue following the selected skin. */
     fun withEdits(before: AppSkin, after: AppSkin): AppSkinOverrides = after.normalized().let { value -> copy(
@@ -117,11 +119,12 @@ data class AppSkinOverrides(
         drawer = if (before.drawer != value.drawer) value.drawer else drawer,
         cards = if (before.cards != value.cards) value.cards else cards,
         embedded = if (before.embedded != value.embedded) value.embedded else embedded,
+        resources = if (before.resources != value.resources) value.resources else resources,
     ) }
 
     companion object {
         fun from(skin: AppSkin) = AppSkinOverrides(skin.typography, skin.shapes, skin.spacing, skin.motion, skin.palette,
-            skin.topBar, skin.drawer, skin.cards, skin.embedded)
+            skin.topBar, skin.drawer, skin.cards, skin.embedded, skin.resources)
     }
 }
 

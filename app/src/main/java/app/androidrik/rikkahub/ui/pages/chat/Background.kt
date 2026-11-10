@@ -12,20 +12,24 @@ import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
+import androidx.compose.ui.platform.LocalContext
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.data.files.BubbleTextureStore
 
 @Composable
 fun AssistantBackground(setting: Settings, modifier: Modifier) {
     val assistant = setting.getCurrentAssistant()
+    val packageBackground = LocalAppSkin.current.skin.resources.chatBackground?.let { BubbleTextureStore(LocalContext.current).file(it) }
     if (assistant.useGradientBackground) {
         MeshGradientBackground(modifier = modifier)
         return
     }
-    if (assistant.background != null) {
+    if (assistant.background != null || packageBackground != null) {
         val backgroundColor = MaterialTheme.colorScheme.background
         val backgroundOpacity = assistant.backgroundOpacity.coerceIn(0f, 1f)
         Box(modifier = modifier) {
             AsyncImage(
-                model = assistant.background,
+                model = assistant.background ?: packageBackground,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier

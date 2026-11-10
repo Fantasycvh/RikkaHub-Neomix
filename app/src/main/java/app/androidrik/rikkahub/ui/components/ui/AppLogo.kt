@@ -7,6 +7,13 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.toPath
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.getValue
+import android.graphics.drawable.BitmapDrawable
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.data.files.BubbleTextureStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
@@ -25,10 +32,19 @@ import app.androidrik.rikkahub.R
 import kotlin.math.floor
 import kotlin.math.roundToInt
 
+private class SkinLogoDrawable(resources: android.content.res.Resources, bitmap: android.graphics.Bitmap) : BitmapDrawable(resources, bitmap)
+
 /** 应用图标的各层：直接画图层，避免系统图标蒙版和外面的轮廓叠在一起。 */
 @Composable
 fun rememberAppLogoLayers(): List<Drawable> {
     val context = LocalContext.current
+    val logoId = LocalAppSkin.current.skin.resources.logo
+    val cached = logoId?.let { BubbleTextureStore(context).cached(it) }?.let { SkinLogoDrawable(context.resources, it) }
+    val custom by produceState<Drawable?>(cached, logoId) {
+        value = cached
+        value = withContext(Dispatchers.IO) { logoId?.let { BubbleTextureStore(context).load(it) }?.let { SkinLogoDrawable(context.resources, it) } }
+    }
+    custom?.let { return listOf(it) }
     return remember(context) {
         val icon = ContextCompat.getDrawable(context, R.mipmap.ic_launcher)
         if (icon is AdaptiveIconDrawable) listOfNotNull(icon.background, icon.foreground) else listOfNotNull(icon)
@@ -39,7 +55,7 @@ fun rememberAppLogoLayers(): List<Drawable> {
 fun Modifier.drawAppLogo(layers: List<Drawable>): Modifier = drawBehind {
     drawIntoCanvas { canvas ->
         layers.fastForEach { layer ->
-            layer.bounds = logoLayerBounds(size)
+            layer.bounds = if (layer is SkinLogoDrawable) Rect(0, 0, size.width.roundToInt(), size.height.roundToInt()) else logoLayerBounds(size)
             layer.draw(canvas.nativeCanvas)
         }
     }

@@ -19,11 +19,13 @@ interface PluginAppSkinProvider : RikkaPlugin {
 /** Owner-scoped contributions are automatically released by the existing plugin lifecycle bridge. */
 class AppSkinRegistry {
     private val contributions = linkedMapOf<String, List<AppSkinPreset>>()
+    private var installed = emptyList<AppSkinPreset>()
+    @Synchronized internal fun replaceInstalled(skins: List<AppSkinPreset>) { installed = skins; publish() }
     private val state = MutableStateFlow(builtInAppSkins)
     val skins = state.asStateFlow()
 
     @Synchronized fun register(owner: String, skins: List<AppSkinPreset>): AutoCloseable {
-        require(owner.isNotBlank() && owner != "builtin" && ':' !in owner)
+        require(owner.isNotBlank() && owner !in setOf("builtin", "package") && ':' !in owner)
         require(skins.all { it.id.isNotBlank() && ':' !in it.id && it.name.isNotBlank() })
         require(skins.map { it.id }.distinct().size == skins.size)
         val owned = skins.map { it.copy(id = "$owner:${it.id}", skin = it.skin.normalized()) }
@@ -34,7 +36,7 @@ class AppSkinRegistry {
         } }
     }
 
-    private fun publish() { state.value = builtInAppSkins + contributions.values.flatten() }
+    private fun publish() { state.value = builtInAppSkins + installed + contributions.values.flatten() }
     companion object { val shared = AppSkinRegistry() }
 }
 
