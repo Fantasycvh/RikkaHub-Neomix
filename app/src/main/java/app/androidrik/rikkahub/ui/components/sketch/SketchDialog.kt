@@ -60,6 +60,9 @@ import me.rerere.hugeicons.stroke.Tick02
 import me.rerere.hugeicons.stroke.Undo
 import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
+import app.androidrik.rikkahub.ui.theme.skinContentColor
 
 private const val TAG = "SketchDialog"
 
@@ -78,7 +81,8 @@ fun SketchDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val state = remember { SketchState(aspectRatio) }
+    val canvasSkin = LocalAppSkin.current.skin.embedded.canvas
+    val state = rememberSkinSketchState(aspectRatio)
     var confirmDiscard by remember { mutableStateOf(false) }
     // 打开时就带着底图的话，图读完之前一直是忙的：不然这段时间落笔或者确认，
     // 导出的是没垫上底图的白纸
@@ -164,7 +168,7 @@ fun SketchDialog(
     ) {
         // 对话框有自己的窗口，系统栏图标的深浅要另外跟着画板的底色设置
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
-        val containerColor = MaterialTheme.colorScheme.surfaceContainer
+        val containerColor = canvasSkin.workspaceHex.toComposeColorOrNull() ?: MaterialTheme.colorScheme.surfaceContainer
         val lightContainer = containerColor.luminance() > 0.5f
         SideEffect {
             if (window != null) {
@@ -178,6 +182,8 @@ fun SketchDialog(
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = containerColor,
+            contentColor = if (canvasSkin.workspaceHex != null) containerColor.skinContentColor()
+                else MaterialTheme.colorScheme.onSurface,
         ) {
             Column(
                 modifier = Modifier

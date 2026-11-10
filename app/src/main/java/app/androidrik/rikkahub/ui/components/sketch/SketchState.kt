@@ -26,7 +26,7 @@ import kotlin.math.ceil
 import kotlin.math.min
 
 internal object SketchDefaults {
-    // 画纸固定是白色的：导出的图片不随应用的深浅色主题变化
+    // 默认白纸；新画纸可从皮肤取初值，打开后显示与导出始终共用文档自己的底色。
     val PaperColor = Color.White
 
     val BrushColors = listOf(
@@ -142,7 +142,7 @@ internal sealed interface SketchStep {
 }
 
 @Stable
-internal class SketchState(aspectRatio: Float? = null) {
+internal class SketchState(aspectRatio: Float? = null, val paperColor: Color = SketchDefaults.PaperColor) {
     // 屏幕上留给画纸的区域，画纸按自己的比例在里面放到最大
     private var available = Size.Unspecified
 

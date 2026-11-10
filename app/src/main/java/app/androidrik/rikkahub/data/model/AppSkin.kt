@@ -15,9 +15,10 @@ data class AppSkin(
     val topBar: AppSkinTopBar = AppSkinTopBar(),
     val drawer: AppSkinDrawer = AppSkinDrawer(),
     val cards: AppSkinCards = AppSkinCards(),
+    val embedded: AppSkinEmbedded = AppSkinEmbedded(),
 ) {
     fun normalized() = copy(typography = typography.normalized(), shapes = shapes.normalized(), spacing = spacing.normalized(),
-        topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized())
+        topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized(), embedded = embedded.normalized())
 }
 
 @Serializable
@@ -99,10 +100,11 @@ data class AppSkinOverrides(
     val topBar: AppSkinTopBar? = null,
     val drawer: AppSkinDrawer? = null,
     val cards: AppSkinCards? = null,
+    val embedded: AppSkinEmbedded? = null,
 ) {
     fun applyTo(base: AppSkin) = AppSkin(typography ?: base.typography, shapes ?: base.shapes,
         spacing ?: base.spacing, motion ?: base.motion, palette ?: base.palette,
-        topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards).normalized()
+        topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards, embedded ?: base.embedded).normalized()
 
     /** Only edited groups become overrides; untouched groups continue following the selected skin. */
     fun withEdits(before: AppSkin, after: AppSkin): AppSkinOverrides = after.normalized().let { value -> copy(
@@ -114,11 +116,12 @@ data class AppSkinOverrides(
         topBar = if (before.topBar != value.topBar) value.topBar else topBar,
         drawer = if (before.drawer != value.drawer) value.drawer else drawer,
         cards = if (before.cards != value.cards) value.cards else cards,
+        embedded = if (before.embedded != value.embedded) value.embedded else embedded,
     ) }
 
     companion object {
         fun from(skin: AppSkin) = AppSkinOverrides(skin.typography, skin.shapes, skin.spacing, skin.motion, skin.palette,
-            skin.topBar, skin.drawer, skin.cards)
+            skin.topBar, skin.drawer, skin.cards, skin.embedded)
     }
 }
 

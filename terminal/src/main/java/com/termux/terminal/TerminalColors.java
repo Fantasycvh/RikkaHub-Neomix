@@ -11,6 +11,21 @@ public final class TerminalColors {
      * 4 control sequence.
      */
     public final int[] mCurrentColors = new int[TextStyle.NUM_INDEXED_COLORS];
+    private int[] mSessionDefaults;
+    private final boolean[] mOverridden = new boolean[TextStyle.NUM_INDEXED_COLORS];
+
+    /** Change only this session's host defaults. OSC colors (even equal-valued ones) retain priority. */
+    public void setSessionDefaultColors(int foreground, int background, int cursor) {
+        if (mSessionDefaults == null) mSessionDefaults = COLOR_SCHEME.mDefaultColors.clone();
+        setSessionDefault(TextStyle.COLOR_INDEX_FOREGROUND, foreground);
+        setSessionDefault(TextStyle.COLOR_INDEX_BACKGROUND, background);
+        setSessionDefault(TextStyle.COLOR_INDEX_CURSOR, cursor);
+    }
+
+    private void setSessionDefault(int index, int color) {
+        mSessionDefaults[index] = color | 0xFF000000;
+        if (!mOverridden[index]) mCurrentColors[index] = mSessionDefaults[index];
+    }
 
     /** Create a new instance with default colors from the theme. */
     public TerminalColors() {
@@ -19,12 +34,15 @@ public final class TerminalColors {
 
     /** Reset a particular indexed color with the default color from the color theme. */
     public void reset(int index) {
-        mCurrentColors[index] = COLOR_SCHEME.mDefaultColors[index];
+        mCurrentColors[index] = (mSessionDefaults == null ? COLOR_SCHEME.mDefaultColors : mSessionDefaults)[index];
+        mOverridden[index] = false;
     }
 
     /** Reset all indexed colors with the default color from the color theme. */
     public void reset() {
-        System.arraycopy(COLOR_SCHEME.mDefaultColors, 0, mCurrentColors, 0, TextStyle.NUM_INDEXED_COLORS);
+        System.arraycopy(mSessionDefaults == null ? COLOR_SCHEME.mDefaultColors : mSessionDefaults,
+                0, mCurrentColors, 0, TextStyle.NUM_INDEXED_COLORS);
+        java.util.Arrays.fill(mOverridden, false);
     }
 
     /**
@@ -70,7 +88,10 @@ public final class TerminalColors {
     /** Try parse a color from a text parameter and into a specified index. */
     public void tryParseColor(int intoIndex, String textParameter) {
         int c = parse(textParameter);
-        if (c != 0) mCurrentColors[intoIndex] = c;
+        if (c != 0) {
+            mCurrentColors[intoIndex] = c;
+            mOverridden[intoIndex] = true;
+        }
     }
 
 }

@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,9 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.theme.ColorMode
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.resolveColors
+import app.androidrik.rikkahub.ui.hooks.rememberCurrentColorMode
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -83,7 +87,8 @@ fun WorkspaceTerminalPage(id: String) {
         workspace?.let(sessionManager::ensureSession)
     }
 
-    RikkahubTheme(colorMode = ColorMode.DARK) {
+    RikkahubTheme(colorMode = if (LocalAppSkin.current.skin.embedded.terminal.followAppColors)
+        rememberCurrentColorMode() else ColorMode.DARK) {
         Scaffold(
             topBar = {
                 TopAppBar(
@@ -169,7 +174,7 @@ private fun WorkspaceTerminalContent(
             .consumeWindowInsets(contentPadding)
             // 按 IME 动画终态尺寸一次性调整——避免每帧 SIGWINCH 导致终端重排与键盘手势抖动（上游 1d86b3c1 / #1861）
             .windowInsetsPadding(WindowInsets.imeAnimationTarget),
-        color = Color.Black,
+        color = Color(LocalAppSkin.current.skin.embedded.terminal.resolveColors(MaterialTheme.colorScheme).background),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
@@ -245,12 +250,17 @@ private fun WorkspaceTerminalContent(
 }
 
 @Composable
-private fun WorkspaceTerminalTabContent(
+internal fun WorkspaceTerminalTabContent(
     tab: WorkspaceTerminalTab,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val terminalTextSizePx = with(LocalDensity.current) { 12.sp.roundToPx() }
+    val terminalSkin = LocalAppSkin.current.skin.embedded.terminal
+    val textSize = appSkinTextSize(terminalSkin.fontSizeSp.sp)
+    val terminalTextSizePx = with(LocalDensity.current) { textSize.roundToPx() }
+    val terminalColors = terminalSkin.resolveColors(MaterialTheme.colorScheme)
+    val latestColors by rememberUpdatedState(terminalColors)
+    val latestTab by rememberUpdatedState(tab)
     val terminalTypeface = remember(context) {
         ResourcesCompat.getFont(context, R.font.jetbrains_mono) ?: Typeface.MONOSPACE
     }
@@ -287,6 +297,12 @@ private fun WorkspaceTerminalTabContent(
                         setTypeface(terminalTypeface)
                         setTerminalViewClient(viewClient)
                         attachSession(tab.session)
+                        tab.client.updateSkinColors(tab.session, terminalColors)
+                        // Emulator creation can wait until the first non-zero view size, with no shell output yet.
+                        addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+                            latestTab.client.updateSkinColors(latestTab.session, latestColors)
+                            view.invalidate()
+                        }
                         tab.client.terminalView = this
                         viewClient.terminalView = this
                         setOnTouchListener { _, event ->
@@ -315,6 +331,7 @@ private fun WorkspaceTerminalTabContent(
                         false
                     }
                     terminalView.attachSession(tab.session)
+                    tab.client.updateSkinColors(tab.session, terminalColors)
                     terminalView.onScreenUpdated()
                 },
             )

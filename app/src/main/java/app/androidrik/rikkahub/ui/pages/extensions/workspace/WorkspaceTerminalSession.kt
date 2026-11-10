@@ -25,6 +25,8 @@ import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.RootfsPatchOptions
 import app.androidrik.workspace.RootfsPatcher
 import java.io.File
+import app.androidrik.rikkahub.ui.theme.TerminalSkinColors
+import com.termux.terminal.TerminalColors
 
 internal fun createLocalTerminalTransport(
     context: Context,
@@ -136,8 +138,27 @@ internal class WorkspaceTerminalSessionClient(
     private val onFinished: () -> Unit,
 ) : TerminalSessionClient {
     var terminalView: TerminalView? = null
+    private var skinColors: TerminalSkinColors? = null
+    private var appliedColors: TerminalSkinColors? = null
+    private var appliedEmulatorColors: TerminalColors? = null
+
+    fun updateSkinColors(session: TerminalSession, colors: TerminalSkinColors) {
+        skinColors = colors
+        applySkinColors(session)
+    }
+
+    private fun applySkinColors(session: TerminalSession) {
+        val colors = skinColors ?: return
+        val target = session.emulator?.mColors ?: return
+        if (appliedEmulatorColors !== target || appliedColors != colors) {
+            colors.applyTo(target)
+            appliedEmulatorColors = target
+            appliedColors = colors
+        }
+    }
 
     override fun onTextChanged(changedSession: TerminalSession) {
+        applySkinColors(changedSession)
         terminalView?.onScreenUpdated()
     }
 

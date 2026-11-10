@@ -44,6 +44,8 @@ import androidx.core.graphics.withTranslation
 import androidx.ink.authoring.compose.InProgressStrokes
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
 import kotlin.math.roundToInt
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 
 /**
  * 画纸：跟着手指或触控笔落笔，并把 [state] 里的笔画和文字画出来。画纸按自己的比例放进可用区域的正中。
@@ -117,7 +119,8 @@ internal fun SketchCanvas(state: SketchState, modifier: Modifier = Modifier) {
                     },
             ) {
                 val renderer = remember { CanvasStrokeRenderer.create() }
-                val selectionColor = MaterialTheme.colorScheme.primary
+                val selectionColor = LocalAppSkin.current.skin.embedded.canvas.selectionHex.toComposeColorOrNull()
+                    ?: MaterialTheme.colorScheme.primary
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     state.revision
                     drawSketch(state, size.width / paper.width, renderer)
@@ -155,7 +158,7 @@ private val LayerPaint = Paint()
 
 // 屏幕上显示和导出图片用的是同一套绘制，[scale] 是画纸坐标到目标像素的比例
 internal fun DrawScope.drawSketch(state: SketchState, scale: Float, renderer: CanvasStrokeRenderer) {
-    drawRect(SketchDefaults.PaperColor)
+    drawRect(state.paperColor)
     state.background?.let {
         drawImage(image = it, dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()))
     }
