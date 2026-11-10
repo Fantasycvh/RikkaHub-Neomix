@@ -69,7 +69,8 @@ data class UIMessage(
      *
      * 这是旧 `UIMessage + MessageChunk` 的类型化等价物（`MessageChunk` 已随上游 #1648 移除）：
      * Text 追加到最后一段 Text、Tool/ServerTool 按 id `merge`、Image 区分 base64 拼接与完整 URL、
-     * Reasoning 收尾时补 `finishedAt`。流式路径走 [StreamChunkHandler]，这里只服务非流式结果。
+     * Reasoning **不合并**（非流式结果里每块已是完整块，合并会把签名/加密数据串到相邻块）。
+     * 流式路径走 [StreamChunkHandler]，这里只服务非流式结果。
      */
     internal fun mergeDelta(delta: UIMessage): UIMessage {
         return delta.let { delta ->
@@ -119,25 +120,11 @@ data class UIMessage(
                     }
 
                     is UIMessagePart.Reasoning -> {
-                        // Skip empty reasoning deltas
-                        if (deltaPart.reasoning.isEmpty() && deltaPart.metadata == null) {
-                            acc
-                        } else {
-                            val lastPart = acc.lastOrNull()
-                            if (lastPart is UIMessagePart.Reasoning) {
-                                // Append to the last Reasoning part
-                                acc.dropLast(1) + UIMessagePart.Reasoning(
-                                    reasoning = lastPart.reasoning + deltaPart.reasoning,
-                                    createdAt = lastPart.createdAt,
-                                    finishedAt = null,
-                                ).also {
-                                    it.metadata = deltaPart.metadata ?: lastPart.metadata
-                                }
-                            } else {
-                                // Create new Reasoning part
-                                acc + deltaPart
-                            }
-                        }
+                        // 非流式结果里的每个推理块都是**完整块**：signature / redactedData 只对它自己那块有效，
+                        // 拼到相邻块上（旧行为）再回传会让 Claude 的签名与原文不再逐字匹配 ⇒ Invalid signature 拒整请求。
+                        // 判据：只有流式才需要「同一 block id 内拼接」，那条路径走 StreamChunkHandler（按 block id 聚合），
+                        // 不经过这里；上游 e1667163c 同一判据。空推理块（无文本无 metadata）依旧跳过。
+                        if (deltaPart.reasoning.isEmpty() && deltaPart.metadata == null) acc else acc + deltaPart
                     }
 
                     is UIMessagePart.Tool -> {
@@ -285,7 +272,8 @@ data class UIMessage(
  * 处理非流式生成结果（对齐上游 #1648 的 `TextGenerationResult` 消费方式）。
  *
  * 与流式路径 [StreamChunkHandler] 的产物形态保持一致：同角色则合并到上一条 assistant 消息
- * （复用 [UIMessage.mergeDelta] 的工具/推理/图片合并语义），否则按新消息追加并写入模型/提供商快照。
+ * （复用 [UIMessage.mergeDelta] 的工具/图片合并语义；**推理块不合并**，各块保留自己的签名/加密数据），
+ * 否则按新消息追加并写入模型/提供商快照。
  * `finishReason`/`usage` 由调用方（`GenerationHandler`）落库，这里不重复写。
  */
 fun List<UIMessage>.handleTextGenerationResult(

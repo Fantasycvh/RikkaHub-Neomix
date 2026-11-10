@@ -71,6 +71,14 @@ internal class ClaudeStreamDecoder : StreamChunkDecoder {
                         ClaudeReasoningMetadata(signature = it).toMetadata()
                     }
 
+                    // redacted_thinking 的思考内容不可见，只有加密数据：必须存进 metadata，
+                    // 回传时才能还原成 {"type":"redacted_thinking","data":...}。
+                    // 判据：本仓 763873803 只覆盖了非流式解析（parseMessage），流式此前丢弃 data
+                    // ⇒ 该块回传成空 thinking 且无签名，Anthropic 拒绝整请求（上游 e1667163c 同点修复）。
+                    "redacted_thinking" -> contentBlock["data"]?.jsonPrimitive?.contentOrNull?.let {
+                        ClaudeReasoningMetadata(redactedData = it).toMetadata()
+                    }
+
                     else -> null
                 }
                 blocks[index] = ClaudeStreamBlock(kind, blockId, metadata)
@@ -162,8 +170,17 @@ internal class ClaudeStreamDecoder : StreamChunkDecoder {
                     )
 
                     "signature_delta" -> {
-                        val metadata = delta["signature"]?.jsonPrimitive?.contentOrNull?.let {
-                            ClaudeReasoningMetadata(signature = it).toMetadata()
+                        // 签名可能分多片到达：必须接在本块**已收到**的签名后面，而不是覆盖。
+                        // 判据：Anthropic 只认「thinking 原文 + 该块完整签名」逐字匹配，覆盖写只剩最后
+                        // 一片 ⇒ 下一轮回传该块触发 Invalid signature，整请求被拒（#2308 / 上游 e1667163c）。
+                        // 截断/分批读取不影响：分片按到达顺序累积，与请求体内的最终值等价。
+                        val metadata = delta["signature"]?.jsonPrimitive?.contentOrNull?.let { fragment ->
+                            val received = block.metadata
+                                ?.get("signature")
+                                ?.jsonPrimitive
+                                ?.contentOrNull
+                                .orEmpty()
+                            ClaudeReasoningMetadata(signature = received + fragment).toMetadata()
                         }
                         blocks[index] = block.copy(metadata = metadata ?: block.metadata)
                         add(StreamChunk.ReasoningDelta(block.id, "", metadata))
