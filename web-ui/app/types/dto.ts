@@ -71,6 +71,10 @@ export interface MessageDto {
   finishedAt?: string | null;
   modelId?: string | null;
   usage?: TokenUsage | null;
+  /** 最后一次请求自己的 usage；usage 是多步工具调用的累计值 */
+  lastUsage?: TokenUsage | null;
+  /** 这条消息累计请求了多少次模型 */
+  stepCount?: number | null;
   translation?: string | null;
 }
 

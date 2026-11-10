@@ -1446,7 +1446,12 @@ class GenerationHandler(
                                 stepUsage = stepUsage.merge(usage)
                                 messages = messages.mapIndexed { index, message ->
                                     if (index == messages.lastIndex) {
-                                        message.copy(usage = roundBaseUsage.accumulateRound(stepUsage ?: TokenUsage()))
+                                        message.copy(
+                                            usage = roundBaseUsage.accumulateRound(stepUsage ?: TokenUsage()),
+                                            // #2307：同一次写入顺带记「本步自己的 usage」——统计行的输入/
+                                            // 缓存要显示最近一次请求，而 usage 是整轮口径
+                                            lastUsage = stepUsage,
+                                        )
                                     } else {
                                         message
                                     }
@@ -1539,7 +1544,9 @@ class GenerationHandler(
                         messages = messages.mapIndexed { index, message ->
                             if (index == messages.lastIndex) {
                                 message.copy(
-                                    usage = roundBaseUsage.accumulateRound(usage)
+                                    usage = roundBaseUsage.accumulateRound(usage),
+                                    // #2307：本次请求自己的 usage（同流式路径同一语义）
+                                    lastUsage = usage,
                                 )
                             } else {
                                 message

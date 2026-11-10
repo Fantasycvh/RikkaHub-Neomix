@@ -221,6 +221,10 @@ data class MessageDto(
     val finishedAt: String? = null,
     val modelId: String? = null,
     val usage: TokenUsage? = null,
+    // usage 是多步工具轮的累计值，lastUsage 是最后一次请求自己的（上游 921427f95 / #2307）
+    val lastUsage: TokenUsage? = null,
+    // 本轮请求次数：>1 时 Web 统计行显示步数徽标
+    val stepCount: Int? = null,
     val translation: String? = null
 )
 
@@ -362,5 +366,7 @@ fun UIMessage.toDto() = MessageDto(
     finishedAt = finishedAt?.toString(),
     modelId = modelId?.toString(),
     usage = usage,
+    lastUsage = lastUsage,
+    stepCount = stepCount,
     translation = translation
 )

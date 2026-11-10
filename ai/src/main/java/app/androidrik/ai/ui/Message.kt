@@ -35,6 +35,17 @@ data class UIMessage(
     val providerNameSnapshot: String? = null,
     val usage: TokenUsage? = null,
     /**
+     * **最后一次请求**自己的 usage（上游 921427f95 / Fixes #2307）。
+     *
+     * [usage] 是整轮口径：completionTokens 按步求和（TPS 必须用累计），prompt/cached 由
+     * `TokenUsage.accumulateRound` 取最新一步；但某步没上报 usage 时它会静默沿用更早一步的值，
+     * 无法区分「本步的」与「上一步的」。统计行展示上下文占用/缓存命中要读这个字段；
+     * 旧消息没有它（默认 null），读取方一律回退 `lastUsage ?: usage`。
+     *
+     * 持久化零迁移：消息实体是 JSON blob，反序列化开了 ignoreUnknownKeys，且本字段有默认值。
+     */
+    val lastUsage: TokenUsage? = null,
+    /**
      * 本轮工具循环实际发起 LLM 请求的步数（落本轮**最后一条** assistant 消息；
      * >1 时统计行显示步数徽标）。旧消息无此字段（缺省 0 不显示）。
      * 审批恢复是新的一次 generateText ⇒ 各自计各自的步数。

@@ -64,6 +64,10 @@ fun ChatMessageNerdLine(
             ) {
                 val usage = message.usage
                 if (settings.showTokenUsage && usage != null) {
+                    // 输入/缓存命中看「最近一次请求」（#2307）：usage 是整轮口径，多步工具轮里
+                    // prompt 虽由 accumulateRound 取最新一步，但某步缺 usage 时会沿用旧值；
+                    // 旧消息没有 lastUsage，回退到 usage。
+                    val lastUsage = message.lastUsage ?: usage
                     // Input tokens
                     StatsItem(
                         icon = {
@@ -75,13 +79,13 @@ fun ChatMessageNerdLine(
                             )
                         },
                         content = {
-                            Text(text = "${usage.promptTokens.formatNumber()} tokens")
+                            Text(text = "${lastUsage.promptTokens.formatNumber()} tokens")
                             // Cached tokens：追加命中率（cached 是 prompt 的子集，各 provider 语义已统一）
-                            if (usage.cachedTokens > 0) {
-                                val rate = (usage.cachedTokens.toDouble() / usage.promptTokens * 100)
+                            if (lastUsage.cachedTokens > 0) {
+                                val rate = (lastUsage.cachedTokens.toDouble() / lastUsage.promptTokens * 100)
                                     .roundToInt()
                                 Text(
-                                    text = "(${usage.cachedTokens.formatNumber()} cached, $rate%)"
+                                    text = "(${lastUsage.cachedTokens.formatNumber()} cached, $rate%)"
                                 )
                             }
                         }
