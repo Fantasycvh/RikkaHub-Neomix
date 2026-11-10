@@ -27,6 +27,7 @@ import kotlinx.datetime.toJavaLocalDateTime
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.utils.stripMarkdown
 import app.androidrik.rikkahub.utils.toMessageTimeString
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
@@ -85,7 +86,10 @@ fun MessageQuoteCard(
                     maxLines = 1,
                 )
                 Text(
-                    text = quote.content,
+                    // 引用卡是小字号预览、不走 Markdown 渲染：直接显示原文会把 **加粗**、
+                    // `代码`、[链接](url) 的标记符号暴露给用户（Miffan 9531ec767）。这里只做
+                    // 展示层清洗，快照本身仍保存原文。
+                    text = quote.content.stripMarkdown(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 3,

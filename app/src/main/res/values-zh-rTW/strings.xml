@@ -2651,11 +2651,14 @@
   <string name="debug_page_create_oversized">建立超大對話 (30MB)</string>
   <string name="debug_page_creating_1024">正在建立 1024 則訊息對話...</string>
   <string name="debug_page_creating_oversized">正在建立 30MB 超大對話...</string>
+  <string name="debug_page_create_500k">建立約 50 萬 token 對話（壓縮測試）</string>
+  <string name="debug_page_creating_500k">正在建立約 50 萬 token 對話...</string>
   <string name="debug_page_recover_desc">掃描聊天記錄中引用的助理，為設定裡缺失的助理補齊，使對應聊天記錄重新可見。內建助理會還原為原始設定；其餘助理只能建立同名佔位（原始設定無法還原）。</string>
   <string name="debug_page_reset_chat_model">重設 Chat 模型</string>
   <string name="debug_page_toast_test">測試 %1$d</string>
   <string name="debug_vm_message_count_title">%1$d 則訊息測試</string>
   <string name="debug_vm_oversized_title">超大對話測試 (%1$dMB)</string>
+  <string name="debug_vm_token_count_title">%1$dK token 對話測試</string>
   <string name="downgrade_quarantine_backup_label">%1$s 備份</string>
   <string name="downgrade_quarantine_delete_message">刪除 %1$s 備份的降級前資料？刪除後無法找回。</string>
   <string name="downgrade_quarantine_delete_title">刪除這份資料？</string>

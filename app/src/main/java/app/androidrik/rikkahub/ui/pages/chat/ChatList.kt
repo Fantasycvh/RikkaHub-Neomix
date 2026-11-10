@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -936,6 +937,14 @@ private fun ChatListPreview(
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
+    // 搜索词变化时把预览列表拉回顶部（上游 5863c4e4c 残件）：过滤结果换了以后，旧滚动位置
+    // 可能停在很深处，命中项在视口外，用户只能手动往回滚。结果由后台异步算出，先滚到顶
+    // 再逐帧填充也能看到第一条命中。
+    val listState = rememberLazyListState()
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.isNotBlank()) listState.scrollToItem(0)
+    }
+
     // 过滤消息（跳转按**节点**解析，不再携带完整列表下标——压缩折叠态两套下标空间不可混用）。
     //
     // 搜索要对每条消息 `toText()`（拼接全部文本 part）后做全文匹配：长对话 × 长回复是
@@ -970,6 +979,7 @@ private fun ChatListPreview(
     ) {
         // 消息预览
         LazyColumn(
+            state = listState,
             contentPadding = PaddingValues(16.dp) +
                 // 顶栏 + 悬浮搜索框高度（singleLine 输入框 56dp + 上下 8dp = 72dp）
                 PaddingValues(top = innerPadding.calculateTopPadding() + 72.dp) +

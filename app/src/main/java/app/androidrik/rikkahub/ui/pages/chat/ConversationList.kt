@@ -174,6 +174,18 @@ fun ColumnScope.ConversationList(
                     is ConversationListItem.PinnedHeader -> "pinned_header"
                     is ConversationListItem.Item -> item.conversation.id.toString()
                 }
+            },
+            // 日期头/置顶头/会话行三种 item 的高度与内部结构差异很大（Miffan c558e5840 族：
+            // 列表行不声明 contentType 时，LazyColumn 会把它们当成同一种「槽」复用，
+            // 滚动中互相顶掉测量缓存、造成跳动与额外重组）。按类型分池后各自缓存独立。
+            contentType = { index ->
+                when (conversations[index]) {
+                    is ConversationListItem.DateHeader -> "date_header"
+                    is ConversationListItem.PinnedHeader -> "pinned_header"
+                    is ConversationListItem.Item -> "conversation"
+                    // Paging 的占位项（尚未加载）不该出现，但类型上是可空的；归到会话行即可
+                    null -> "conversation"
+                }
             }
         ) { index ->
             when (val item = conversations[index]) {

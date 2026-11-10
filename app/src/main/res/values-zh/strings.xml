@@ -2665,11 +2665,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="debug_page_create_oversized">创建超大对话 (30MB)</string>
   <string name="debug_page_creating_1024">正在创建 1024 条消息对话...</string>
   <string name="debug_page_creating_oversized">正在创建 30MB 超大对话...</string>
+  <string name="debug_page_create_500k">创建约 50 万 token 对话（压缩测试）</string>
+  <string name="debug_page_creating_500k">正在创建约 50 万 token 对话...</string>
   <string name="debug_page_recover_desc">扫描聊天记录中引用的助手，为设置里缺失的助手补齐，使对应聊天记录重新可见。内置助手会恢复为原始配置；其余助手只能建同名占位（原配置不可恢复）。</string>
   <string name="debug_page_reset_chat_model">重置Chat模型</string>
   <string name="debug_page_toast_test">测试 %1$d</string>
   <string name="debug_vm_message_count_title">%1$d条消息测试</string>
   <string name="debug_vm_oversized_title">超大对话测试 (%1$dMB)</string>
+  <string name="debug_vm_token_count_title">%1$dK token 对话测试</string>
   <string name="downgrade_quarantine_backup_label">%1$s 备份</string>
   <string name="downgrade_quarantine_delete_message">删除 %1$s 备份的降级前数据？删除后无法找回。</string>
   <string name="downgrade_quarantine_delete_title">删除这份数据？</string>

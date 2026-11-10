@@ -21,6 +21,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.utils.estimateTokens
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
@@ -181,6 +182,54 @@ class DebugVM(
                 id = Uuid.random(),
                 assistantId = DEFAULT_ASSISTANT_ID,
                 title = context.getString(R.string.debug_vm_message_count_title, messageCount),
+                messageNodes = messageNodes,
+            )
+
+            conversationRepository.insertConversation(conversation)
+        }
+    }
+
+    /**
+     * 按 **token 估算值** 造长对话，用于上下文预算/自动压缩链路的回归（上游 1c93ca72c 等价物）。
+     *
+     * 为什么按 token 而不是条数：自动压缩阈值、保留比例、覆盖率闸都按 token 算；
+     * 「1024 条消息」的实际体量取决于每条随机长度，无法用来对照阈值（现成的
+     * [createConversationWithMessages] 只适合测列表渲染/滚动）。
+     *
+     * 语料固定、不用 Random：同一次回归里内容不变，压缩覆盖率闸的「硬事实命中率」
+     * 才有可比性；路径/编号是刻意造的「硬事实」，压缩后应能被机械携带。
+     */
+    fun createConversationWithTokens(approxTokens: Int = 500_000) {
+        viewModelScope.launch {
+            val messageNodes = mutableListOf<MessageNode>()
+            val timeZone = TimeZone.currentSystemDefault()
+            val createdAt = Clock.System.now().toLocalDateTime(timeZone)
+            var tokens = 0
+            var index = 0
+            while (tokens < approxTokens) {
+                val role = if (index % 2 == 0) MessageRole.USER else MessageRole.ASSISTANT
+                val text = buildString {
+                    append("Segment ${index + 1}: ")
+                    repeat(20) { block ->
+                        append("压缩回归语料 block=$block：用户偏好中文回答；未决问题 P$block；")
+                        append("文件 /tmp/fixture-$index-$block.txt 已修改。")
+                    }
+                }
+                val message = UIMessage(
+                    id = Uuid.random(),
+                    role = role,
+                    parts = listOf(UIMessagePart.Text(text)),
+                    createdAt = createdAt,
+                )
+                messageNodes.add(MessageNode.of(message))
+                tokens += estimateTokens(text)
+                index++
+            }
+
+            val conversation = Conversation(
+                id = Uuid.random(),
+                assistantId = DEFAULT_ASSISTANT_ID,
+                title = context.getString(R.string.debug_vm_token_count_title, approxTokens / 1000),
                 messageNodes = messageNodes,
             )
 

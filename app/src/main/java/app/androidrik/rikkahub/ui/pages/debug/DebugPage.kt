@@ -347,6 +347,15 @@ private fun MainPage(vm: DebugVM) {
             Text(stringResource(R.string.debug_page_create_1024))
         }
 
+        Button(
+            onClick = {
+                vm.createConversationWithTokens(500_000)
+                toaster.show(context.getString(R.string.debug_page_creating_500k))
+            }
+        ) {
+            Text(stringResource(R.string.debug_page_create_500k))
+        }
+
         var markdown by remember { mutableStateOf(BETTERTEXT_DEBUG_SAMPLE) }
         MarkdownBlock(markdown, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(

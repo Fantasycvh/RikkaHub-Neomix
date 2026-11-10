@@ -2657,11 +2657,14 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="debug_page_create_oversized">Create oversized conversation (30MB)</string>
   <string name="debug_page_creating_1024">Creating conversation with 1024 messages...</string>
   <string name="debug_page_creating_oversized">Creating 30MB oversized conversation...</string>
+  <string name="debug_page_create_500k">Create ~500k-token conversation (compression test)</string>
+  <string name="debug_page_creating_500k">Creating ~500k-token conversation...</string>
   <string name="debug_page_recover_desc">Scans assistants referenced by chats and re-creates the ones missing from settings so those chats become visible again. Built-in assistants are restored to their original configuration; others can only be re-created as same-name placeholders (the original configuration cannot be recovered).</string>
   <string name="debug_page_reset_chat_model">Reset chat model</string>
   <string name="debug_page_toast_test">Test %1$d</string>
   <string name="debug_vm_message_count_title">%1$d-message conversation test</string>
   <string name="debug_vm_oversized_title">Oversized conversation test (%1$dMB)</string>
+  <string name="debug_vm_token_count_title">%1$dK-token conversation test</string>
   <string name="downgrade_quarantine_backup_label">Backup from %1$s</string>
   <string name="downgrade_quarantine_delete_message">Delete the pre-downgrade data backed up at %1$s? It cannot be recovered after deletion.</string>
   <string name="downgrade_quarantine_delete_title">Delete this data?</string>
