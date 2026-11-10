@@ -7,9 +7,9 @@
 
 | 控件 | AppSkin 调用 | 保留原生调用 |
 | --- | ---: | ---: |
-| Button | 72 | 1 |
-| OutlinedButton | 40 | 0 |
-| TextButton | 411 | 3 |
+| Button | 73 | 1 |
+| OutlinedButton | 42 | 0 |
+| TextButton | 420 | 3 |
 | FilledTonalButton | 12 | 0 |
 | OutlinedTextField | 283 | 0 |
 | TextField | 15 | 0 |
@@ -39,10 +39,11 @@
 | ui/pages/mediacreation | 18 | 0 |
 | ui/pages/plugins | 20 | 0 |
 | ui/pages/search | 3 | 0 |
-| ui/pages/setting | 349 | 0 |
+| ui/pages/setting | 358 | 0 |
 | ui/pages/subagent | 7 | 0 |
 | ui/pages/taskcenter | 6 | 0 |
 | ui/pages/translator | 13 | 0 |
+| ui/theme | 3 | 0 |
 
 ## 继承 MaterialTheme 的宿主
 
@@ -56,9 +57,9 @@
 | ElevatedCard | 1 |
 | DropdownMenu | 24 |
 | ExposedDropdownMenu | 2 |
-| AlertDialog | 106 |
+| AlertDialog | 107 |
 | BasicAlertDialog | 4 |
-| ModalBottomSheet | 63 |
+| ModalBottomSheet | 64 |
 | TopAppBar | 16 |
 | CenterAlignedTopAppBar | 0 |
 | LargeTopAppBar | 0 |
@@ -149,4 +150,5 @@
 - 远程网页、作者 CSS、ANSI/OSC 显式配色、已有画纸/笔画及公式/SVG 图形颜色保留自身内容协议。
 - 自定义插件渲染器可显式覆盖形状/字体；只能约束已采用契约的宿主，不能强制未知插件遵守。
 - 已提供 [本地资源包 v1](design-skin-packages.md)：字体、应用内 Logo、默认聊天背景和槽位纹理的安装/升级/卸载。
-- 全局图标集合、全页面壁纸、资源回收/历史回滚、整皮肤试穿撤销、全页面可访问性/性能验收仍待完成。
+- 已提供 [全局试穿、一步撤销及包版本回滚](design-skin-trials-and-rollback.md)。
+- 全局图标集合、全页面壁纸、资源回收、跨进程设置撤销及全页面可访问性/性能验收仍待完成。

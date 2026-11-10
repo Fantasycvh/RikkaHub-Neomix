@@ -18,23 +18,28 @@ import kotlinx.coroutines.*
 import java.util.UUID
 
 @Composable
-internal fun SkinPackageManager(skin: AppSkin, selected: String?, onSelect: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun SkinPackageManager(skin: AppSkin, selected: String?, onSelect: (String) -> Unit, onDismiss: () -> Unit,
+    onTry: ((String) -> Unit)? = null, packageStore: SkinPackageStore? = null) {
     val context = LocalContext.current
-    val store = remember { SkinPackageStore(context) }
+    val store = remember(packageStore) { packageStore ?: SkinPackageStore(context) }
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     var items by remember { mutableStateOf(emptyList<SkinPackageManifest>()) }
     var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<ByteArray?>(null) }
     var deleting by remember { mutableStateOf<SkinPackageManifest?>(null) }
+    var historyFor by remember { mutableStateOf<SkinPackageManifest?>(null) }
+    var versions by remember { mutableStateOf(emptyList<SkinPackageManifest>()) }
+    var switching by remember { mutableStateOf<Pair<SkinPackageManifest, SkinPackageManifest>?>(null) }
     var id by remember { mutableStateOf(selected?.takeIf { it.startsWith("package:") }?.removePrefix("package:") ?: UUID.randomUUID().toString()) }
     var name by remember { mutableStateOf("我的皮肤") }
     var version by remember { mutableStateOf("1") }
     fun run(action: suspend () -> Unit) { scope.launch {
-        busy = true
+        busy = true; error = null
         try { action(); items = withContext(Dispatchers.IO) { store.list() } }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (failure: Exception) { toaster.show(failure.message ?: "皮肤包操作失败") }
+        catch (failure: Exception) { error = failure.message ?: "皮肤包操作失败"; toaster.show(error!!) }
         finally { busy = false }
     } }
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
@@ -54,11 +59,15 @@ internal fun SkinPackageManager(skin: AppSkin, selected: String?, onSelect: (Str
     }
     LaunchedEffect(Unit) { run {
         items = withContext(Dispatchers.IO) { store.list() }
-        items.firstOrNull { "package:${it.id}" == selected }?.let { name = it.name; version = (it.version + 1).toString() }
+        items.firstOrNull { "package:${it.id}" == selected }?.let { item ->
+            name = item.name
+            version = (maxOf(item.version, withContext(Dispatchers.IO) { store.history(item.id).maxOfOrNull { it.version } ?: 0 }).toLong() + 1).toString()
+        }
     } }
     ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }) {
         Column(Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("皮肤资源包", style = MaterialTheme.typography.titleLarge)
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             Text("包含全局样式、字体、应用内 Logo、聊天背景和槽位纹理。聊天专属外观继续使用原主题/材质分享入口。")
             AppButton(enabled = !busy, onClick = { open.launch(arrayOf("application/zip", "application/octet-stream")) }) { Text("安装或升级 ZIP") }
             Text("导出当前解析后的全局样式", style = MaterialTheme.typography.titleMedium)
@@ -82,12 +91,39 @@ internal fun SkinPackageManager(skin: AppSkin, selected: String?, onSelect: (Str
                     } }) { Text("导出") }
                     AppTextButton(enabled = !busy, onClick = { deleting = item }) { Text("卸载") }
                 }
+                Row {
+                    if (onTry != null) AppTextButton(enabled = !busy, onClick = { onTry("package:${item.id}") }) { Text("试穿整套") }
+                    AppTextButton(enabled = !busy, onClick = { run {
+                        versions = withContext(Dispatchers.IO) { store.history(item.id) }
+                        historyFor = item
+                    } }) { Text("历史版本 / 回滚") }
+                }
             }
             Text("选择后用户覆写仍优先。卸载后回退默认；共享资源保留，避免影响仍在使用的字体或图片覆写。")
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             AppTextButton(enabled = !busy, onClick = onDismiss) { Text("关闭") }
         }
     }
+    historyFor?.let { current -> ModalBottomSheet(onDismissRequest = { if (!busy) historyFor = null }) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("${current.name} · 当前 v${current.version}", style = MaterialTheme.typography.titleLarge)
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Text("保留最近 8 个版本及切换前后的版本；切换前校验资源。用户覆写保持优先。")
+            versions.forEach { target ->
+                AppOutlinedButton(enabled = !busy && target.version != current.version, onClick = { switching = current to target }) {
+                    Text("v${target.version} · ${target.name}" + if (target.version == current.version) "（当前）" else " · 切换到此版本")
+                }
+            }
+            if (versions.isEmpty()) Text("尚无历史记录；下次升级时会保存当前版本。")
+            AppTextButton(enabled = !busy, onClick = { historyFor = null }) { Text("关闭历史") }
+        }
+    } }
+    switching?.let { (current, target) -> AlertDialog(onDismissRequest = { switching = null },
+        title = { Text("切换已安装版本？") }, text = { Text("${current.name}：v${current.version} → v${target.version}。资源校验失败时保留当前版本。") },
+        confirmButton = { AppTextButton(onClick = { switching = null; run {
+            withContext(Dispatchers.IO) { store.rollback(current.id, target.version, current.version) }
+            historyFor = null
+        } }) { Text("确认切换") } }, dismissButton = { AppTextButton(onClick = { switching = null }) { Text("取消") } }) }
     deleting?.let { item -> AlertDialog(onDismissRequest = { deleting = null }, title = { Text("卸载 ${item.name}？") },
         text = { Text("移除已安装方案；保留用户覆写及共享资源。重新安装后可恢复原选择。") },
         confirmButton = { AppTextButton(onClick = { deleting = null; run { withContext(Dispatchers.IO) { store.uninstall(item.id) } } }) { Text("卸载") } },

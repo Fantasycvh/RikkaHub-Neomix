@@ -59,7 +59,9 @@ val LocalAppSkin = compositionLocalOf { ResolvedAppSkin() }
 fun rememberAppSkin(display: DisplaySetting): ResolvedAppSkin {
     val skins by AppSkinRegistry.shared.skins.collectAsState()
     val chats by ChatAppearanceRegistry.shared.presets.collectAsState()
-    return resolveAppSkin(display, skins, chats)
+    val trial by SkinTrialController.shared.trial.collectAsState()
+    val resolved = resolveAppSkin(display, skins, chats)
+    return trial?.let { resolved.copy(skin = it.skin) } ?: resolved
 }
 
 val builtInAppSkins = listOf(

@@ -183,7 +183,7 @@ fun RikkahubTheme(
         AppSkinTheme(
             resolved = skin,
             colorScheme = colorSchemeConverted,
-            content = content,
+            content = { SkinTrialHost(content) },
         )
     }
 }

@@ -31,11 +31,12 @@ fun AppSkinSettings(display: DisplaySetting, onSelect: (String?) -> Unit,
     val resolved = rememberAppSkin(display)
     var editing by remember { mutableStateOf<AppSkin?>(null) }
     var packages by remember { mutableStateOf(false) }
+    var candidate by remember(display.appSkinId) { mutableStateOf(display.appSkinId) }
     CardGroup(title = { Text("应用皮肤") }) {
         item(headlineContent = { Text("全局样式方案") }, supportingContent = {
             Column {
-                Select(options = listOf<String?>(null) + presets.map { it.id }, selectedOption = display.appSkinId,
-                    onOptionSelected = onSelect, optionToString = { id ->
+                Select(options = listOf<String?>(null) + presets.map { it.id }, selectedOption = candidate,
+                    onOptionSelected = { candidate = it }, optionToString = { id ->
                         presets.firstOrNull { it.id == id }?.name ?: if (id == null) "跟随默认" else "方案不可用（已回退默认）"
                     })
                 Text("控制全局字体、圆角和基础组件间距；配色继续沿用主题页，皮肤也可提供配色。")
@@ -45,18 +46,30 @@ fun AppSkinSettings(display: DisplaySetting, onSelect: (String?) -> Unit,
                     AppTextButton(onClick = onClearOverrides, enabled = display.appSkinOverrides != AppSkinOverrides()) { Text("清除覆写") }
                 }
                 AppTextButton(onClick = onReset) { Text("恢复默认皮肤") }
+                AppTextButton(onClick = { onSelect(candidate) }) { Text("直接应用方案（保留覆写）") }
                 AppTextButton(onClick = { packages = true }) { Text("皮肤资源包") }
+                AppTextButton(onClick = {
+                    val target = SkinSelection(candidate, AppSkinOverrides())
+                    SkinTrialController.shared.start(display, target, resolveAppSkin(target.applyTo(display)).skin, "整套皮肤（暂不使用用户覆写）")
+                }) { Text("试穿整套皮肤") }
             }
         })
     }
-    if (packages) SkinPackageManager(resolved.skin, display.appSkinId, { onSelect(it) }, { packages = false })
-    editing?.let { initial -> AppSkinEditor(initial, onSave = { value ->
+    if (packages) SkinPackageManager(resolved.skin, display.appSkinId, { onSelect(it) }, { packages = false }, onTry = { id ->
+        val target = SkinSelection(id, AppSkinOverrides())
+        SkinTrialController.shared.start(display, target, resolveAppSkin(target.applyTo(display)).skin, "已安装皮肤")
+        packages = false
+    })
+    editing?.let { initial -> AppSkinEditor(initial, onTry = { value ->
+        SkinTrialController.shared.start(display, SkinSelection(null, AppSkinOverrides.from(value)), value, "编辑中的皮肤")
+        editing = null
+    }, onSave = { value ->
         onEdit(initial, value); editing = null
     }, onDismiss = { editing = null }) }
 }
 
 @Composable
-internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismiss: () -> Unit) {
+internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismiss: () -> Unit, onTry: ((AppSkin) -> Unit)? = null) {
     var draft by remember { mutableStateOf(initial.normalized()) }
     var importing by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -117,6 +130,7 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
             SkinResourceControls(draft, { draft = it }, { importing = it }, enabled = !importing)
             if (importing) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row {
+                if (onTry != null) AppOutlinedButton(enabled = !importing, onClick = { onTry(draft.normalized()) }) { Text("跨页面试穿") }
                 AppTextButton(enabled = !importing, onClick = onDismiss) { Text("取消") }
                 AppButton(enabled = !importing, onClick = { onSave(draft.normalized()) }) { Text("保存") }
             }

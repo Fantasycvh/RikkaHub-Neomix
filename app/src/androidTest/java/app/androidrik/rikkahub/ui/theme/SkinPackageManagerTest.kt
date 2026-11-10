@@ -12,6 +12,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.rikkahub.SketchTestHostActivity
 import app.androidrik.rikkahub.data.model.AppSkin
+import app.androidrik.rikkahub.data.files.SkinPackageStore
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.pages.setting.components.SkinPackageManager
 import com.dokar.sonner.rememberToasterState
@@ -33,6 +34,27 @@ class SkinPackageManagerTest {
         ActivityScenarioRule<SketchTestHostActivity>(Intent(target, SketchTestHostActivity::class.java)),
     ) { rule -> var activity: SketchTestHostActivity? = null; rule.scenario.onActivity { activity = it }; requireNotNull(activity) }
     @After fun cleanup() { directory.deleteRecursively() }
+    @Test fun historyControlsSwitchTheInstalledVersionAfterConfirmation() {
+        val store = SkinPackageStore(context, AppSkinRegistry())
+        store.install(store.exportSkin("fixture", "Fixture", 1, AppSkin()))
+        store.install(store.exportSkin("fixture", "Fixture", 2, AppSkin()))
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides context, LocalToaster provides rememberToasterState(),
+                LocalActivityResultRegistryOwner provides compose.activity) {
+                AppSkinTheme(ResolvedAppSkin(), lightColorScheme()) {
+                    SkinPackageManager(AppSkin(), "package:fixture", {}, {}, packageStore = store)
+                }
+            }
+        }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("历史版本 / 回滚").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("历史版本 / 回滚").performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("v1 · Fixture · 切换到此版本").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("v1 · Fixture · 切换到此版本").performScrollTo().performClick()
+        compose.onNodeWithText("确认切换").performClick()
+        compose.waitUntil(10_000) { store.list().single().version == 1 }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Fixture · v1\nfixture").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(listOf(2, 1), store.history("fixture").map { it.version })
+    }
     @Test fun metadataRemainsEditableAcrossSkinChangesAndRejectsInvalidIds() {
         var skin by mutableStateOf(AppSkin())
         var dismissed = false
