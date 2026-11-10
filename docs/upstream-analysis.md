@@ -1844,6 +1844,16 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 只评不施：未改源码、未 commit。候选 8 条中 **P2×4** 建议下一实施批优先（`bcc649abc` / `5b7ca774b` / `e1667163c` / `921427f95`，估计合计 3–4 天）；`62d6acd31` + `1c93ca72c` + `0cd90ef12` 残件 + `5863c4e4c` 回顶可合成一个「小件批」（合计 ~3h）；`90fe936ed` / `9bc0fd658` / #2306 需用户拍板后再动。
 
+### 2026-11-10 第二轮：落地执行（本地提交，未推送）
+
+用户拍板后本批从「只评不施」转为实施，实际吸收 3 条（其余候选未动）：
+
+- **`e1667163c` 残件全部补齐**：`ClaudeStreamDecoder` 的 `signature_delta` 由覆盖改为按块累加、`content_block_start` 补存流式 `redacted_thinking` 的 `data`；`UIMessage.mergeDelta` 非流式路径不再拼接相邻 Reasoning 块（每块保留自己的签名/加密数据）。新增 `ai/src/test/.../claude/ClaudeThinkingReplayTest.kt`（5 例，断言下一次请求体里的 assistant blocks）。
+- **`5b7ca774b` 判据按本仓结构落地**：概览卡交给 `Text` 的字符串截 300 字符（`maxLines` 不省 span 解析/断行扫描）、搜索过滤挪 `Dispatchers.Default` + `snapshotFlow.conflate()`；本仓概览按节点而非按轮，无 `toPreviewRounds`/`PreviewRound.id` 可直接对应，已说明并只做缺口。
+- **`90fe936ed` 信任用户 CA**：新增 `app/src/main/res/xml/network_security_config.xml`（system + user anchors），`AndroidManifest.xml` 挂载；`base-config` 显式 `cleartextTrafficPermitted="true"`，因为声明 networkSecurityConfig 后 manifest 的 `usesCleartextTraffic` 不再生效，必须保留明文许可避免回归。
+- **#2306 已自行实现**（上游仍 open）：多图逐张裁剪队列 `useMultiCropLauncher`，单图取消语义不变、多图取消不丢已选内容。
+- **仍未动**：`bcc649abc` 轮中压缩、`921427f95`/web `lastUsage`、`9bc0fd658` 默认提供商全开、Phone Use 两条、`62d6acd31`/`1c93ca72c`/`0cd90ef12` 残件等，均待拍板或另立批次。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)

@@ -198,3 +198,23 @@
 - **P2 批次 A（~4–6 天，风险低收益高）**：6.1 #1 CI 门禁 + #8 MarkdownUtils + #9 QuickJS + #3 概览卡 + #5 Claude 签名；可一次落地并跑现有 382 单测。
 - **P2 批次 B（需设备/拍板）**：#11 16 KB 重编（先模拟器验证）+ #2 轮中压缩 + #4 lastUsage + #6/#7 摘要媒体/工具清单。
 - **拍板项**：信任用户 CA（降 MITM 防护）、默认提供商全开（首启 UX）、#2306 多图裁剪、通用 macrobenchmark 管线（2–3 天，需真机基线）。
+
+### 6.6 2026-11-10 第二轮：落地执行（本地提交，未推送）
+
+用户对上一轮「需拍板」项逐条答复后，本轮从「只评不施」转为实施。范围严格限定为
+**信任用户 CA + #2306 多图裁剪 + P2 批次 A**；16 KB .so 重编、`bcc649abc` 轮中压缩、
+`921427f95` lastUsage、`9bc0fd658` 默认提供商全开、macrobenchmark 管线均未动。
+
+| 项 | 状态 | 落点 |
+|---|---|---|
+| 6.1 #1 CI 门禁 | **已落地** | `daily-build.yml` / `release.yml` 构建前新增「静态审计与单元测试」步：`audit_ime_trap.py` + `audit_app_skin.py` + `./gradlew test` |
+| 6.1 #8 MarkdownUtils 行内代码 | **已落地** | 围栏块仍删、行内代码保留文本；并加私有区占位符保护，避免 `my_var_name`/`a*b` 被后续 `*`/`_` 规则二次清洗（`MarkdownUtilsTest` 10 例） |
+| 6.1 #9 QuickJS 初始化 | **已落地** | `RikkaHubApp` 主线程 init 删除 → `postReadyInit` 后台预热；`JavascriptTool` 增 `QuickJsInit` 双检锁 + 工作线程兜底；`search/CustomJsSearchService` 使用点补 `QuickJSLoader.init()`（模块依赖方向无法共用 app 侧闸） |
+| 6.1 #3 概览卡 | **已落地**（判据等价，结构不同） | 本仓概览是按节点气泡列表（无 `PreviewRound`/`toPreviewRounds`）：搜索过滤挪 `Dispatchers.Default + snapshotFlow.conflate()`、交给 `Text` 的串截 300 字符，匹配仍用全文；上游「按轮清洗」在本仓无对应物 |
+| 6.1 #5 Claude 签名残件 | **已落地** | `signature_delta` 累加；流式 `redacted_thinking` 保存 `data`；`Message.mergeDelta` 非流式相邻 Reasoning 不再合并（流式按 block id 聚合本就正确）；新增 `ClaudeThinkingReplayTest`（5 例，断言下一次请求体） |
+| 6.3 #2306 多图裁剪 | **已落地** | 新增 `useMultiCropLauncher` 逐张裁剪队列：每张确认即写成临时 JPEG 交调用方并删临时文件；中途取消时多图剩余原样加入（不丢已选）、单图取消仍不加、camera 路径不变 |
+| 拍板：信任用户 CA | **已落地** | 新增 `app/src/main/res/xml/network_security_config.xml`（系统 + 用户 CA），manifest 挂载；`base-config cleartextTrafficPermitted="true"` 显式保留明文许可（声明后 manifest 的 `usesCleartextTraffic` 被忽略） |
+| 6.1 #4 / #2 / #6 / #7 / #10 / #11 | 未动 | 仍待拍板或需设备验证 |
+
+验证：`:ai:compileDebugKotlin`、`:search:compileDebugKotlin`、`:app:compileDebugKotlin` 通过；
+`:ai:testDebugUnitTest`、`:app:testDebugUnitTest` 通过；两条 audit 脚本 exit 0（IME 审计仅剩已存档告警）。
