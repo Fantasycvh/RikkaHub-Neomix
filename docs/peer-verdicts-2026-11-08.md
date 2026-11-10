@@ -215,6 +215,7 @@
 | 6.3 #2306 多图裁剪 | **已落地** | 新增 `useMultiCropLauncher` 逐张裁剪队列：每张确认即写成临时 JPEG 交调用方并删临时文件；中途取消时多图剩余原样加入（不丢已选）、单图取消仍不加、camera 路径不变 |
 | 拍板：信任用户 CA | **已落地** | 新增 `app/src/main/res/xml/network_security_config.xml`（系统 + 用户 CA），manifest 挂载；`base-config cleartextTrafficPermitted="true"` 显式保留明文许可（声明后 manifest 的 `usesCleartextTraffic` 被忽略） |
 | 6.1 #4 / #2 / #6 / #7 / #10 / #11 | 未动 | 仍待拍板或需设备验证 |
+| 9bc0fd658 默认提供商全开 | **放弃** | 用户 2026-11-10 决定不采纳（首启 UX 策略，本仓出厂列表已自主分叉） |
 
 验证：`:ai:compileDebugKotlin`、`:search:compileDebugKotlin`、`:app:compileDebugKotlin` 通过；
 `:ai:testDebugUnitTest`、`:app:testDebugUnitTest` 通过；两条 audit 脚本 exit 0（IME 审计仅剩已存档告警）。
