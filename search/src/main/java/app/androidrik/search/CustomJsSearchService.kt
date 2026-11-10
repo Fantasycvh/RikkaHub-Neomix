@@ -3,6 +3,7 @@ package app.androidrik.search
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
+import com.whl.quickjs.android.QuickJSLoader
 import com.whl.quickjs.wrapper.QuickJSContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -96,6 +97,10 @@ object CustomJsSearchService : SearchService<SearchServiceOptions.CustomJsOption
      * 本模块不依赖 app，故常量在此就近定义（取值与 app 侧 [JsLimits] 一致）。
      */
     private fun executeScript(userScript: String, invocation: String): String {
+        // QuickJS 的动态库加载不再由 app 启动主线程保证（RikkaHubApp 把它移到了 Ready 之后
+        // 的后台预热）。本模块不依赖 app、调不到那边的 QuickJsInit，故在使用点补齐：
+        // QuickJSLoader.init() 只做 System.loadLibrary，重复调用是 no-op（幂等、线程安全）。
+        QuickJSLoader.init()
         val context = QuickJSContext.create()
         try {
             runCatching { context.setMemoryLimit(CUSTOM_JS_MEMORY_LIMIT_BYTES) }

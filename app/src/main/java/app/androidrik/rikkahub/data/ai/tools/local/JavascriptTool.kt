@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.ai.tools.local
 
+import com.whl.quickjs.android.QuickJSLoader
 import com.whl.quickjs.wrapper.QuickJSContext
 import com.whl.quickjs.wrapper.QuickJSObject
 import kotlinx.serialization.json.JsonNull
@@ -27,6 +28,9 @@ import app.androidrik.ai.ui.UIMessagePart
  *
  * **⚠️ 超时路径绝不 destroy context**：执行中的 native 代码被外部销毁会 use-after-free 崩溃。
  * 故 context 的创建与销毁都在**工作线程内部**（`finally`）完成，超时方只是不再等待。
+ *
+ * **native 库加载**（#9）：`QuickJSLoader.init()` 已从 `Application.onCreate` 的**主线程**移走，
+ * 改由 [QuickJsInit] 在后台预热 / 首次使用前幂等加载。
  */
 internal fun buildJavascriptTool(): Tool = Tool(
     name = "eval_javascript",
@@ -60,21 +64,57 @@ internal fun buildJavascriptTool(): Tool = Tool(
 )
 
 /**
+ * QuickJS native 库的**幂等**加载闸（#9）。
+ *
+ * `QuickJSLoader.init()` 的实现只有一句 `System.loadLibrary("quickjs-android-wrapper")`，
+ * 而 `System.loadLibrary` 对已加载的同名库是 no-op（libcore 在 loadedLibraryNames 里查重），
+ * 所以重复调用本身不会崩。这里仍然自己加锁 + `@Volatile` 标记，原因有二：
+ * 1. 启动预热（RikkaHubApp.postReadyInit）与工具首次调用会**并发**到达，锁保证只加载一次；
+ * 2. 首次 dlopen + JNI 注册有成本，标记让后续调用完全跳过 native 调用。
+ *
+ * 失败（如设备 ABI 无对应 .so 时的 `UnsatisfiedLinkError`）**不置位**：下次使用还会重试，
+ * 让「库没装好」表现为每次可见的工具错误，而不是一次失败后静默地永久禁用。
+ */
+internal object QuickJsInit {
+    @Volatile
+    private var ready = false
+
+    fun ensureInitialized() {
+        if (ready) return
+        synchronized(this) {
+            if (ready) return
+            QuickJSLoader.init()
+            ready = true
+        }
+    }
+}
+
+/**
  * 在工作线程上求值并施加全部防护；返回工具结果 JSON。
  *
  * **不抛异常**：超时/内存超限/JS 异常都转成 `{"error": ...}` —— 工具失败应让模型看到原因并自行
  * 调整，而不是让整个生成回合崩掉（与上游行为一致）。
  */
 private fun evaluateJavascriptSafely(code: String): String {
-    val outcome = runOnWorkerWithTimeout(JsLimits.EXECUTION_TIMEOUT_MS, "quickjs-eval") {
-        // context 的创建与销毁都在工作线程内：超时后由该线程自己善后（见文件头注释）
-        val context = QuickJSContext.create()
-        try {
-            applyResourceLimits(context)
-            evaluateIn(context, code)
-        } finally {
-            context.destroy()
+    val outcome = try {
+        runOnWorkerWithTimeout(JsLimits.EXECUTION_TIMEOUT_MS, "quickjs-eval") {
+            // 使用点兜底（#9）：启动预热在后台异步执行，工具可能在它完成前被调用、或预热
+            // 失败后再次尝试；这里在**工作线程**上同步补齐（加锁幂等），等价于「等待/自行
+            // init」。放工作线程的好处：native 加载再慢也只占这个可丢弃线程，10s 超时同样覆盖。
+            QuickJsInit.ensureInitialized()
+            // context 的创建与销毁都在工作线程内：超时后由该线程自己善后（见文件头注释）
+            val context = QuickJSContext.create()
+            try {
+                applyResourceLimits(context)
+                evaluateIn(context, code)
+            } finally {
+                context.destroy()
+            }
         }
+    } catch (t: Throwable) {
+        // 原生库加载失败 / context 创建失败：本函数的契约是「不抛异常」，转成工具错误让
+        // 模型看到原因并自行调整，而不是让整个生成回合崩掉（与其它错误路径一致）。
+        return errorPayload((t.message ?: "QuickJS engine unavailable").take(JsLimits.MAX_LOG_CHARS))
     }
     return when (outcome) {
         is TimedResult.TimedOut ->

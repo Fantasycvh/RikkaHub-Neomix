@@ -40,7 +40,6 @@ import app.androidrik.rikkahub.data.sync.repo.FtsRebuildPending
 import app.androidrik.rikkahub.data.db.fts.SearchIndexRebuildSignal
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
-import com.whl.quickjs.android.QuickJSLoader
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +51,7 @@ import app.androidrik.rikkahub.di.dataSourceModule
 import app.androidrik.rikkahub.di.repositoryModule
 import app.androidrik.rikkahub.di.viewModelModule
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
+import app.androidrik.rikkahub.data.ai.tools.local.QuickJsInit
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.AvatarMigration
 import app.androidrik.rikkahub.data.files.BackgroundsMigration
@@ -144,8 +144,9 @@ class RikkaHubApp : Application() {
         DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
         // install crash handler
         CrashHandler.install(this)
-        // Init QuickJS native library
-        QuickJSLoader.init()
+        // QuickJS native 库不在这里同步加载（#9）：System.loadLibrary 首次 dlopen + JNI
+        // 注册是同步阻塞的，放在 onCreate 会直接拖慢首帧。改到 boot 进 Ready 后由
+        // postReadyInit 在后台预热；使用点另有幂等兜底（QuickJsInit），延后是安全的。
 
         boot()
     }
@@ -403,6 +404,15 @@ class RikkaHubApp : Application() {
      * **主线程调用**（MemoryConsolidationRuntime 注册 ProcessLifecycleOwner 观察者的约束）。
      */
     private fun postReadyInit() {
+        // QuickJS native 库预热（#9）：从 onCreate 主线程移到 Ready 之后的后台线程。
+        // Ready 之后没有路径依赖它「立即」就绪——eval_javascript 使用点会幂等补齐，JS 插件
+        // 与自定义 JS 搜索都在聊天开始后才用；失败只记日志不拦启动（QuickJsInit 不置位，
+        // 下次使用会重试）。
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching { QuickJsInit.ensureInitialized() }
+                .onFailure { Log.e(TAG, "quickjs preload failed (will retry on first use)", it) }
+        }
+
         // 做梦（V3）：接上触发面（轮末 / 切后台 / 启动补漏）。**主线程调用**——
         // ProcessLifecycleOwner 要求在主线程注册观察者（与 ChatNotificationManager 同款）。
         // 整理本身仍然只在设置里那个助手级开关开着时才跑（门控在 scheduler 的 worker 契约里）。
