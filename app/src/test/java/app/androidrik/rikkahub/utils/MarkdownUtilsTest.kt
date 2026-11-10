@@ -48,7 +48,45 @@ class MarkdownUtilsTest {
     @Test
     fun existingMarkdownCleanupStillWorks() {
         assertEquals("粗体 与 链接", "**粗体** 与 [链接](https://example.com)".stripMarkdown())
-        // 沿既有行为：代码内容整体不朗读
-        assertEquals("文本", "`行内代码` 文本".stripMarkdown())
+    }
+
+    /**
+     * 上游 Miffan 6efec385a：行内代码的**文本**必须保留（TTS 要念出 `kubectl` 这类关键词），
+     * 只去掉反引号本身。旧实现把整段行内代码删掉，朗读直接丢信息。
+     */
+    @Test
+    fun inlineCodeTextIsPreserved() {
+        assertEquals("用 kubectl apply 部署", "用 `kubectl apply` 部署".stripMarkdown())
+        // 多个行内代码片段都要保留，且反引号不残留
+        val result = "先 `a` 再 `b`".stripMarkdown()
+        assertEquals("先 a 再 b", result)
+        assertFalse(result.contains("`"))
+    }
+
+    /** 围栏代码块仍整段删除（既有行为不回归）：长代码不该被朗读出来。 */
+    @Test
+    fun fencedCodeBlockIsStillRemoved() {
+        val result = "前文\n```kotlin\nval x = 1\n```\n后文".stripMarkdown()
+        assertEquals("前文\n\n后文", result)
+        assertFalse(result.contains("val x"))
+    }
+
+    /** 混合场景：围栏块删、行内代码留，两条正则互不干扰。 */
+    @Test
+    fun mixedInlineAndFencedCode() {
+        val result = "解释 `inline` 与\n```\nblock code\n```\n结尾".stripMarkdown()
+        assertEquals("解释 inline 与\n\n结尾", result)
+        assertFalse(result.contains("block code"))
+    }
+
+    /**
+     * 行内代码里的 Markdown 字符不能被二次清洗（占位符保护）：
+     * `my_var_name` 的 snake_case、`a*b` 的星号都要原样留给 TTS 念。
+     */
+    @Test
+    fun inlineCodeIsProtectedFromOtherMarkdownRules() {
+        assertEquals("变量 my_var_name 别被洗掉", "变量 `my_var_name` 别被洗掉".stripMarkdown())
+        assertEquals("表达式 a*b 原样", "表达式 `a*b` 原样".stripMarkdown())
+        assertEquals("路径 /tmp/__x__", "路径 `/tmp/__x__`".stripMarkdown())
     }
 }
