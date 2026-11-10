@@ -120,11 +120,13 @@ import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_SINGLE_STEP_MAX_CHARS
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.CompressionTier
+import app.androidrik.rikkahub.data.ai.compression.attachTraceSection
 import app.androidrik.rikkahub.data.ai.compression.buildTruncatedFallback
 import app.androidrik.rikkahub.data.ai.compression.effectiveMinKeep
 import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.runCompressionLadder
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
+import app.androidrik.rikkahub.data.ai.compression.stripTraceSection
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.model.markGeneratingNodeIncomplete
 import app.androidrik.rikkahub.data.model.CompressionSummary
@@ -2195,8 +2197,10 @@ class ChatService(
         val messagesToCompress = plan.toCompress.map { it.currentMessage }.messagesForAuxGeneration()
         if (messagesToCompress.isEmpty()) return@runCatching null
         val priorSummary = conversation.displayCompression()?.content.orEmpty()
+        // 旧检查点的**痕迹附录**不进模型视野（D296）：它是机械清单，模型看到只会原样抄进新摘要，
+        // 层层压缩后叠成 N 份。摘掉后由 attachTraceSection 在代码侧接力（去重后并成一段）。
         val priorContext = if (priorSummary.isNotBlank()) {
-            "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n$priorSummary"
+            "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n${stripTraceSection(priorSummary)}"
         } else {
             ""
         }
@@ -2259,6 +2263,17 @@ class ChatService(
             Log.w(TAG, "compressToCheckpoint fell to tier=${ladder.tier} for $conversationId (coverage gate / upstream failure)")
         }
         val combined = ladder.summary
+        // D296 判据（本仓落地）：摘要正文由模型「写」，本段工具/文件/媒体痕迹由代码「抄」。
+        // 模型看不到被压掉的原文，摘要里漏掉的路径/句柄压完就再也回不去；附录是纯确定性提取，
+        // 不调模型、不幻觉。**覆盖率闸已在阶梯里跑完**（分母 sourceText 只含原文正文），
+        // 附录在此之后才拼上，不参与「硬事实逐字命中」判据；附录 token 超过摘要目标 1/4
+        // 时整节不接（草稿正文永远优先，见 CompressionTraces.attachTraceSection）。
+        val checkpointBody = attachTraceSection(
+            summary = combined,
+            priorSummary = priorSummary,
+            messages = messagesToCompress,
+            targetTokens = targetTokens,
+        )
 
         val boundaryNode = plan.toCompress.lastOrNull() ?: return@runCatching null
         val boundaryNodeId = boundaryNode.id.toString()
@@ -2271,7 +2286,7 @@ class ChatService(
         val priorCount = conversation.displayCompression()?.messageCount ?: 0
         val checkpoint = CompressionSummary(
             conversationId = conversationId,
-            content = combined,
+            content = checkpointBody,
             messageCount = priorCount + messagesToCompress.size,
             boundaryNodeId = boundaryNodeId,
             createdAt = Instant.now(),
