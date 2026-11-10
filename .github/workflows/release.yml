@@ -110,6 +110,16 @@ jobs:
           ls "$ANDROID_HOME/build-tools" || true
           gradle --version || ./gradlew --version
 
+      # 测试门禁（吸收 PurrCat 判据：静态红线脚本与单测不接进 CI 就等于不存在）。
+      # 本仓 382 个 app 单测 + 各模块 JVM 单测此前只在本机跑，CI 只 assembleRelease；
+      # 这里在构建前跑审计与全量单测，失败即停，避免「本地过、CI 挂着发版」。
+      - name: 静态审计与单元测试
+        run: |
+          chmod +x gradlew
+          python3 scripts/audit_ime_trap.py
+          python3 scripts/audit_app_skin.py
+          ./gradlew testDebugUnitTest
+
       - name: Gradle Build
         run: |
           chmod +x gradlew
