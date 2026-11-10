@@ -116,3 +116,59 @@ fun shouldAutoCompress(
     val threshold = thresholdPercent.coerceIn(AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE)
     return usedTokens.toLong() * 100 >= windowTokens.toLong() * threshold
 }
+
+/**
+ * 中途压缩的切分点：**压到窗口末尾为止**（含当前这条还没写完的回复）。
+ *
+ * 判据：中途压缩的触发原因就是「这一批工具的输出把窗口撑爆了」，而那些输出就在当前回复里。
+ * 普通压缩的 token 驱动保留策略（[estimateCompressionPlan]）至少留 [COMPRESS_MIN_KEEP_MESSAGES]
+ * 条尾部节点原文——用在中途等于把刚撑爆的那段原样留着，压了也白压。故中途压缩不保留任何尾部
+ * 节点：检查点边界 = 窗口最后一条节点，之后由调用方新开一条回复继续。
+ */
+fun midTurnCompressionPlan(nodes: List<MessageNode>): CompressionPlan =
+    CompressionPlan(toCompress = nodes, toKeep = emptyList())
+
+/** 中途压缩的三种决策（[decideMidTurnCompression] 的输出）。 */
+enum class MidTurnCompressionDecision {
+    /** 达到阈值：可以压。 */
+    Compress,
+
+    /** 不压（未达阈值 / 同一条回复已试过 / 本轮已判定无意义）。 */
+    Skip,
+
+    /** 本轮不再压缩：压缩后的第一次占用检查又超阈值，说明摘要 + 系统提示词自身就装不下。 */
+    GiveUp,
+}
+
+/**
+ * 中途压缩判定（纯函数，便于单测）。
+ *
+ * @param stepsSinceCompression 压缩后第几次占用检查（1 = 第一次）；null = 本轮尚未压缩过
+ *
+ * 判据（上游 `bcc649abc` 的同款语义、本仓落点）：调用方（`ChatService.handleMessageComplete`
+ * 的中途压缩闭包）只负责取数与写库，判定全在这里。
+ * 判定顺序（与上游 `bcc649abc` 的 pause 判据逐条对齐，**阈值必须先判**）：
+ * 1. **同一条回复只试一次**（[replyAlreadyTried]）：压缩失败后还要接着原回复写，若不拦，
+ *    下一批工具执行完又会再发一次压缩请求——每批都白烧一次摘要 token，且永远压不成功；
+ *    以及本轮已判定无意义（[compressionUseless]）时直接跳过；
+ * 2. 未达阈值 ⇒ [MidTurnCompressionDecision.Skip]。**这一步必须在防抖之前**：压缩成功后
+ *    占用本来就会掉到阈值以下，若先判防抖会把它误判成「摘要自身超窗」而整轮放弃压缩；
+ * 3. **防抖**（[stepsSinceCompression] 为 1 = 压缩后的第一次占用检查）：此时仍达阈值
+ *    ⇒ [MidTurnCompressionDecision.GiveUp]。摘要 + 系统提示词自身已接近窗口，再压只会把摘要
+ *    越压越薄，本轮该交给优雅停止/硬限收尾。调用方用「压缩后还没检查过」的布尔给出 1，
+ *    不用步数相减——生成器压缩后会把步数归零（新回复重新计数），绝对差会变成负数；
+ * 4. 其余按常规阈值（[shouldAutoCompress]，与轮前自动压缩同口径）⇒ Compress。
+ */
+fun decideMidTurnCompression(
+    usedTokens: Int,
+    windowTokens: Int,
+    thresholdPercent: Int,
+    replyAlreadyTried: Boolean,
+    compressionUseless: Boolean,
+    stepsSinceCompression: Int?,
+): MidTurnCompressionDecision = when {
+    compressionUseless || replyAlreadyTried -> MidTurnCompressionDecision.Skip
+    !shouldAutoCompress(usedTokens, windowTokens, thresholdPercent) -> MidTurnCompressionDecision.Skip
+    stepsSinceCompression != null && stepsSinceCompression <= 1 -> MidTurnCompressionDecision.GiveUp
+    else -> MidTurnCompressionDecision.Compress
+}

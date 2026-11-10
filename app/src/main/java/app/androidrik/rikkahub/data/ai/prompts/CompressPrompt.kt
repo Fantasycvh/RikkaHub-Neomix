@@ -1,5 +1,12 @@
 package app.androidrik.rikkahub.data.ai.prompts
 
+import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.isExternalNotice
+import app.androidrik.ai.ui.semanticRole
+import app.androidrik.rikkahub.data.model.Conversation
+
 /**
  * 检查点前导语：请求期构造检查点合成消息时注入开头，告知续接模型把摘要当既有背景、
  * 不复述不承认（对齐 deepseek-harness compaction-basic）。
@@ -75,15 +82,90 @@ internal fun compactionCheckpointBody(text: String): String {
  *
  * @return (检查点消息, 其余消息)，检查点按原相对顺序在前
  */
-internal fun List<app.androidrik.ai.ui.UIMessage>.partitionCheckpointMessages():
-    Pair<List<app.androidrik.ai.ui.UIMessage>, List<app.androidrik.ai.ui.UIMessage>> =
-    partition { message ->
-        message.isSynthetic &&
-            message.role == app.androidrik.ai.core.MessageRole.USER &&
-            message.parts.any { part ->
-                part is app.androidrik.ai.ui.UIMessagePart.Text && part.text.isCompactionCheckpointPreamble()
-            }
-    }
+internal fun List<UIMessage>.partitionCheckpointMessages(): Pair<List<UIMessage>, List<UIMessage>> =
+    partition { message -> message.isCompactionCheckpointMessage() }
+
+/**
+ * 中途压缩（一轮回复内部压缩，上游 `bcc649abc`）追加给摘要模型的指令。
+ *
+ * 判据：整轮压缩的摘要写给**下一轮**，中途压缩的摘要写给**同一条任务的下一步**——读它的
+ * 还是同一个模型、刚干到一半，需要的不是对话复述，而是「已做到哪、下一步做什么」。
+ * 因此在用户可覆盖的模板**之后**追加这段，而不改模板本身（用户手改过的提示词要保持原样）。
+ */
+internal const val MID_TURN_COMPRESS_INSTRUCTION: String =
+    "MID-TURN COMPACTION: this summary is written in the middle of the assistant's work on the user's " +
+        "latest request, because the context is almost full. Right after it the same assistant continues " +
+        "that work with only this summary as context, and the user will not see or answer anything in " +
+        "between. In \"Current Work\" state exactly which steps are already done and which remain, and in " +
+        "\"Next Step\" the single immediate action, so the work resumes without repeating finished steps " +
+        "or re-asking the user."
+
+/**
+ * 续跑提示：检查点之后**不是用户消息**时追加到检查点合成消息尾部（只进请求面，不落库）。
+ *
+ * 判据（上游 `bcc649abc` 同款）：检查点之后紧跟的是助手回复、或什么都没有（中途压缩刚发生），
+ * 说明这一轮还没结束、接下来是同一个任务的下一步。此时摘要是「用户口径」的一条消息，模型容易
+ * 把它当成用户刚发来的新请求去复述/确认，或者从头重做。提示只进请求面；检查点正文（会落库、
+ * 会被后续压缩合并）保持干净，避免层层压缩时把提示抄进摘要。
+ *
+ * 为什么用「后面不是用户消息」而不是「在末尾」判断：一轮之后的请求里检查点仍带着这段话
+ * （后面跟着那条续跑回复），前缀不变，不会每步作废提示词缓存。
+ */
+internal const val CONTINUATION_HINT: String =
+    "The conversation history before this point was replaced by the summary above. " +
+        "If a task was in progress, continue it from where it left off: do not reply to the summary " +
+        "itself, and do not ask the user to repeat anything."
+
+/** 是否为请求期构造的检查点合成消息（判据与 [partitionCheckpointMessages] 一致）。 */
+internal fun UIMessage.isCompactionCheckpointMessage(): Boolean =
+    isSynthetic &&
+        role == MessageRole.USER &&
+        parts.any { part -> part is UIMessagePart.Text && part.text.isCompactionCheckpointPreamble() }
+
+/**
+ * 请求里的「检查点」：本仓合成检查点，或导入的原版检查点（[isContextCheckpoint]）。
+ *
+ * 续跑判定两种都要算——导入的检查点同样是「历史被摘要替代」的边界，模型一样会把摘要
+ * 当成用户新提的要求。而 [partitionCheckpointMessages] 只认原生合成消息（它决定的是
+ * 「哪些消息要被提到窗口最前」，导入检查点必须留在原位置，二者目的不同）。
+ */
+internal fun UIMessage.isRequestCheckpoint(): Boolean =
+    isCompactionCheckpointMessage() || isContextCheckpoint
+
+/**
+ * 发送窗口里「检查点后面不是用户消息」（见 [CONTINUATION_HINT] 注释）。
+ *
+ * 传入的必须是**窗口消息**（已应用压缩窗口）：装配产物尾部还有记忆数据/规则提醒两条合成 USER
+ * 消息，拿它判断会被骗成「后面是用户消息」，续跑提示就永远不出现。
+ *
+ * 判据跳过**外部通知**（workspace/子代理结果）：它们以 USER 为载体、语义却是 SYSTEM
+ * （[semanticRole]），不是用户发来的话；若紧跟在检查点后面就把真正的用户消息挡住，
+ * 会把「下一轮用户提问」误判成还没结束的阶段。
+ */
+internal fun List<UIMessage>.hasCheckpointNotFollowedByUser(): Boolean {
+    val index = indexOfLast { it.isRequestCheckpoint() }
+    if (index < 0) return false
+    val next = drop(index + 1).firstOrNull { !it.isExternalNotice }
+    return next?.semanticRole != MessageRole.USER
+}
+
+/**
+ * 需要时给压缩窗口的检查点消息追加 [CONTINUATION_HINT]（返回**同一实例**表示无需改动）。
+ *
+ * 落点选在窗口描述而不是装配产物：检查点合成消息由 [Conversation.CompressionWindow] 提供，
+ * 装配侧（`buildSendWindowMessages`）只做窗口套用与截断、不掺判定；而判定需要「窗口里检查点
+ * 之后是什么」，只有拿得到 live messages 的调用方（`GenerationHandler.generateInternal`）知道。
+ */
+internal fun Conversation.CompressionWindow.withContinuationHintFor(
+    messages: List<UIMessage>,
+): Conversation.CompressionWindow {
+    if (!applyTo(messages).hasCheckpointNotFollowedByUser()) return this
+    return copy(
+        checkpointMessage = checkpointMessage.copy(
+            parts = checkpointMessage.parts + UIMessagePart.Text(CONTINUATION_HINT),
+        ),
+    )
+}
 
 /**
  * 默认压缩提示词：结构化 8 段（对齐 deepseek-harness compaction-basic）。

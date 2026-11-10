@@ -58,6 +58,7 @@ import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.StreamChunkHandler
 import app.androidrik.ai.ui.handleTextGenerationResult
 import app.androidrik.rikkahub.data.ai.prompts.isCompactionCheckpointPreamble
+import app.androidrik.rikkahub.data.ai.prompts.withContinuationHintFor
 import app.androidrik.rikkahub.data.ai.transformers.InputMessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.MessageTransformer
 import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
@@ -75,12 +76,60 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.ai.util.ToolSchemaSize
+import app.androidrik.rikkahub.utils.estimateTokenCount
 import app.androidrik.rikkahub.utils.estimateTokens
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 private const val TAG = "GenerationHandler"
+
+/**
+ * 中途压缩的请求快照（见 [GenerationHandler.generateText] 的 `midTurnCompress` 参数）。
+ *
+ * 为什么带 [messages] 而不让调用方自己去会话里读：流式 emit 经 `coalesceMessageUpdates` 节流，
+ * **会话内存态可能落后于本批工具回填**。压缩若读会话状态，压进去的是上一批的旧内容，
+ * 摘要里丢掉刚执行的工具结果 ⇒ 下一步模型重复调用同一工具。本类手里的 `messages` 才是权威快照。
+ */
+data class MidTurnCompressionRequest(
+    /** 本批工具全部回填后的 live 消息（含当前回复及其工具结果） */
+    val messages: List<UIMessage>,
+    /** 当前回复的消息 id（「同一条回复只试一次」的判据） */
+    val replyMessageId: Uuid,
+    /** 本次生成调用内已完成的模型请求数（仅用于日志与诊断） */
+    val stepsExecuted: Int,
+    /** 上下文占用 token（来自 [ContextBudgetGuard] 的估算；0 = 无守卫信息） */
+    val usedTokens: Int,
+    /** 模型上下文窗口 token */
+    val windowTokens: Int,
+)
+
+/** 中途压缩的结果（见 [GenerationHandler.generateText] 的 `midTurnCompress` 参数）。 */
+enum class MidTurnCompressionOutcome {
+    /** 本次不需要压缩（未达阈值 / 开关关 / 同一条回复已试过 / 本轮已判定无意义）。 */
+    NotNeeded,
+
+    /** 压缩成功：检查点已插到当前回复之后，本类接下来新开一条回复继续。 */
+    Compressed,
+
+    /** 压缩失败：本轮照常继续写**当前**回复（同一条回复不重试，判据在调用方）。 */
+    Failed,
+}
+
+/**
+ * 请求面：裁掉末尾那条「刚为续跑新开、还没有任何 part」的 assistant 消息。
+ *
+ * 判据：中途压缩成功后，下一步必须写进新回复，而新回复此刻是空的——它只是**流式回填的落点**，
+ * 不是要发出去的内容。各 provider 虽会按 `isValidToUpload` 过滤空消息，但「请求面 = 回写基线」
+ * 的假设会因此失真（也让「检查点后面是什么」的续跑判定算错），在装配前直接裁掉更明确。
+ * 返回同一实例 = 无需裁剪（正常步骤的末尾是用户消息或带 tool_call 的助手消息）。
+ */
+internal fun List<UIMessage>.withoutTrailingEmptyAssistantForRequest(): List<UIMessage> =
+    if (lastOrNull()?.let { it.role == MessageRole.ASSISTANT && it.parts.isEmpty() } == true) {
+        dropLast(1)
+    } else {
+        this
+    }
 
 /** 并行车道的并发上限（借鉴 NMoi D254 的 Read/Process 车道并发数 4）。 */
 internal const val TOOL_LANE_MAX_CONCURRENCY = 4
@@ -284,6 +333,25 @@ class GenerationHandler(
         model: Model,
         messages: List<UIMessage>,
         compressionWindow: Conversation.CompressionWindow? = null,
+        /**
+         * 中途自动压缩（上游 `bcc649abc`；本仓落点）。一批工具**全部回填之后**调用，返回
+         * [MidTurnCompressionOutcome.Compressed] 时本类新开一条 assistant 回复继续下一步。
+         *
+         * 为什么是回调而不是在本类里做压缩：压缩要读会话内存态、写 compression_checkpoint 表、
+         * 发一次独立模型请求——全是 ChatService/provider 侧的知识；本类只负责**时机**（工具批之后）
+         * 与**判据输入**（本批 live messages + 上下文占用）。做不做、怎么做交给调用方。
+         *
+         * 线程：回调在生成流的**生产协程**里执行（本 flow 已 `flowOn(Dispatchers.IO)`），
+         * 因此压缩的网络/DB 工作天然不在主线程——这正是上游把压缩放「生成任务内部」的收益。
+         *
+         * 默认 null：无头 run 与「重新生成」路径不启用（语义见 `ChatService.handleMessageComplete`）。
+         */
+        midTurnCompress: (suspend (MidTurnCompressionRequest) -> MidTurnCompressionOutcome)? = null,
+        /**
+         * 中途压缩成功后重新取压缩窗口（检查点边界已变）。仅在上面回调返回 Compressed 后调用；
+         * 返回 null 时保留旧窗口（宁可多发一段原文，也不要拿错边界把检查点之后的内容再丢掉）。
+         */
+        refreshCompressionWindow: (() -> Conversation.CompressionWindow?)? = null,
         inputTransformers: List<InputMessageTransformer> = emptyList(),
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
@@ -437,6 +505,9 @@ class GenerationHandler(
             // 重复拒绝达阈值。设一次，本批结果回填后停本轮（优雅停止）。
             var stopNotice: GenerationNotice? = null
             var stepsExecuted = 0
+            // 发送窗口：中途压缩成功后检查点边界会变（见 [refreshCompressionWindow]），
+            // 故本步用的窗口是可变值；未压缩时与入参逐位相同。
+            var window: Conversation.CompressionWindow? = compressionWindow
 
             // 上下文预算的固定开销（system 正文 + 工具 schema）：每轮不变量，故只算一次。
             // 有 usage 锚点时它会被忽略（锚点已包含这些），只在第一步无锚点时才起作用。
@@ -520,7 +591,7 @@ class GenerationHandler(
                         assistant = assistant,
                         settings = settings,
                         messages = messages,
-                        compressionWindow = compressionWindow,
+                        compressionWindow = window,
                         recoveryHint = pendingRecoveryHint,
                         ruleReminder = ruleReminder,
                         memoryDisabled = memoryDisabled,
@@ -1209,6 +1280,58 @@ class GenerationHandler(
             }
             // A successful wait releases this generation normally; completed task events resume later.
             if (endTurnAfterTools) break
+
+            // ---- 中途自动压缩（上游 bcc649abc 语义；本仓落点）----
+            // 判据一：必须在一批工具**全部回填之后**。工具协议要求 tool_use 与 tool_result 成对出现，
+            //   切在批中间会让发送窗口里出现「有调用没结果」的助手消息（部分 provider 直接 400），
+            //   也可能让下一步的模型以为工具还没跑而重复调用。
+            // 判据二：必须放在上面所有「提前结束」判定**之后**。护栏停止 / 待审批 / endTurn /
+            //   最后一步都已有收尾结论，这时再花一次压缩请求毫无收益（压缩是预防手段），
+            //   而且压缩请求自身也可能撞窗。
+            // 判据三（做不做、压不压得动）在回调里：开关、阈值、同一条回复只试一次、防抖。
+            if (midTurnCompress != null &&
+                stepIndex < maxSteps - 1 &&
+                messages.last().role == MessageRole.ASSISTANT
+            ) {
+                val budget = contextGuard?.evaluate(messages, overheadTokens)
+                // 占用口径：守卫的 usage 锚点是「**上一次请求**发出去的量」，不含刚回填的
+                // 工具输出（它们要下一次请求才计入）。而中途压缩的触发恰恰来自这批输出——
+                // 只看锚点会晚一批，若这批输出直接把窗口撞满，压缩就来不及了（请求 400）。
+                // 故取「锚点」与「本地按发送窗口估算的下一请求量」的较大者：
+                // 锚点准、估算能看见新增，谁更能反映真实占用就用谁（同一量纲，见 utils/ContextLength）。
+                val estimatedNext = runCatching {
+                    estimateTokenCount(window?.applyTo(messages) ?: messages) +
+                        overheadTokens.coerceAtLeast(0)
+                }.getOrDefault(0)
+                val outcome = midTurnCompress(
+                    MidTurnCompressionRequest(
+                        messages = messages,
+                        replyMessageId = messages.last().id,
+                        stepsExecuted = stepsExecuted,
+                        usedTokens = maxOf(budget?.usedTokens ?: 0, estimatedNext),
+                        windowTokens = budget?.windowTokens ?: 0,
+                    ),
+                )
+                when (outcome) {
+                    MidTurnCompressionOutcome.Compressed -> {
+                        // 检查点插在**当前回复之后**，后续步骤写进新开的一条 assistant 回复。
+                        // 为什么必须新开：当前回复连同它的工具结果已经被压进摘要（否则刚撑爆窗口的
+                        // 那批输出原样留着，压缩等于白做）；若继续往同一条回复里追加，这段内容会
+                        // 同时存在于摘要和原文里，模型看到重复内容。新回复此刻是空消息——请求面由
+                        // `withoutTrailingEmptyAssistantForRequest` 裁掉（见 [generateInternal]）。
+                        messages = messages + UIMessage(role = MessageRole.ASSISTANT, parts = emptyList())
+                        window = refreshCompressionWindow?.invoke() ?: window
+                        // 步数按「本条回复」重新计：统计徽标与正常单回复同口径，不把压缩前的步数带过来
+                        stepsExecuted = 0
+                        Log.i(TAG, "generateText: mid-turn compression done, continuing in a new reply")
+                    }
+
+                    MidTurnCompressionOutcome.Failed ->
+                        Log.w(TAG, "generateText: mid-turn compression failed, continuing current reply")
+
+                    MidTurnCompressionOutcome.NotNeeded -> Unit
+                }
+            }
         }
 
         // 轮级步数（上游 660b5d65f 面）：落在最后一条 assistant 消息上，>1 时统计行显示徽标。
@@ -1283,17 +1406,24 @@ class GenerationHandler(
             tools = tools,
             level = ToolSchemaCompactor.Level.from(settings.toolSchemaCompactLevel),
         )
+        // 请求面两处适配（中途压缩，见 [generateText] 的 `midTurnCompress`）：
+        // ① 新开的那条回复此刻还没有任何 part——它只是**流式回填的落点**，不能当请求内容发出去；
+        // ② 检查点后面不是用户消息时给检查点追加续跑提示。②必须在**应用窗口后的窗口消息**上判断
+        //    （`withContinuationHintFor` 内部做）：装配产物尾部还有记忆数据/规则提醒两条合成 USER
+        //    消息，拿它判断会被骗成「后面是用户消息」，续跑提示就永远不出现。
+        val requestBasis = messages.withoutTrailingEmptyAssistantForRequest()
+        val sendWindow = compressionWindow?.withContinuationHintFor(requestBasis)
         // 组装发送消息：**与「拼装预览」共用同一个函数**（PromptAssembly.kt）——
         // 原先此段内联实现，预览只能另写一份、必然漂移。改这里即同时改预览。
         val assembly = buildInternalMessagesWithPlan(
             assistant = assistant,
             settings = settings,
             model = model,
-            messages = messages,
+            messages = requestBasis,
             memories = memories,
             tools = requestTools,
             conversationSystemPrompt = conversationSystemPrompt,
-            compressionWindow = compressionWindow,
+            compressionWindow = sendWindow,
             recoveryHint = recoveryHint,
             ruleReminder = ruleReminder,
             memoryDisabled = memoryDisabled,

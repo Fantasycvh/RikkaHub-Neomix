@@ -75,6 +75,8 @@ import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.coalesceMessageUpdates
 import app.androidrik.rikkahub.data.ai.LoopGateConfig
+import app.androidrik.rikkahub.data.ai.MidTurnCompressionOutcome
+import app.androidrik.rikkahub.data.ai.MidTurnCompressionRequest
 import app.androidrik.rikkahub.data.ai.withProviderErrorHint
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.parseRuleReminderSensitivity
@@ -96,6 +98,7 @@ import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TransformerUse
 import app.androidrik.rikkahub.data.ai.transformers.defaultTransformerChainRegistry
 import app.androidrik.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
+import app.androidrik.rikkahub.data.ai.prompts.MID_TURN_COMPRESS_INSTRUCTION
 import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -123,6 +126,9 @@ import app.androidrik.rikkahub.data.ai.compression.CompressionTier
 import app.androidrik.rikkahub.data.ai.compression.attachTraceSection
 import app.androidrik.rikkahub.data.ai.compression.buildTruncatedFallback
 import app.androidrik.rikkahub.data.ai.compression.effectiveMinKeep
+import app.androidrik.rikkahub.data.ai.compression.MidTurnCompressionDecision
+import app.androidrik.rikkahub.data.ai.compression.decideMidTurnCompression
+import app.androidrik.rikkahub.data.ai.compression.midTurnCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.runCompressionLadder
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
@@ -1563,6 +1569,103 @@ class ChatService(
             session.lastCommittedMessages.value = null
             val generationOwner = session.backgroundTaskOwner
             val transformerChains = transformerRegistry.snapshot(pluginManager.plugins.value)
+
+            // ---- 中途自动压缩（上游 bcc649abc；本仓落点）----
+            // 状态放在**本轮**（本函数调用）的作用域里：一次 handleMessageComplete = 一轮。
+            // 与 loopGuard 等「挂 session、跨审批续跑累积」的护栏口径不同——这里要表达的是
+            // 「本轮内不再重复压缩」，审批续跑(=新一轮调用)重新给次数更简单也更安全。
+            var midTurnCompressedReplyId: Uuid? = null // 已试过压缩的回复 id（成功/失败都记）
+            var midTurnAwaitingFirstCheck = false // 压缩成功后还没做过占用检查（防抖判据）
+            var midTurnCompressionUseless = false // 本轮不再压缩（摘要自身就超窗）
+            // 判定/执行闭包：由 GenerationHandler 在一批工具全部回填后调用（见 generateText 的 midTurnCompress 参数）。
+            // 这里只管取数、判定、写库；时机与「压完新开一条回复」由生成循环负责。
+            val compressMidTurn: suspend (MidTurnCompressionRequest) -> MidTurnCompressionOutcome =
+                compress@{ request ->
+                    if (!settings.autoCompressEnabled) return@compress MidTurnCompressionOutcome.NotNeeded
+                    val decision = decideMidTurnCompression(
+                        usedTokens = request.usedTokens,
+                        windowTokens = request.windowTokens,
+                        thresholdPercent = settings.autoCompressThresholdPercent,
+                        replyAlreadyTried = request.replyMessageId == midTurnCompressedReplyId,
+                        compressionUseless = midTurnCompressionUseless,
+                        // 防抖判据用布尔「压缩后还没检查过」而不是 stepsExecuted 差值：
+                        // 生成器压缩后会把步数归零（新回复重新计数），拿绝对值相减会得到负数、
+                        // 在压缩点较深时把后续几次合法的检查也误判成「刚压完」。
+                        stepsSinceCompression = if (midTurnAwaitingFirstCheck) 1 else null,
+                    )
+                    // 本次就是「压缩后的第一次检查」：判定完立刻销掉标记（无论结论是放弃还是继续）
+                    midTurnAwaitingFirstCheck = false
+                    if (decision == MidTurnCompressionDecision.GiveUp) {
+                        // 防抖：压缩后的第一次占用检查仍超阈值 ⇒ 摘要 + 系统提示词自身就装不下窗口，
+                        // 本轮不再压（再压只会把摘要越压越薄）。交给优雅停止/硬限去收尾。
+                        midTurnCompressionUseless = true
+                        Log.w(
+                            TAG,
+                            "mid-turn compression given up for this turn " +
+                                "(${request.usedTokens}/${request.windowTokens} tokens, step=${request.stepsExecuted})",
+                        )
+                        return@compress MidTurnCompressionOutcome.NotNeeded
+                    }
+                    if (decision != MidTurnCompressionDecision.Compress) {
+                        return@compress MidTurnCompressionOutcome.NotNeeded
+                    }
+                    // 先记「这条回复已试过」：压缩失败时本轮照常接着原回复写，同一回复不再重试
+                    // （否则下一批工具执行完又会再发一次压缩请求，每批白烧一次摘要 token）。
+                    midTurnCompressedReplyId = request.replyMessageId
+                    Log.i(
+                        TAG,
+                        "mid-turn compress triggered: ${request.usedTokens}/${request.windowTokens} tokens, " +
+                            "step=${request.stepsExecuted} (conv=$conversationId)",
+                    )
+                    // 状态栏文案（上游同款）：压缩可能跑几百毫秒到数秒，期间用户看不到流式输出，
+                    // 不给提示会像卡死。**恢复原值**而不是直接置 null——上层可能正挂着别的状态
+                    //（重试/OCR 等），清掉会把它们的提示一并抹了。
+                    val previousStatus = session.processingStatus.value
+                    session.processingStatus.value = context.getString(R.string.chat_page_compressing)
+                    val result = try {
+                        compressToCheckpoint(
+                            conversationId = conversationId,
+                            windowTokens = request.windowTokens,
+                            targetTokens = settings.autoCompressTargetTokens,
+                            retainRatio = settings.autoCompressRetainPercent / 100.0,
+                            followModel = model,
+                            midTurn = true,
+                            midTurnMessages = request.messages,
+                        )
+                    } finally {
+                        session.processingStatus.value = previousStatus
+                    }
+                    when {
+                        result.isFailure -> {
+                            val error = result.exceptionOrNull()
+                            // 用户点停止：取消必须继续传播（runCatching 会吞掉 CancellationException），
+                            // 否则会被当成「压缩失败」报一条假错误，还让已取消的循环多跑一步。
+                            if (error is CancellationException) throw error
+                            // 失败不崩回合：报一条可见错误，接着原回复继续（同一条回复不重试，见上）
+                            Log.w(TAG, "mid-turn compress failed for $conversationId", error)
+                            addError(
+                                error ?: IllegalStateException("mid-turn compression failed"),
+                                conversationId,
+                                title = context.getString(R.string.error_title_compress_conversation),
+                            )
+                            MidTurnCompressionOutcome.Failed
+                        }
+                        result.getOrNull() == null -> {
+                            // 窗口里没有可压缩内容：不是错误，按「不需要」处理
+                            midTurnCompressionUseless = true
+                            MidTurnCompressionOutcome.NotNeeded
+                        }
+                        else -> {
+                            midTurnAwaitingFirstCheck = true
+                            MidTurnCompressionOutcome.Compressed
+                        }
+                    }
+                }
+            // 重新生成走「候选分支」语义：基线不含目标节点，而中途压缩要改写压缩边界，
+            // 与分支回退/候选替换互相干扰。本仓的重生成一律走 messageRange，故整体关掉
+            // （轮前自动压缩同样已跳过，见上面的 maybeAutoCompress 调用处）。
+            val midTurnCompress: (suspend (MidTurnCompressionRequest) -> MidTurnCompressionOutcome)? =
+                if (messageRange != null) null else compressMidTurn
             generationHandler.generateText(
                 settings = settings,
                 model = model,
@@ -1597,6 +1700,15 @@ class ChatService(
                     null
                 } else {
                     conversation.compressionWindow()
+                },
+                // 中途自动压缩（上游 bcc649abc）：普通发送路径才启用，重生成一律 null（见闭包定义）。
+                midTurnCompress = midTurnCompress,
+                // 压缩成功后检查点边界变了：窗口按会话内存态重算（压缩的提交段是同步写：
+                // updateConversationState 已生效，故这里一定拿得到新检查点）。null 时框架保留旧窗口。
+                refreshCompressionWindow = if (messageRange != null) {
+                    null
+                } else {
+                    { getConversationFlow(conversationId).value.compressionWindow() }
                 },
                 assistant = assistant,
                 conversationSystemPrompt = conversation.customSystemPrompt,
@@ -2169,6 +2281,27 @@ class ChatService(
          * 传 null 时回退全局当前对话模型。
          */
         followModel: Model? = null,
+        /**
+         * 中途压缩（一轮回复内部，上游 `bcc649abc`）：**压到当前窗口末尾为止**（含还在写的回复），
+         * 且提示词追加 mid-turn 指令。
+         *
+         * 判据：
+         * - 触发原因就是「这一批工具输出把窗口撑爆」，而输出就在当前回复里 ⇒ 必须连它一起压，
+         *   否则刚撑爆的那段原样留着，压了也白压（普通 token 驱动保留策略至少留 2 条尾部节点，
+         *   见 [midTurnCompressionPlan]）；
+         * - 读这份摘要的是**同一条任务的下一步**（不是下一轮对话），故摘要指令要求写清
+         *   「已做到哪 / 下一步做什么」。
+         */
+        midTurn: Boolean = false,
+        /**
+         * 中途压缩的数据源（生成器手里的 live 消息快照）。仅 [midTurn] 时使用。
+         *
+         * 判据：内存态经 `coalesceMessageUpdates` 节流，暂停点读到的最新内容可能落后于刚回填的
+         * 工具结果 ⇒ 直接读会话会把上一批的旧内容压进摘要（摘要丢掉刚执行的工具结果，下一步
+         * 模型重复调用同一工具）。本方法在**同一段无挂起点**里先写回快照再读回，使数据源确定；
+         * 调用方不必自己同步（也不会出现「同步后又被迟到旧快照覆盖」的窗口）。
+         */
+        midTurnMessages: List<UIMessage>? = null,
     ): Result<CompressionSummary?> = runCatching {
         val settings = settingsStore.settingsFlow.first()
         val model = settings.resolveCompressionModel(followModel)
@@ -2180,6 +2313,14 @@ class ChatService(
             providerManager.getProviderByType(provider),
             UsageTag(UsageSource.COMPRESSION, conversationId = conversationId),
         )
+        // 中途压缩：先把生成器的权威快照写回内存态，**紧接着**读回（两步之间无挂起点）。
+        // 这样摘要的数据源就是本批工具全部回填后的内容，不会撞上 coalescer 迟到的旧快照；
+        // 顺带收尾推理块（检查点切分后旧回复不会再有新推理）。
+        if (midTurn && midTurnMessages != null) {
+            updateConversationState(conversationId) { latest ->
+                latest.updateCurrentMessages(midTurnMessages.map { it.finishReasoning() })
+            }
+        }
         // 当前会话快照（含内存态最新）
         val conversation = getConversationFlow(conversationId).value
         // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
@@ -2187,11 +2328,16 @@ class ChatService(
         val window = effectiveWindow?.let { conversation.messageNodes.drop(it.boundaryIndex + 1) }
             ?: conversation.messageNodes
         val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
-        val plan = estimateCompressionPlan(
-            nodes = window,
-            budgetTokens = budget,
-            minKeep = effectiveMinKeep(keepRecentMessages),
-        )
+        val plan = if (midTurn) {
+            // 中途压缩：不保留尾部（判据见参数注释）。窗口为空时 shouldCompress=false ⇒ 返回 null。
+            midTurnCompressionPlan(window)
+        } else {
+            estimateCompressionPlan(
+                nodes = window,
+                budgetTokens = budget,
+                minKeep = effectiveMinKeep(keepRecentMessages),
+            )
+        }
         if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
 
         val messagesToCompress = plan.toCompress.map { it.currentMessage }.messagesForAuxGeneration()
@@ -2219,12 +2365,23 @@ class ChatService(
                     append(priorContext)
                 }
             }.trim()
-            val prompt = settings.compressPrompt.applyPlaceholders(
-                "content" to contentToCompress,
-                "target_tokens" to targetTokens.toString(),
-                "additional_context" to additional,
-                "locale" to Locale.getDefault().displayName,
-            )
+            val prompt = buildString {
+                append(
+                    settings.compressPrompt.applyPlaceholders(
+                        "content" to contentToCompress,
+                        "target_tokens" to targetTokens.toString(),
+                        "additional_context" to additional,
+                        "locale" to Locale.getDefault().displayName,
+                    )
+                )
+                // 中途压缩指令追加在**用户模板之后**：不改用户手改过的提示词，也不与
+                // {additional_context}（用户附加指令）抢位置。
+                if (midTurn) {
+                    appendLine()
+                    appendLine()
+                    append(MID_TURN_COMPRESS_INSTRUCTION)
+                }
+            }
             val result = providerHandler.generateText(
                 providerSetting = provider,
                 messages = listOf(UIMessage.user(prompt)),
@@ -2294,13 +2451,19 @@ class ChatService(
         )
 
         // 轨迹只追加：落库新检查点（含自增 id），清理更早的检查点行（摘要已合并）
-        val saved = conversationRepo.addCompressionCheckpoint(checkpoint)
-        conversationRepo.trimCompressionCheckpoints(conversationId)
-
-        // 更新内存态：发送窗口与 UI 据此生效（不改 messageNodes——历史可回溯）
-        updateConversationState(conversationId) { latest ->
-            latest.copy(compressionSummaries = listOf(saved))
+        suspend fun commit(): CompressionSummary {
+            val saved = conversationRepo.addCompressionCheckpoint(checkpoint)
+            conversationRepo.trimCompressionCheckpoints(conversationId)
+            // 更新内存态：发送窗口与 UI 据此生效（不改 messageNodes——历史可回溯）
+            updateConversationState(conversationId) { latest ->
+                latest.copy(compressionSummaries = listOf(saved))
+            }
+            return saved
         }
+        // 中途压缩跑在**生成任务**里：取消可能恰好插在「落库」与「内存态」之间，那会留下
+        // DB 有检查点而内存态没有（或反之）的错位，整轮的发送窗口与 UI 对不上。只把这段
+        // 毫秒级提交包进 NonCancellable，摘要的网络请求保持可取消（用户点停止要能立刻停）。
+        val saved = if (midTurn) withContext(NonCancellable) { commit() } else commit()
         noticeRequests.trySend(Unit)
         saved
     }.onFailure {
