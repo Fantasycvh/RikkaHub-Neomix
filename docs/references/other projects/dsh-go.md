@@ -146,10 +146,14 @@ dsh-Go 把「哪台主机能用什么」写成明确矩阵：工具卡全主机�
 - 修法（未实施）：重编时加 `-Wl,-z,max-page-size=16384`——`libtex_poc` 改 `tools/tex-poc/build-android.sh` 的 `RUSTFLAGS`（或 `.cargo/config` link-arg）；`libpdf2svg_bridge.so` / `libgraphite2.so` 用 NDK clang 加同一参数重编；三个库改完需模拟器 16 KB 页镜像或真机回归。
 - **设备要求（2026-11-10 核实）**：
   - **重编与静态校验不需要设备**：只需 NDK/交叉工具链加 `-Wl,-z,max-page-size=16384`（NDK r28+ 已默认 16 KB，r27c 需显式传）；然后静态验 `llvm-readelf -l` 的 `LOAD ... Align ≥ 0x4000`、`zipalign -c -P 16 -v 4`（APK 内 .so 未压缩且 16 KB 对齐）。
-  - **运行验证需要 16 KB 页内核**：AOSP 明确「只有内核为 16 KB 的 arm64 目标才支持 16 KB 页面」（`CONFIG_ARM64_16K_PAGES`，Android 15 起随开发者选项启用）。可选路径：(a) **真机**——Pixel 8 / 8 Pro / 8a / 9 / 9 Pro / 9 Pro XL 可刷官方 16 KB 内核镜像（需解锁 bootloader、会清数据；AOSP「Flash Pixel with 16KB kernel」）；(b) **模拟器**——Android 15+ 的 16 KB 页系统镜像，需 arm64 主机（Apple Silicon Mac），普通 x86_64 AVD 是 4 KB 页；(c) AOSP Cuttlefish 的 x86_64 16 KB 用户态模拟（Linux 主机，非 Android Studio 模拟器）。
-  - **本机（Windows x86_64）无法直接验证**：没有 16 KB 页 AVD（x86_64 AVD 恒 4 KB），也没有可刷 16 KB 内核的 Pixel；复现/验收需外部设备或 arm64 Mac。验证命令：`adb shell getconf PAGE_SIZE`（应 16384）、`adb shell getprop ro.product.cpu.abi`（arm64-v8a），再跑 TikZ 渲染与 PDF→SVG 导出。
+  - **运行验证需要 16 KB 页内核**：AOSP 明确「只有内核为 16 KB 的 arm64 目标才支持 16 KB 页面」（`CONFIG_ARM64_16K_PAGES`，Android 15 起随开发者选项启用）。可选路径：
+    - **真机**：Pixel 8 / 8 Pro / 8a / 9 / 9 Pro / 9 Pro XL 刷官方 16 KB 内核镜像（需解锁 bootloader、会清数据；AOSP「Flash Pixel with 16KB kernel」）。
+    - **模拟器**：SDK 仓库确有 `ps16k`（16 KB Page Size）镜像，**arm64-v8a 与 x86_64 都有**（API 35 / 36 / 36.1 / 37.0 / 37.1，例如 `system-images;android-36;google_apis_ps16k;x86_64`）。x86_64 镜像可在 Windows/Linux x86_64 主机（WHPX/HAXM）上建 16 KB 页 AVD；arm64 镜像只能在 arm64 主机（Apple Silicon Mac）上跑。
+    - AOSP Cuttlefish 的 x86_64 16 KB 用户态模拟（Linux 主机，非 Android Studio 模拟器）。
+  - **本机的可行范围（Windows x86_64 + SDK emulator 36.6.11 + WHPX 可用）**：可以下载 `ps16k;x86_64` 建 16 KB 页 AVD，做「App 能装、能启动、JNI 不崩、`adb shell getconf PAGE_SIZE` = 16384」的整体冒烟。**但这三个坏库只有 arm64 产物**，x86_64 AVD 加载不到它们（TikZ 走既有回退链），所以本机 AVD 验证不了修复；验这三个库仍需 arm64：Pixel 8/9 系刷 16 KB 内核，或 arm64 Mac 上的 `ps16k;arm64-v8a` 镜像（x86_64 主机跑不了 arm64 镜像）。
   - **重编前置（按本仓现状）**：`libtex_poc` 走 `tools/tex-poc/build-android.sh`（WSL Ubuntu + rustup `aarch64-linux-android` + NDK r27c linux-x86_64 + `/root/android-libs` 交叉依赖 libpng/graphite2/freetype/termux libicu + `patchelf`）；`libgraphite2` 就在该交叉依赖里（需从源码重编）；`libpdf2svg_bridge` 源码是自包含的 `app/src/main/cpp/pdf2svg_bridge.c`，链接 MuPDF 1.26.8 的 `libmupdf_java`（该库已 `0x4000` 合格，不必动）。三者都只出 arm64；`libmupdf_java`/`libsimple`/`libproot_*`/icu/`c++_shared` 复核均 ≥ `0x4000`。
-  - 结论：**该候选属「需外部设备才能验收」**；若不做真机/arm64 模拟器验证，只能落地「重编 + 静态校验」，运行面风险不消除（TikZ/PDF→SVG 链在 16 KB 设备上仍是未知）。
+  - 结论：**重编 + 静态校验不需要设备**；这三个库的**运行验收**要么 Pixel 8/9 系真机、要么 arm64 主机模拟器。可选的替代验收：给三个库补 x86_64 交叉产物后用本机 x86_64 ps16k AVD 复现/验证（graphite2/icu/tex_poc 都得能出 x86_64，工作量远大于重编本身，不推荐）。
+
 - 判决：**候选 P2**（静态缺口确定、改动面小；但无法在本机真机验证 16 KB 链路，落地需设备/模拟器配套）。
 
 ### 7.2 判据级记账（不立项）
