@@ -27,10 +27,14 @@
 - 上下文档位 F1–F4 一个旋钮 + 任务锚点（最后一条 user **原样**截取拼进压缩摘要尾、不新增消息防 last_user 指错）（NMoi anchor.rs / senera F1-F5）。
 - 压缩触发线数据点：NMoi 真机迭代默认 0.75/0.92 → **0.45/0.55**、窗口默认 1M（budget.rs:313/721）——与本仓 80% 触发方向相反，**等净化观察期双口径数据一起判**（2026-11-08 新）。
 - 世界书扫描窗口含 assistant 消息与思考文本（NMoi lorebook.rs:199）——本仓是否含思考待核（2026-11-08 新）。
+- 压缩摘要**机械携带**本段工具/文件痕迹与媒体句柄：可重取句柄（URL/fileId/fileUri）机械追加进摘要块、穿过折叠/合并/蒸馏，绝不靠模型自觉；本仓摘要输入只取 Text/Notice（`Message.kt:222-231`），折叠区图片/文档进摘要器前即被丢弃（NMoi D296 / billion-context `d126087ab`，2026-11-10 候选）。
+- web/App 统计行 token 口径：取**最后一次** step 的 usage，不累加；`lastUsage`/`contextTokens` 落进 UIMessage（upstream `921427f95`，2026-11-10 候选 P2）。
 
 ### B. 压缩与读回
 - 压缩按节点 ID **不删原文只换视图**；压缩后读回以 CompactionCheckpoint 指纹、编辑消息自动失效（rikkahub-agent §二.3 / yuihub §四.7）。
 - 世界书注入带 SourceTag 进档位白名单不降级（NMoi session.rs:536）（2026-11-08 新）。
+- 折叠对账**分级**：直接 ID 多数存活 = 部分丢失，不做「有缺即全量」的二次决策；压缩产物不得保留可调用形状（relocate v2 载体）；「淘汰清单条数上限」是陷阱——>64 张图永远压不到预算下会无限重试，必须另设字节/条数双维硬顶（billion-context #5745/#5968/#5470，2026-11-10 记账）。
+- 一轮中途也要能压缩：长 agent run 只有轮前压缩 + 工具循环优雅停止，循环层压不住上下文（upstream `bcc649abc`，2026-11-10 候选 P2）。
 
 ### C. 工具与执行
 - 重复读路由：同路径未变 → 掩码占位 ~10tok，变了 → 截断+差异计数（NMoi router.rs:167，判据沉淀进 design-tool-output-budget.md）。
@@ -50,6 +54,8 @@
 - KILL 前 2.5s 预算快照：只采「有 windowFocus 的 activity + 滚动锚点 + 断点」；快照带 processSessionId/账号 mid 防串号、consume 一次性消费、恢复前清旧请求态（BiliPai FairMemoryReceiver.kt）（2026-11-08 新，厂商广播不可移植、结构可借）。
 - 内容级脱敏 6 类正则（ghp_/sk-/AKIA/PEM/URL 凭据/JWT），URL 凭据规则排最前；导出与落库路径分开、语义边界待拍板（NMoi redact.rs）。
 - 能力生产线 = 沙盒起草 + 同一校验器双跑 + 人工审批 + 版本回滚（purrcat §3.3）。
+- 用户显式档位被源级/模型级配置静默覆盖 → 必须显式提示冲突（bigeye：思考档位被 extra_body 覆盖；本仓 `Request.kt:115-135` `mergeCustomBody` 同构，2026-11-10 候选）。
+- 「接口没报错」≠ 字段生效：探活不得替用户定档；默认档 = 删记录而非只不传字段（bigeye，2026-11-10）。
 
 ### E. 存储与备份
 - **迁移前留 `.v<旧版本>.bak` 副本 + 迁移函数可重执行**（NMoi 65e13bf/D260 duplicate column 真机教训）（2026-11-08 候选 C4）。
@@ -60,6 +66,8 @@
 - Room `fallbackToDestructiveMigrationOnDowngrade(true)`；sealed @Serializable 子类须有直接代码引用防 R8 删（huadeng §八.1）。
 - 安装/更新事务化：SHA-256 校验 + staging 原子切换留旧环境；签名是更新最后防线（dsh-go §2.3）。
 - 附件落**会话私有目录**、删会话清目录；库只存路径 BLOB 懒迁移（NMoi D216）。
+- 生成产物入库必须 CI 重建 + `git diff --exit-code` 比对并 pin LF；更优解是产物不入库、构建期生成（purrcat，2026-11-10）。
+- 应用内安装/更新回执：dispatch 完成 / Activity resume / CLI 确认**都不算安装成功**，必须核对实际安装包+签名集+version+摘要；未知结果不自动重试、不重建命令/路径重放（dsh-go §7.2，2026-11-10 记账）。
 
 ### F. UI / 玻璃 / 动效 / 输入
 - 液态玻璃门控层三件（SDK 分级 / 前后台 gate / hazeSourceCompat）+ 可读性一等设置——**✅ 已落地 2026-10-31**；ReduceMotion + VisualWorkPolicy——**✅ 已落地 `3254e33b0`**（bilipai.md）。
@@ -70,6 +78,10 @@
 - 转场位图坑族：HARDWARE 位图进软件 Canvas 直接 IAE → 建同配置 HARDWARE 目标+硬件画布；可变位图反向 PixelCopy 落软件（重载 API29+、SAM 推断失败 → `source.copy(ARGB_8888,false)`）；透明位图先 drawColor 底色；失败一律显式降级不硬崩（BiliPai SystemVideoCardTransition.kt）（2026-11-08 新）。
 - MaterialBackdropBlur 磨砂参数：`downscaleFactor=1`、sigma=radius×0.45、padding=3σ，防大半径降采样滚动闪烁（BiliPai）（2026-11-08 新）。
 - 跨应用划词翻译零权限正解 = `ACTION_PROCESS_TEXT` 对话框 Activity——**✅ 已落地**（miffan.md）。
+- 装饰/可视工作的门控必须含**视口可见性**（离屏页前后台 gate 管不到），且绝不覆盖数据更新与副作用（BiliPai `DecorativeAnimationGate` ↔ 本仓 `VisualWorkPolicy.kt:13-14`，2026-11-10）。
+- **材质配方与采样源不得同批改**：同批改则回归无法二分归因（BiliPai 当日互为逆提交整体回滚，2026-11-10）。
+- 模态预测返回：手势只作预览（≤25%），完成回调可被业务校验拒绝 → 必须复位 `isCompleting` 与可交互外观（BiliPai `e763dcedb`，2026-11-10 候选 P3）。
+- 第三方库内崩溃只能在构建期兜底（ASM 补丁 fail-closed：目标签名/方法缺失即构建失败，不许静默失效）（BiliPai `371166ba2`，2026-11-10 记账）。
 
 ### G. 模型与生成
 - 显式 `tool_choice:"auto"`（tools 非空必发）+ 零字流退回非流式重发一次（已有正文不重发）——**✅ 第一件已落地 `064a8b772`**（NMoi e3cbed8 / ddd2860，bigeye llm.py:983 同证）。
@@ -77,6 +89,9 @@
 - 小模型结构化决策判不出 → **{Ok/Uncertain/Failed} 三态 + Uncertain 静默回退**要显式声明（huadeng §八.2）。
 - 真实 0 与未知占位区分（BiliPai FormatUtils）。
 - 记忆注入 = 打分校准 + **token 预算**（字符预算不可照搬：1800 字符砍 54→7 条）——**✅ 已落地 `91d88551`**（yuihub §4.2）。
+- **错误字符串清单不可作重试判据**：网关换措辞即退化成 0 次重试；用状态码/异常类型分流，只对实测文案补清单，致命额度/鉴权先行拦截（bigeye 同坑三轮，2026-11-10）。
+- 截断/预算恢复必须**改参数**（放大 max_tokens 或换缓存 key）并留结构化停因（`termination_kind`/`stop_reason`）；严格思考源续写须回传 reasoning_content（bigeye，2026-11-10）。
+- Claude 流式签名是 **delta 累加**不是覆盖；非流式相邻 thinking 同签名才合并，否则保 metadata（upstream `e1667163c`，2026-11-10 候选 P2）。
 
 ### H. 评估与流程方法论
 - 已吸收判定用**代码等价核对**，禁用 merge-base 判祖先（手工直套恒误报）；「判已被上游推翻」才是 merge-base 合法用法（upstream §注意点 1/12）。
@@ -86,6 +101,7 @@
 - 三档证据不混用：源码 / 远端 / 抽样，二手须显式标注；**评估缺点比优点有用**；自述 ≠ 事实先核验再记账，凡要移植的先 grep 消费方；同名不同物拆开算（PB §4.2）。
 - 「不做」清单本身就是资产（PB §4.3 含 10 条已明确不做方向）。
 - 大改挂「观察期触发点」：语义接受 / 实测症状出现才升级，不预先动手。
+- **静态红线脚本必须接进 CI 才算门禁**（AGENTS.md 写了跑法但没人跑 = 不存在）；测试按目录自动 marker、挂起用例带任务号且总数设上限；功能下线同一次改动删净（代码+用例+fixture+spec+文档）（purrcat `6a95539`，2026-11-10 候选 P1）。
 
 ## 三、历史教训与负面样本（每家一条承重的）
 
@@ -99,6 +115,8 @@
 | huadeng | 主动消息连修四层 P0 → 形态级风险高；判借鉴关系先查上游 → 逐字 diff → 才看历史 |
 | miffan | `Settings.init` 语义反转照抄守卫 → 拿 dummy providers 发车；Compose 输入框不聚合 PROCESS_TEXT，勿用自家 App 判入口缺失 |
 | billion-context | 「5×」是反事实——证据须标 [V]/[A] 并钉 sha |
+| billion-context（2） | v6 物化渲染面 11-04 落地 → 11-05 两次方向反转 → 11-07 整条 revert（HEAD 已无 `fastpath-v6*.ts`）：**物化渲染/身份面不借**，只留「只缓存 post-rewrite core，映射每轮现算」 |
+| BiliPai（2） | 材质配方与采样源**同批改** → 当日互为逆提交整体回滚：同批改无法二分归因（判据见 §F） |
 | yuihub | 复用 Conversation 表做子代理 = 静默泄漏 |
 | sillytavern | 默认空 map + ignoreUnknownKeys = 任意 JSON 静默导入「0 条目」；remember 缓存闭包捕获 dummy → 传回调读取器（曾 14 条覆盖成 1 条） |
 | purrcat | 文档先于实现（trigger 无消费方）→ 评估必须源码核验；「Docker 隔离」实为 SYS_ADMIN+seccomp=unconfined 非安全边界；iframe 无 sandbox 同源可取 parent.document |
@@ -112,6 +130,7 @@
 - upstream 挂账：任务完成主动通知模型（Notice/收件箱协议，唯一实质缺口）· #2271 Mistral 422 同构风险 · #2304 SSH workspace 待复现 · `ae599e8d7` 磁盘编码缓存增强。
 - peer 候选池见 §五；C1–C6 已在后续本地提交落地，C7 与备份自校验本轮（2026-11-08）已实现；内容级脱敏仍待语义边界拍板。
 - BiliPai 门控层零改动；nmoi/BiliPai 本轮全部细节见 [nmoi-agent.md §13.4](references/other%20projects/nmoi-agent.md) / [bilipai.md](references/other%20projects/bilipai.md)。
+- **2026-11-10 同步**：upstream 同步点 `8a837b27e`（issue 扫描到 #2310）；peer 侧 NMoi 到 `92585e8`、BiliPai 到 `05c4e2ac5`、PurrCat 到 `7cd7134`、Miffan 远端 `11b8fb55b`、billion-context `4dea18ea`、dsh-Go `8f31b2e`；仍然只评不施。**新增两个本仓实证项**：CI 零测试门禁（purrcat F1）、3 个 .so 未 16 KB 页对齐（dsh-Go 引出的静态核验）。候选池见 §六。
 
 ## 五、本轮增量判决（2026-11-08：NMoi 173 提交 + BiliPai 108 提交）
 
@@ -128,3 +147,54 @@
 | C7 | NMoi 4a7d465 | 发图压缩 + 附件尺寸上限 | **已实现（2026-11-08）** | 纠正旧盘点：原已有 JPEG/采样；本轮收紧像素与字节预算，补附件流式上限与显式报错 | FileEncoder / FilesManager / providers | 见实施记录 |
 
 **修正既有结论**：NMoi「stage 0」停用（原三大未动工项已落地，残留接线 2 处）；§13.1⑤ D46 彻底改判（「工具循环一律非流式」作废）；11-03 的「0.15ap/0.15aq/0.15an 未动工」记账作废。**已有等价勿立项**：世界书核心语义（**本仓是 NMoi 字段超集**——二次收窄/token 预算/多册绑定/ST 导入均我们有它没有，世界书不用跟）、只换一条 regen 与失败三选一（MessageNode 树天然支持）、六角色分模型（本仓 9 角色字段）、代理栈（本仓 per-provider 更细）、「正在生成」卡死修（本仓已根治）。
+
+## 六、2026-11-10 同步轮判决（上游 16 提交 + 8 个来源）
+
+> 范围：上游 `fe5a28f9a..8a837b27e`（16 提交）+ issue #2305–#2310；NMoi `d7fe1b0..92585e8`（32）；BiliPai `f87566b86..05c4e2ac5`（35）；PurrCat `adbba56..7cd7134`（61）；Miffan 远端 11-03→11-09（141）；bigeye 1；billion-context 11-03→11-10（671，抽样）；dsh-Go `cf2f7c86..8f31b2e`（542，抽样）；archify 3。Yuihub / senera / rikkahub-agent / agentd / SillyTavern 已核对为无新提交（senera 实际仓库是 `yuanplussfive/senera`，台账 URL 待改）。
+> 本轮**只评不施**：未改任何源码、未提交。总判决：**吸收 0 / 候选 32（P2×11、P3×21）/ 其余已有等价或判据记账**。逐条明细回查各台账末节（[upstream-analysis.md](upstream-analysis.md)、[nmoi-agent.md §13.5](references/other%20projects/nmoi-agent.md)、[purrcat-analysis.md 附录 F](purrcat-analysis.md)、[miffan.md](references/other%20projects/miffan.md)、[bilipai.md](references/other%20projects/bilipai.md)、[bigeye.md §11.7](references/other%20projects/bigeye.md)、[billion-context.md](references/other%20projects/billion-context.md)、[dsh-go.md §七](references/other%20projects/dsh-go.md)、[archify.md](references/other%20projects/archify.md)）。
+
+### 6.1 P2 候选池（11 条，按建议优先级）
+
+| # | 来源 | 项 | 本仓落点 | 量级 |
+|---|---|---|---|---|
+| 1 | PurrCat `6a95539`+`bb33169` | **CI 门禁接线**：382 单测 + 100 androidTest + 9 个 audit/verify 脚本，CI 只 `assembleRelease`、零测试门禁（`daily-build.yml:132-133`、`release.yml:115-116`） | `.github/workflows/` | 0.5–1 天 |
+| 2 | upstream `bcc649abc` | 一轮中途自动压缩（pause + 检查点 + 续跑提示）；本仓只有轮前压缩 + 工具循环优雅停止 | `GenerationHandler.kt:476` + ChatService 压缩线 | 1–2 天 |
+| 3 | upstream `5b7ca774b` | 概览卡全文 `toText()` 交 `Text(maxLines=1)` 主线程测量 → 截 300 + 后台/conflate | `ChatList.kt:981/992` | 0.5 天 |
+| 4 | upstream `921427f95` | web/App 输入 token 取最后一次 usage（旧账：`lastUsage`/`contextTokens` 从未落地） | `ai/ui/Message.kt:42` + `WebDto.kt:215` | 1 天 |
+| 5 | upstream `e1667163c` | Claude 流式签名 delta 累加 + 非流式相邻 thinking 同签名才合并 | `ClaudeStreamDecoder.kt:164` + `ui/Message.kt:121` | 0.5–1 天 |
+| 6 | NMoi `1dfda3c`（D296） | 压缩摘要机械携带本段工具/文件痕迹（12 条/600 字封顶，预算不够整节不接） | `ChatService.kt:2195` + `Message.kt:222-231` | 1–1.5 天 |
+| 7 | billion-context `d126087ab` | 折叠区媒体句柄（URL/fileId/fileUri）机械随摘要携带，折叠后仍可回取 | 摘要输入 + 图片淘汰链 | 0.5 天 |
+| 8 | Miffan `6efec385a` | `stripMarkdown()` 保留行内代码文本（现整段删 → TTS/VoiceMode 丢 code） | `MarkdownUtils.kt:48` | 0.5 小时 |
+| 9 | Miffan `7b602f808`+`9f58005b9` | QuickJS 初始化移出启动主线程 + 使用点幂等 init | `RikkaHubApp.kt:148` | 0.5 天 |
+| 10 | Miffan `7442ea738`×10 | 通用 Compose macrobenchmark 管线（fixture + 旅程 + runner + 汇总 + 全绘上报） | `app/baselineprofile` | 2–3 天 |
+| 11 | dsh-Go（16 KB 适配引出） | **3 个 .so 4 KB 页对齐**（`libtex_poc` / `libpdf2svg_bridge` / `libgraphite2`）→ 16 KB 页设备 TikZ/PDF→SVG 链断 | `app/src/main/jniLibs/arm64-v8a/` | 0.5–1 天（需设备验证） |
+
+### 6.2 P3 候选（21 条）
+
+- **upstream（6）**：通知权限卡（~1h）· 信任用户 CA（需拍板）· 500k token 调试对话（~1h）· 压缩请求组装搬 IO（~0.5h）· 默认提供商全开（需拍板）· 地图搜索词变化回顶（一行）。
+- **NMoi（4）**：世界书 4 个触发时序字段（`matchWholeWords`/`sticky`/`cooldown`/`delay`，~1d）· 世界书两级多选/批量导出（~1d）· 手动压缩切点预览（~0.5d）· 会话信息面板（~0.5d）。
+- **BiliPai（5）**：弹窗/玻璃菜单预测返回（~1d）· 图片预览交接（~1d）· 规则插件编辑实时校验+试跑（~1d）· 视口可见性动效门控（0.5–1d）· 剪贴板读取兜底（~30m）。
+- **PurrCat（2）**：测试卫生规范件（~0.5d）· 巨型文件拆分**观察期**（`ChatService.kt` 3262 行 / `GenerationHandler.kt` 1722 行，触发后 3–5d）。
+- **Miffan（5）**：引用卡去 Markdown 标记（~0.5h）· 失败提示人话化（10 处直出 `e.message`，~1d）· 月日本地化 + 两个 Compose 小件（~0.5d）· 会话列表行 `contentType`（~0.5h）· DB 复合索引 + 收藏范围查询（~0.5d）。
+- **bigeye（1）**：思考档位被 `mergeCustomBody` 静默覆盖 → 显式提示（~1h）。
+
+### 6.3 本轮同构 bug / 风险（已在档，需拍板或单独立项）
+
+- **#2306 多图上传跳过图片编辑（同构 bug 确认）**：本仓 `ChatFilesPickerSheet.kt:125` 仅 `selectedUris.size == 1` 才裁剪，多图直接跳过用户裁剪；上游也未修。修法 = 逐张裁剪队列（上游建议）。
+- **3 个 .so 4 KB 对齐**：静态核验（未真机）；`useLegacyPackaging=true`、targetSdk 37，16 KB 页设备上三库无法加载。
+- **Claude 签名残件**、**web/App 统计行仍显累计输入**、**`stripMarkdown` 删行内代码**：见 6.1 #5/#4/#8，均属「本仓自己也有」的旧账。
+- **#2271 Mistral 422** 仍 open；**#2303 备份**、**#2305 提示词插入语义**（本仓已是追加语义）、**#2309 think 标签编辑后读不到**（待核，无关联 commit）为需求线/待核，不立项。
+
+### 6.4 本轮修正的既有结论
+
+- **NMoi §13.4 收窄**：本仓世界书仍是主键/次键/四逻辑/预算/扫描源/大小写/正则的超集，但**触发时序维度落后**（4 字段）；「NMoi 只有自有格式、ST 导入仅计划稿」作废（D309 已落且修真 bug）。
+- **PurrCat**：附录七「`PARADIGM trigger` 无消费方」——上游 11-09 已自行删除该字段（`cb00658`），后续不再引用。
+- **billion-context**：v6 物化渲染面整条 revert（反向证据进 §三）；既有「追加式布局/不可变头/breakeven/增量触发门」判据未被打翻。
+- **dsh-Go**：架构结论不变，新增 16 KB 候选与 5 条账目（引擎更新保留用户环境、安装回执契约、命令通道权限边界、IME 证据纪律、未接收输入顺序恢复）。
+- **NMoi「多 Key 领先」** 维持但补现状：`LruKeyRoulette` 仅搜索线接线，聊天侧全顺序模式（按请求轮询是可选策略非缺口）。
+
+### 6.5 下一批建议（未获授权不实施）
+
+- **P2 批次 A（~4–6 天，风险低收益高）**：6.1 #1 CI 门禁 + #8 MarkdownUtils + #9 QuickJS + #3 概览卡 + #5 Claude 签名；可一次落地并跑现有 382 单测。
+- **P2 批次 B（需设备/拍板）**：#11 16 KB 重编（先模拟器验证）+ #2 轮中压缩 + #4 lastUsage + #6/#7 摘要媒体/工具清单。
+- **拍板项**：信任用户 CA（降 MITM 防护）、默认提供商全开（首启 UX）、#2306 多图裁剪、通用 macrobenchmark 管线（2–3 天，需真机基线）。

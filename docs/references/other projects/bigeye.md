@@ -803,3 +803,44 @@ Tool 输出文本）⇒ 占用条与自动压缩触发都看不见推理；**压
 **③ 已有等价**：`mind_spend.py` 后台用量单独记账 → `UsageRecorder.kt:28-48`（`UsageSource` 八类）· `matters_memory.py` 重要事项任务域化 → 本仓 L0–L3 分层 + `MemoryKind`/`taskStatus` 已按域注入 · `resolve_error_cards` 续跑标 resolved（本仓错误是内存态、从不进历史，更强）。
 
 **④ 不适用**：`verify_ui.py`（无浏览器执行体；三条观测陷阱记账：动作层成功 ≠ 效果层成功、截图前冻动画、同时收 console/pageerror）· `advantage_recall.py`（与 agentd 经验记忆同题已结论）· 记忆网络/思维链/反思本体（§11.3 B/C/D 已定不吸收，本轮只是写得更长）· 纯前端美化（约 4600 行真实增量；判据「两份默认值=迟早漂」已记）· `mission_overlay`/`perspective`（产品面）。
+
+### 11.7 增量评估：10-30 → 11-09（2026-11-10，`a67fab1..4f4c0cf`，1 提交）
+
+单提交（2026-11-09 18:38，10 文件 +2880/−142；`-w` 口径 +2873/−135，7 行纯空白差异、无 CRLF 重写）。`public/index.html` +1006/−42 与 `public/task-composer.js` +318/−29 占约四成半，Python 侧按「侧栏分类 / 重试与断流恢复 / 截断恢复 / 插话软停 / MCP / 语音库 / 文件写工具」七块。**总评（按条目）：吸收 0 / 候选 1（P3·量级 S）/ 已有等价 5 / 判据记账 6 / 不适用 2。**
+
+#### 已有等价（5）
+
+**① 侧栏任务分类（文件夹）**——bigeye：`db.py:38-45` 新表 `topic_categories` + `topics.cat_id`（`cat_id=''` 恒为「未分类」、**不建实体行**，删分类只需顺手清脏值而不拿它做正确性依赖），`db.py:560-618` CRUD（`category_counts`/`categories_with_counts`/`create/rename/delete/set_topic_category`），`server.py` 任务列表把 `categories` 一起下发（省一次请求，也避免"列表已刷新、分类还是旧的"半拍）。
+本仓已等价：`data/db/entity/FolderEntity.kt` + `data/repository/FolderRepository.kt:25-45`（删夹先 `clearFolder` 再删夹，会话一条不删）+ `service/ChatService.kt:2641-2668`（移动/删除前先同步活跃 session 内存态，否则后续整对象保存会把已删 folder_id 写回，会话在列表里悬空）+ `ui/pages/chat/ChatDrawerVM.kt:79-101` 按夹分页 + `ChatDrawer.kt:564-625` 移动入口。差额一条见记账 3。
+
+**② 重试与断流恢复的错误分流**——bigeye：`llm.py:62-137` 纯**文案清单**分流（本批补中文本地化 WinError「远程主机强迫关闭/现有的连接/远程计算机积极拒绝」与网关 `unavailable/暂时不可用/请稍后重试`），`server.py:2591` 恢复窗口 `LLM_TURN_RETRY_WINDOW` 120→600s，`server.py:9807-10180` 恢复循环按窗口计时。
+本仓等价且更强：`data/ai/GenerationErrorPolicy.kt:11-26` 用**状态码**分流（408/425/429/5xx 重试，401/403/400/404 不重试，429 多 key 换 key），`GenerationRetryPolicy.kt:30-100` 有 per-provider 覆盖、延迟序列、key 轮转、`GenerationPartialFailureException`（`GenerationHandler.kt:1601`）半截输出不进重试。判据见记账 1。
+
+**③ 截断恢复与有界终止**——bigeye：`server.py:10317-10455`：`finish_reason=length` → 放大 max_tokens（倍率递增且严格递增、`_budget_hard_cap` 封顶）→ 思考档 `max/high→low` 降档 → 仍撞则换源一次 → 保留 `assistant(部分)+reasoning_content` + `user(_CONTINUE_HINT)` **严格交替**续写（严格思考源不回传 `reasoning_content` 会 400）→ 配额用尽写 `termination_kind=bounded_termination`/`stop_reason=output_budget_exhausted`（`server.py:9683-9684` 随消息 args 落库）并附"已完成的工作"摘要，**不再叫用户点继续**。
+本仓等价：`data/ai/ContinuationPolicy.kt:6-40`（裸断流恒续写、撞上限默认只提示、`CONTINUE_LIMIT=3`）+ `GenerationHandler.kt:681-704`（续写追加到**同一条**助手消息、不新建候选、不重发全轮）+ `ui/components/message/ChatMessage.kt:228`（裸断流/撞上限/内容拦截三档成因分开表述，拦截不给续写按钮）+ `UIMessage.finishReason`（`ai/src/main/java/app/androidrik/ai/ui/Message.kt:52`）随消息落库。差额两条见记账 2。
+
+**④ 插话软停与起跑窗口**——bigeye：`server.py:3003-3030` `_soft_stop_events`：插话入队即置位，llm 层每读一个 chunk 查一次，置位即软停（已产出正文照常交回，`finish_reason='interjected'`），循环紧接着把用户那句话插进上下文继续——**与 cancel（整轮作废、落 [用户已停止]）完全不同**；`server.py:3031-3060` `_loop_starting/_setup_claim`：消息受理到循环登记之间有实测 2~5s 组装期，这期间第二条消息按老逻辑会起**第二个并行循环**（实测两条 `[agent] task started`、界面上两个过程泡永远转），故先抢"我要起跑"，等不到（>20s）再自己接管；`server.py:2979-3002` `_tl_split` 在插话点给过程时间线立界碑（timeline 为空就不立，开头一条界碑前面什么都没有反而让人疑惑）。
+本仓等价：`service/ChatService.kt:640-668` `sendInterrupting` = 先 `stopGeneration(persistStoppedContent = true)`（**半截落库**）再入队派发；`service/MessageQueue.kt:70-140`；`data/ai/ConcurrentRunGate.kt:1-40`（并发 run 闸，满了**如实拒绝**而不排队——bigeye 的"起跑抢占"在本仓对应形态是闸而非锁）。判据：**cancel 与 interject 必须分状态，半截内容不许判成错误**，本仓已由 `persistStoppedContent=true` 满足；bigeye 更进一步把插话做成同轮交接（不新开轮次），聊天语义下本仓"停轮+新轮"更自然，不立项。
+
+**⑤ MCP 管理**——bigeye：`tools/mcp_admin.py:1-66`（`reload_mcp_servers` 必须挂 `misc` 折叠组——不能叫 `mcp_*`，registry 见到该前缀就转发给 MCP 子进程；靠 `importlib.reload` 换掉内存旧函数）、`server.py:741-772`（MCP 工具定义单独追加，且**强制保留在用户白名单**——用户存白名单时还不知道这些名字，不保留则刚装完永远进不来；与元工具同理）、冷启动报告打印 `mcp_servers.json` 绝对路径。
+本仓：`data/ai/mcp/McpManager.kt:128-132` `addClient/removeClient/syncAll`（运行时装卸，无重启概念）+ `data/ai/tools/ChatToolFactory.kt:370-430`（MCP 工具每轮从 manager 现取、按服务器成段、重 schema 折叠成 `get_tool_map`/`mcp_tool_call`、`McpNameSanitizer` 保证 provider 合法名）。**根因不存在**：本仓没有"保存过的工具白名单挡住新装工具"这一层，不抄。
+
+#### 候选（1）
+
+**① P3·量级 S — 思考档位被自定义请求体静默覆盖时要显式提示**（`server.py:4497-4545` `/api/reasoning`、`public/index.html:21299-21303`）
+bigeye 的判据：接口一次给齐「生效形态 / 可选档位 / 建议依据 / **会不会被源级 `extra_body` 盖掉**」；`conflict` = 源 `extra_body` 键 ∩ 所选形态实际会写的键（`reasoning_effort`/`thinking`/`enable_thinking`），命中直接渲染「模型源的自定义参数里已经写死了 X，它会覆盖这里的档位。要在这里调档，先去自定义模型源把那一项删掉」；另配协议感知（Anthropic `/messages` 上无效的字段自动改用，`eff.coerced_from` 提示）。
+本仓：档位是**助手级**（`data/model/Assistant.kt:155 reasoningLevel`，默认 AUTO），粒度比 bigeye 的「源::模型」粗但语义更稳；缺口是**冲突静默**：`ai/src/main/java/app/androidrik/ai/util/Request.kt:115-135` 的 `mergeCustomBody()` 在 body 组装**之后**合并、同名键直接替换/递归合并，模型级自定义请求体（`Model.customBodies`，`ui/pages/assistant/detail/PropertyEditor.kt:124-217`）里若写了 `reasoning_effort`/`thinking`，UI 选什么档位都不生效且**零提示**。**量级 S（约 1 小时）**：在 `mergeCustomBody` 或组装处比对"本次实际写入的 reasoning 键 ∧ customBody 同名键"，命中在 ChatPage/模型编辑页给一条可关提示（不拦发送）。
+
+#### 判据记账（6）
+
+1. **错误信息字符串清单不可作为重试判据**——bigeye 同一坑连踩三轮（10-20 `settlement pending` → 11-01 `LITELLM_UNAVAILABLE` → 11-01 中文本地化 WinError），每次新措辞都退化成"0 次重试、恢复窗口 0/600 秒就关了"；本仓走状态码/异常类型分流（`GenerationErrorPolicy.kt:11-26`），**不要回头加关键字**。
+2. **截断恢复的两个量化点**：撞上限时 bigeye 必须**改参数**（`max_tokens` 倍率 + 硬顶），否则同预算原地打转；续写必须**严格交替**且严格思考源回传 `reasoning_content`，否则 400。本仓续写追加同一条消息、上下文已含半段，不改参数亦成立；但**终态停因结构化落库**（`termination_kind`/`stop_reason`/`continuations`）值得将来做账本时取（本仓目前只有 `finishReason` 字符串）。
+3. **同名文件夹去重**（`db.py:581-605`；理由：前端"移动到分类→新建"按名字回查 id，允许重名会把任务塞进两个同名夹）：本仓 `FolderRepository.createFolder()`（`:25-34`）不查重，两个同名夹在抽屉里无法区分。
+4. **状态徽标必须单一出口 + 探活不替用户定档**：`server.py:2214-2235 _reasoning_badge` 注释——模型弹层与"当前模型"卡片两个入口各算一份，必然一边显示「高」一边显示「默认」，用户没法对账；`index.html:21311-21313`——裸调用就输出思考的模型，「接口没报错」不等于档位生效，只有 ✓✓ 才确凿。本仓推理档位当前无徽标，将来加时走单出口。
+5. **旁路落盘必须在 finally 且失败不回传主链路**：`tools/tts_hist.py:97-133 save_stream` 全包 try/except、`/api/tts/pcm` 转发后在 finally 里 tee 落盘；语音库本体不适用（见不适用②），但"旁路不许拖垮主链路"通用。
+6. **桌面弹层的形状判据**（`public/task-composer.js:118-123, 1012, 1183`）：右两列**定宽**（`grid-template-columns:minmax(0,1fr) 86px 92px`）——否则「思考强度」起点每行漂移（实测 x=590/632/596/596），"重复不可怕、错位才刺眼"；**状态列不是按钮**（不铺底/无 hover/无描边，任何可点暗示都会把用户引回"嵌套按钮"误会）；切换失败**就地报错**（不 alert 把人从面板里踢出去，面板保持打开）；保存后**回写本地 data**，重搜/重渲染不退回旧值。Android 侧模型选择/档位弹层将来照着做。
+
+#### 不适用（2）
+
+① `_normalize_roles`（`server.py:1794-1816`）发送前合并连续同角色消息：本仓**有意**在对话尾部追加合成 USER 消息（记忆数据块 + 规则提醒块，`data/ai/PromptAssembly.kt:372-380`；理由见该文件注释：留 system 会让前缀从位置 0 起全断），多 provider 实测可接受；bigeye 的根因是"空正文截断分支只 append user 提示"恶性累积成 5 连 user，本仓补救提示走 `recoveryHint` 注入 system（`PromptAssembly.kt:354-359`），无该分支。
+② 语音库（`tools/tts_hist.py`：200 条滚动、收藏永久、快捷键、短音频不存、id 白名单防目录穿越、原子写 meta）：本仓 `data/ai/tools/local/TextToSpeechTool.kt:22-52` 只发 `AppEvent.Speak`，系统 TTS 零成本可重放——缓存库只有在"合成贵/慢"（bigeye 的本地模型 TTS）时才有正收益，Android 端是负收益（占存储 + 多一套文件生命周期）。

@@ -160,3 +160,97 @@ breakevenTurns = 一次性成本 / 每轮节省
 **不适用（记账）**：watermark fastpath（宿主/代理全量重放解析开销，本仓纯客户端不做 wire 重写）· `compress-at-fold-point` 默认开启（只修「模型自己调 compress 工具」形态，本仓已等价——折叠行+检查点合成摘要本就在边界）· unsigned thinking replay（代理需字节恒等回放；本仓 `ClaudeProvider.kt:497-499` 选择省略无 signature 的 thinking）· idle prompt-cache keepalive / 自签 `prompt_cache_key`（代理侧/移动端耗电不划算）· 尾部 rewind / 锚点表（本仓单检查点，规模问题不存在）。
 
 > 证据纪律：同一判据 10 天内反转（#4186「失败即结束回合」→ #5220「失败收据原注重发」），引用必须钉 sha；本文件结论一律 `repo@sha` + 文件路径。
+
+## 2026-11-03 → 11-10 增量评估（2026-11-10，671 提交，HEAD `4dea18ea`）
+
+> 窗口：`since=2026-11-03T00:00:00Z` → `4dea18ea`（pushed 2026-11-10T11:24Z）。**671 条 = 438 非 merge + 233 merge**；含少量 10-26 起的分支提交（随 merge 带入）。
+> 方法：**全量标题**（`gh api repos/ranxianglei/billion-context/commits?since=...&per_page=100` 翻 7 页）+ **16 个主题代表 commit 的 message/stats 抽样** + HEAD 树核对（`git/trees/4dea18ea?recursive=1`）；**未逐条读 patch**。
+> 证据级别：**远端：标题 + 抽样 patch**（非源码级；凡「本仓」判断均 grep 过本仓）。
+
+### 分桶（conventional prefix，精确计数）
+
+| 桶 | 数 | 备注 |
+|---|---|---|
+| merge | 233 | 226 `Merge pull request` + 7 直接 merge |
+| fix | 205 | 以返工 / 回归 pin / review 修为主 |
+| test | 73 | 与 fix 成对（CI 契约化） |
+| docs | 68 | README / config / architecture / v6 教义 |
+| feat | 16 | 见主题表 |
+| kernel | 13 | kernel 版本号 + 折叠/重定位语义 |
+| refactor | 10 | |
+| ci | 9 | |
+| chore | 8 | |
+| storage | 5 | |
+| style | 3 | |
+| 其他 | 24 | tests/sync/notices/loop 各 1 等 |
+
+### 主题聚类（标题关键词优先归桶，近似；代表 sha 均为远端实取）
+
+| 主题 | 近似数 | 代表 sha |
+|---|---|---|
+| v6 渲染快照 / 身份面 / fastpath | 66 | `6d3ca309b` `49ba14dae` `dc65bb7b5` `f3681735f` `66aadbd89`（11-07 整条 revert） |
+| 宿主适配 / 面板 / 通知 | 61 | opencode/pi/dsh/codex/hermes/qoder/kiro/goose/qwen lane；web 面板 / notices |
+| 传输 / 上游稳定性 | 48 | idle stream `312e42183`、SSE backpressure `105b84dd9`、circuit lease `2ab47e310`、first-byte、429 hold |
+| 存储 / 持久化 | 48 | unified kv_store `25405b446`、jsonWriter=off `2f89ca0ec`、watermark `ffb5a3dcf`、SimHash `d90c2b632`、quarantine、resident pool |
+| 压缩核心（fold / 摘要 / 锚点 / 蒸馏 / 占位） | 42 | `cc1e2408c` `d126087ab` `60a557e78` `e3d1a887e` |
+| 出站体预算 / 图片 / 窗口 | 32 | `6aed3b840` `2e0211094` `d1b2d8fac` `4ec97781a` `73f222e54` |
+| 观测 / 诊断 | 20 | `725084b8b` `d15180504` |
+| 压缩权限门 / nudge | 7 | `15d134206` `b2096dd8c` `a7cbfd12f` |
+| 其他（release / lock / 测试基建） | 114 | 不评 |
+
+### 总判决
+
+**既有 A/B/D/E/F 判据全部未被打翻；本轮无推翻级新增。新增候选 1 项（P2，见 C1）、记账级判据 8 条（B10–B17）、已有等价 4 项（E1–E4）、不适用 6 类（U1–U6）。**
+
+- **§A 追加式布局**：未变。布局级改动只有 relocate-compress v2（`cc1e2408c`，内核 0.0.187→0.0.188），仍是「摘要追加、既有行不动」。
+- **§B 不可变头 / 锚点**：被本轮最有价值的一条反例**加固**（B10 + #6021 生产事故）。
+- **§D breakeven**：无新数据（`breakeven` 一词在本周 671 条标题中 0 次）。
+- **§E 增量触发门**：本仓仍是占用率门（`CompressionPlanner.kt:110-116`）；本轮没出现「占用率触发会抖动」被推翻的证据，反由 `#5860` 幻影压力守住轮次补了一个旁证（B17）。
+- **§F 不该照搬**：蒸馏塔本周暴露 T1 堵死的 treadmill（`e3d1a887e` #5700 `a7cbfd12f`），继续支持「移动端不抄三层塔」。
+
+一句话：**本周 671 条的重心不是「再发明压缩布局」，而是「压缩后的行为治理」——拒绝（gate）/ 分级（reconcile）/ 可解释（analysis）/ 可回读（media refs）**。布局是判据层的东西：一周 671 条里布局本体只动 relocate v2 一处，其余全是治理。这反向加强 §E/H。
+
+### 候选（唯一，P2）
+
+**C1 折叠区的媒体 / 附件句柄应机械随摘要携带**（`d126087ab` #5620，2026-11-04）
+
+- **远端机制**：新增 `kernel/src/media-refs.ts`，从五类 wire sidecar 抽「可重取句柄」（非 `data:` URL、file id、fileUri）；`hasUnrecoverableMediaPayload` 改为「**无句柄才钉住**」，未知 opaque 形状继续钉；摘要落盘时**机械追加确定性 MEDIA REFS 段**（`applySingleRange` union 含 consumed-block carry、`applyRefolds` per-block carry），句柄因此穿过折叠/合并/蒸馏——「绝不靠模型自觉（wire 上 URL 部件对摘要器往往不可见）」；T1/T2/T3 压缩规则同步加 preservation 行。动机是 #5620 用量墙：带远程图 / DeepSeek Files API 引用的消息被永久钉住，上下文地板爬到窗口 ~70%。
+- **本仓 gap**：压缩摘要输入只取 Text/Notice——`ai/src/main/java/app/androidrik/ai/ui/Message.kt:222-231` 的 `summaryAsText` 对其他 part 一律 `""`；`ChatService.kt:2239` 的 `sourceText` 与分块路径都走它。⇒ **折叠区的图片 / 文档在进摘要器前就被静默丢弃**，折叠后请求里既无图也无句柄；`ContextImageEvictionTransformer` + `view_image` 只覆盖「仍留在窗口里的最近 N 张」（E1），管不到折叠区。
+- **量级**：命中条件 = 带图 / 带文档的长会话越过 `retainRatio` 边界（默认窗口 40%）。代价 = 每句柄一行（URL/路径，约 100–200 B），须与 §B9 出口字节预算一起 cap（如 ≤20 条或 ≤4 KB）；工作量 ≈ 半日（在 `sourceText` 组装处从 `toCompress` 机械抽 `UIMessagePart.Image/Document` 的 url，追加独立 `MEDIA REFS:` 段，与模型摘要分离）。
+- **判据（可直接复用）**：可回读的媒体必须由**代码**机械携带句柄，句柄丢失 = 不可回读；「让模型在摘要里记住路径」不算。
+
+### 记账级新增判据（8 条，B10–B17）
+
+| # | 出处（远端 sha / PR） | 判据 | 对本仓 |
+|---|---|---|---|
+| B10 | `60a557e78`（#6027）→ 当日 revert `7d5f42efa` → 最终形态 `f3766fea0`（#6024）；HEAD `src/durable-message-guards.ts:331` | 宿主导入的**伪 user 文本载体**（外置占位符 / 图片占位 / 单发句柄）必须显式登记为 **one-shot carrier**，并**同时**接入 slot 排除与漂移记账两个注册表。否则被改写的旧消息（内容身份变 → 当新行重摄入、新 ref/seq/时间戳）会在折叠后成为**唯一可见 user 消息**，抢 Rule-3 锚点，整回合答陈旧话题（bili 0.1.213 / DSH 0.2.2-rc.1 生产事故 #6021）。 | 锚点侧**已有等价**（E2）；记账：任何新载体必须同时进「锚点排除 / 折叠窗口排除 / 记忆排除」三份清单（`Conversation.kt:533-556`、`MemoryConsolidationPrompts.kt:406`、`TemplateTransformer.kt:68`）；外置占位应**原消息内换 part**（E1 做法）而不是插入新消息——插新消息会改消息序列并可能自己成为尾部 user。 |
+| B11 | `6aed3b840`（#5745） | **淘汰工作清单的条数上限是陷阱**：MAX_SHED_IMAGES=64 同时限住「归档」与「降采样」两档 ⇒ >64 张图永远压不到字节预算下 ⇒ 上游 400 无 marker ⇒ 无限重试同一超预算体。修法：rung A（归档 = 廉价字符串替换）不设条数上限、从最旧开始直到估算达标；条数上限只保留在 rung B（解码/重编码，有 CPU 界）。**保护尾部不变量**：tail 永不被归档，只可降采样。 | 图片淘汰**已有等价**（E1：保留最近 N=20、更旧换带路径占位、request-only、幂等、纯函数）+ `ViewImageTool` 取回；差量：淘汰停止条件是「最近 N 张」而非「估算达标」，图片密集 + 大体积仍可能超出口上限。记账：把**字节达标**作停止条件，保留「尾部不淘汰」。 |
+| B12 | `2e0211094`、`d1b2d8fac`（#5000 #5794 #5885）、`4ec97781a`（#5996） | **量纲只能是真实出站体字节**（不是 token 估算），且另有正交第二维：条数闸 `BILI_MAX_MESSAGES` + 32 MiB 摄入成本带 `BILI_INGEST_BODY_BYTES`；判死信息**点名超重字段**；无窗口声明时回退 1 M 窗口下限**本地拒绝**，不再裸发上游。 | 无（全 token 口径，见 11-03 B9）→ 记账：若做出口预算，量纲 = HTTP 体字节，且条数/媒体数要单独一维；到线行为是**本地拒绝**而非「裸发碰运气」。 |
+| B13 | `15d134206`（#5683）、`b2096dd8c`（#5943/#5945） | **模型自发压缩必须被「建议→执行」闭环门禁拒绝**，且资格是**衰减信用窗口而非单轮标记**：一次真实注入 nudge 铸 20 个 model round 资格，新注入刷新、每个未被 nudge 的 model round 衰减 1、非 model 请求形状 hold open、成功折叠不消耗；静默会话滑回严格拒绝。`requireRecommendation` 按**覆盖**判定（推荐区间内细分通过、refold 更新活动块豁免、逃出推荐集整段拒绝并点名区间）。 | **不适用**（本仓压缩完全宿主决定，模型无 compress 工具）→ 记账：若将来给模型「建议压缩」，资格必须窗口化 + 衰减，不能单轮布尔（多轮清理是常态）。 |
+| B14 | `cc1e2408c`（#5470 v2）、`ad242bf6c` | **摘要文本可在折叠点以「追加文本载体」出现，但既有行保持原位**；折叠后载体**不得保留可再被调用的命令形状**：v1 把 compress pair 原样搬到折叠点 → mid-history wall of fully-shaped compress interactions → 弱注意力模型（qwen3-27b）读成继续压缩的邀请 → 自愿 re-compress loop；v2 = 摘要文本作为 plain user text carrier 在折叠点重发（`[bili fold summary — block(s) bN —]`），pair 留在原槽位、args 换成短指针（「already folded — do not re-compress」），结果核原样转发；view-only + deterministic + 幂等（carrier id `acp_reloc_<callId>` + args marker probe）。 | 「不搬行长」**已有等价**（E3：只在发送时组装，`messageNodes` 不动）；记账：把已折叠的工具交互留在窗口里时要换掉「可调用形状」（本仓合成检查点是 `isSynthetic` USER 文本 + `<compressed-summary>` 包裹，方向正确）。 |
+| B15 | `2a05a4d5b`（#5715）、`3298cd8ff`（#5737）、`4f8070201`（#5968）、`a39ce3a23`（#5751） | **折叠对账要分级**：直接 ID 多数存活 = **部分丢失**，不是整体漂移（否则整块误回退）；fork 回放要能恢复保留折叠块；工具调用/结果按**精确 id 跨任意距离**折叠（不靠距离启发式）。 | 本仓检查点校验是**二元**（指纹不符即回退全量，E4）→ 记账：分级化（只有「边界节点消失 / 整区不可识别」才回退全量），局部改动应允许「部分保留 + 只重摘要受影响后缀」；落地需先把检查点做成可分段（与 §E 块表同一改动的两面）。 |
+| B16 | `725084b8b`（#5963）、`d15180504` | 压缩系统的「**为什么这个会话的上下文是这样**」必须可答，但观测**只能 advisory**：四维 = init profile（首请求条数/估算 token/最大贡献者）、nudge cadence（INJECT 计数 + 哪道闸 idle：mass/growth/cadence）、harvest acceptance（每次注入 offer 的 pendingT1 vs 120 s 内实际折叠 token）、verdict（白话诊断：heavy init、流入>排出的爬升、T2 蒸馏就绪、欠收警报）；输出 = 每次 INJECT 一行日志 + status 报告段 + web 卡片；**严格 advisory**：内存、256 会话上限、caps rings、无决策路径读取、仅进程生命周期。 | 本仓仅一行 `Log.i("auto compress triggered")`（`ChatService.kt:2314`）→ 记账：补压缩决策日志（触发口径 / 压缩前后 token / 覆盖率闸档位 / 回退 tier），advisory 且不进决策。 |
+| B17 | `a7cbfd12f`（#5860）、`f1f67e4dd`/`bcda253a5`（#5867 ruling） | **触发/压力注入要有「不动作」态及其上限**：本轮无计量样本 → 压力带注入 hold 一轮（幻影压力守卫）；estimate-grade hold 最多连续 N 轮（`compress.maxEstimateHoldRounds`）必须 backstop，否则会无限 hold 或反复触发。 | 本仓占用估算 usage 优先 + 本地兜底（`estimateWindowTokens`），无「样本缺失」显式态 → 记账：触发判定要有「本轮不动作」状态与上限，与 §B4「换模型 ⇒ usage 基线作废」同族。 |
+
+### 已有等价（4 项，本仓 file:line）
+
+| # | 远端判据 | 本仓等价 |
+|---|---|---|
+| E1 | 「大媒体/工具输出外置 + 确定性占位 + 可回读」（§E P1、B9、B11） | `app/src/main/java/app/androidrik/rikkahub/data/ai/transformers/ContextImageEvictionTransformer.kt:13-92`（保留最近 N 张、更旧换带路径占位、request-only、幂等、纯函数）+ `data/ai/tools/ViewImageTool.kt`（按路径取回，白名单 filesDir 子树） |
+| E2 | B3「锚点扫描须跳过宿主注入的伪 user 载体」（§11.4 J B3；本轮 B10） | `data/model/Conversation.kt:520-556` `taskAnchorSuffix`：取最近一条 `role=USER` 时排除 `isSynthetic` 与 `isExternalNotice`，且注释明确「不新增消息——新增会改变消息序列，让『最后一条 user 消息』的寻址指到锚点自己」 |
+| E3 | §A「轨迹只追加，不改历史行」（B14） | `Conversation.kt:246-303` `CompressionWindow` / `compressionWindow()` / `requestWindowMessages()`：`messageNodes` 从不改写，检查点合成消息只在发送时组装；`ChatService.compressToCheckpoint` 落库也只追加 checkpoint 行（注释「轨迹只追加」） |
+| E4 | B1「折叠身份不能用内容哈希」（§11.4 J B1） | `Conversation.kt:205-237`：失效指纹 = `nodes[0..boundary]` 的 **node id + 选中 message id** 的 sha256——已经是身份/顺序口径，**不是内容哈希**；残留问题只是失效动作仍是「回退全量」（§E 表第 2 行，见 B15） |
+
+### 不适用（6 类，记账）
+
+- **U1 v6 渲染快照 / 复合身份面**（本周最大工程量，且 11-07 整条删除）：`feat` `6d3ca309b`/`acca4db67`（#5664，schema v12 + O(1) 稳态轮）→ `49ba14dae` 11-05 02:53「NO recast in any scenario；结构分歧永久杀 lane；**fastpath 寿命 = 首次分歧之前**，压缩后即失效」→ `dc65bb7b5` 11-05 07:14「**见证式 rebase**：快照必须能活过第一次压缩，否则在它存在的场景里全废」→ `0f3c77cde`「按事件演化」→ 11-07 03:53 合并 #5652 → **11-07 05:32 整条 revert（`66aadbd89`）**；HEAD 树已无 `src/server/fastpath-v6*.ts`，只剩 `fastpath.ts`/`fastpath-scan.ts`。记账：唯一可留物 = `f3681735f`「**只缓存 post-rewrite generic core 形态，任何映射产物绝不入缓存**；映射每轮用当轮输入现算」——本仓 per-request transformer 天然如此。另 `f8a72c017`：watermark fastpath 只上 5% cohort，不进 GA。**判**：代理物化面不适用；且这是一个反面判据——「物化视图 × 压缩」两次方向反转后选择整条删除，不要借。
+- **U2 egress 用户可注册请求体重写管线**（`73f222e54` #6003、`6b4757acb` 统一 chokepoint）：body 改写跑在 shed/compress 之后、re-sign/transport 之前，保证签名字节覆盖最终字节；插件 fail-open、改字节则丢 content-length。代理形态，不适用。记账一句：**出站改写必须收口单一出口**（本仓 `TransformerChainRegistry` 已是），且「改写阶段」本身要被身份/缓存层登记（同 B10 的注册表思路）。
+- **U3 持久化写旋钮**（`a7d9f5dcb` #6062/#6066）：`persist.debounceMs` + 新 `persist.maxDelayMs` 接入 session-order / prefix-affinity 两个 sidecar writer；稳态重写率 = `min(debounce, maxDelay − pendingSince)`，只调 debounce 无效。sidecar 持久化节流，不适用。
+- **U4 传输 / 空闲 / SSE / WS / circuit / 429**（`312e42183` `3307bf43d` `105b84dd9` `2ab47e310` `dcbe8ff24` 等）：代理侧连接治理，不适用。
+- **U5 存储内部**（unified kv_store `25405b446`、jsonWriter=off 写白名单 `2f89ca0ec`、watermark 淘汰 `ffb5a3dcf`、SimHash 投票溢出 `d90c2b632`、quarantine 上限、resident pool 4 GiB、WAL 观测）：不适用。
+- **U6 宿主适配 / 面板 / 通知 / 发行**（opencode V2、`pi.commands`、dsh codex ws lane、hermes、qoder、kiro、goose/qwen identity adapters、统一 notices、web 面板、release v0.1.213、lockfile）：不适用。
+
+### 证据纪律（本轮新增两例，引用必须钉 sha）
+
+1. **#6021 当日三态**：`60a557e78`（11-09 11:54 落）→ 15:34 合并（#6027 `c812a843e`）→ 15:35 revert（`7d5f42efa`）→ 15:36 换实现重落（#6024 `f3766fea0`）。同一问题当天「落 → 撤 → 重落」，只引最终态。
+2. **v6 渲染快照/身份面 3 天内两次方向反转 + 一次整体删除**：11-05 02:53「永久杀 lane」→ 07:14「见证式 rebase」→ 11-07 05:32 整条 revert。这比任何单条 patch 都更能说明「物化渲染面 × 压缩」仍未解。

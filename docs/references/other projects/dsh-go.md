@@ -129,3 +129,33 @@ dsh-Go 把「哪台主机能用什么」写成明确矩阵：工具卡全主机�
 | 仓库纪律（真机验证 / 协议改动说明 / 生成物） | [AGENTS.md](https://github.com/ccch1mneyyy/dsh-Go/blob/cf2f7c861e1098661a3a2039b3a4cb1633790102/AGENTS.md) · [runtime/patches/pins.json](https://github.com/ccch1mneyyy/dsh-Go/blob/cf2f7c861e1098661a3a2039b3a4cb1633790102/runtime/patches/pins.json) |
 
 > 相对上一轮（设计稿 §十一 基线 `8e36cdbf3`，2026-11-03）：插件协议新增 5 个位置与稳定性承诺、`plugin-config` / `managed-skill-install` 文档；运行时侧新增日更发布，以及一次**尚未真机验证**的引擎升级（1.0.11 升到 DSH 0.2.2-rc.1，changelog 自述只在 x86_64 模拟器 + 测试模型上走过）。**对 §十一「P5 暂缓、市场不做」的结论无影响。**
+
+## 七、2026-11-06 → 11-10 增量（抽样，`cf2f7c86..8f31b2e`，542 提交）
+
+> 同步方式：本地克隆已 fetch 到 `origin/main` = `8f31b2ed8`（2026-11-10 16:23）。4 天 **542 提交**（+164,468/−8,745 行，1,092 文件），日更节奏未变；分桶：fix 197 / phone 121 / feat 110 / test 33 / chore 16 / docs 10；文件热度 app/android 1,179 次、app/lib 785、app/test 377、runtime/tests 64、docs 60+。发布 `1.0.12`（11-07）→ `1.0.15`（11-10），新增 `docs/design/{android-shell,self-update-installation,companion*}.md` 与 `docs/testing/*`、`docs/phone-eval/`。深度＝**标题全量分桶 + 文档/变更抽样**（不逐条读 patch）。**总评：§一架构结论与 §三不照搬清单全部不变（代码可移植 ≈0，P5 暂缓、市场不做）；本轮产出 1 个本仓静态核验实证候选（16 KB 内存页）+ 5 条判据级记账，无新立项。**
+
+### 7.1 实证候选：16 KB 内存页兼容（P2，本仓已发现具体缺口）
+
+- dsh-Go 侧：1.0.9 起做 Android 17 适配，其中自连 ADB 的 TLS 库 Conscrypt 升 2.8.0「在 16 KB 内存页的设备上也能加载」；1.0.15 changelog 仍明写「未在真机验证」。
+- **本仓静态核验（2026-11-10，未真机）**：`app/build.gradle.kts` = `targetSdk 37`（Android 17）/ compileSdk 37.2 / `useLegacyPackaging = true`；全仓 14 个 `src/main/jniLibs/**/*.so` 中 **3 个 PT_LOAD `p_align = 0x1000`（4 KB）**：
+  - `app/src/main/jniLibs/arm64-v8a/libtex_poc.so`（TikZ 的 Tectonic 引擎，13.5 MB，`tools/tex-poc/` NDK r27c Rust 交叉编译，Gradle 不参与编译，README.md:204/228）
+  - `libpdf2svg_bridge.so`（mupdf PDF→SVG 桥，13 KB，`app/src/main/cpp/pdf2svg_bridge.c`，预编译入库）
+  - `libgraphite2.so`（TeX 字体整形依赖，`$ANDROID_LIBS` 交叉编译产物，tools/tex-poc/README.md:31-34）
+  - 其余 11 个（`libsimple` / `libmupdf_java` / `libproot_exec` / `libproot_loader` / `libicudata78` / `libicuuc78` / `libc++_shared`）均 ≥ `0x4000` 合格；x86_64 侧无此三库（只有 arm64）。
+- 影响：16 KB 页设备上这三个库无法按页对齐加载（`UnsatisfiedLinkError`/加载失败），TikZ 渲染与 PDF→SVG 链断；本仓 TikZ 有回退链（纯 Kotlin 子集 → PDF 位图，README.md:229）能兜住**显示**，但 PDF 导出/转换路径是否全兜住**待核**。
+- 修法（未实施）：重编时加 `-Wl,-z,max-page-size=16384`——`libtex_poc` 改 `tools/tex-poc/build-android.sh` 的 `RUSTFLAGS`（或 `.cargo/config` link-arg）；`libpdf2svg_bridge.so` / `libgraphite2.so` 用 NDK clang 加同一参数重编；三个库改完需模拟器 16 KB 页镜像或真机回归。
+- 判决：**候选 P2**（静态缺口确定、改动面小；但无法在本机真机验证 16 KB 链路，落地需设备/模拟器配套）。
+
+### 7.2 判据级记账（不立项）
+
+1. **引擎更新「只替换 App 管理的运行时部件」**（1.0.15）：DSH/Node/pnpm/桥接及其目录换新，`apt` 安装的工具、默认位置 npm 全局包、Python/pip 包、配置、工作区**全部保留**；「确认不了现有环境兼容 / 更新清单损坏 / 旧进程没停干净」就停止更新、**原样保留旧环境**并提示重试，而不是重置。→ 强化本文 §2.1 建议 #1：本仓 rootfs 更新仍缺 SHA-256 与 staging 原子切换，这条补上「部分更新 + 拒绝重置」的产品语义。
+2. **安装回执契约**（`docs/design/self-update-installation.md`，新增）：dispatch 完成 / Activity resume / CLI 确认**都不算安装成功**；必须核对实际安装包 + 当前签名集 + build number + 摘要，任一变化即要求重新取证；未知结果不自动重试、不重建命令/路径重放；日志不落路径与配对密钥。→ 本仓无应用内更新（`PackageInstaller` 0 命中，沿用原结论）；若做更新器，先按此契约。
+3. **Android 命令通道的权限边界**（`docs/design/android-shell.md`，新增）：工具不能请求授权/配对/切 root；必须显示完整命令与实际后端/UID；**取消 ≠ 回滚**；终止只打自有进程组；「shell 是高权限能力不是沙箱」明写（同 UID 的 rootfs 代码不被桥接令牌隔离）。→ 本仓 workspace 是 PRoot 自有后端，无此通道，只记判据。
+4. **系统 IME 证据采集纪律**（`docs/testing/ime-diagnostics.md`，新增）：show/hide **请求** ≠ 键盘**可见**；日志里的包名 ≠ 生产者认证（只认当前 PID）；固定事件允许列表 + 字节/事件上限 + 只进用户主动导出的诊断，不进 AI prompt。→ 本仓 IME 四连击属 TextField 宿主拓扑问题（AGENTS.md 规范 + `scripts/audit_ime_trap.py` 静态审计），无特权 logcat 通道；将来做 IME 诊断面板再借这条判据。
+5. **「未接收的输入按原顺序放回队列」**（1.0.9 changelog）：准备失败/中断时不丢待发输入。本仓有 `MessageQueue`（`ChatVM.kt:303`、`ChatPage.kt:675` `resumeMessageQueue`），但恢复**顺序**语义未逐行核对（**待核**），不单独立项。
+
+### 7.3 结论
+
+- §二 六项建议顺序不变；§2.1「安装事务化」因 1.0.15 语义更明确而略升优先级（仍等用户需求）。
+- 新增 §7.1 的 16 KB 页候选，与本仓 TikZ/PDF 原生库直接相关，已挂进 [peer-verdicts §五](../../peer-verdicts-2026-11-08.md) 候选池。
+- 高速移动靶纪律：本文结论只对 `8f31b2e` 负责；下次同步按台账同步点（而非 ref 区间）判断欠账。

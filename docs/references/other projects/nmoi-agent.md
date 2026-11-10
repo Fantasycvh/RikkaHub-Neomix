@@ -102,3 +102,79 @@ signing 指纹钉死（D170）、tar.gz 自研解包（D164）、容器覆盖安
 - 阶段词「stage 0」从本期起停用：README 仍写 stage 0 但功能面（世界书/档位/并行/图片管理/存储管理/代理）已越过可用线，风险只剩两处残留接线（见上）。
 
 > 判决汇总（候选 7 / 记账 14 / 等价 12+ 的拍板清单）：[docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md)
+
+## 13.5、2026-11-08 → 11-10 增量评估（2026-11-10，`d7fe1b0..92585e8`，32 提交，D290–D309）
+
+> 证据分级：**S** = 本仓源码 file:line 实读；**D** = NMoi 提交 diff 实读（`git -C F:/build/projects/nmoi show`）；**G** = 本仓 grep 扫描（非穷尽，「0 命中」不证明绝对不存在）；**待核** = 未证实，仅作线索。
+> 范围：32 条（功能 17 / 重构 2 / 修复 2 / 文档 11），全 NickEntry、0 merge，`git diff --stat` 44 文件 +6224/−432；阶段判断不变（README/PLAN 本区间未改，「stage 0」一词继续停用）。
+
+总评：**吸收 0 / 候选 5（P2×1、P3×4）/ 已有等价 12 / 不适用 7 / 记账 11（均按项计，`ed9b336` / `22fc123` / `5144a1b` 跨类）**。本轮 NMoi 在「世界书触发时序」「压缩入口 + 文件清单」「视觉覆盖」「多 Key 池」「两级多选 / 拖动排序」上集中补课，方向与本仓既有实现大面积重合——**真正有增量的只有一条判据：压缩摘要保留本段工具痕迹 / 文件清单（D296）**，其余是补课、UI 细节或本仓已领先。另有两处进展要记：D305 把挂了两个月的「压缩没有任何入口」补上（D296 的清单因此才真正可消费）；D291 主动标注「这一批没有本机实测」——「写了没接线」的老毛病仍在（组件先落地、消费者后补），但从「当已实现引用」变成了「自己标注」。
+
+**判决一览**：D290 等价 · D291 等价（+记账）· D292 **候选 P3**（面板）/不适用（会话私有路径设计稿）· D293 等价（注入进内置册）/不适用（/tmp 隔离）· D294 不适用 · D295 不适用 · D296 **候选 P2** · D297 等价+记账 · D298 等价 · D299 等价 · D300 **候选 P3** · D301 等价 · D302 等价+记账 · D303 等价 · D304 等价（本仓领先）· D305 等价+**候选 P3** · D306 等价（本仓领先）· D307 等价 · D308 **候选 P3** · D309 等价（本仓保真度更高）· `84abaf4`/`2d7d38d`/`11ad376`/`92585e8` 不适用 · 文档 11 条（10 条记账；`5144a1b` 归 D293 计）。
+
+### 候选（5，按价值排序）
+
+1. **P2｜压缩摘要里保留本段用过的文件 / 工具痕迹（D296 `1dfda3c`，D305 `566607c` 前置解除）** —— 本仓压缩输入**只取 Text part**：`summaryAsText` 的 `when (part)` 里 `Reasoning` / `Tool` 全为空串（S：`ai/src/main/java/app/androidrik/ai/ui/Message.kt:222-231`），而压缩源正是 `plan.toCompress.map { it.currentMessage }.messagesForAuxGeneration()`（S：`ChatService.kt:2195`）⇒ **工具调用的参数（文件路径）与被读结果都进不了摘要，也没进覆盖率闸的分母**；本仓设计稿已自认这是损失①（S：`docs/design/in-progress/design-multi-pass-compression.md:22`、`:37`）。NMoi 判据（D：`crates/core/src/compress/files.rs`、`compress.rs` 的 `append_section` 两处调用）：从这段工具调用参数里扫会话路径，摘要末尾加「这一段用到的会话文件」一节，12 条 / 600 字封顶，超了写「其余 N 条没列出」；**只搬清单不搬内容**、只留真的还在的、预算不够整节不接、附件不进清单。本仓落点：压缩前扫 `UIMessagePart.Tool.input`（S：`UIMessagePart.kt:173-176`，`toolName` + JSON `input` 现成）抽路径 → 与 `summaryAsText` 产物并列成附录（或让摘要器看到「工具名 + 关键参数」一行）；可写前缀按本仓可写/只读区取 `/workspace`、`/tmp`、`/upload`、`/skills`、`/tool_outputs`（S：`WorkspaceTools.kt:1000-1014`、`di/RepositoryModule.kt:95-113`）。量级 **~1–1.5 天**（扫描 + 去重 + 截断 + 单测，无 UI）。**两处差异待核**：(a) 本仓文件在**工作区**（可跨会话、可远程 SSH、可离线），NMoi「只留真的还在的」在本仓远程/离线工作区拿不到存在性 → 建议清单标「存在性未核」而非静默过滤；(b) 本仓工具痕迹里还有 `/tool_outputs` 这类归档路径，是否都该进清单要看本仓工具输出归档策略。
+
+2. **P3｜世界书触发时序四字段：`matchWholeWords` / `sticky` / `cooldown` / `delay` + ST 导入映射（D307/D308/D309，`22fc123`）** —— 本仓 `RegexInjection` 有 `keywords/useRegex/caseSensitive/scanDepth/constantActive/secondaryKeywords/selectiveLogic/matchAssistantPrompt`（S：`Assistant.kt:621-660`），**没有**整词匹配与 sticky/cooldown/delay；匹配是 `contains`（S：`Assistant.kt:753-768`），ST 导入的 `SillyTavernEntry` 也没有这四字段 ⇒ `ignoreUnknownKeys` 下**静默丢弃**（S：`ExportSerializer.kt:484-520`）。NMoi 判据（D）：sticky 把扫描窗口由 `scan_depth` 伸到 `scan_depth + sticky`；delay = 历史不足 N 条不激活；cooldown = 最近 N 条提到过就先不注入，**判据是「最近一次提到」而非「上一次生效」**——后者要跨轮状态、会和归档/压缩打架，其注释与界面都写明这是近似；整词匹配用词边界、**中文没有词边界要写进界面**。落点：`RegexInjection` 加 4 个同款默认值字段（0 / false）+ `isTriggered` 时序判定 + ST 映射 + 条目编辑面板 3 个数字框 / 1 个开关。量级 **~1 天**。**不要照抄的两点**：(a) 其 `is_active` 里 `nearest >= reach` 是恒假死判断（`window.iter().rev().position` 值域 ≤ reach−1），借判据别抄代码；(b) 整词匹配在 Rust regex 的 Unicode `\b` 下对中文并非绝对不命中（汉字也是 word char，被标点/空格包住仍可能命中），其「等于匹配不到」的界面文案**不严格，待核**——本仓若做，文案写「按词边界（对连续中文基本不生效）」。
+
+3. **P3｜世界书两级多选：批量导出 / 条目复制移动（D300，`74290c9`）** —— 本仓世界书页只有**单册**导出与导入（S：`LorebookPage.kt:416`/`:433`、`:290`），没有多选、没有跨册复制/移动；册与条目两级均已支持左滑删除与拖拽排序（S：`LorebookPage.kt:333`/`:672`/`:185`）。NMoi 判据（D）：册/条目两级多选互斥、状态只活在页面；多册打包成 `{"version":1,"type":"lorebook","books":[…]}` 可原样导回；**条目复制/移动到另一册必须换新 id**（同 id 在别的册里可能是另一条）；长按 2 秒进多选、长按那行自动勾上。本仓已有可复用的多选 + 批量 zip 导出范本（S：`ui/pages/chat/DrawerFilesPanel.kt:64-94` 工作区文件面板），落地主要是 LorebookPage 的 UI 改造。量级 **~1 天（纯 UI）**。价值中等：重度用户整理多册时才有感，排在 1–2 之后。
+
+4. **P3｜手动压缩先 plan 后 run：按前显示「压走哪一段」（D305，`566607c`）** —— 本仓手动压缩对话框只给参数（目标 token / 保留比例 / 保留条数 / 追加指令），点确认就跑（S：`CompressContextDialog.kt:43-250`）；切分函数 `estimateCompressionPlan` 已是纯函数且有测试（S：`CompressionPlanner.kt:69-100`、`CompressionPlannerTest.kt`），真实压缩路径也先在执行侧算 plan（S：`ChatService.kt:2188-2193`）⇒ 对话框打开时先调同一函数显示「将压缩 N 条（约 X token）/ 保留 M 条」成本很低。NMoi 判据（D）：压缩**永久移走一段历史**，先让用户看清移走哪段再按，比点下去就消失的按钮诚实；plan 不调模型、不动数据。量级 **~0.5 天**。
+
+5. **P3｜会话信息面板（长按会话 → 详细信息，六项可长按复制）（D292，`ed9b336`）** —— 本仓 grep `会话信息|详细信息|ConversationInfo` 于 `app/src/main/java` **0 命中**（G）；抽屉长按菜单有置顶 / 重生成标题 / 移动助手 / 移动文件夹 / 记忆 / 删除等，但没有信息面板（S：`ConversationList.kt:385-430` 菜单项、`ChatDrawer.kt:410-460` 回调）。NMoi 六项：会话 id（要能复制，因为上下文里永不出现 id）、名称、当前版本消息数 / 请求数 / 用户数 / 助手数；**「当前版本」不是所有版本加起来**；读不出来写「…」不写 0（0 会被当成空会话）；代价是现读一次库、**不做缓存（缓存 = 第二份真值）**。本仓数据现成（`Conversation.messageNodes`、`ConversationEntity`），量级 **~0.5 天**。价值偏低（诊断 / 外链用：本仓无跨会话工具，会话 id 主要用于 Web API 与反馈排查）——列出来备查，不建议排在 1–4 之前。
+
+### 吸收（0）
+
+无。本轮没有可「直接照做」的判据：D296 是补本仓已自认的损失，但仍需按本仓工作区模型重新设计；其余为补课 / UI。
+
+### 已有等价（12，勿重复立项）
+
+1. **D290 助手级世界书启用集 + ＋面板计数（`9570052`）** —— 本仓 `Assistant.lorebookIds` 即「助手级生效册集合」，另有 `allowConversationPromptInjection` 让会话单独覆盖（S：`Assistant.kt:176`/`:186`）；＋ 面板扩展行显示生效计数（S：`FilesPicker.kt:216-239`），两级选择器按册绑定、只读展示条目、`Lorebook.enabled` 控制是否可选（S：`ExtensionPicker.kt:194-260`）。差异仅「生效 / 启用」双计数 vs 本仓单计数——记账即可。
+2. **D291 视觉覆盖：发图前先转录（`a1d33ba`）** —— 本仓 `OcrTransformer` 同角色：主模型无 IMAGE 模态时逐张图调 OCR 模型转文字替换图片、带缓存（S：`OcrTransformer.kt:43-100`），模型用 `settings.ocrModelId`、提示词可编辑 `settings.ocrPrompt`（S：`Settings.kt:98-100`）。差异：本仓只在主模型不收图时触发（`OcrTransformer.kt:66`），失败写 `[ERROR, OCR failed]` 继续而不是回落发原图；NMoi 可强制覆盖 + 失败回落。**不立项**；若将来要「强制视觉覆盖」开关，架构已就位（记账）。
+3. **D297 界面四件（`5cedf80`）** —— (1) 默认窗口值：本仓窗口来源是 `customContextLength > contextLength > 全局覆盖 > 256K 兜底`单点解析（S：`utils/ContextLength.kt:20-21`、`Settings.kt:210`），没有 NMoi 那种 placeholder 写死 `128000` 的第二处；(2) 角色卡 ↺：本仓 `onClear` 置 null 即「跟随 / follow」（S：`SettingModelPage.kt:162-272`）；(3) 动作行只留最后一段：本仓动作行按消息渲染，没有「一轮多段各挂一排」形态；(4) 置顶高亮：本仓有置顶分区头 + 图钉（S：`ConversationList.kt:262-280`/`:366`），但没有主色加粗——纯装饰差异，记账。
+4. **D298 角色卡齿轮 + 角色系统提示词（`868b722`）** —— 本仓六个旁路角色的提示词均可编辑：`titlePrompt` / `translatePrompt` / `suggestionPrompt` / `ocrPrompt` / `compressPrompt` / `memoryConsolidationPrompt`（S：`Settings.kt:81-103`），角色模型选择在设置页集中给出（S：`SettingModelPage.kt:162-272`/`:587-649`）；「没有消费者就不摆开关」本仓同哲学。差异只是入口形态（集中设置页 vs 每卡齿轮）。
+5. **D299 世界书条目左滑删除（`4e52242`）** —— 本仓册与条目两级都已是 `SwipeToDismissBox` + 确认对话框（S：`LorebookPage.kt:333-361`/`:672-700`、`:440-453`）。
+6. **D301 供应商 / 模型长按拖动排序（`ae1deb8`）** —— 本仓供应商列表与模型列表都已可拖（S：`SettingProviderPage.kt:89-223`、`ModelListPage.kt:131-200`），且同样「搜索框有词时不给拖」（S：`SettingProviderPage.kt:92`）；本仓用显式拖柄，不需要 2 秒长按（更易发现）。NMoi 的「顺序原来没有存处 → 拖完回弹」是本仓未踩过的坑（本仓顺序即持久化列表）。
+7. **D302 多 Key 模式与 Key 池（`950accb`）** —— 本仓是超集：`apiKeys: List<ApiKeyEntry>`（每把 key 带 `enabled`、稳定 id）+ 每 provider 内联编辑器（新增 / 删除 / 启停 / **拖拽优先级**）（S：`ProviderSetting.kt:157`/`:209-213`、`ProviderConfigure.kt:808-925`）；失败按序换 key（S：`GenerationErrorPolicy.kt:89-124`），HTTP 状态码识别比 NMoi「用户手点状态」更准（S：`GenerationErrorPolicy.kt:117-126`）。差异：本仓默认「顺序 = 优先级」（`KeyRoulette.default()` = `OrderKeyRoulette`，S：`ai/.../util/KeyRoulette.kt:16`/`:37`）；**按请求轮询的 `LruKeyRoulette` 已实现，但只在搜索线接线**（S：`search/src/main/java/app/androidrik/search/SearchService.kt:93`，聊天 provider 全用 `default()`，如 `OpenAIProvider.kt:135`）——那是本仓自身可选策略（顺序 = 优先级更贴前缀缓存），不是本轮 NMoi 增量；NMoi 的「手动标正常 / 错误」被本仓启停开关等价，「收藏优先」= 本仓顺序首位。记账。
+8. **D303 ＋面板格子（`4beef0b`）** —— 本仓 ＋ 面板已是 `FlowRow` 格子：拍照 / 相册 / 草图 / 视频 / 音频 / 文件（S：`FilesPicker.kt:160-178`），下方是扩展（带生效计数）、手动压缩（带消息数）、提示词预览、定时任务、工作区 / MCP 行（S：`FilesPicker.kt:216-285`）；NMoi 五格中四格是假入口，本仓相反（视频 / 音频只在 Google 供应商下显示，隐藏优于假入口）。差异只有「按住渐深」纯样式（记账）。
+9. **D304 文件附件只收文本、拼正文（`996fed2`）** —— 本仓是**超越**：`DocumentAsPromptTransformer` 把 PDF / DOCX / PPTX / EPUB 解析成文字进提示词（S：`data/ai/transformers/DocumentAsPromptTransformer.kt:15`，`document/src/main/java/app/androidrik/document/` 下 Pdf/Docx/Pptx/Epub 四个解析器），NMoi 自认「PDF / 图片 OCR / docx 没做」。
+10. **D305 压缩入口（`566607c`）** —— 本仓压缩线本就领先：手动压缩对话框 + 自动压缩阶梯 C3→C2→C4 + 覆盖率闸（硬事实逐字 ≥0.8）+ 检查点表（S：`CompressionLadder.kt:1-60`、`CompressContextDialog.kt`、`ChatService.kt:2147-2300`）；缺的只是 plan 预览（→候选 4）与摘要工具痕迹（→候选 1）。
+11. **D306 四角色接消费者（`8cbae23`）** —— 本仓四角色全有消费者且提示词可编辑：标题（S：`ChatService.kt:1985-1990`）、建议（S：`ChatService.kt:2063`）、翻译（S：`data/ai/TranslationGenerator.kt:49`）、压缩（S：`data/datastore/SettingsExtensions.kt:46`、`ChatService.kt:2179-2190`）；另有 fast / memoryConsolidation / imageGeneration / fallback 角色（S：`Settings.kt` 角色字段区）。
+12. **D307 / D309 次级关键词 + SillyTavern 导入（`22fc123`）** —— 本仓已有且保真度更高：`secondaryKeywords` + `selectiveLogic` 四逻辑（S：`Assistant.kt:641-643`、`:783-804`）、per-entry `scanDepth` / `caseSensitive` / `useRegex` / `constantActive`、token 预算裁剪（S：`Assistant.kt:861-884`）；ST 导入是独立实现：`entries` 对象识别、`key` / `keysecondary` 的 `/regex/flags` 解析、`selective=false` 丢次键、六个 `match*` 合并成 `matchAssistantPrompt`、ANTop / ANBottom → `AT_DEPTH` 修正（S：`ExportSerializer.kt:333-458`/`:484-520`），比 NMoi 的机械翻译更全。缺的只有候选 2 的 4 个时序字段。
+
+### 不适用（7）
+
+- **D294 `/tmp` 会话隔离（`6622d38`）+ D293 前半（`5144a1b`）**：本仓隔离单位是**工作区**而不是会话——rootfs 内 `/tmp` 按工作区一份、启动时清 rootfs `/tmp` 与 `/var/tmp`、删工作区整目录删（S：`WorkspaceManager.kt:39`/`:89`/`:93-96`/`:476-483`），会话共享工作区是**特性**（多会话 / 子代理 / 终端协同），会话级 `/tmp` 隔离与共享工作台语义冲突；「没有会话上下文时 `/tmp` 报错不回落」在本仓无对应概念。**记账一条**：proot `-b` 目录不存在时静默不生效——本仓容器挂载前是否也 `mkdirs`，**待核**（`WorkspaceManager.kt` 的 tempDir 创建路径未逐行核）。
+- **D295 跨会话只读 Session-Files（`c80adee`）**：前提是「会话私有 `/tmp` 与 `/chat`」；本仓无会话私有文件概念（附件是按 folder 的 ManagedFile，工作区文件按工作区共享，S：`data/files/FilesManager.kt:56-77`），需求被「共享工作区持久化」天然满足。工具设计判据仍记档：开关关着**不声明**（不是声明了再拒）、只读、五步校验每步点名、结果带「来自另一个会话」来源、**上下文里永不注入会话 id**。
+- **D292 的会话私有路径 / 压缩继承设计稿（`ed9b336` 内 `docs/session-paths.md`）**：同上，路径模型不适用；面板部分已进候选 5。
+- **`84abaf4` SwipeDeleteRow 抽取 / `2d7d38d` 多选顶栏动作条抽取 + 2 秒长按**：组件层重构，本仓已有 `DragOrderState` / `SwipeToDismissBox` / 多选组件，无判据增量。
+- **`11ad376` clippy / `92585e8` 拖动 1 秒 + 末行居中**：样式与工程细节。
+- **D297 动作行只留最后一段**：本仓无「一轮多段正文各挂动作行」形态。
+- **10 条纯文档提交**（`0bf7f36` / `216eeb5` / `a2d46b7` / `555af8b` / `8f7843e` / `961b71a` / `411a14f` / `0913e81` / `83ba756` / `fce14bb`）：验证单 / 执行单，计入记账，不单列。
+
+### 记账（判据级，不立项）
+
+- **D292 两条通用判据**：「读不出来写「…」不写 0」（0 是另一种假话）；「低频面板现读一次库，不为它加缓存——缓存就是第二份真值」。
+- **D293**「凡应用往上下文里塞的话一律进可编辑内置册」——本仓角色提示词集中在 `Settings` 可编辑（S：`Settings.kt:81-103`）已符合大半；细粒度「逐角色恢复默认」暂无，若做角色齿轮再加。
+- **D296 设计约束**（候选 1 详）：只搬清单；预算不够整节不接、草稿正文一字不动；附件不进清单（本仓附件与工作区文件本就是两套，天然如此）。
+- **D297**「默认值只有一个来源，界面读常量」——本仓 `ContextLength.kt:20-21` 是单点，同判据已满足。
+- **D301**「搜索有词不给拖」本仓已同款（S：`SettingProviderPage.kt:92`）；「行高用 `onGloballyPositioned` 实测而不是固定行高」「`key()` 保住 Composable 身份」「超时只能靠 `withTimeout`」——Compose 细节，本仓 `DragOrderState` 已覆盖前两点。
+- **D302**「轮询位置只在内存」「删供应商把 key 池一起清」——本仓 key 存在 provider 文档里，天然随 provider 删除；「状态用户手点、不猜请求结果」本仓反而更准（已能提取 HTTP 状态码）。
+- **D303**「不给假开关但也不让点了没反应」；「按住渐深 0→0.9 / 120ms 明确反馈」。
+- **D304**「只看 MIME 会把 `.md` 挡在门外 → 扩展名白名单 + 读时看 0 字节」；「截断这件事写在正文里，不只写日志」（本仓文档解析的上限提示是否同款，**待核**）。
+- **D305**「plan / run 两步」「不给百分比假进度条」「兜底默认开且返回 `forced` 并照实写」「压缩与聊天用同一个 key 选择」——前两条进候选 4，后两条本仓已同（压缩走同一 provider / key 链路）。
+- **D306**「旁路不落库」「没有配置就不发请求、失败不出声；只有用户明确点的那一次才写原因」「建议点一下只填输入框不直接发」「记 `suggestFor` 防删光重发再扣一次费」——最后一条本仓是否有同款去重，**待核**。
+- **D307 / D308**「次级键为空 = 老数据零变」「三个时序字段默认 0 = 关」「中文无词边界写进界面」「cooldown 判据是最近一次提到、不是上次生效」——候选 2 的设计约束。
+- **D309**「认不出的位置数字点名报错，不替用户挑一个最常见的位置」「`selective=false` 丢 `keysecondary`」「单册分支曾把原始文本喂给导入、转换后的 root 被忽略（真 bug）」——本仓 ST 导入已修同类坑：曾把任意 JSON 静默导成 0 条目空册（S：`ExportSerializer.kt:339-344` 注释），两条可并列做回归清单。
+- **「写了没接线」复查**：D296 的 `files.rs` 在 D305 之前只有单测与 example（作者明说）；D298 只给已接消费者的卡上齿轮；D303 五格四假入口但配「差什么」文案；D291 明说这一批没有本机实测（唯一验收面 V102）。⇒ 老毛病仍在（组件先落地、消费者后补），但已从「当已实现引用」变成「主动标注」；引判据时仍要逐个查消费者。
+- **未真机验证**：D291 V102（无本机实测）、D300 从 `Switch` 上起手左滑未验、D302 自动标错要等 core 带回错误码（现在带不回）——采用对应判据时须自测。
+
+### 修正既有结论
+
+- **§13.4「本仓世界书是 NMoi 字段超集」收窄**：NMoi 本期补了 4 个触发时序字段（`matchWholeWords` / `sticky` / `cooldown` / `delay`）并映射进 ST 导入（D307–D309）；本仓 `Assistant.kt:621-660` 无这四项 ⇒ 本仓仍是**主键 / 次键 / 四逻辑 / 预算 / 扫描源（6 个 `match*` 合并）/ 大小写 / 正则** 的超集，但**触发时序维度落后**，见候选 2。
+- **§13.4「NMoi 只有自有世界书格式、ST 导入仅计划稿」作废**：D309 已落机械翻译（位置 / 角色 / `selectiveLogic` 数字映射 + 认不出报错），且修了「单册分支读原始文本」的真 bug；本仓导入保真度仍更高（正则关键词、`match*` 六开关、ANTop 修正），差异只剩候选 2 的 4 字段被丢。
+- **「压缩 / 提供商线本仓领先」维持但两处收窄**：(a) 压缩**输入只取 Text part**，工具调用与结果不进摘要、也不进覆盖率闸（本仓设计稿自认）→ D296 判据补这一块，见候选 1；(b) 手动压缩无「先看切点」预览 → 候选 4。
+- **「多 Key 线本仓领先」维持，补一条本仓自身现状**：`LruKeyRoulette` 只在搜索线接线、聊天 provider 全用 `KeyRoulette.default()`（S：`KeyRoulette.kt:16` vs `OpenAIProvider.kt:135` / `ClaudeProvider.kt:90` / `GoogleProvider.kt:97`），NMoi D302 的「按请求轮询」对本仓是**可选策略**而非缺口（顺序 = 优先级更贴本仓前缀缓存策略）。
+- **§13.3 候选「零字流退回非流式」（`ddd2860`）** 不在本区间，维持待核。
+- **§13.4 记账「世界书命中说明 UI」** 仍未接线（D307 只加了「命中了哪个关键词」的判据函数），维持记账。

@@ -146,3 +146,90 @@ App，比轻弹窗**重得多也慢得多**（起完整导航栈）。
 - 已有等价 2 条：`e39a8c2e4` 附件面板矮屏可滚动（`FilesPicker.kt:153-157` 已有 `verticalScroll`）、`e98c4586a` 导出写文件离主线程（`ExportHooks.kt:66-77` 已有 `Dispatchers.IO` + `runCatching`）。
 
 > 证据级别：本批只拉标题 + 命中文件级 patch（无本地克隆），结论限机制/文件级；relay 域按标题分桶（全部含 relay/connector/quota/snapshot）。
+
+## 2026-11-03 → 11-09 增量评估（远端，141 提交，HEAD `11b8fb55b`）
+
+**边界**：上一批台账提交 `13846d07f`（2026-11-03 22:15 +0800 ≈ 11-03T14:15Z）。`gh api repos/Ayuilos/Miffan/commits?since=2026-11-03T00:00:00Z` 共 **153** 条，扣上一批已覆盖的 12 条（11-03T12:18Z 前 10 条 + 2 条 rebase 提交 `77d47a5207`/`7684bee762`，二者已计入上一批「re-ovo 2」）→ 实质新增 **141 条**（Ayuilos 121 + Claude 18 + re-ovo 2；Claude 18 条全部是 11-04 的云电脑窗口批量工作）。
+
+**总评：吸收 0 / 候选 8（P2×3、P3×5，涉 20 提交）/ 已有等价 9 / 不适用 99 / 记账 13。** 本批是 Miffan「IM 4.0 收尾 + 4.9.0/4.9.1 发版」周，主线（云电脑/屏幕/窗口/relay/easy-mode）与本仓无交集；真正可看的是 11-07 的 **perf/bench 批次（W0.1–W1.4）** 与 **4.9.0 code review**，以及 markdown/文案小件。**没有需要整体吸收的机制**：3 个 P2 中 2 个是「本仓已有同款热路径、只差把开销挪出主线程/预览层」，1 个是补通用 Compose 宏基准管线（本仓现有的是长文本专用自研基线）。
+
+> 下文「本仓」取证均为本地源码 grep（`app/src/main/java/app/androidrik/rikkahub`、`ai/`、`bettertext-*`、`scripts/`、`app/baselineprofile`），行号以当前工作树为准。
+
+### 候选（P0–P3）
+
+1. **P2 · 预览/TTS 保留行内代码文本**（`6efec385a` Keep inline code text in previews instead of dropping it）
+   - Miffan：`utils/MarkdownUtils.kt` 把 `Regex("```[\\s\\S]*?```|`[^`]*?`")` 拆成「代码块删、行内代码保留 `$1`」；预览里 `` `note.txt` `` 不再消失（理由：预览给「人」看，行内代码是内容不是标记）。
+   - 本仓同款缺陷（同源）：`utils/MarkdownUtils.kt:48` 仍是合并正则整段删除 → 凡走 `stripMarkdown()` 的路径都丢行内代码。调用点两处且都在**朗读**：`ui/hooks/TTS.kt:146`、`ui/pages/chat/VoiceMode.kt:95` ⇒ TTS 会跳过所有 `` `…` `` 片段（文件名、命令、网址）。
+   - 落点：`MarkdownUtils.kt:48` 拆两条正则 + 补 `MarkdownUtilsTest`（Miffan 同款用例）；顺手核 `extractThinkingTitle` 不受影响。**量级 0.5h**。
+
+2. **P2 · QuickJS 初始化移出启动主线程 + 使用点幂等 init**（`7b602f808` + `9f58005b9`）
+   - Miffan：`onCreate` 的 `QuickJSLoader.init()` 挪到 `AppScope`+IO（注释「首屏不需要」），并在 `JavascriptTool.execute` 补幂等 `QuickJSLoader.init()`（后台加载可能还没完成）；`runCatching` 分别包住 icon sync / QuickJS / relay watcher，避免一个失败吞掉其余。
+   - 本仓同构点：`RikkaHubApp.kt:148` 在 `onCreate` 主线程同步 `QuickJSLoader.init()`，首帧不依赖它；`data/ai/tools/local/JavascriptTool.kt:71` 直接 `QuickJSContext.create()`，无使用点幂等 init。本仓已有启动 profile/基准（`app/baselineprofile`），这笔是**可测的冷启动收益**。
+   - 落点：`RikkaHubApp.kt:147-148` 移到 `doBoot()` Ready 之后的 IO 协程（注意 Koin boot 时序）；`JavascriptTool.kt:71` 前补幂等 init。**量级 0.5d**（0.5h 改动 + Trace 验证）。
+
+3. **P2 · 通用 Compose macrobenchmark 管线**（`7442ea738` 合并 + `2e7a25e87`/`31da3fddd`/`38d4b16a7`/`ad5e5adab`/`6768f1f83`/`388030a6a`/`00dda013b`/`19d070952`/`2f730d43f`）
+   - Miffan：在既有 startup baseline 外补「fixture + 旅程 + runner + 汇总」——`app/baselineprofile` 新增 `ImBenchmarks.kt`（冷启动到首屏全绘、打开长会话、滚动、切 tab、流式回包）、`PerfSupport.kt`、`scripts/perf/run_bench.sh`、`scripts/perf/summarize.py`（多轮中位数 + 设备信息 + 帧指标表）、`docs/development/PERF_FIXTURE.md`；`ad5e5adab` 给 bench 变体独立 `.bench` applicationId 并校验 fixture；`6768f1f83` 让 benchmark 按需记录 composable 名；`00dda013b` 加 testTags + 打开会话异步 trace（`ThreadOpenTrace`）+ ReportDrawn 全绘上报；`19d070952` 先装 fixture 再跑启动基准；`2f730d43f` 用 variant API 挂 fixture。
+   - 本仓现状（已核）：`app/baselineprofile` 只有 `BaselineProfileGenerator.kt`（启动 + 一次 markdown 发送流程）+ `StartupBenchmarks.kt`（仅 `StartupTimingMetric`，measureBlock 还留着「未等全绘」的 TODO）；**没有**列表滚动/会话打开/tab 切换旅程，没有 benchmark runner/汇总脚本，全仓无 `ReportDrawn`（零命中）。长文本侧另有可复用自研管线：`scripts/longtext_baseline.py` + `app/src/androidTest/java/app/androidrik/rikkahub/perf/LongTextBaselineTest.kt`（FrameMetrics 逐帧、P95/P99、deadline miss，见 `docs/design/longtext-p0-baseline.md`）。
+   - 落点：`app/baselineprofile/src/main/java/app/androidrik/baselineprofile/` 增 `ChatBenchmarks.kt`（冷启动→首屏全绘、长会话打开、滚动、流式回包）+ `PerfSupport.kt`（fixture 安装 + 全绘等待）+ `scripts/perf/{run_bench.sh,summarize.py}`；`StartupBenchmarks.kt` 的 measureBlock 补全绘等待；`BaselineProfileGenerator` 增加长会话/流式旅程后重生成 `app/src/release/generated/baselineProfiles/baseline-prof.txt`（现为旧旅程产物）。**量级 2–3d**。
+
+4. **P3 · 引用卡片/预览去掉 Markdown 标记**（`9531ec767`）
+   - Miffan：`previewText()` 之前只压空白、不剥 Markdown → 引用条/话题标签显示 `**…**`、`#`；改为 `stripMarkdown()` 后再压空白，并把热点 `Regex("\\s+")` 提成常量。
+   - 本仓同构点：`ui/components/message/MessageQuoteCard.kt:88` 的 `Text(text = quote.content)` 直接显示原文，而 `ai/src/main/java/app/androidrik/ai/ui/MessageQuote.kt:24` 存的就是**原始 Markdown 快照**（`parts.filterIsInstance<Text>()` 拼接）⇒ 引用卡片/输入框引用预览会显示 `**粗体**`、`### 标题`。
+   - 落点：`MessageQuoteCard.kt:88` 显示层剥标记；**不要**改快照本身（发给模型仍要原文，见 `toPromptBlock`）。**量级 0.5h**。
+
+5. **P3 · 失败提示说人话（原始异常进 Log）**（`9a0b792a1` + `4e42c66fa` + `46b9cfb5d` + `9f58005b9` 撤销页部分）
+   - Miffan：把「保存/备份/恢复/导入失败 + `e.message`」的 toast 改成**固定人话 + 下一步**（「备份没存下来，看看手机空间够不够」/「这个文件恢复不了：可能不是对应的备份文件，或者已经损坏」），原始异常走 `Log.w`；顺带修「导出失败被写成恢复失败」的文案错配。
+   - 本仓同构点（已核，**仍直出异常原文**）：`ui/pages/imggen/ImgGenPage.kt:735-746`（`imggen_page_save_failed` 带 `e.message`）、`ui/pages/mediacreation/MediaCreationPage.kt:485`、`MediaCreationRecordItem.kt:531`；`ui/pages/backup/BackupVM.kt:92/110/160/190/209/234/252`（`failure.message ?: "…失败"` 直接把异常字符串塞进页面状态）。
+   - 落点：图片保存三处 + 备份 VM 七处统一「场景化人话 + `Log.e` 原文」；`9f58005b9` 的「撤销页离开时先终结再弹 toast」本仓 HistoryPage 自研，**待核**后再定。**量级 1d**（含文案；不做全语言可压到 2h）。
+
+6. **P3 · 本地化月日 + 三个 Compose 小件**（`c48dcbdff` Cut repeated work in chat rows and the screen page）
+   - Miffan 实质修复：①中文/日文/韩文月日被手拼成「10月 31」→ 用系统本地化 `MMMd` 模式 + 缓存 formatter；②`ZoomableAsyncImage` 的 `ImageRequest` 每次重组新建 → `remember`；③reasoning 计时 tick 50ms→100ms；④Markdown 解析结果按「已稳定文本」进 LruCache（重组/滚回不重解析）；⑤清无用 import。
+   - 本仓同构点：①**同款 bug**——`utils/TimeUtil.kt:59-79` 手拼 `appendText(MONTH_OF_YEAR)`+`appendValue(DAY_OF_MONTH)`，`isMonthFirstLocale`（`:84-93`）还把 `CN` 列进「月在前」→ 中文日期头实际是「10月 31」；调用点 `ui/pages/chat/ChatDrawerVM.kt:329`（抽屉日期分组）、`ConversationList.kt:236`。②`ui/components/richtext/ZoomableAsyncImage.kt:42` 的 `ImageRequest.Builder(context)` 未 remember。③`ChatMessageReasoning.kt:151-152` 仍是 `delay(50)`。④解析缓存：本仓长消息已由 `ChatRenderIndex`（预解析 `MarkdownRenderDocument` + `staticDocuments` 状态）覆盖，短消息 `<8000` 字符走 `BetterMarkdown` 同步解析——**是否加全局 LruCache 待实测定夺**，不盲抄。
+   - 落点：`TimeUtil.kt`（本地化 MMMd）→ 两个日期头调用点；`ZoomableAsyncImage.kt:42` remember；`ChatMessageReasoning.kt:152` 50→100ms（先核显示精度）。**量级 0.5d**。
+
+7. **P3 · 会话列表行 contentType**（`37978de69` Give thread and chat list rows a content type so scrolling reuses like rows）
+   - Miffan：`LazyColumn` 行加 `contentType`，让 header/消息/错误卡/流式行各自复用槽位。
+   - 本仓同构点：`ChatDrawer` 的会话列表是**混合 sealed item**（日期头/置顶头/会话行，`ConversationList.kt:194`），但 **`contentType` 只在 header 一处**（`ConversationList.kt:145`），其余行没有；聊天页 `ChatList` 同理（渲染块异质）。
+   - 落点：`ConversationList.kt` 的 `items(...)` 按 `ConversationListItem` 类型给 contentType；`ChatList` 按 slice 类型（markdown/tool/notice）补。风险低。**量级 0.5h**。
+
+8. **P3 · DB 复合索引 + 收藏 ref_key 范围查询**（`2eaecd7ff` Add data-layer indexes and range-query favorites lookup，DB 43→44）
+   - Miffan：`message_node` 单列 `conversation_id` → `(conversation_id, node_index)`（`WHERE conversation_id=? ORDER BY node_index` 免排序）；`conversation` 增 `(assistant_id, chat_id, update_at)`/`(folder_id)`；收藏「按会话取 node 收藏」的 `LIKE 'node:<id>:%'` 改 `ref_key >= prefix AND ref_key < prefixEnd` 范围扫描（唯一索引才用得上）。
+   - 本仓同构点（已核）：`data/db/entity/MessageNodeEntity.kt:19` 仅 `Index("conversation_id")`，而 `MessageNodeDAO.kt:16/21/52` 都 `ORDER BY node_index`；`ConversationEntity.kt` **零索引**，`ConversationDAO.kt:58/64/71/74/77` 全是 `WHERE assistant_id=? AND hidden=0 ORDER BY update_at/last_message_at`；`FavoriteDAO.kt:24` 仍是 `LIKE 'node:'||:conversationId||':%'`（`FavoriteEntity` 虽已有 `ref_key` 唯一索引，LIKE 用不上）。
+   - 落点：Room `@Entity(indices=…)`（本仓 DB v64，按 `app/schemas` 流程加 Migration + `Migration_64_65_Test`）+ `FavoriteDAO` 范围查询。**先量测再决定**：收益主要在长会话/大收藏库。**量级 0.5d**。
+
+### 已有等价（本地 file:line 取证）
+
+- `2f28d43c2` 流式回复保持可见 + 不每 chunk 重组所有气泡 → 本仓**更强**：`ChatList.kt:393` `stickToBottom` 闩锁 + `:397`/`:501-508` `snapshotFlow { layoutInfo }` 贴底（只在「本就在底」时跟随，手指拖动退出）+ `:463-464`/`:506-507` `requestScrollToItem` 瞬时重定位（不会像 `scrollToItem` 那样每 chunk 先把尾部闪回顶部）。Miffan 修的两个坑（`LaunchedEffect(timeline)` 每 chunk 重启、`ThreadConnection` 每 chunk 新实例）在本仓不成立：重组靠 Kotlin 2.4.10 **strong skipping**（`gradle/libs.versions.toml:5`）+ `ChatRenderIndex` 预解析/切片（`ui/pages/chat/ChatRenderIndex.kt`）。其 `remember(connectedSegments, online)` 的「共同值只建一次」是好习惯，本仓 `ChatList.kt:339-341` 对 `assistant`/model map 已 `remember`。
+- `abd836c26` Chats 列表行操作稳定防整行重组 → 本仓会话行参数是普通 lambda（`ConversationList.kt:194`/`:289`），strong skipping 下按捕获值记忆化；没有 Miffan 那种「每次重组新建 `ImChatActions` data class 传给所有行」的结构 ⇒ 无此 bug。
+- `89da3892d` 记住气泡「有没有可显示内容」→ `ChatMessage.kt:544` `remember(messageId, parts, role, wholeTurnFolding) { messageDisplayDocument(...) }`，气泡只渲染自己的 slice。
+- `1e927e300` FTS 只索引变化节点 → `data/db/fts/MessageFtsManager.kt:76/83` 明写「增量更新会话的索引：只重写新增或内容变了的消息」，另有 `message_fts_rowid` 普通表做会话→rowid 映射，比该提交更完整。
+- `d826918d0`（re-ovo）收藏模型重复导致闪退 → `data/datastore/PreferencesStore.kt:107-110` `normalizeFavoriteModelIds` 已 `distinct()` + 过滤已删模型；同题上游 `dba9fa574` 在 upstream 11-07 批已判等价。
+- `604a5eb07` 删会话连带删节点收藏 → `data/repository/ConversationRepository.kt:545-546` `favoriteDAO.deleteNodeFavoritesOfConversation(conversationId)`（同题上游 `3733bac8f` 已落地；另有 `:564` 单节点删除）。
+- `5bc366014`（re-ovo）历史图片压缩缓存 → `ai/src/main/java/app/androidrik/ai/util/FileEncoder.kt:27/116-123` `MediaEncodingCache`（Yuihub 3.0 移植，内存 LRU 8MB）；同题上游 `ae599e8d7` 在 11-07 批已**改判等价**（Miffan 走的磁盘持久层属增强，挂账）。
+- `e88bbea5b` 世界书长按拖拽排序 → `ui/pages/extensions/LorebookPage.kt:185/252` `rememberReorderableLazyListState` + `ReorderableItem`（同题上游 `88dee920c` 已判等价：本仓整页重构自带拖拽）。
+- `f31f96458` 翻译页可选模型/图标动作 → `ui/pages/translator/TranslatorPage.kt:110-116` `ModelSelector(modelId = settings.translateModeId, type = CHAT)` 已具备；「翻译页 prompt 闪一下」属 IM 翻译页实现细节，本仓 `TranslatorVM` 无同构。
+
+### 不适用（99 条）
+
+- **IM 4.0 / 云电脑 / 屏幕 / 窗口 / 远程助手 / relay / 局域网 / easy-mode / IM 页：73 条** → 用户已明示不吸收该域。主体是 11-04 的窗口/屏幕批量（Claude 18 条 `1aa04f601`…`c9dafd9ac` + Ayuilos 16 条）、IM 4.0 feature 分支合并（`11b8fb55b` 等 10 条）、11-03 晚段窗口/迷你盒 4 条（`480b0c18f`/`10d30821f`/`5a5db9931`/`754a15899`），其余 25 条是 11-07 的 easy-mode（`f55fb6df4`/`be632f011`/`ed8de1224`/`79e65d446`/`d28e43def`/`9085725e4`/`0a63f633d`）、IM 会话/伙伴/话题/摘要（`746e3e8e4`/`a3160ff00`/`b8d193d97`/`da94d7d83` 等）、relay/局域网发现（`07d27aab6`/`69b464eb1`/`fbd53e4ca`）、IM 画作/翻译/语言页（`e949381e7`/`c502ba1d6`/`8da5072f3`，其中 `9a0b792a1` 的**原则**已转候选 #5）与 UX tour 等杂件。
+- **发版/版本 bump：4 条**（`853d0646f` 4.8.4 / `e85238307` 4.8.5 / `088e3e4cf` 4.9.0 / `13691c4a7` 4.9.1）。
+- **营销截图 / README / 发行说明 / 计划文档：22 条**（v5 截图三批、4.9.0 notes、`IM_4_POLISH_PLAN` 系列、UX tour 脚本、`9b60032fd` 任务分派规则等）。
+- **`8da5072f3`（任务失败文案）判「不适用（域错配）」**：改动文件是 `ui/im/computer/RemoteTaskDetailPage.kt`（IM 云电脑远程任务），不是手机侧定时任务；本仓定时任务 UI 只显示状态词条（`ui/pages/taskcenter/TaskCenterPage.kt:343` `taskStateLabel`），本就不直出原始异常 ⇒ 无可抄点，详见「需修正旧结论」。
+- `47c5250cc`（更新通知先于终端状态发布）、`b368afce9`（远程助手终端 Ctrl+Shift+V）、`c502ba1d6`（Me 页语言名）：本仓无对应设施（自更新下载器/远程助手/应用语言行），复核后不适用。
+
+### 记账（13 条）
+
+- **上游同题/上游批次已覆盖 5 条**：`a79067dfa`+`d73acb595`（selective sync 到 `fe5a28f9a`）、`8cc61b552`（记录 11-05 sync）——本仓 `docs/upstream-analysis.md` 已于 11-07 评估 `903e058b9..fe5a28f9a` 25 提交，**已由 upstream 批次覆盖**；`26309bbedd`（设置/Me 顶部请求局域网权限）= 上游 11-03 批已吸收的「设置页局域网权限入口」；`fdbb3117f`（models.dev 每 4 小时刷新）= 上游 `133f47520`，本仓该批已判 **P3 候选（每日→4h）**，不重复立项。
+- `22d3490e8`（perf/data 合并 W1.1–W1.4）：合并提交，子提交（`1e927e300`/`b8d193d97`/`da94d7d83`/`2eaecd7ff` 等）已逐个判定。
+- **CI/环境 3 条**：`9e5998c55`（CI pin ubuntu-24.04）、`49e8a669c`/`b13bd768e`（CI/发布构建堆内存）——本仓三条 workflow 用 `ubuntu-latest`，无同构需求。
+- **文档/测量 4 条**：`c558e5840`（W0.4 手机测量）、`0fd2bd2be`（模拟器启动 trace）、`8ea6ef7a2`（benchmark 方法/W0 验收）、`0eeb2c00d`（模拟器帧指标/代理/worktree 文档）——只作候选 #3 的方法参考。
+
+### 需修正/补充的旧结论
+
+1. **任务前提修正**：评估任务把 `8da5072f3` 归到「本仓 ScheduledTask 线」，实际它是 IM 云电脑远程任务页；本仓定时任务线（`ui/pages/setting/scheduled/*`、`TaskCenterPage`）不显示原始异常 ⇒ 该条判**不适用**，不是候选。
+2. **上一批「无可吸收项」适用窗口**：本批 141 条全部晚于上一批台账提交（`13846d07f` 11-03 22:15），旧结论不构成错误；上一批把 `0c4ec3864`（应用更新体验）判「不适用（本仓无应用自更新通道）」的判据本批复核**仍成立**（全仓无更新下载器，`47c5250cc` 因此也不适用），维持。
+3. **补充历史缺陷记录**：本仓 `utils/MarkdownUtils.kt:48` 与 Miffan 同源，行内代码会被 `stripMarkdown()` 整段删除（影响 TTS/VoiceMode），此前台账未记；本批补为候选 #1。
+4. **`2f28d43c2` 不立项**：本仓「流式保持可见」已由 `ChatList.kt` 自研贴底机制覆盖（且更强）；不要把 Miffan 的 `ThreadConnection`/`ImChatActions` 结构当通用结论——本仓 `ChatRenderIndex` 每 chunk 重建 render index 是有意取舍（长文本基线在档），不是漏优化。
+5. **`c48dcbdff` 的 markdown LruCache 部分不建议直接抄**：本仓长消息预解析在 `ChatRenderIndex`，短消息解析开销待 `scripts/longtext_baseline.py` 量测后再定；先做其中 3 个已确证的分钟级小件（月日本地化 / ImageRequest remember / reasoning tick）。
+
+> 证据级别：**远端（标题 + 文件级 patch）**——无本地克隆；对本批 42 个提交调 `repos/Ayuilos/Miffan/commits/<sha>` 取 `files[].patch`（覆盖全部候选/等价证据），其余按标题分桶。本仓结论为本地源码 grep/读文件取证。

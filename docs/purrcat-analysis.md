@@ -369,3 +369,69 @@ function-calling 循环（256 步）· 逐工具审批与挂起续跑 · `ToolCa
 - **状态回写**：A1 收尾闸门 + A3 交付物契约 → `ae382c8c1`（`LoopGate.kt` + `TaskManageTools`，2026-10-31）；A4.1 idle 门控 → `ScheduledTaskExecutor.kt:51`；A4.2 会话级目标 → `2517d47cf`/`792d2cf22`（`Conversation.goal` + DB v52 + `withGoal` 注入）。A2 能力生产线仍空（全文 grep `ArtifactValidator`/版本表零命中）。
 - **2026-10-26 → 10-31 新增 6 提交（`efc9fb6..adbba56`）**：`53f5847` 会话级 `plan.md`（BrainStorm 每次调用整体覆盖刷新总计划，`@PLAN` 作为注入别名在任意位置展开）→ **候选**（本仓 `Conversation.goal` 是用户手填；缺「模型工具自动刷新」与注入别名，落点 `ConversationEntity.kt:52` + `ScheduledTaskEntity.kt:79`）；`adbba56` 插件后端子进程生命周期跟随面板标签 → 不适用（本仓插件是编译期 Kotlin + QuickJS，无后端子进程形态）；其余 4 条为 UI/CDP 回落/前端修复 → 不适用（平台面）。
 - 证据级别：本地源码（commit `efc9fb6` 起），逐条读 diff。
+
+## 附录 F：2026-11-10 增量评估（`adbba56..7cd7134`，约 61 提交）
+
+> **同步点推进**：10-31 `adbba56` → 11-09/10 `7cd7134`（origin/main，2026-11-10 19:01 fetch）；61 提交逐条 `git show` 读 diff，本仓侧凡判「已有等价」均 grep 到 `file:line`（本轮未改任何源码、未 commit）。
+> **判决计数**：**吸收 0 / 候选 3 项（P1 一项、P2 一项、P3 一项）/ 已有等价 8 / 不适用 29 / 记账 20 / 修正旧结论 1**（共 61 提交；F1/F2 共享 `6a95539` 来源）。
+> **一句话**：这批的**方法论含金量显著高于 10-26 批**——作者用 10-09→11-10 连续 8 个提交把「typed 模块 + CI 产物比对 + 测试分层 + 静态红线 + 文档-实现对齐 + 删功能即删用例」做成了一套可执行纪律，恰好指着本仓唯一真正的门禁缺口（有 382 个单测却零 CI 测试）。功能线多数已被本仓更强实现覆盖；Electron/ONNX/RapidOCR/安装器类运行时形态不可移植。
+
+### F.1 候选（按优先级）
+
+| # | 来源 | 项 | 判决 | 本仓落点 | 量级 |
+|---|---|---|---|---|---|
+| **F1** | `6a95539` + `bb33169` | **CI 门禁接线**：PurrCat 新增 `python-tests` job 跑 `pytest -m "l0 or l1"` 与 `-m l3`，electron job 跑 `tsc --noEmit` 并重建产物后 `git diff --exit-code` 比对；`preflight` 变更检测把 `tests/`、`docs/api/` 也算进触发面 | **P1** | 本仓 **382 个 JVM 单测（app/src/test）+ 100 个 androidTest + 9 个 `scripts/audit_*.py`/`verify_*.py`，但 CI 只 `assembleRelease`、零测试门禁**（`.github/workflows/daily-build.yml:132-133`、`release.yml:115-116`；且 daily-build 仅在手动 dispatch 时触发）。落点：新增 `.github/workflows/` PR/推送 job 跑 `./gradlew testDebugUnitTest` + `python scripts/audit_ime_trap.py`（可选加 web 路由↔文档一致性脚本） | ~0.5–1 天 |
+| **F2** | `6a95539`（AGENTS.md + `tests/l3/test_red_lines.py` + `conftest.py`） | **测试卫生规范件**：①**目录即层级**——`conftest` 按路径自动打 `l0/l1/l2/l3` marker，新增用例不必记得标注；L2 桌面 E2E 永进 PR 门；②**无因挂起配额**——`skip/xfail` 必须带 `reason=` 且含任务号，且总数 ≤5（AST 静态扫描，同批把 70 行“红线”变成用例）；③**新增功能先写 spec**（背景/行为/AC 清单/测试矩阵/非目标/风险回滚）；④**功能删除清单**——代码+路由+配置+用例+fixture+spec+文档同一次改动删净，「删完测试仍绿说明它没测到行为边界」 | **P2**（规范件，无运行时改动） | `AGENTS.md` 增「测试分层与删除纪律」节（已有 TextField Host Rules 同款位置）；静态检查扩展 `scripts/audit_test_hygiene.py`（本仓 `audit_ime_trap.py` 已是「A/A' 失败、C 告警」同款范式）。spec 部分本仓已有等价（`docs/design/completed/` 36 篇带验收、`docs/design/verification/` 21 篇实施记录），只补「AC ↔ 测试矩阵」对照 | ~0.5 天 |
+| **F3** | `016a8a7` + `da78e53` | **巨型文件拆分判据**：5696 行 `host.js` 拆成 `ui/web-minimal/src/host/*.ts` 20+ typed 模块（`types.ts` 是契约唯一来源、`main.ts` 依赖链即入口、相对导入统一 `./x.js`），esbuild 打包 + sourcemap 入库 + CI 重建比对；`da78e53` 再 `.gitattributes` pin LF 让 sourcemap 跨平台可复现 | **P3**（观察期，不预设动手） | 本仓最大文件：`service/ChatService.kt` **3262 行**、`data/ai/GenerationHandler.kt` **1722 行**（PurrCat 最大源文件 1026 行）。**观察期触发点**：下次对 `ChatService` 做跨功能改动时再按职责拆，禁止为拆而拆；拆时照抄「契约类型单点 + 跨模块可变绑定只读/写走 setter + 入口依赖链」三条 | 3–5 天（触发后） |
+
+### F.2 已有等价核对（8 条，均 grep 本仓）
+
+| PurrCat 提交 | 机制 | 本仓等价证据（file:line） | 结论 |
+|---|---|---|---|
+| `4570ea7` | 可注入 `ChatModel` seam：`Protocol`（runtime_checkable，只声明 `chat`/`bind_task`/`unbind`，`vision` 走 `getattr` 可选读取）+ `Agent(model=...)`；L3 用 `inspect.signature` 断言测试替身与真实实现签名一致 | `ai/src/main/java/app/androidrik/ai/provider/Provider.kt:16`（`interface Provider<T : ProviderSetting>`）；`data/ai/GenerationHandler.kt:265`（构造注入 `providerManager`）；测试侧 `app/src/test/.../GenerationToolLoopTest.kt:162`、`EmptyGenerationResponseTest.kt:28` 的 `ScriptedProvider` 假实现 | **已有等价且更强**：seam 在 provider 层（生成/额度/目录/多模态），不是只抽 chat；替身已用于真跑整条工具循环 |
+| `7cd7134` | 工具注册契约：schema 工具名必须可解析到 callable、`TOOL_FUNC_MAP` 与模型可见集合一致、schema properties ⊆ 函数形参（或 `**kwargs`）、必填形参必须可由模型或「系统注入白名单」填充；白名单冻结断言 | `ai/src/main/java/app/androidrik/ai/core/Tool.kt:26`（`Tool` 是具名 data class + `execute` lambda，**没有「名字→函数」字符串解析面**）；`ChatToolFactoryTest.kt`（已有 ToolSource 段名 frozen contract 断言） | **结构性更强**：PurrCat 需要运行期契约测试是因为工具靠 `importlib` 按字符串解析；本仓装配期就是对象，整类「解析不到/注册漏暴露」不可能发生。仅剩「schema 键与 execute 读取键漂移」残留面，静态不可判 → 不立项 |
+| `7e32ecc`（+`b0b1218` 文档） | 项目 = 会话分类器（`projects/index.json` + `<project>/MEMORY.md`）；会话归属双写（`meta.json` 为权威、全局索引允许滞后）；项目内新建会话**只注入记忆文件路径**不注入正文；`b398de1` 把项目记忆文件加入 Agent 读写放行（严格匹配 `<PROJECTS_DIR>/project_*/MEMORY.md`） | 会话分组：`db/entity/FolderEntity.kt:11-32`（助手内文件夹）+ `ConversationEntity.kt:61`（`folderId`）+ `web/routes/FolderRoutes.kt`、`ConversationRoutes.kt:68-107`（REST 按 folder 过滤/分页/搜索）；记忆作用域：`MemoryEntity.kt:14`（`assistantId`——**助手级记忆是「项目级记忆」的超集**）；路径安全：workspace 走 fd 级锚定而非目录白名单 | **已有等价**：分组 + REST + 归属齐备；「项目记忆文件」无独立等价物，但助手级记忆已覆盖同一需求且本仓更成熟（评分/预算/纪律/回收站）→ 记账，不立项 |
+| `ab54a9a` | `cron.json` 原子写（tmp + `os.replace`，防独立 System Clock 进程读到半截）+ `armed_at`/`last_fired_at` 武装时刻（一次性闹钟从武装起算、重新启用重武装） | 原子写：`data/files/AtomicFileWrite.kt:36`（唯一名临时文件 + `ATOMIC_MOVE`，失败返回 false 不留半截/不毁旧内容）；调度权威：`db/entity/ScheduledTaskEntity.kt:11-12`（`nextRunAt` 唯一权威 + 乐观锁认领）`:60-63`（`next_run_at`/`last_run_at`） | **已有等价且更强**：本仓单进程 Room 权威状态，无跨进程共享 JSON 问题；认领即原子推进已覆盖「武装时刻」语义 |
+| `7c7a20c`（+`b74b979` 落点重构） | 图片附件：历史只存会话副本路径（`<会话>/attachment/1.png`），发送前还原 base64；顺带 `Task` 直注前按请求体积上限判定，超限改视觉顾问转述 | `data/files/FilesManager.kt:405`（`convertBase64ImagePartToLocalFile`：base64→采样压缩 PNG→会话文件，超限/失败换可见占位）；`ai/.../util/FileEncoder.kt:105`（`encodeBase64`）+ `providers/openai/ChatCompletionsAPI.kt:744/801/849`（发送时按 `file:` 读盘编码）+ `ai/.../util/AttachmentLimits.kt:45`（逐附件上限） | **已有等价且更强**：同「历史存路径、发送才编码」形态，且多出压缩/采样/占位/逐附件限额。PurrCat 额外的「超限降级为视觉描述」**不吸收**（隐性二次模型调用、花销不可见，本仓选择显式压缩/占位/报错） |
+| `c5fc53a` | 视觉：删 OCR 兜底、只信视觉模型（先前 `cd2e4d5` 把 `easyocr` 换 `RapidOCR`，一天后又整体删除，installer 因此瘦身） | `data/ai/transformers/OcrTransformer.kt:43`（OCR 走**用户配置的 OCR 模型 + 3 天缓存**，非本地 OCR 引擎）；`TransformerChainRegistry.kt:145` 注册 | **方向一致**：本仓从未引本地 OCR 引擎，OCR 本身就是「视觉模型转述」，天然无重依赖；`cd2e4d5` 判不适用 |
+| `9689163` | 搜索直接抓 Bing、砍 `ddgs`（国内不可达 + 多引 19MB 依赖），`curl_cffi` chrome 指纹兜反爬 | `search/src/main/java/app/androidrik/search/` 已多 provider（Bing/Brave/Exa/Jina/Firecrawl/…）；`data/ai/tools/SearchTools.kt:47` `search_web` / `:94` `scrape_web` 按当前服务真实能力动态出 schema | **已有等价**：本仓搜索是 provider 抽象而非硬编码抓取，无「换一个抓取库」的问题 |
+| `9de8ae2` | 分支会话未命名时沿用源会话名 +「（分支）」 | 本仓分支是 `MessageNode` 树内切换（同一会话内），不存在独立会话别名概念 | **不适用/已内化** |
+
+### F.3 不适用（29 条）
+
+- **桌面宿主 UI 重组与样式（20 条）**：`c20353a` `300985d` `21d0e68` `9ef5544` `a1de4ef` `3a495a4` `976f35f` `37c968f` `2d5bcb6` `501e40e` `22bacc7` `699488d` `962e4f8` `44da5d6` `98dfa14` `d09ee4e` `647ecf1` `a8ecc20` `7082fdd` `255c91b`。rail/slot/panel/会话面板是 Electron iframe 宿主形态，本仓是 Compose 原生导航，无对应需求（审批在工具卡内、待办在后台任务页、搜索在会话页）。
+- **运行时形态不可移植（9 条）**：`fb3a3bc` `2b04968` `89de365`（Electron 隐藏窗渲染 + `curl_cffi` 回退——Android 没有第二个浏览器内核供后端代理；本仓 `scrape_web` 是第三方 reader 服务）；`4496adf`（ONNX embedding——本仓明确不做 embedding，见 `peer-verdicts-2026-11-08.md` §一.9）；`cd2e4d5`（RapidOCR 本地引擎）；`665256d`（图形安装器——Android 走 APK/商店）；`2b9bd16`（插件后端 npm 依赖自动安装——本仓插件无子进程后端，只有 QuickJS 规则与编译期插件）；`b398de1`（目录白名单放行——本仓 workspace 是 fd 级锚定，形态不成立）；`2a0699f`（循环 import 用模块 `__getattr__` 惰性化——Kotlin 无此形态）。
+
+### F.4 记账（20 条，不立项）
+
+- **工程/文档纪律（13）**：`40e1ae5`（AGENTS.md 缩为入口 + 新增 `docs/develop/{backend,frontend,installer}.md` 分册——本仓 AGENTS.md 已是同类入口，可留观）；`4b81292`（文档去冗余 + 修正 host dispatch 引用）；`f7a57d7`+`002ba63`（CONTRIBUTING + 双 README 链接）；`1f48c05`+`5f8da4b`+`63b38a3`（删残留配置 / 删 TUI 1576 行 / 删 TUI 配置——「功能下线同一次改动删净」的正面样本）；`6275da1`（依赖瘦身）；`6a419a1`（ruff 格式化）；`96dabbe`+`4290ee9`（API 文档修正 / 请求理由措辞约束）；`af299fa`（过时注释）；`da78e53`（`.gitattributes` pin LF——判据见 F.5）。
+- **路径与实现细节（3）**：`d72c5af`（`/agent_vm` 沙盒视角绝对路径映射——**同一路径语义多入口必须收敛到一个映射函数**，本仓 workspace 已单点锚定）；`b74b979`（附件快照从 Agent 迁入 Task，纯落点重构）；`01fd2d0`（OCR 构建排除项清理，随 `c5fc53a` 一起失效）。
+- **同批 revert 样本（2）**：`7a462e9`+`00c8d9f`（过滤 AdGuard/AdBlock 占位文本，9 分钟后 revert）——**兜底启发式不可靠就整块回滚**，不记账为功能。
+- **形态不符（2）**：`7a40867`（sensor 配置由 `fields` 声明渲染表单，含 kv/list 子编辑器 + 原始 JSON 切换保留——本仓插件自管 `PluginKeyValueStore` + 插件自绘 UI，宿主不渲染 schema 表单；若将来做插件市场再取「声明式字段 + 原始 JSON 兜底」）；`b0b1218`（projects API 文档，随 F.2 记）。
+
+### F.5 修正旧结论（1 条）
+
+- **`cb00658`**：§七 第 1 行「`PARADIGM.yaml` 的 `trigger` 字段无消费方」→ **上游已于 11-09 自己删除该字段**（默认范式 + `docs/plugins/agentloop.md` 同步删干净）。「文档先于实现」的旧结论仍成立（这正是它被删的证据），但该具体条目已消解，后续评估不要再引用。
+- **状态回写（非判决）**：§二.3「代码组织弱：`host.js` 3288 行」已过时——现为 20+ typed TS 模块 + esbuild 产物 + `tsc --noEmit` strict + CI 重建比对；但 **Python 侧未见拆分**（`agent.py`/`process.py` 一类大文件问题仍在），Round 2 的判断只在「前端宿主」这一段作废。
+
+### F.6 判据沉淀建议（供 `peer-verdicts-2026-11-08.md` §二/§三）
+
+- 静态红线脚本必须**接进 CI**才算门禁；`AGENTS.md` 写了跑法但没人跑 = 不存在（purrcat `6a95539`/`bb33169`；本仓 `scripts/audit_ime_trap.py` 现状即反例）。
+- 测试分层按**目录**归类、`conftest` 自动打 marker；L2 E2E 永进 PR 门。
+- 挂起用例必须带 `reason=` + 任务号，且**无因挂起总数设上限**；禁止为变绿删用例、放宽断言（purrcat `test_red_lines.py`）。
+- 功能下线同一次改动内删净（代码+用例+fixture+spec+文档）；**删完测试仍绿 = 该用例没测到行为边界**（purrcat AGENTS.md 删除清单）。
+- 生成产物入库必须 CI 重建 + `git diff --exit-code` 比对，并 pin 行尾（LF）保证跨平台可复现；**更优解是产物不入库、构建期生成**（本仓 `web/build.gradle.kts` 的 `buildWebUi` preBuild 即此形态，天生无偏移面）。
+- 巨型文件拆分以「契约类型单点 + 入口依赖链」为骨架，跨模块可变绑定只读、写走 setter。
+- 同一路径语义（沙盒视角 / 宿主绝对路径）只能有一个映射函数；多入口各自实现必错（purrcat `d72c5af` 与 `9bc2d58f4` 同族）。
+- 接口文档与路由由 CI 校验一致（purrcat `scripts/check_api_docs.py` 进 L3）——本仓 `web/routes/` 目前无此校验，随 F1 可选落地。
+
+### F.7 证据与复现
+
+```bash
+git -C F:/build/projects/purrcat log --oneline --reverse adbba56..origin/main   # 61 条
+git -C F:/build/projects/purrcat show 6a95539 -- .github/workflows/ci.yml AGENTS.md
+git -C F:/build/projects/purrcat show 7cd7134 -- tests/l3/test_tool_registry_contract.py
+git -C F:/build/projects/purrcat show 016a8a7 --stat    # 5696 行 host.js → 20+ typed 模块
+```
+
+证据级别：本地源码（PurrCat `adbba56..7cd7134` 逐条 diff；本仓 `file:line` 现场 grep，未改源码）。

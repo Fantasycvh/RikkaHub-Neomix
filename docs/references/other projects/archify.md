@@ -52,3 +52,16 @@
 - **C2 嵌套产物用子收据递归校验**（`272ab1108`）：内嵌原生图走自己的 checker，父收据只认子收据的 `sha256/bytes` 与 composition；`finalize` 默认串 `validate → deliver → check`，浏览器检查 opt-in。「schema → 生成 validator」这条链基线前已存在，本轮增量只是第二产物族接入同一生成链。
 
 **结论**：「抄契约、不抄运行时」不变，补两点操作经验（允许受限 Markdown 输入层；嵌套产物只用子收据核对哈希与字节，不重跑子校验）。Node 运行时在 Android 仍不可用。
+
+## 2026-11-03 → 11-10 增量评估（2026-11-10，3 提交）
+
+> 远端实取（2026-11-10）：`tt-a1i/archify` pushed `2026-11-10T09:01:28Z`，默认分支 main；**95,258 stars**（10-16 时为 84.1k）。11-03 之后默认分支仅 **3 条**（11-08 两条、11-10 一条），11-03→11-08 为空窗；**IR / 校验 / 产物族 / 原子替换 无结构变化**。
+> 证据级别：**远端：3 条 commit 全量 message + stats**（`gh api repos/tt-a1i/archify/commits/<sha>`），无源码级。
+
+| sha | 日期 | 内容（message 摘要） | 判决 |
+|---|---|---|---|
+| `11b0d6031` | 11-08 | `docs(dsh)`: 记录 `@tt-a1i/archify-dsh@1.1.0` 已发布（2026-11-08，tarball SHA256 `e65d77e4…`，打包 Archify **3.2.0** from `edf158c4`；三平台 tag gate 通过）；同步 4 个 README 安装命令、`community/packages/archify-dsh.json`、adapter CHANGELOG；docs contract 改钉「已发布」三元组 1.1.0 / 3.2.0 / 0.2.1-rc.2（不再检查 pending-candidate）。顺带加 npm **Trusted Publishing**（GitHub OIDC 换短时凭证、无 token、fail-closed）与发布徽章修正（adapter release `--latest=false`）。 | **不适用**（发行工程；本仓无 npm / 多平台 tag gate 面）。记账一行：「已发布版本 → 文档契约 → CI 断言」的链可防文档漂移，但本仓同类守卫是 `scripts/audit_*`，暂不引入。 |
+| `cfca6b601` | 11-08 | `fix(dsh)`: README quick-start 安装命令换成已验证的 `npx -y skills@latest add https://archify.si …` 后，docs contract 仍断言旧 `npx skills add … -g`，自 11-02 起 DSH 契约测试全红、阻塞 1.1.0 发布门；改为逐字断言当前围栏命令（三语言）。 | **不适用**（安装命令面）。记账：文档里的**命令值**必须有单一事实源 + 测试逐字断言；本仓无对外安装契约，不做。 |
+| `7e45f36c6` | 11-10 | `fix(check)`: macOS 下 `process.stdout` 为**管道**时是异步的——Explainer 分支 `console.log` 收据后紧接 `process.exit()`，**超过一个管道块（~8 KiB）的收据 JSON 被截断** → `deliver`/`finalize` 报 `Could not parse the successful artifact-check receipt: Unterminated fractional number in JSON`（产物其实已通过）。修：收据改 `process.stdout.write` 并在 write 回调里退出（旧图路径用 `process.exitCode` 自然 drain），carry #1131 的管道回归测试；复现例 = 7 panel / 4 diagram、receipt **21,289 B**（截到 8192）。**stable 回迁**（cherry-pick + 重建 `archify.zip`）。 | **记账级（收据契约增量）**：机器可读收据经**进程管道**交付时，完整性要求 =「退出前必须 flush，且与大小无关」；>8 KiB 截断是实测值。本仓若吸收「交付前原子校验 + 修复清单」，宿主是 Android 进程内（Compose/WebView 进程内调用），**不经过 OS 管道、不踩此坑**，故**不做候选**；将来若出现 CLI / 桌面侧 stdout 交付面再启用此条。 |
+
+**结论**：「抄契约、不抄运行时」不变。3 条里 2 条是发行 / 安装文档，1 条是收据交付的 flush 细节（记账级）；IR / 校验 / 原子替换 / 修复清单四件套无变化，C1（第二产物族同一契约）与 C2（嵌套产物只用子收据核对哈希与字节）仍是 10-31 时的状态。Node 运行时在 Android 仍不可用，故仍不装技能。

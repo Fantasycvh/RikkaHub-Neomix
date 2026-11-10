@@ -10,6 +10,8 @@
 
 > **2026-11-06 新增 #15 dsh-Go**：固定提交 `cf2f7c861e1098661a3a2039b3a4cb1633790102`（2026-11-06）正式评估，深度 文档+源码抽样；判定「不同架构、代码可移植 ≈ 0」，可借的是**运行时安装事务/更新契约、危险操作分级 +「问 AI」、协议/SDK 工程纪律**；插件协议已由设计稿 §十一 系统复盘，**不新增立项**。原文 [`dsh-go.md`](references/other%20projects/dsh-go.md)。
 
+> **2026-11-10 增量同步**：对上游 + 8 个有新增提交的来源做了一轮增量评估——上游 `fe5a28f9a..8a837b27e`（16 提交 + issue #2305–#2310）、NMoi 32、BiliPai 35、PurrCat 61、Miffan 141（远端）、bigeye 1、billion-context 671（抽样）、dsh-Go 542（抽样）、archify 3；Yuihub / senera / rikkahub-agent / agentd / SillyTavern 核对为**无新提交**。本轮**只评不施**：**吸收 0 / 候选 32（P2×11、P3×21）**，其余为已有等价或判据记账。两项本仓实证发现已挂候选：**CI 零测试门禁**（PurrCat 判据，`.github/workflows` 只 `assembleRelease`）与 **3 个 bundled `.so` 未做 16 KB 页对齐**（dsh-Go 16 KB 适配引出，`libtex_poc`/`libpdf2svg_bridge`/`libgraphite2`）；**#2306 多图上传跳过图片编辑**确认为本仓同构 bug（`ChatFilesPickerSheet.kt:125`）。判决汇总见 [peer-verdicts §六](peer-verdicts-2026-11-08.md)，明细在各台账末节。
+
 **怎么读这份文档**：
 
 1. 要**做事** → 直接看 §三「落地顺序与状态」（唯一口径的当前状态）。

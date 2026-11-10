@@ -4,6 +4,8 @@
 
 > **同步点（2026-11-07 更新）**：已评估到上游 **`fe5a28f9a`**（2026-11-07，上游 HEAD，已发 `3.1.2`），`903e058b9` 之后共 **25 提交**（逐条见「2026-11-07 同步评估」）；issue 扫描到 **#2304**。**当日已吸收落地**：bettertext bump v0.1.5（#2285/#2301）、`3733bac8f` DAO/仓库部分（本仓确认 #2299 同构孤儿收藏 bug 后修复）、`6328f4a8d` 余额查询 POST+JSON、`b40d7a273` 顶栏胶囊（方案定案「两套共存加开关」，haze 维持 2.0.1）；**等价五条**：`e011970cb`（跳板机）、`dba9fa574`（收藏去重）、`ae599e8d7`（图片压缩缓存，本仓 MediaEncodingCache 覆盖热路径）、`e85c1d901`（压缩直填，NumericDialogField 领先）、`88dee920c`（世界书拖拽，本仓整页领先）；**大体等价**：`4ebfde221`+`27ef05ede`（后台任务三件套/任务中心/进程树杀本仓均已领先，唯一缺口「任务完成主动通知模型」挂账待专项批次）。用户拍板不跟：`bbae6d3a7`+`6687f636c` 推荐提供商弹窗线；`c512338d5` deps update 稍后。详见文末实施记录。
 
+> **同步点（2026-11-10 更新）**：已评估到上游 **`8a837b27e`**（2026-11-10，上游 HEAD），`fe5a28f9a` 之后共 **16 提交**（逐条见「2026-11-10 同步评估」）；issue 扫描到 **#2310**。本批**只评不施**（未改源码、未提交）：**吸收 0 条**；**候选 8 条**——`bcc649abc` 一轮中途自动压缩（P2）、`5b7ca774b` 对话地图滑动卡顿（P2）、`921427f95` web 输入 token 取最后一次（P2，连带补 `UIMessage.lastUsage` 旧账）、`e1667163c` 的两处残件（P2：`signature_delta` 累加 / 非流式相邻 thinking 不合并）、`62d6acd31` 通知权限卡（P3）、`90fe936ed` 信任用户 CA（P3，需拍板）、`1c93ca72c` 500k token 调试对话（P3）、`9bc0fd658` 默认提供商全开（P3，需拍板）；**已有等价 2 条**（`5863c4e4c` 地图搜索框悬浮、`0cd90ef12` 比例自动压缩——本仓压缩引擎更强，仅「压缩组装搬离主线程」留 P3 残件）；**不跟/不适用 6 条**（`25b70392a`+`ffb1c79e1` Phone Use 线、`da498cb2d` STA1N、`7691e385d`/`8a837b27e` i18n、`9135903d1` specialUse）。issue **#2306 多图上传跳过图片编辑＝本仓同构 bug（`ChatFilesPickerSheet.kt:125`）**，待用户拍板立项。
+>
 > **同步点（2026-11-03 更新）**：已评估到上游 **`903e058b9`**，`a5db9c9b7` 之后共 **3 提交**；issue 扫描到 **#2290**。按用户指定分四批落地：收藏重复 key 防崩、设置页局域网权限入口、OCR 配置失效明确报错、多关键词模型搜索。`20e9ddcc5`（配色库去 submodule）暂缓；后台 shell PR #2268 仍未合并，继续专项观察。详见文末「2026-11-03 同步评估与四批吸收」。
 
 > **同步点（2026-10-31 更新）**：已评估到上游 **`a5db9c9b7`**（2026-10-29，上游 HEAD，版本 `3.1.1`+dev），本批 `ad2c4430d`..`a5db9c9b7` 共 **10 提交**（逐条见「2026-10-31 同步评估」）：**两条 P1 已吸收（fork `beb6fb1fb`）**——`1575d179d`（空 role 崩溃容错 + 3 条回归用例）、`79f4b6fb2`（SAF 导出防闪退两处）；**余吸收候选**：`a046505a6`（加号面板滚动，P2）、`a5db9c9b7`（Tinyfish purpose，P2）、`eb530b0ff` 的 LatexText 行距正则（P3）、`281c9525a`（停止后队列卡住，P2 待核）、`a1c61c3cb`+`fa5d5f3f6`+`20c24e7d3`（构建/依赖小件，P3 一批）；已等价 3 条（`2c4d1979c` 本仓 10-25 已修同根因、`50bb57857` 决策 8 覆盖更强、`4af510624` 前批已结）；不跟 4 条（BetterText 迁移、ANSI 色块等）。**未合入分支 `feat/background-shell` 两条（shell 后台命令 + 会话收件箱）记账观察**。issue 扫描至 #2275，**#2271（Mistral 422 reasoning_content，open）本仓同构风险**。
@@ -1796,6 +1798,51 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 - **nmoi**（`F:\build\projects\nmoi`，fetch 需代理）：`origin/main` 至 **D282**（2026-11-07 晚），本地分支落后 165 提交。与本仓相关度高：**世界书多册+整页+按关键词注入+导入（D278–D282）**、上下文档位 F1–F4 接请求组装、图片临时额度（D272）、会话绑定工作区（D271，schema v18）、压缩两条线进设置。世界书多册与本仓 lorebook/card-lorebook 线撞期，单独细看时参考。
 - **trickle**（`F:\build\projects\juanliu_trickle`）：本地仓未配 remote，最新提交停在 2026-10-25（§15 交易拆分、§8 收口），无新动态。
+
+## 2026-11-10 同步评估（`fe5a28f9a`..`8a837b27e`，16 提交）+ issue 扫描（#2305–#2310）
+
+> fetch 后 `upstream/master` = `8a837b27e`（2026-11-10 HEAD）；本批 `fe5a28f9a`（3.1.2 同步点）之后共 **16 提交**。本轮**只评不施**（用户指定先评估）。判决证据以**本仓源码 grep 实核**为准（file:line），上游侧读 diff；上游推翻检查：本批区间内无 revert 提交，`git log -S` 亦未发现本批特性被上游回退。issue 用 `gh api` 直取（含 timeline；#2305 的关闭提交 `055faeb38` **不在本地 ref 内**，用 `gh api commits` 取到改动文件）。
+
+### 总评
+
+**16 提交：吸收 0 / 候选 8（P2×4、P3×4）/ 已有等价 2 / 不跟·不适用 6**。
+
+本批上游重心是**上下文压缩管线**（`0cd90ef12`+`bcc649abc`）与 **Phone Use**（`25b70392a`+`ffb1c79e1`）。压缩线本仓自研已领先（多档阶梯 + 覆盖率闸 + 保留比例/目标 token），上游真正值得看的是「**一轮中途到达阈值就压缩**」这条能力缺口；Phone Use 是与本仓产品方向正交的大件（无障碍自动化 + 上游 github 渠道源集），本轮判不跟。价值密度最高的反而是两条**「上游修好了、本仓上次只吸了最小面」的旧账**：`e1667163c` 暴露出本仓 Claude 签名链路两处残件，`921427f95` 暴露出本仓 App 侧统计行仍在显示多步累计输入（`660b5d65f` 当年只吸了 stepCount）。
+
+### 逐条结论
+
+| 上游提交 | 内容 | 判决 | 依据 / 本仓落点 |
+|---|---|---|---|
+| `da498cb2d` | 内置 STA1N 提供商 | **不跟** | 本仓出厂 provider 列表已自主分叉（`DefaultProviders.kt` 无 APIMart/STA1N，另有随想AI网关、AckAI 等本地取舍），且本仓**没有 `RecommendedProviders.kt` 线**（上游同提交还改推荐列表文案）；STA1N 为第三方 RP 站点，收益仅覆盖共用用户 |
+| `9bc0fd658` | 默认提供商全部默认开启（14 处布尔） | **候选 P3** | 纯布尔翻转（上游 14 处 `enabled=false→true`，+14/−14）；本仓出厂列表同为默认关闭形态（多处 `enabled=false`），但列表已分叉、只能对共有项生效；属首启 UX 策略，**需用户拍板**，量级 <0.5h |
+| `5863c4e4c` | 对话地图搜索框固定在顶部 | **已有等价** | 本仓对话地图 `ChatListPreview`（`ChatList.kt:914`）搜索框已是 Box 第二子元素**叠在列表上**（`ChatList.kt:1005`）并自带 `surfaceContainerHigh` 底色、列表 top padding 预留 72dp（`ChatList.kt:944-947`），比上游「纯浮条」更可读；**小缺口**：上游在搜索词变化时 `snapshotFlow{drop(1)} → scrollToItem(0)` 回顶，本仓无（一行，P3 残件） |
+| `921427f95` | web 消息统计输入 token 取最后一次请求 | **候选 P2** | 本仓 `MessageDto` 无 `lastUsage`/`stepCount`（`WebDto.kt:215`），web-ui `getNerdStats` 仍直接显 `usage.promptTokens`（`web-ui/app/components/message/chat-message.tsx:132`）；**根因是 ai 侧旧账**——上游 `660b5d65f` 的 `lastUsage`/`contextTokens` 本仓当年只吸了 `stepCount` 最小面（`ai/.../ui/Message.kt:42` 有 `stepCount`、**无 `lastUsage`**），导致 App 侧统计行同样显累计输入（`ChatMessageNerdLine.kt:78`）。落点：ai 加字段 + 生成侧写入 + `WebDto` + web-ui，~1 天 |
+| `25b70392a` | Phone Use（无障碍操作手机，1100+ 行） | **不跟**（产品方向/合规，需拍板） | 上游把服务放 `app/src/github` 渠道源集（Play 版无此服务）；本仓无渠道源集拆分（`app/src` 仅 main/debug），无障碍自动化 + 支付/银行黑名单 + 悬浮窗让屏属独立产品线。**底座并非空白**：`data/ai/tools/local/LocalTools.kt`、`ui/floating/ChatFloatingWindows.kt`、`service/ChatFloatingTracker.kt`、`ui/pages/assistant/detail/AssistantLocalToolPage.kt` 均与上游同构，若用户要移植按专项批次估 2–3 天 |
+| `62d6acd31` | 设置页提示授予通知权限 | **候选 P3** | 本仓权限框架齐备：`PermissionTypes.kt:72` 已有 `PermissionNotification`、`PermissionManager`、`LocalNetworkPermissionCard.kt:25`；只差通知卡组件 + `SettingPage` 条件 item（现仅本地网络卡 `SettingPage.kt:128-130`）+ 1 个字符串×3 locale；~1h |
+| `7691e385d` | i18n 补 SSH 跳板机 + 压缩翻译 | **不适用** | 本仓已裁到 en/zh/zh-rTW 三 locale（`app/src/main/res` 无 `values-ar/de/ja/ko/ru`），且本仓 SSH 跳板机为自研键（`workspace_ssh_editor_jump*`，`values/strings.xml:3057` 起，三 locale 齐） |
+| `9135903d1` | 后台 shell 前台服务改 specialUse | **不适用**（本仓无该服务） | 本仓无 `BackgroundShellForegroundService`（后台 shell 走任务中心，不起 FGS）；既有 `WebServerService`/`KeepAliveService` 已是 specialUse（`AndroidManifest.xml:287/302`），`MediaCreationForegroundService`/`BackupForegroundService` 的 dataSync 为短任务，不存在 6h 限额问题 |
+| `1c93ca72c` | 调试页创建 500k token 对话 | **候选 P3** | 本仓 `DebugVM` 已有 3MB 超大对话、1024 条消息生成器（`DebugVM.kt:115`/`:165`），缺按 token 估算的版本；本仓压缩线正需要 token 精确的长对话做回归，~1h |
+| `0cd90ef12` | 按上下文占用比例自动压缩 | **已有等价**（功能面本仓领先）+ P3 残件 | 开关/阈值/保留比例/目标 token 全在档且默认关（`Settings.kt:213/242/249/265`，UI `SettingModelPage.kt:337`），触发在轮前 `ChatService.kt:1465`→`maybeAutoCompress`（`:2302`，判据 `CompressionPlanner.kt:110`），压缩引擎为多档阶梯 + 覆盖率闸（本仓自研，强于上游单次摘要）。上游独有部分：压缩纳入会话任务槽 / `SessionActivity` / `ConversationInbox` 顺序——本仓无该派发线（以 `WorkspaceNoticeInbox`+消息队列替代）且压缩是模态对话框，**架构分叉不跟**。**残件 P3**：`compressToCheckpoint`（`ChatService.kt:2158`）内无 `withContext(Dispatchers.*)`，手工入口在 `viewModelScope`（Main），长对话组装仍可能卡主线程——上游「组装搬 IO」这点值得补（~0.5h） |
+| `90fe936ed` | 信任 Android 用户安装的 CA | **候选 P3**（需拍板） | 本仓无 `network_security_config.xml`（`app/src/main/res/xml` 仅 backup/data_extraction/file_paths/shortcuts），manifest 现为 `usesCleartextTraffic="true"`（`:76`）；移植 = +1 xml + 1 manifest 行。**取舍**：信任 user CA 降低 MITM 防护、且 base-config 必须保留 cleartext 许可（否则明文回归）；对应 #2310 的 toggle 部分。量级 ~0.5h |
+| `bcc649abc` | 一轮回复中途达阈值自动压缩 | **候选 P2**（真缺口） | 本仓压缩只有两条线：(a) 轮前 `maybeAutoCompress`；(b) 工具循环内 `ContextBudgetGuard` **优雅停止**（`ContextBudgetPlanner.kt:107`，剩余 <4K 硬停，`ChatService.kt:1580` 注释明确「本守卫只管优雅停止」）。工具循环层**没有**达阈值就压缩的能力 → 长 agent run 仍可能在同一轮里撑爆窗口。落点：本仓工具循环在 `GenerationHandler.kt:476` 单函数 for 循环（**非**上游 `ai/agent` AgentHooks，本仓 `ai` 模块无 `agent/`），需加 pause 出口 + 检查点插到当前回复之后 + 续跑提示词；量级 1–2 天，须与本仓 checkpoint 线（`CompressionPlanner`/`trimCompressionCheckpoints`）对齐 |
+| `5b7ca774b` | 对话地图滑动卡顿 | **候选 P2** | 本仓同构热路径仍在：卡片把 `message.toText()` 全文（`ChatList.kt:981`）交给 `Text(maxLines=1)`（`:992-995`），排版仍要测量整段；`remember` 在主线程、生成中每个 chunk 可能重算。上游 `take(300)` + `Dispatchers.Default` + `conflate` 可直接借用（本仓卡片按节点而非按轮，截断常数/key 需按本仓结构调）；~0.5 天 |
+| `e1667163c` | Claude 思考块回传签名校验 | **部分已有等价 + 两处残件 P2** | 本仓 11-03 前已加固且**强于上游**：redacted_thinking 保留为 Reasoning+`redactedData` 并原样回传、**无签名思考块一律不回传**（`ClaudeProvider.kt:490-504`、`:558-568`，`MessageMetadata.kt:36`；本仓 `763873803` + `7e8b440d2`）。**残件 1**：`signature_delta` 逐片**覆盖**而非累加（`claude/ClaudeStreamDecoder.kt:164-170`），多片签名丢前缀；**残件 2**：非流式相邻 Reasoning 仍被合并成一块、只留后一块 metadata（`ui/Message.kt:121-145` `mergeDelta`，非流式路径 `handleTextGenerationResult` 走它）——本仓合并甚至**没有**上游的 `reasoningType` 判等，跨类型推理也会被并。~0.5–1 天（含回归测试移植） |
+| `ffb1c79e1` | Phone Use 消息标题/图标 | **不跟** | 随 Phone Use 线；本仓工具卡渲染是自有体系（`ui/components/message/tools/`），脱离工具单独移植无意义 |
+| `8a837b27e` | i18n（Phone Use 自启动提示） | **不适用** | 随 Phone Use + 本仓 locale 已裁三语 |
+
+### issue 扫描（#2305–#2310，2026-11-08 之后新增）
+
+- **#2305 插入提示词默认追加、长按替换（closed）**——上游关闭提交 `055faeb38`（**不在本地 ref 内**，`gh api` 取到：改 `ChatInput.kt`/`ChatInputState.kt`）。**本仓已在追加语义**：快捷消息选中即 `state.appendText`（`ChatInputCompletions.kt:144`；`ChatInputState.appendText` `:70`），但**非空时不自动补换行**、且**无长按替换入口** → 需求线 P3（可选，量级 ~2h）。
+- **#2306 多图上传忽略图片编辑（open）**——**本仓同构 bug 确认**：`ChatFilesPickerSheet.kt:125` `if (!skipCropImage && selectedUris.size == 1) launchImageCrop(...) else addImages(...)`，多选直接跳过裁剪/编辑，与 issue 描述一致。上游未修（open，无 diff 可借）；修法=逐张裁剪队列（多步对话框），P2/P3 待用户拍板立项。
+- **#2307 web 输入 token 显累计（closed）**——已由 `921427f95` 修复；本仓缺，见候选 P2（连带 `lastUsage` 旧账）。
+- **#2308 Claude 思考块合并/签名（closed）**——已由 `e1667163c` 修复；本仓两处残件，见候选 P2。
+- **#2309 think 标签在「支持修改思考内容」后读不到（closed，无关联提交）**——`gh` timeline 只有 closed 事件、**无 commit 引用**，取不到上游修法。本仓 think 抽取为**锚定 `\A`**（`ThinkTagTransformer.kt:11`，本仓 `34f1f57d6`）且只处理消息开头；「预设里写 think 标签要求模型照做」属预设/提示词线，与本仓 `\A` 锚定行为同构 → **待核**（先确认本仓是否有该用户场景再立项，不编造结论）。
+- **#2310 TLS/x509 客户端选项（closed）**——上游只落地「信任系统+用户 CA」（`90fe936ed`，候选 P3）；issue 并列要的 **client certificate/mTLS、应用内添加 CA、失败错误上报** 均未实现 → 需求线，本仓不立项；若做按「用户 CA 开关 + 错误可见」两步走。
+- 附（同窗口内的旧号，已结/存量）：#2302 base64 持久化崩溃本仓已有等价兜底（`Base64ImageSanitizer.kt:10` / `FilesManager.kt:408` / `ConversationEntityMapper.kt:23`）；#2303 配置备份仍 open（沿 11-07 记录的需求线）；#2304 SSH workspace 消失已 closed（本仓 SSH 线在档）。
+
+### 本轮实施状态
+
+只评不施：未改源码、未 commit。候选 8 条中 **P2×4** 建议下一实施批优先（`bcc649abc` / `5b7ca774b` / `e1667163c` / `921427f95`，估计合计 3–4 天）；`62d6acd31` + `1c93ca72c` + `0cd90ef12` 残件 + `5863c4e4c` 回顶可合成一个「小件批」（合计 ~3h）；`90fe936ed` / `9bc0fd658` / #2306 需用户拍板后再动。
 
 ## 关联
 
