@@ -220,3 +220,32 @@
 
 验证：`:ai:compileDebugKotlin`、`:search:compileDebugKotlin`、`:app:compileDebugKotlin` 通过；
 `:ai:testDebugUnitTest`、`:app:testDebugUnitTest` 通过；两条 audit 脚本 exit 0（IME 审计仅剩已存档告警）。
+
+### 6.7 2026-11-10 第三轮：剩余候选落地（本地提交，未推送）
+
+用户指定「继续」上一轮列出的剩余项：`bcc649abc` 轮中压缩、`921427f95` lastUsage、
+摘要媒体/工具痕迹、macrobenchmark、P3 小件。本轮全部落地为本地提交（`b6488321e`、
+`a2e9b3ef2`、`1248cf6af`、`19facb031`、`5c93457aa`），范围之外未动。
+
+| 项 | 状态 | 落点 |
+|---|---|---|
+| 6.1 #4 lastUsage（#2307） | **已落地**（实际增量小于上游预期） | 本仓 `TokenUsage.accumulateRound()`（`06c506bde`）**已让 prompt/cached 取最新一步**、只对 completion 求和，上游 921427f95 的前提（`usage.sum()` 全字段累加）在本仓不存在。真正增量：① `UIMessage.lastUsage` 记录本步自己的 usage；② Web 补 `stepCount` + 步数徽标 + 累计输入 hover（Web 之前无步数徽标）；③ DTO/types/locales 与上游对齐；④ ai 序列化兼容测试 |
+| 6.1 #6/#7 摘要痕迹 | **已落地** | `compression/CompressionTraces.kt`：确定性附录（工具名 ≤8、沙箱路径/文档/媒体句柄，12 条 / 600 字符 / 单句柄 ≤160；`data:` 只留 mime）；预算 > `targetTokens×0.25` 整节不接；注入模型的 prior 先剥旧附录、接力合并走代码；追加在覆盖率闸之后（闸分母不受污染）。20 例测试 |
+| 6.1 #2 轮中压缩（`bcc649abc`） | **已落地**（适配本仓 GenerationHandler） | 工具批全部回填后回调暂停：压缩成功 → 检查点插当前回复之后、新开回复续写；失败报错继续原回复、同回复不重试；压缩后仍超阈值 → 本轮不再压缩（判据顺序阈值先于防抖）；重生成（`messageRange != null`）禁用；检查点后非用户消息加续跑提示（不落库）。占用取 `max(usage 锚点, 窗口本地估算+overhead)`；`compressToCheckpoint` 用 live 快照 + `NonCancellable` 提交。25 例测试 |
+| 6.1 #10 macrobenchmark | **已落地（代码；未运行验证）** | `app/baselineprofile` 补齐管线：`PerfConfig`/`PerfMetrics`/`BenchmarkRunner`/`JourneyBenchmarks`（冷启动→聊天 / 长对话滚动 / 发送）+ fixtures 契约 + `perf/run_bench.sh` + `summarize.py` + README；Gradle 未改 |
+| P3 地图搜索词变化回顶 | **已落地** | `ChatList` 加 `rememberLazyListState` + `LaunchedEffect(searchQuery)`（上游 5863c4e4c 残件） |
+| P3 500k token 调试对话 | **已落地** | `DebugVM.createConversationWithTokens`（按 `estimateTokens` 累加、固定语料，供压缩/预算回归）+ 调试页按钮 + 三语 strings（上游 1c93ca72c 等价物） |
+| P3 引用卡去 Markdown 标记 | **已落地** | `MessageQuoteCard` 展示层 `stripMarkdown()`，快照仍存原文（Miffan 9531ec767） |
+| P3 会话列表行 `contentType` | **已落地** | `ConversationList` 的 `items` 补 `contentType`（日期头/置顶头/会话行分池，Miffan c558e5840 族） |
+| 通知权限卡、压缩请求组装搬 IO、世界书时序字段、BiliPai/PurrCat/Miffan 其余项、C5/C6 规范件 | 未动 | 仍为 P3/观察期候选 |
+
+验证：`:ai:compileDebugKotlin`、`:app:compileDebugKotlin` 通过（`-x :web:buildWebUi`，原因见下）；
+`:app:testDebugUnitTest` 3344 例、`:ai:testDebugUnitTest` 527 例全绿；两条 audit 脚本 exit 0。
+
+**两项未验证（已在交付说明中标明）**：
+1. **web-ui 未构建/未类型检查**：本机 `web-ui/node_modules` 缺失、`pnpm` 不在 PATH，`pnpm install --offline`
+   缺 `@babel/core` 元数据失败 → `:web:buildWebUi` 跑不了。Kotlin 侧与 JSON/类型改动只做了静态核对；
+   打 APK 前需在有网环境跑 `pnpm -C web-ui build`（`pnpm -C web-ui typecheck` 更稳）。
+2. **`:app:baselineprofile` 未编译**：`androidx.benchmark:benchmark-macro-junit4:1.4.1`、
+   `androidx.test.uiautomator:2.4.0` 本机 Gradle 缓存没有，`--offline` 解析失败；且无设备 ⇒
+   journey 指标未运行（README 已写「未运行验证」）。首次联网构建时需确认 API 兼容。
