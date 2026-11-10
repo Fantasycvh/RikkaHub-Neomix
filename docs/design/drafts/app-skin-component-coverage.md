@@ -7,11 +7,11 @@
 
 | 控件 | AppSkin 调用 | 保留原生调用 |
 | --- | ---: | ---: |
-| Button | 70 | 1 |
-| OutlinedButton | 38 | 0 |
-| TextButton | 399 | 3 |
+| Button | 71 | 1 |
+| OutlinedButton | 39 | 0 |
+| TextButton | 401 | 3 |
 | FilledTonalButton | 12 | 0 |
-| OutlinedTextField | 279 | 0 |
+| OutlinedTextField | 280 | 0 |
 | TextField | 15 | 0 |
 
 调用名允许通过 import alias 保持原样；审计根据导入目标判定。统一封装内部的 Material 委托不计入页面调用。
@@ -39,7 +39,7 @@
 | ui/pages/mediacreation | 18 | 0 |
 | ui/pages/plugins | 20 | 0 |
 | ui/pages/search | 3 | 0 |
-| ui/pages/setting | 329 | 0 |
+| ui/pages/setting | 334 | 0 |
 | ui/pages/subagent | 7 | 0 |
 | ui/pages/taskcenter | 6 | 0 |
 | ui/pages/translator | 13 | 0 |
@@ -58,7 +58,7 @@
 | ExposedDropdownMenu | 2 |
 | AlertDialog | 105 |
 | BasicAlertDialog | 4 |
-| ModalBottomSheet | 61 |
+| ModalBottomSheet | 62 |
 | TopAppBar | 16 |
 | CenterAlignedTopAppBar | 0 |
 | LargeTopAppBar | 0 |
@@ -74,8 +74,8 @@
 | InputChip | 3 |
 | SuggestionChip | 0 |
 | ListItem | 28 |
-| Slider | 29 |
-| Switch | 175 |
+| Slider | 30 |
+| Switch | 177 |
 
 ## 已接入的共享宿主
 
@@ -145,6 +145,7 @@
 
 - 本清单检查应用 Kotlin 源码的六类基础控件入口与直接 RoundedCornerShape 构造；不把调用比例当成整个应用完成度。
 - 页面结构尺寸、触控最小尺寸、语义状态色和内容数据保持宿主控制；不能把全部 dp/颜色机械改成皮肤参数。
-- WebView、终端 AndroidView、草稿纸画布、图表数据、公式/SVG 的内部渲染仍有独立主题或内容协议，尚未并入原生 AppSkin。
+- 自有 HTML、终端默认色/字号与画布工作区/新画纸已接入 embedded 契约，详见 [嵌入式渲染器说明](design-app-skin-embedded.md)。
+- 远程网页、作者 CSS、ANSI/OSC 显式配色、已有画纸/笔画及公式/SVG 图形颜色保留自身内容协议。
 - 自定义插件渲染器可显式覆盖形状/字体；只能约束已采用契约的宿主，不能强制未知插件遵守。
 - 字体/图标/背景完整资源包及安装升级管理、整皮肤试穿撤销、全页面明暗/大字体/对比度/性能验收仍是后续工作。

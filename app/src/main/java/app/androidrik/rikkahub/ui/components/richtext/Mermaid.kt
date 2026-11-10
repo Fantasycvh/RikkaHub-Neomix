@@ -20,6 +20,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -36,9 +37,13 @@ import app.androidrik.rikkahub.ui.components.webview.WEB_VIEW_BASE_URL
 import app.androidrik.rikkahub.ui.components.webview.WebView
 import app.androidrik.rikkahub.ui.components.webview.WebViewContentCache
 import app.androidrik.rikkahub.ui.components.webview.rememberWebViewState
+import app.androidrik.rikkahub.ui.components.webview.rememberWebSkinStyle
+import app.androidrik.rikkahub.ui.components.webview.APP_SKIN_HTML_META
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 import app.androidrik.rikkahub.utils.escapeHtml
 import app.androidrik.rikkahub.utils.exportImage
 import app.androidrik.rikkahub.utils.toCssHex
@@ -49,6 +54,8 @@ fun Mermaid(
     modifier: Modifier = Modifier,
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val webSkin = rememberWebSkinStyle()
+    val accent = LocalAppSkin.current.skin.embedded.web.accentHex.toComposeColorOrNull()
     val darkMode = LocalDarkMode.current
     val context = LocalContext.current
     // The WebView retains its JavaScript interface, so callbacks must read the latest resources.
@@ -90,10 +97,14 @@ fun Mermaid(
         )
     }
 
-    val html = remember(code, colorScheme, darkMode) {
+    val html = remember(code, colorScheme, darkMode, webSkin, accent) {
         buildMermaidHtml(
             code = code,
-            colorScheme = colorScheme,
+            colorScheme = if (webSkin.enabled) colorScheme.copy(background = webSkin.background,
+                onBackground = webSkin.foreground) else colorScheme,
+            fontFamily = if (webSkin.enabled) webSkin.fontFamily else "sans-serif",
+            fontSize = if (webSkin.enabled) webSkin.fontSizePx else 16f,
+            accent = accent.takeIf { webSkin.enabled },
         )
     }
 
@@ -168,9 +179,12 @@ private class MermaidInterface(
     }
 }
 
-private fun buildMermaidHtml(
+internal fun buildMermaidHtml(
     code: String,
     colorScheme: ColorScheme,
+    fontFamily: String,
+    fontSize: Float,
+    accent: Color?,
 ): String {
     val primaryColor = colorScheme.primaryContainer.toCssHex()
     val secondaryColor = colorScheme.secondaryContainer.toCssHex()
@@ -188,6 +202,7 @@ private fun buildMermaidHtml(
         <!DOCTYPE html>
         <html>
         <head>
+            $APP_SKIN_HTML_META
             <meta charset="UTF-8">
             <meta name="viewport" content="width=1024">
             <script src="${WEB_VIEW_ASSET_URL}/html/mermaid.min.js"></script>
@@ -197,7 +212,7 @@ private fun buildMermaidHtml(
                     padding: 0;
                     display: flex;
                     justify-content: center;
-                    background-color: ${background};
+                    background-color: var(--rikka-background, ${background});
                 }
                 .mermaid {
                     padding: 8px;
@@ -218,9 +233,11 @@ private fun buildMermaidHtml(
                     startOnLoad: true,
                     theme: 'base',
                     themeVariables: {
+                        fontFamily: '${fontFamily}',
+                        fontSize: '${fontSize}px',
                         primaryColor: '${primaryColor}',
                         primaryTextColor: '${onPrimary}',
-                        primaryBorderColor: '${primaryColor}',
+                        primaryBorderColor: '${accent?.toCssHex() ?: primaryColor}',
 
                         secondaryColor: '${secondaryColor}',
                         secondaryTextColor: '${onSecondary}',
@@ -234,7 +251,7 @@ private fun buildMermaidHtml(
                         mainBkg: '${primaryColor}',
                         secondBkg: '${secondaryColor}',
 
-                        lineColor: '${onBackground}',
+                        lineColor: '${accent?.toCssHex() ?: onBackground}',
                         textColor: '${onBackground}',
 
                         nodeBkg: '${surface}',

@@ -61,6 +61,7 @@ internal class MyWebViewClient(private val state: WebViewState) : WebViewClient(
         super.onPageStarted(view, url, favicon)
         state.isLoading = true
         state.currentUrl = url // Update current URL
+        state.appliedSkinScript = null
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
@@ -70,6 +71,8 @@ internal class MyWebViewClient(private val state: WebViewState) : WebViewClient(
         state.pageTitle = view?.title // Update title
         state.canGoBack = view?.canGoBack() == true
         state.canGoForward = view?.canGoForward() == true
+        state.currentUrl = url
+        view?.let { state.applySkin(it) }
     }
 }
 
@@ -104,8 +107,10 @@ fun WebView(
     onUpdated: (WebView) -> Unit = {},
 ) {
     // Remember the clients based on the state
-    val webChromeClient = remember { MyWebChromeClient(state) }
-    val webViewClient = remember { MyWebViewClient(state) }
+    val webChromeClient = remember(state) { MyWebChromeClient(state) }
+    val webViewClient = remember(state) { MyWebViewClient(state) }
+    val webSkin = rememberWebSkinStyle()
+    val skinScript = remember(webSkin) { webSkin.script() }
 
     Box(
         modifier = modifier
@@ -150,14 +155,13 @@ fun WebView(
             },
             update = { webView ->
                 state.webView = webView
+                state.skinScript = skinScript
+                webView.webChromeClient = webChromeClient
+                webView.webViewClient = webViewClient
                 state.interfaces.forEach { (name, obj) ->
                     webView.addJavascriptInterface(obj, name)
                 }
                 Log.d(TAG, "AndroidView: Updating WebView")
-                // Ensure clients are updated if state changes (though unlikely here)
-                // webView.webChromeClient = webChromeClient
-                // webView.webViewClient = webViewClient
-
                 // Update settings that might change
                 webView.settings.javaScriptEnabled = state.javaScriptEnabled
 
@@ -191,6 +195,7 @@ fun WebView(
                         // NO-OP: State changes related to navigation are handled by the methods in WebViewState
                     }
                 }
+                state.applySkin(webView)
                 onUpdated(webView)
             }
         )
@@ -218,7 +223,8 @@ sealed class WebContent {
         val baseUrl: String? = null,
         val encoding: String = "utf-8",
         val mimeType: String? = null,
-        val historyUrl: String? = null
+        val historyUrl: String? = null,
+        val appOwned: Boolean = false,
     ) : WebContent()
 
     data object NavigatorOnly : WebContent()
@@ -234,6 +240,8 @@ class WebViewState(
     var content: WebContent by mutableStateOf(initialContent)
     internal var forceReload: Boolean by mutableStateOf(false) // Internal state to force URL reload if needed
     internal var lastLoadedData: WebContent.Data? = null
+    internal var skinScript: String? = null
+    internal var appliedSkinScript: String? = null
 
     // --- Loading State ---
     var isLoading: Boolean by mutableStateOf(false)
@@ -282,9 +290,10 @@ class WebViewState(
         baseUrl: String? = null,
         encoding: String = "utf-8",
         mimeType: String? = null,
-        historyUrl: String? = null
+        historyUrl: String? = null,
+        appOwned: Boolean = false,
     ) {
-        content = WebContent.Data(data, baseUrl, encoding, mimeType, historyUrl)
+        content = WebContent.Data(data, baseUrl, encoding, mimeType, historyUrl, appOwned)
     }
 
     // --- Navigation Methods ---
@@ -349,9 +358,10 @@ fun rememberWebViewState(
     historyUrl: String? = null,
     interfaces: Map<String, Any> = emptyMap(),
     settings: WebSettings.() -> Unit = {},
-) = remember(data, baseUrl, encoding, mimeType, historyUrl) { // Use keys
+    appOwned: Boolean = data.contains(APP_SKIN_HTML_META),
+) = remember(data, baseUrl, encoding, mimeType, historyUrl, appOwned) { // Use keys
     WebViewState(
-        initialContent = WebContent.Data(data, baseUrl, encoding, mimeType, historyUrl),
+        initialContent = WebContent.Data(data, baseUrl, encoding, mimeType, historyUrl, appOwned),
         interfaces = interfaces,
         settings = settings
     )

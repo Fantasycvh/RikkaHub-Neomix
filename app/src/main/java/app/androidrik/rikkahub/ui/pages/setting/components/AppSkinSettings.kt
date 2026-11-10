@@ -110,6 +110,7 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
             Select(options = AppSkinMotion.entries, selectedOption = draft.motion,
                 onOptionSelected = { draft = draft.copy(motion = it) }, optionToString = { if (it == AppSkinMotion.EXPRESSIVE) "灵动动效" else "标准动效" })
             SkinPanelsControls(draft) { draft = it }
+            EmbeddedSkinControls(draft) { draft = it }
             if (importing) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row {
                 AppTextButton(enabled = !importing, onClick = onDismiss) { Text("取消") }

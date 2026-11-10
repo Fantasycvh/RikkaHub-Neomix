@@ -56,6 +56,9 @@ extraLargeIncreased(32)、extraExtraLarge(48) 也通过同一映射生成，不�
 
 ## 尚未覆盖的协议边界
 
+以下为该轮迁移时的边界；WebView、终端与画布的后续接入已见
+[嵌入式渲染器说明](design-app-skin-embedded.md)。
+
 WebView、终端 AndroidView、草稿纸画布、公式和 SVG 的内部内容主题不属于本轮原生
 组件迁移。图表数据标记、语义状态色、头像裁切以及宿主结构/触控尺寸也不能统一按
 装饰参数替换。未知插件渲染器仍可提供显式外观；完整资源包管理、整皮肤试穿撤销、

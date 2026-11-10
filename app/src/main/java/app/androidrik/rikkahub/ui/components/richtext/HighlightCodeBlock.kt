@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.components.richtext
 
 import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
+import app.androidrik.rikkahub.ui.components.webview.APP_SKIN_HTML_META
 import org.koin.compose.koinInject
 import app.androidrik.rikkahub.ui.pages.assistant.detail.CardDuplicateConfirmDialog
 import app.androidrik.rikkahub.ui.pages.assistant.detail.TavernCardImport
@@ -632,7 +633,7 @@ private fun CodeBlockPreview(
 ) {
     val state = rememberWebViewState(
         data = buildCodePreviewHtml(code = code, language = language),
-        baseUrl = "https://rikkahub.local",
+        baseUrl = "https://rikkahub.local/",
         mimeType = "text/html",
         settings = {
             builtInZoomControls = true
@@ -650,7 +651,7 @@ private fun CodeBlockPreview(
 
 private fun buildCodePreviewHtml(code: String, language: String): String {
     return if (language == "svg") {
-        """<!DOCTYPE html><html><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;">$code</body></html>"""
+        """<!DOCTYPE html><html><head>$APP_SKIN_HTML_META</head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;">$code</body></html>"""
     } else {
         code
     }
