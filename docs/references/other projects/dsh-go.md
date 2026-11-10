@@ -154,7 +154,8 @@ dsh-Go 把「哪台主机能用什么」写成明确矩阵：工具卡全主机�
   - **重编前置（按本仓现状）**：`libtex_poc` 走 `tools/tex-poc/build-android.sh`（WSL Ubuntu + rustup `aarch64-linux-android` + NDK r27c linux-x86_64 + `/root/android-libs` 交叉依赖 libpng/graphite2/freetype/termux libicu + `patchelf`）；`libgraphite2` 就在该交叉依赖里（需从源码重编）；`libpdf2svg_bridge` 源码是自包含的 `app/src/main/cpp/pdf2svg_bridge.c`，链接 MuPDF 1.26.8 的 `libmupdf_java`（该库已 `0x4000` 合格，不必动）。三者都只出 arm64；`libmupdf_java`/`libsimple`/`libproot_*`/icu/`c++_shared` 复核均 ≥ `0x4000`。
   - 结论：**重编 + 静态校验不需要设备**；这三个库的**运行验收**要么 Pixel 8/9 系真机、要么 arm64 主机模拟器。可选的替代验收：给三个库补 x86_64 交叉产物后用本机 x86_64 ps16k AVD 复现/验证（graphite2/icu/tex_poc 都得能出 x86_64，工作量远大于重编本身，不推荐）。
 
-- 判决：**候选 P2**（静态缺口确定、改动面小；但无法在本机真机验证 16 KB 链路，落地需设备/模拟器配套）。
+- 判决：**候选 P2，用户 2026-11-10 决定暂缓（不做）**。缺口与设备要求已核实到可执行程度（见上），重启时直接按「重编三库 + 静态校验 + arm64 验收」执行，无需重新调研。
+
 
 ### 7.2 判据级记账（不立项）
 

@@ -216,6 +216,7 @@
 | 拍板：信任用户 CA | **已落地** | 新增 `app/src/main/res/xml/network_security_config.xml`（系统 + 用户 CA），manifest 挂载；`base-config cleartextTrafficPermitted="true"` 显式保留明文许可（声明后 manifest 的 `usesCleartextTraffic` 被忽略） |
 | 6.1 #4 / #2 / #6 / #7 / #10 / #11 | 未动 | 仍待拍板或需设备验证 |
 | 9bc0fd658 默认提供商全开 | **放弃** | 用户 2026-11-10 决定不采纳（首启 UX 策略，本仓出厂列表已自主分叉） |
+| 6.1 #11 3 个 .so 16 KB 页对齐 | **暂缓（不做）** | 用户 2026-11-10 决定暂不实施；设备要求已核实并记入 dsh-go §7.1，随时可重启 |
 
 验证：`:ai:compileDebugKotlin`、`:search:compileDebugKotlin`、`:app:compileDebugKotlin` 通过；
 `:ai:testDebugUnitTest`、`:app:testDebugUnitTest` 通过；两条 audit 脚本 exit 0（IME 审计仅剩已存档告警）。
