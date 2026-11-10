@@ -55,6 +55,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -89,8 +90,11 @@ import dev.chrisbanes.haze.HazeState
 import app.androidrik.rikkahub.ui.components.haze.hazeSourceCompat
 import app.androidrik.rikkahub.ui.components.haze.liquidGlassChromeEffect
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.R
@@ -846,6 +850,17 @@ private fun ChatListNormal(
     }
 
 /**
+ * 概览卡交给 `Text` 的字符串上限。
+ *
+ * 判据：`maxLines` 只决定「显示几行」，**不省**排版成本——文本排版要先对整段字符串做
+ * span 解析与断行扫描，才知道第一行断在哪；几万字的回复每滑进一张卡片，主线程就要扫一遍
+ * 全文，这是长对话概览滑动卡顿的主因。显示前截断到这里即可：一行实际只要几十字，
+ * 300 是给宽屏/小字号留的余量；搜索匹配仍用全文（见 `ChatListPreview` 的后台过滤与
+ * `extractMatchingSnippet`）。
+ */
+private const val PreviewCardMaxLength = 300
+
+/**
  * 提取包含搜索词的文本片段，确保匹配词在开头可见
  */
 private fun extractMatchingSnippet(
@@ -921,16 +936,30 @@ private fun ChatListPreview(
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
-    // 过滤消息（跳转按**节点**解析，不再携带完整列表下标——压缩折叠态两套下标空间不可混用）
-    val filteredMessages = remember(conversation.messageNodes, searchQuery) {
-        if (searchQuery.isBlank()) {
-            conversation.messageNodes
-        } else {
-            conversation.messageNodes.filter { node ->
-                node.currentMessage.toText().contains(searchQuery, ignoreCase = true)
+    // 过滤消息（跳转按**节点**解析，不再携带完整列表下标——压缩折叠态两套下标空间不可混用）。
+    //
+    // 搜索要对每条消息 `toText()`（拼接全部文本 part）后做全文匹配：长对话 × 长回复是
+    // O(节点数 × 全文) 的主线程工作，而生成中每个 chunk 都会改 `messageNodes`。
+    // 关键词非空时挪到后台线程算，并用 `conflate` 丢掉中间状态——只算最新的节点列表 + 关键词；
+    // 空关键词不需要过滤（旧行为就是原列表，也省一次后台往返），那条路不进后台。
+    // 已有结果在最新一次算完前继续沿用（不闪空）；首次为 null 时列表短暂为空一帧，可接受。
+    // `messageNodes` 是普通参数（不是 State），要经 `rememberUpdatedState` 包一层才能在
+    // `snapshotFlow` 里被观察到；`searchQuery` 本身就是 State，直接读即可。
+    val previewNodes by rememberUpdatedState(conversation.messageNodes)
+    val searchMatches by produceState<List<MessageNode>?>(initialValue = null) {
+        snapshotFlow { previewNodes to searchQuery }
+            .conflate()
+            .collect { (nodes, query) ->
+                if (query.isBlank()) return@collect
+                value = withContext(Dispatchers.Default) {
+                    nodes.filter { node ->
+                        node.currentMessage.toText().contains(query, ignoreCase = true)
+                    }
+                }
             }
-        }
     }
+    val filteredMessages =
+        if (searchQuery.isBlank()) conversation.messageNodes else searchMatches.orEmpty()
 
     // 与 ChatListNormal 统一：列表全尺寸延伸到顶栏底下（contentPadding 穿底），
     // 搜索框悬浮在顶栏下缘（自带底色保证从内容上滚过时可读）
@@ -979,10 +1008,13 @@ private fun ChatListPreview(
                             val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
                             val highlightedText = remember(searchQuery, message) {
                                 val fullText = message.toText().trim().ifBlank { "[...]" }
+                                // 匹配在全文里找（片段从命中处开始），交给 Text 的字符串只留前
+                                // PreviewCardMaxLength 个字符：maxLines 只裁显示，不省排版的
+                                // span 解析/断行扫描，长回复每滑进一张卡片都要主线程扫全文。
                                 val messageText = extractMatchingSnippet(
                                     text = fullText,
                                     query = searchQuery
-                                )
+                                ).take(PreviewCardMaxLength)
                                 buildHighlightedText(
                                     text = messageText,
                                     query = searchQuery,
