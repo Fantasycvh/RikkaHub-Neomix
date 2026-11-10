@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    信任用户安装的 CA 证书（吸收上游 90fe936ed / #2310）。
+
+    系统 CA 之外同时信任用户 CA，使自建 CA 签发的 Provider、MCP、搜索等
+    HTTPS 端点可以正常连接。
+
+    注意：一旦声明 networkSecurityConfig，manifest 里的
+    android:usesCleartextTraffic 会被忽略，因此在 base-config 里显式保留
+    明文流量许可，避免破坏局域网 http 端点（本仓语言/提供商/Web 服务场景）。
+-->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="true">
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="user" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>
