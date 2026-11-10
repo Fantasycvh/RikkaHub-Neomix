@@ -25,6 +25,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.ai.FilesPicker
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
+import app.androidrik.rikkahub.ui.components.ai.useMultiCropLauncher
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionCamera
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -113,6 +114,23 @@ internal fun ChatFilesPickerSheet(
             dismissAll()
         },
     )
+    // 多图逐张裁剪（#2306）。单图仍走上面的 useCropLauncher（行为保持不变），多图才用队列：
+    // 每裁好一张立刻加入输入框；中途取消时把「当前这张 + 还没裁剪的」原样加入，不丢用户已选，
+    // 最后统一关 sheet。队列推进由 useMultiCropLauncher 内部完成，不能靠回调里再 launch 下一张
+    // （那个 source 槽会被上一次的 finish 清掉，详见 CropLauncher 里的注释）。
+    val launchImagesCrop = useMultiCropLauncher(
+        onImageReady = { croppedUri ->
+            inputState.addImages(importAttachments(listOf(croppedUri)))
+        },
+        onDone = { remaining ->
+            // remaining 为空 = 全部裁剪完成（每张已在 onImageReady 里加入）；
+            // 非空 = 用户中途取消，剩余原图原样加入，避免已挑好的图白选一场。
+            if (remaining.isNotEmpty()) {
+                inputState.addImages(importAttachments(remaining))
+            }
+            dismissAll()
+        },
+    )
     // GetMultipleContents 而非 PickMultipleVisualMedia：保留文件浏览入口
     // （系统 Photo Picker 只给相册视图、无目录浏览，照片多时翻找慢；上游 4b36640a 亦已 revert 回此形态）。
     // 视频/音频仍是 GetMultipleContents（PickVisualMedia 本就不覆盖音频）。
@@ -122,11 +140,15 @@ internal fun ChatFilesPickerSheet(
                 Log.d("ImagePickButton", "Selected URIs: $selectedUris")
                 // 裁剪改成本进程 Compose 对话框（上游 2a0a831e6）：解码在应用进程内完成，
                 // HEIF 与 EXIF 方向都原生支持，不再需要先拷到临时文件或把 HEIF 转 JPEG。
-                if (!setting.displaySetting.skipCropImage && selectedUris.size == 1) {
-                    launchImageCrop(selectedUris.first())
-                } else {
+                // 单图语义不变：取消裁剪 = 放弃这张，不加入、sheet 保持打开（与旧行为一致）；
+                // 多图才进入逐张裁剪队列。
+                if (setting.displaySetting.skipCropImage) {
                     inputState.addImages(importAttachments(selectedUris))
                     dismissAll()
+                } else if (selectedUris.size > 1) {
+                    launchImagesCrop(selectedUris)
+                } else {
+                    launchImageCrop(selectedUris.first())
                 }
             } else {
                 Log.d("ImagePickButton", "No images selected")
