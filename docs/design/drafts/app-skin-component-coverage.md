@@ -7,11 +7,11 @@
 
 | 控件 | AppSkin 调用 | 保留原生调用 |
 | --- | ---: | ---: |
-| Button | 71 | 1 |
-| OutlinedButton | 39 | 0 |
-| TextButton | 401 | 3 |
+| Button | 72 | 1 |
+| OutlinedButton | 40 | 0 |
+| TextButton | 411 | 3 |
 | FilledTonalButton | 12 | 0 |
-| OutlinedTextField | 280 | 0 |
+| OutlinedTextField | 283 | 0 |
 | TextField | 15 | 0 |
 
 调用名允许通过 import alias 保持原样；审计根据导入目标判定。统一封装内部的 Material 委托不计入页面调用。
@@ -39,7 +39,7 @@
 | ui/pages/mediacreation | 18 | 0 |
 | ui/pages/plugins | 20 | 0 |
 | ui/pages/search | 3 | 0 |
-| ui/pages/setting | 334 | 0 |
+| ui/pages/setting | 349 | 0 |
 | ui/pages/subagent | 7 | 0 |
 | ui/pages/taskcenter | 6 | 0 |
 | ui/pages/translator | 13 | 0 |
@@ -56,9 +56,9 @@
 | ElevatedCard | 1 |
 | DropdownMenu | 24 |
 | ExposedDropdownMenu | 2 |
-| AlertDialog | 105 |
+| AlertDialog | 106 |
 | BasicAlertDialog | 4 |
-| ModalBottomSheet | 62 |
+| ModalBottomSheet | 63 |
 | TopAppBar | 16 |
 | CenterAlignedTopAppBar | 0 |
 | LargeTopAppBar | 0 |
@@ -148,4 +148,5 @@
 - 自有 HTML、终端默认色/字号与画布工作区/新画纸已接入 embedded 契约，详见 [嵌入式渲染器说明](design-app-skin-embedded.md)。
 - 远程网页、作者 CSS、ANSI/OSC 显式配色、已有画纸/笔画及公式/SVG 图形颜色保留自身内容协议。
 - 自定义插件渲染器可显式覆盖形状/字体；只能约束已采用契约的宿主，不能强制未知插件遵守。
-- 字体/图标/背景完整资源包及安装升级管理、整皮肤试穿撤销、全页面明暗/大字体/对比度/性能验收仍是后续工作。
+- 已提供 [本地资源包 v1](design-skin-packages.md)：字体、应用内 Logo、默认聊天背景和槽位纹理的安装/升级/卸载。
+- 全局图标集合、全页面壁纸、资源回收/历史回滚、整皮肤试穿撤销、全页面可访问性/性能验收仍待完成。

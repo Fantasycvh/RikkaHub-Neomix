@@ -30,6 +30,7 @@ fun AppSkinSettings(display: DisplaySetting, onSelect: (String?) -> Unit,
     val presets by AppSkinRegistry.shared.skins.collectAsState()
     val resolved = rememberAppSkin(display)
     var editing by remember { mutableStateOf<AppSkin?>(null) }
+    var packages by remember { mutableStateOf(false) }
     CardGroup(title = { Text("应用皮肤") }) {
         item(headlineContent = { Text("全局样式方案") }, supportingContent = {
             Column {
@@ -44,9 +45,11 @@ fun AppSkinSettings(display: DisplaySetting, onSelect: (String?) -> Unit,
                     AppTextButton(onClick = onClearOverrides, enabled = display.appSkinOverrides != AppSkinOverrides()) { Text("清除覆写") }
                 }
                 AppTextButton(onClick = onReset) { Text("恢复默认皮肤") }
+                AppTextButton(onClick = { packages = true }) { Text("皮肤资源包") }
             }
         })
     }
+    if (packages) SkinPackageManager(resolved.skin, display.appSkinId, { onSelect(it) }, { packages = false })
     editing?.let { initial -> AppSkinEditor(initial, onSave = { value ->
         onEdit(initial, value); editing = null
     }, onDismiss = { editing = null }) }
@@ -111,6 +114,7 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
                 onOptionSelected = { draft = draft.copy(motion = it) }, optionToString = { if (it == AppSkinMotion.EXPRESSIVE) "灵动动效" else "标准动效" })
             SkinPanelsControls(draft) { draft = it }
             EmbeddedSkinControls(draft) { draft = it }
+            SkinResourceControls(draft, { draft = it }, { importing = it }, enabled = !importing)
             if (importing) LinearProgressIndicator(Modifier.fillMaxWidth())
             Row {
                 AppTextButton(enabled = !importing, onClick = onDismiss) { Text("取消") }

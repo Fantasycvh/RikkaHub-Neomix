@@ -4,6 +4,7 @@
 其余原生组件接入见 [组件迁移说明](design-app-skin-component-migration.md) 与
 [覆盖清单](app-skin-component-coverage.md)。
 WebView、终端与画布见 [嵌入式渲染器说明](design-app-skin-embedded.md)。
+本地资源包与安装管理见 [皮肤资源包 v1](design-skin-packages.md)。
 
 ## 本轮范围
 
