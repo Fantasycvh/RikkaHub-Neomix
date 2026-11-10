@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.ui.components.ui.permission
 
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -51,11 +52,11 @@ fun rememberPermissionState(
     permissions: Set<PermissionInfo>
 ): PermissionState {
     val context = LocalContext.current
-    val activity = context as? ComponentActivity
+    val activity = LocalActivity.current as? ComponentActivity
         ?: throw IllegalStateException("rememberPermissionState 必须在 ComponentActivity 中使用")
 
     // 创建权限状态对象
-    val permissionState = remember(permissions) {
+    val permissionState = remember(permissions, context, activity) {
         PermissionState(permissions, context, activity)
     }
 

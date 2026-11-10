@@ -44,7 +44,7 @@ fun FormItem(
             }
             ProvideTextStyle(
                 value = MaterialTheme.typography.labelSmall.copy(
-                    color = LocalContentColor.current.copy(alpha = 0.6f)
+                    color = LocalContentColor.current.copy(alpha = 0.75f)
                 )
             ) {
                 Column(

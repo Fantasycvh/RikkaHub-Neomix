@@ -23,7 +23,7 @@ val ClaudeThemePreset by lazy {
     )
 }
 
-private val primaryLight = Color(0xFFC96442)
+private val primaryLight = Color(0xFFB85838)
 private val onPrimaryLight = Color(0xFFFFFFFF)
 private val primaryContainerLight = Color(0xFFF7E3D9)
 private val onPrimaryContainerLight = Color(0xFF8A3E23)
@@ -44,7 +44,7 @@ private val onBackgroundLight = Color(0xFF262624)
 private val surfaceLight = Color(0xFFFAF9F5)
 private val onSurfaceLight = Color(0xFF262624)
 private val surfaceVariantLight = Color(0xFFEDEAE0)
-private val onSurfaceVariantLight = Color(0xFF6F675C)
+private val onSurfaceVariantLight = Color(0xFF696156)
 private val outlineLight = Color(0xFFBDB7A9)
 private val outlineVariantLight = Color(0xFFE5E1D6)
 private val scrimLight = Color(0xFF000000)

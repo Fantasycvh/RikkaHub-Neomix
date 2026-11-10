@@ -79,7 +79,7 @@ fun wcagContrastRatio(a: Color, b: Color): Double {
     fun luminance(color: Color): Double {
         fun linear(channel: Float): Double {
             val s = channel.toDouble()
-            return if (s <= 0.03928) s / 12.92 else ((s + 0.055) / 1.055).pow(2.4)
+            return if (s <= 0.04045) s / 12.92 else ((s + 0.055) / 1.055).pow(2.4)
         }
         return 0.2126 * linear(color.red) + 0.7152 * linear(color.green) + 0.0722 * linear(color.blue)
     }
@@ -92,10 +92,16 @@ fun wcagContrastRatio(a: Color, b: Color): Double {
 const val WCAG_AA_CONTRAST = 4.5
 
 /**
- * 按背景的 HCT tone 自适应内容色（tone ≥ 50 → 深内容色）：用户气泡/覆写背景是任意
- * 拾取色，M3 的 contentColorFor 无法命中，需按明度兜底。
+ * Pick readable ink for an opaque sRGB fill. Tone alone does not guarantee text contrast.
+ * Keep the existing near-black when it meets AA; use black if neither branded ink nor white does.
  */
 fun adaptiveContentColor(background: Color): Color {
-    val tone = Hct.fromInt(background.toArgb()).tone
-    return if (tone >= 50.0) Color(0xFF1C1B1F) else Color(0xFFFFFFFF)
+    val dark = Color(0xFF1C1B1F)
+    val darkRatio = wcagContrastRatio(dark, background)
+    val lightRatio = wcagContrastRatio(Color.White, background)
+    return when {
+        darkRatio >= WCAG_AA_CONTRAST && darkRatio >= lightRatio -> dark
+        lightRatio >= WCAG_AA_CONTRAST -> Color.White
+        else -> Color.Black
+    }
 }

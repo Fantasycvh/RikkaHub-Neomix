@@ -285,7 +285,7 @@ private fun JsonNullNode(
         Text(
             text = "null",
             fontFamily = JetbrainsMono,
-            color = MaterialTheme.colorScheme.outline
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -308,15 +308,15 @@ private fun ValueText(primitive: JsonPrimitive, onClick: (() -> Unit)? = null) {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t")
-            "\"$content\"" to Color(0xFF6A8759)
+            "\"$content\"" to MaterialTheme.colorScheme.secondary
         }
 
         primitive.booleanOrNull != null -> {
-            primitive.content to Color(0xFFCC7832)
+            primitive.content to MaterialTheme.colorScheme.tertiary
         }
 
         primitive.longOrNull != null || primitive.doubleOrNull != null -> {
-            primitive.content to Color(0xFF6897BB)
+            primitive.content to MaterialTheme.colorScheme.primary
         }
 
         else -> {

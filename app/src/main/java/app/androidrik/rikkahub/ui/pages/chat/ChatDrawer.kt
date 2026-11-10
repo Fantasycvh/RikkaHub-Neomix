@@ -128,7 +128,7 @@ fun ChatDrawerContent(
     val toaster = LocalToaster.current
     val repo = koinInject<ConversationRepository>()
 
-    val activity = context as ComponentActivity
+    val activity = requireNotNull(androidx.activity.compose.LocalActivity.current as? ComponentActivity)
     val drawerVm: ChatDrawerVM = koinViewModel(viewModelStoreOwner = activity)
 
     val conversations = drawerVm.conversations.collectAsLazyPagingItems()
