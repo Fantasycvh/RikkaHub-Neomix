@@ -19,13 +19,17 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Plus
+import com.composables.icons.lucide.X
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
@@ -109,7 +113,7 @@ fun WorkspaceTerminalPage(id: String) {
                                 contentDescription = newTabDescription
                             },
                         ) {
-                            Text(text = "+", fontSize = appSkinTextSize(24.sp))
+                            Icon(Lucide.Plus, contentDescription = null)
                         }
                     },
                 )
@@ -195,7 +199,7 @@ private fun WorkspaceTerminalContent(
                         selected = selectedTab.id == tab.id,
                         onClick = { onSelectTab(tab.id) },
                         modifier = Modifier
-                            .height(40.dp)
+                            .heightIn(min = 48.dp)
                             .semantics {
                                 contentDescription = tabDescription
                             },
@@ -209,6 +213,7 @@ private fun WorkspaceTerminalContent(
                             Text(
                                 text = tab.title ?: tab.number.toString(),
                                 maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.labelMedium,
                                 // 选中 tab 的 PTY 标题走 marquee，未选中省略截断
                                 modifier = Modifier
@@ -233,7 +238,7 @@ private fun WorkspaceTerminalContent(
                                         contentDescription = closeDescription
                                     },
                             ) {
-                                Text(text = "×", fontSize = appSkinTextSize(18.sp))
+                                Icon(Lucide.X, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
                         }
                     }

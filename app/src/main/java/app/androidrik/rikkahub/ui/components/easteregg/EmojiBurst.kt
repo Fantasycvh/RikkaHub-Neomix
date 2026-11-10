@@ -12,6 +12,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -90,10 +92,15 @@ fun EmojiBurstHost(
             val restitution = 0.75f
             val lifetimeSeconds = 4f
             val damping = 0.99f
-            var lastTime = withFrameNanos { it }
+            var lastTime = 0L
             while (true) {
+                // No frame callbacks while idle. The about page must settle after the last particle.
+                if (pendingBursts.isEmpty() && particles.isEmpty()) {
+                    snapshotFlow { pendingBursts.isNotEmpty() || particles.isNotEmpty() }.first { it }
+                    lastTime = 0L
+                }
                 val now = withFrameNanos { it }
-                val dt = ((now - lastTime) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+                val dt = if (lastTime == 0L) initialDt else ((now - lastTime) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
                 lastTime = now
                 if (pendingBursts.isNotEmpty()) {
                     val batchSize = 4

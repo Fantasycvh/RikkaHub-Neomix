@@ -137,7 +137,8 @@ def main():
                   "- 自定义插件渲染器可显式覆盖形状/字体；只能约束已采用契约的宿主，不能强制未知插件遵守。",
                   "- 已提供 [本地资源包 v1](design-skin-packages.md)：字体、应用内 Logo、默认聊天背景和槽位纹理的安装/升级/卸载。",
                   "- 已提供 [全局试穿、一步撤销及包版本回滚](design-skin-trials-and-rollback.md)。",
-                  "- 全局图标集合、全页面壁纸、资源回收、跨进程设置撤销及全页面可访问性/性能验收仍待完成。", ""]
+                  "- 已提供 [明暗、大字体、对比度与性能验收基线](design-skin-acceptance.md)，逐路由结果见其生成矩阵；不等同于所有皮肤/状态的无障碍认证。",
+                  "- 全局图标集合、全页面壁纸、资源回收、跨进程设置撤销、发布版及更多设备的性能测量仍待完成。", ""]
         REPORT.write_text("\n".join(lines), encoding="utf-8")
     for error in errors:
         print(error)

@@ -671,20 +671,20 @@ private fun ModelSettingItem(
             item(
                 onClick = { state.open() },
                 headlineContent = { Text(title) },
+                supportingContent = {
+                    Text(
+                        text = state.currentModel?.displayName ?: emptyText ?: stringResource(R.string.model_list_select_model),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
                 trailingContent = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(
-                            text = state.currentModel?.displayName
-                                ?: emptyText
-                                ?: stringResource(R.string.model_list_select_model),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
                         if (onClear != null && state.currentModel != null) {
                             IconButton(onClick = onClear, modifier = Modifier.size(20.dp)) {
                                 Icon(HugeIcons.Cancel01, contentDescription = null, modifier = Modifier.size(14.dp))

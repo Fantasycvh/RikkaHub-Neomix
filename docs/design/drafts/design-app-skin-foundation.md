@@ -6,6 +6,7 @@
 WebView、终端与画布见 [嵌入式渲染器说明](design-app-skin-embedded.md)。
 本地资源包与安装管理见 [皮肤资源包 v1](design-skin-packages.md)。
 跨页面预览、撤销与资源包版本切换见 [试穿与回滚说明](design-skin-trials-and-rollback.md)。
+全路由明暗、大字体、对比度与真机性能基线见 [皮肤验收](design-skin-acceptance.md)。
 
 ## 本轮范围
 

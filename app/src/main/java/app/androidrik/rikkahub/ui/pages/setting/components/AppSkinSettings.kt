@@ -129,7 +129,7 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
             EmbeddedSkinControls(draft) { draft = it }
             SkinResourceControls(draft, { draft = it }, { importing = it }, enabled = !importing)
             if (importing) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Row {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (onTry != null) AppOutlinedButton(enabled = !importing, onClick = { onTry(draft.normalized()) }) { Text("跨页面试穿") }
                 AppTextButton(enabled = !importing, onClick = onDismiss) { Text("取消") }
                 AppButton(enabled = !importing, onClick = { onSave(draft.normalized()) }) { Text("保存") }

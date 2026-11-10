@@ -81,14 +81,14 @@ fun rememberPermissionState(
     }
 
     // 设置启动器
-    LaunchedEffect(multiplePermissionLauncher, singlePermissionLauncher) {
+    LaunchedEffect(permissionState, multiplePermissionLauncher, singlePermissionLauncher) {
         permissionState.setPermissionLaunchers(multiplePermissionLauncher, singlePermissionLauncher)
     }
 
     // 监听生命周期变化，更新权限状态
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, permissionState) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
@@ -114,7 +114,7 @@ fun rememberPermissionState(
     }
 
     // 初始化时更新权限状态
-    LaunchedEffect(Unit) {
+    LaunchedEffect(permissionState) {
         permissionState.updatePermissionStates()
     }
 

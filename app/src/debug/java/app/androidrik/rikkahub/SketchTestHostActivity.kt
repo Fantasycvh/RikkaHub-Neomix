@@ -15,7 +15,7 @@ import androidx.activity.compose.setContent
  * 且声明在被测应用 manifest 里的 Activity；androidTest APK 里的 Activity 跑在另一个进程。
  * release 变体不包含本类与 `app/src/debug/AndroidManifest.xml` 里的声明。
  */
-class SketchTestHostActivity : ComponentActivity() {
+open class SketchTestHostActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 测试期间屏幕不能息屏/锁屏：息屏后注入的触摸和 Ink 的异步提交都会丢失。

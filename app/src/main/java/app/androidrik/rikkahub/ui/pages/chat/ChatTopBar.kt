@@ -108,6 +108,7 @@ internal fun ContextUsageReadout(
                 formatContextLength(remaining),
             ),
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             color = if (isWarning) MaterialTheme.colorScheme.error else LocalContentColor.current.copy(0.65f),
             style = MaterialTheme.typography.labelSmall.copy(fontSize = appSkinTextSize(8.sp)),
         )

@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,6 +44,7 @@ import java.security.MessageDigest
 import kotlin.math.abs
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -172,16 +174,17 @@ fun UIAvatar(
                     }
 
                     is Avatar.Emoji -> {
-                        Text(
-                            text = value.content,
-                            autoSize = TextAutoSize.StepBased(
-                                minFontSize = 15.sp,
-                                maxFontSize = 30.sp,
-                            ),
-                            lineHeight = 0.8.em,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(5.dp)
-                        )
+                        // An avatar is an icon-sized glyph, independent of the body-text font scale.
+                        BoxWithConstraints(Modifier.fillMaxSize().padding(5.dp), contentAlignment = Alignment.Center) {
+                            val glyphSize = with(LocalDensity.current) { (minOf(maxWidth, maxHeight) * .8f).toSp() }
+                            Text(
+                                text = value.content,
+                                fontSize = glyphSize,
+                                lineHeight = 1.em,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                            )
+                        }
                     }
 
                     is Avatar.Dummy -> {
