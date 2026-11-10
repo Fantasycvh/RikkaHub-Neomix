@@ -67,6 +67,34 @@ class SkinPackageStoreTest {
         assertEquals(1, store.list().single().version)
         assertTrue(registry.skins.value.any { it.id == "package:fixture" && it.name.contains("v1") })
     }
+    @Test fun rollbackRestoresHistoryAndKeepsVersionHighWaterAcrossRestart() {
+        store.install(store.exportSkin("fixture", "One", 1, AppSkin()))
+        store.install(store.exportSkin("fixture", "Three", 3, AppSkin(shapes = AppSkinShapes(inputDp = 24f))))
+        assertEquals(listOf(3, 1), store.history("fixture").map { it.version })
+        store.rollback("fixture", 1, 3)
+        assertEquals(1, store.list().single().version)
+        val restarted = SkinPackageStore(context, registry)
+        restarted.reload()
+        assertEquals(listOf(3, 1), restarted.history("fixture").map { it.version })
+        assertThrows(IllegalArgumentException::class.java) { restarted.install(store.exportSkin("fixture", "Two", 2, AppSkin())) }
+        assertThrows(IllegalArgumentException::class.java) { restarted.rollback("fixture", 3, 99) }
+        restarted.rollback("fixture", 3, 1)
+        assertEquals(3, restarted.list().single().version)
+    }
+    @Test fun missingHistoricalImageDoesNotChangeActiveVersion() {
+        val old = skin()
+        store.install(store.exportSkin("fixture", "One", 1, old))
+        store.install(store.exportSkin("fixture", "Two", 2, AppSkin()))
+        BubbleTextureStore(context).file(requireNotNull(old.resources.logo))!!.delete()
+        assertThrows(Exception::class.java) { store.rollback("fixture", 1, 2) }
+        assertEquals(2, store.list().single().version)
+    }
+    @Test fun historyRetentionIsBoundedWithoutDeletingCurrentVersion() {
+        for (version in 1..12) store.install(store.exportSkin("fixture", "Fixture", version, AppSkin()))
+        assertTrue(store.history("fixture").size <= 10)
+        assertEquals(12, store.list().single().version)
+        assertFalse(store.history("fixture").any { it.version == 1 })
+    }
     @Test fun uninstallFallsBackAndKeepsUserOverridesAndTheirResources() {
         store.install(store.exportSkin("fixture", "Fixture", 1, skin()))
         val base = registry.skins.value.first { it.id == "package:fixture" }.skin

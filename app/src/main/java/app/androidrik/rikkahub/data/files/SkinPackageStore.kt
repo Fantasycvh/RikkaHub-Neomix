@@ -104,12 +104,13 @@ class SkinPackageStore(context: Context, private val registry: AppSkinRegistry =
         catch (failure: Throwable) { index.failWrite(stream); throw failure }
         publish(items)
     }
-    fun install(bytes: ByteArray): SkinPackageManifest = synchronized(lock) {
-        val archive = SkinPackageArchive.decode(bytes)
+    fun install(bytes: ByteArray): SkinPackageManifest = synchronized(lock) { activate(SkinPackageArchive.decode(bytes), false) }
+    private fun activate(archive: SkinPackageArchive, rollback: Boolean): SkinPackageManifest = synchronized(lock) {
+        archive.validate()
         val item = archive.manifest
         val items = readCatalog()
         val previous = items.firstOrNull { it.id == item.id }
-        require(previous == null || item.version > previous.version) { "升级版本必须高于已安装版本" }
+        require(rollback || previous == null || item.version > maxOf(previous.version, history(item.id).maxOfOrNull { it.version } ?: 0)) { "升级版本必须高于已安装版本" }
         require(previous != null || items.size < 32) { "最多安装 32 套皮肤" }
         val textures = BubbleTextureStore(context)
         // Validate every asset before installing any. Catalog remains unchanged if validation/storage fails.
@@ -125,8 +126,45 @@ class SkinPackageStore(context: Context, private val registry: AppSkinRegistry =
             try { stream.write(archive.assets.getValue(id)); atomic.finishWrite(stream) }
             catch (failure: Throwable) { atomic.failWrite(stream); throw failure }
         }
+        val historical = history(item.id).firstOrNull { it.version == item.version }
+        require(historical == null || historical == item) { "同一版本的内容不可替换" }
+        previous?.let(::recordVersion)
         save(items.filterNot { it.id == item.id } + item)
+        // Prune only after commit; never remove the active version or the immediately previous one.
+        val keep = (history(item.id).sortedByDescending { it.version }.take(8).map { it.version } + item.version + listOfNotNull(previous?.version)).toSet()
+        history(item.id).filter { it.version !in keep }.forEach { historyFile(it.id, it.version).delete() }
         item
+    }
+    private fun historyFile(id: String, version: Int): File {
+        require(id.matches(Regex("[a-zA-Z0-9_-]{1,64}")) && version > 0)
+        return File(directory, "history-$id-$version.json")
+    }
+    fun history(id: String): List<SkinPackageManifest> = synchronized(lock) {
+        require(id.matches(Regex("[a-zA-Z0-9_-]{1,64}")))
+        directory.listFiles().orEmpty().filter { it.name.matches(Regex("""history-${Regex.escape(id)}-[0-9]+\.json""")) }
+            .map { file -> file.inputStream().use { packageJson.decodeFromString<SkinPackageManifest>(readLimited(it, AppearanceArchive.MAX_MANIFEST).toString(Charsets.UTF_8)) }.also {
+                require(it.id == id && file.name == historyFile(id, it.version).name && it.formatVersion == 1 &&
+                    it.skin.typography.customFontPath.isEmpty() && (it.font == null || isBubbleTextureId(it.font)))
+            } }.let { saved -> (saved + readCatalog().filter { it.id == id }).distinctBy { it.version } }.sortedByDescending { it.version }
+    }
+    private fun recordVersion(item: SkinPackageManifest) {
+        val file = historyFile(item.id, item.version)
+        if (file.exists()) {
+            require(file.inputStream().use { packageJson.decodeFromString<SkinPackageManifest>(readLimited(it, AppearanceArchive.MAX_MANIFEST).toString(Charsets.UTF_8)) } == item) { "同一版本的内容不可替换" }
+            return
+        }
+        directory.mkdirs()
+        val atomic = AtomicFile(file); val stream = atomic.startWrite()
+        try { stream.write(packageJson.encodeToString(SkinPackageManifest.serializer(), item).toByteArray()); atomic.finishWrite(stream) }
+        catch (failure: Throwable) { atomic.failWrite(stream); throw failure }
+    }
+    fun rollback(id: String, version: Int, expectedCurrentVersion: Int): SkinPackageManifest = synchronized(lock) {
+        val current = readCatalog().first { it.id == id }
+        require(current.version == expectedCurrentVersion) { "当前版本已变化，请刷新后重试" }
+        val target = history(id).first { it.version == version }
+        val assets = target.skin.textureIds().associateWith { BubbleTextureStore(context).bytes(it) } +
+            listOfNotNull(target.font).associateWith { hash -> fontFile(hash).inputStream().use { readLimited(it, SkinFontStore.MAX_BYTES) } }
+        activate(SkinPackageArchive(target, assets), true)
     }
     fun uninstall(id: String) = synchronized(lock) { save(readCatalog().filterNot { it.id == id }) }
     fun exportInstalled(id: String): ByteArray = synchronized(lock) {
