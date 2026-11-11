@@ -3087,6 +3087,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="memory_trigger_status_next">下次触发：%1$s</string>
   <string name="memory_trigger_status_once_done">这次一次性触发已完成。</string>
   <string name="memory_trigger_status_pending">等待选择有效的时刻后排程。</string>
+  <string name="memory_trigger_mode_cron">Cron 表达式</string>
+  <string name="memory_trigger_mode_cron_desc">按 5 字段 cron 周期触发：分 时 日 月 周</string>
+  <string name="memory_trigger_param_cron">Cron 表达式</string>
+  <string name="memory_trigger_param_cron_desc">5 个字段：分 时 日 月 周；支持星号、步进、区间与列表，例如 0 3 * * *</string>
+  <string name="memory_trigger_cron_invalid">cron 表达式非法</string>
+  <string name="memory_trigger_cron_next">下次触发：%1$s</string>
+  <string name="memory_trigger_cron_never">该表达式不会触发。</string>
   <string name="memory_trigger_fgs_notif_title">正在整理记忆…</string>
   <string name="memory_trigger_page_title">整理触发方式</string>
   <string name="memory_trigger_mode_idle">空闲后整理</string>

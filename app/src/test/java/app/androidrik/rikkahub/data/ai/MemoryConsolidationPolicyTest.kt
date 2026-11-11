@@ -253,4 +253,26 @@ class MemoryConsolidationPolicyTest {
         val idle = MemoryTriggerConfig()
         assertEquals("轮次类模式没有可认领的槽位", idle, idle.claim(now))
     }
+
+    @Test
+    fun `cron mode schedules and advances through the parser`() {
+        val config = MemoryTriggerConfig(
+            mode = MemoryTriggerMode.CRON,
+            cronExpression = "0 3 * * *",
+        )
+        assertEquals("首槽：次日 03:00", epoch(3, plusDays = 1), config.firstNextRun(epoch(9)))
+
+        val claimed = config.copy(nextRunAt = epoch(3)).claim(epoch(9))
+        assertEquals("认领（当天 03:00 已过，09:00 认领）后推进到次日 03:00", epoch(3, plusDays = 1), claimed.nextRunAt)
+    }
+
+    @Test
+    fun `invalid cron never schedules`() {
+        val config = MemoryTriggerConfig(mode = MemoryTriggerMode.CRON, cronExpression = "not a cron")
+        assertNull("非法表达式不排程（UI 实时报错，管理器跳过）", config.firstNextRun(epoch(9)))
+        assertNull(
+            "认领无效表达式时清空排程，不留死循环候选",
+            config.copy(nextRunAt = epoch(9)).claim(epoch(9)).nextRunAt,
+        )
+    }
 }

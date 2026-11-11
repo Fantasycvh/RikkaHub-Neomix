@@ -201,15 +201,22 @@ class MemoryConsolidationRepository(
         val assistants = assistants()
         val participants = assistants.filter { it.memoryConsolidationEnabled() && it.memoryId() == memoryId }
         if (participants.isEmpty()) return emptyList()
-        // 6h 自动频次上限只约束 AUTO 路径：手动是用户显式授权，墙钟是用户配置的明确指令（决议 #3）
+        // 6h 自动频次上限只约束 AUTO 路径：手动是用户显式授权，墙钟是用户配置的明确指令（决议 #3）。
+        // 限流按**整库**参与助手算（而不是范围内的）——它是每库节流，与「整理谁」无关；
+        // 共享全局库时若只看范围内助手，刚被别的助手跑过的库会被误判为「已过间隔」
         if (path == TriggerPath.AUTO && !autoIntervalElapsed(participants)) return emptyList()
+        // **范围门控下沉到会话层**（rev 5）：共享全局库时，范围内助手的触发不能把同库其他
+        // 助手的会话一起整理。候选查询按助手发 SQL，所以过滤参与者即可精确到「谁的会话」。
+        // 基线/限流仍用全体参与者（共享库的保守语义：取最晚开启，不因范围而放宽）
+        val inScopeParticipants = participants.filter { it.inTriggerScope(cfg) }
+        if (inScopeParticipants.isEmpty()) return emptyList()
         // MANUAL 丢掉「开启时刻」基线（只留每会话进度行）⇒ 「所有还没整理过的轮次，不论多老」。
         // AUTO / SCHEDULED 仍用完整基线（否则刚拨开开关就会把几百个历史会话一次性灌进队列——
         // 那正是基线存在的理由；墙钟的内容口径与自动路径一致，见 TriggerPath 的表）。
         val ignoreSince = path == TriggerPath.MANUAL
         val baseline = if (ignoreSince) 0L else storeBaseline(participants)
         val byId = assistants.associateBy { it.id }
-        return participants
+        return inScopeParticipants
             .flatMap { assistant ->
                 consolidationDAO.getCandidateConversationIds(assistant.id.toString(), baseline, limitPerRun)
             }

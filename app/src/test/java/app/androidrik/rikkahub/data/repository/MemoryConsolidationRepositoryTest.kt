@@ -462,6 +462,32 @@ class MemoryConsolidationRepositoryTest {
         )
     }
 
+    @Test
+    fun `scope filters conversations inside a shared store`() = runBlocking {
+        val wanted = assistant(useGlobalMemory = true, since = millis(0))
+        val unwanted = assistant(useGlobalMemory = true, since = millis(0))
+        val wantedConversation = conversation(wanted, 1)
+        val unwantedConversation = conversation(unwanted, 1)
+        remember(wanted, wantedConversation, lastActivityAt = millis(1))
+        remember(unwanted, unwantedConversation, lastActivityAt = millis(1))
+        val config = MemoryTriggerConfig(scopeAssistantIds = setOf(wanted.id))
+        val repository = repository(listOf(wanted, unwanted), config = config)
+
+        assertEquals(
+            "共享库时，墙钟路径只整理范围内助手的会话（范围门控下沉到 findPending）",
+            listOf(wantedConversation.id),
+            repository.findPending(MemoryRepository.GLOBAL_MEMORY_ID, TriggerPath.SCHEDULED)
+                .map { it.conversationId },
+        )
+        assertEquals(
+            "AUTO 路径同样过滤",
+            listOf(wantedConversation.id),
+            repository.findPending(MemoryRepository.GLOBAL_MEMORY_ID, TriggerPath.AUTO)
+                .map { it.conversationId },
+        )
+        assertNull("范围外助手的会话不触发", repository.pendingOf(unwantedConversation))
+    }
+
 /** 内存版复核游标（真实现是 Room 表 `memory_review_cursor`） */
 private class FakeReviewCursorDAO : app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO {
     val rows = mutableMapOf<String, Long>()

@@ -48,6 +48,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.CronExpression
 import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
 import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
 import app.androidrik.rikkahub.data.ai.isWallClock
@@ -274,6 +275,11 @@ fun SettingMemoryTriggerPage() {
                                 },
                             )
                         }
+
+                        MemoryTriggerMode.CRON -> cronExpressionItem(
+                            expression = config.cronExpression,
+                            onCommit = { expr -> updateSchedule { it.copy(cronExpression = expr) } },
+                        )
                     }
                 }
             }
@@ -433,6 +439,7 @@ internal fun MemoryTriggerMode.titleRes(): Int = when (this) {
     MemoryTriggerMode.INTERVAL -> R.string.memory_trigger_mode_interval
     MemoryTriggerMode.DAILY -> R.string.memory_trigger_mode_daily
     MemoryTriggerMode.WEEKLY -> R.string.memory_trigger_mode_weekly
+    MemoryTriggerMode.CRON -> R.string.memory_trigger_mode_cron
 }
 
 internal fun MemoryTriggerMode.descRes(): Int = when (this) {
@@ -443,6 +450,7 @@ internal fun MemoryTriggerMode.descRes(): Int = when (this) {
     MemoryTriggerMode.INTERVAL -> R.string.memory_trigger_mode_interval_desc
     MemoryTriggerMode.DAILY -> R.string.memory_trigger_mode_daily_desc
     MemoryTriggerMode.WEEKLY -> R.string.memory_trigger_mode_weekly_desc
+    MemoryTriggerMode.CRON -> R.string.memory_trigger_mode_cron_desc
 }
 
 /** 数字参数行（CardGroup 扩展：CardGroup 是 Column 实现，IME 宿主安全，见 AGENTS.md）
@@ -507,6 +515,57 @@ private fun CardGroupScope.timeOfDayItem(
                 label = stringResource(R.string.scheduled_task_minute),
                 onCommit = onMinute,
                 modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/**
+ * CRON 表达式输入（5 字段）。**只把合法表达式写回配置**：非法中间态留在本地输入框里，
+ * 避免逐键写 DataStore，也避免管理器拿半截表达式反复对账；错误直接在字段下方展示。
+ * 合法时额外显示「下次触发」预览——cron 的语义光看表达式很难自证。
+ */
+private fun CardGroupScope.cronExpressionItem(
+    expression: String,
+    onCommit: (String) -> Unit,
+) {
+    formItem(
+        headlineContent = { Text(stringResource(R.string.memory_trigger_param_cron)) },
+        supportingContent = { Text(stringResource(R.string.memory_trigger_param_cron_desc)) },
+    ) {
+        var text by remember(expression) { mutableStateOf(expression) }
+        val parseError = remember(text) {
+            runCatching { CronExpression.parse(text) }.exceptionOrNull()
+        }
+        OutlinedTextField(
+            value = text,
+            onValueChange = { input ->
+                text = input
+                if (runCatching { CronExpression.parse(input) }.isSuccess) onCommit(input)
+            },
+            isError = parseError != null,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (parseError != null) {
+            Text(
+                text = parseError.message ?: stringResource(R.string.memory_trigger_cron_invalid),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        } else {
+            val next = runCatching {
+                CronExpression.parse(text).nextAfter(System.currentTimeMillis())
+            }.getOrNull()
+            Text(
+                text = if (next != null) {
+                    stringResource(R.string.memory_trigger_cron_next, formatDateTime(next))
+                } else {
+                    stringResource(R.string.memory_trigger_cron_never)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

@@ -1,6 +1,6 @@
 # 记忆整理触发方式配置（design-memory-consolidation-trigger）
 
-> 状态：**rev 3——2026-11-11 P0+P1 均已实施**（七模式/TriggerPath/闹钟层/FGS/BOOT 重排）；待提交与真机 Doze 验证。
+> 状态：**rev 4——2026-11-11 P0+P1 已提交（5c77be768 / 031e68b98），P2 cron 已实施**；子代理执行仍缓做。
 > 挂靠 `../completed/design-memory-consolidation.md`（做梦 V3，已发布）与
 > `../completed/design-scheduled-ai-tasks.md`（定时任务，时间层基建来源）的增量稿；
 > 不改动两条已定案语义，只在其上叠一层「触发方式可配置」。
@@ -47,7 +47,7 @@
 | 一次性 | `ScheduleType.ONCE` + `ScheduleMath` | P1 |
 | 固定间隔 | `ScheduleType.INTERVAL`（系统下限 15min） | P1 |
 | 每日 / 每周 | `ScheduleType.DAILY / WEEKLY` | P1 |
-| cron | 无现成实现，**本期不做** | 缓 |
+| cron | 自有最小解析器 `CronExpression`（P2 已实施，§10.1） | P2 已完成 |
 | 执行类型（主线程/子代理） | **本期不做**，见 §十 | 缓 |
 | 范围 指定助手/全部 | 全局配置 + 助手多选 + memoryId 去重 | P0 |
 
@@ -103,6 +103,11 @@ data class MemoryTriggerConfig(
 > **所有模式**（含 IDLE）一致生效——设计稿 rev 1 原写「IDLE 不受范围」，实施时改为统一：
 > 默认空集时行为与历史版本完全一致，而一旦勾了范围，「只有这些助手触发」在哪种模式下都该成立。
 > 启动补漏（`participantsByStore`）同样过滤。
+>
+> **rev 5 修订（范围下沉）**：`findPending` 也按范围过滤参与者（候选 SQL 是按助手发的），
+> 于是**共享全局库时**范围内助手的墙钟/自动触发**不会再连带整理同库其他助手的会话**；
+> 6h 限流与基线仍按整库全体参与助手计算——它们是「每库节流/共享库取最晚开启」的保守语义，
+> 与「整理谁」无关，不因范围而放宽。
 
 ## 三、各模式触发语义
 
@@ -281,11 +286,26 @@ MemoryTriggerAlarmReceiver → MemoryTriggerRunService(FGS) → scheduler.runSch
 |---|---|---|
 | P0 | 配置模型 + IDLE 参数化 + EVERY_N_TURNS + TURN_N（含 v65 迁移）+ 范围解析 + 触发页 UI | 3–4 人日 |
 | P1 | 墙钟四模式：TriggerPath 三态 + runScheduled + 闹钟层 + FGS + boot rearm + 真机 | 3–4 人日 |
-| 缓 | cron（自研最小解析器 + nextOccurrence）、子代理执行（SubagentRunner 无父会话运行 + AgentRun 账本）、MONTHLY | 另稿 |
+| P2 | cron（自研最小解析器 + nextOccurrence） | 已完成 |
+| 缓 | 子代理执行（SubagentRunner 无父会话运行 + AgentRun 账本）、MONTHLY | 另稿 |
 
-## 十、明确不做（本稿边界）
+## 十、cron（P2，已实施）与明确不做
 
-- **cron**：截图有但决议缓做；若做，独立小稿（解析器选型 + 耗电评估），不并入本稿。
+### 10.1 cron 落地（rev 4）
+
+- 自有最小解析器 [CronExpression](../../../app/src/main/java/app/androidrik/rikkahub/data/ai/CronExpression.kt)：
+  5 字段（分 时 日 月 周），支持星号 / 星号加步进 / 区间 / 区间加步进 / 列表；DOW 的 0 与 7
+  都是周日；**日与周同时受限取 OR**（POSIX 传统语义）；nextAfter 逐天步进（上限 8 年，
+  覆盖闰日表达式），严格大于 from。**不引第三方库**：语法面很小，依赖成本大于收益。
+- 接入：`MemoryTriggerMode.CRON`（isWallClock 成立）+ `MemoryTriggerConfig.cronExpression`
+  （默认 `0 3 * * *`）；`firstNextRun`/`claim` 分支 cron（**无效表达式返回 null 不排程**，
+  不进入死循环）；认领从 `now` 往后找，**错过的多个槽位不连环补跑**（一次整理吃掉积压）。
+- UI：触发页 cron 模式 + 表达式输入（**只把合法表达式写回配置**，非法中间态留在本地并
+  实时报错）；合法时显示「下次触发」预览——cron 语义光看表达式很难自证。
+- 时区/耗电：与定时任务同款（本地时区 + 闹钟层三档；最小粒度 1 分钟沿用 ScheduleMath 语义，
+  Doze 下闹钟仍按 setAlarmClock 语义投递）。
+
+### 10.2 明确不做（本稿边界）
 - **子代理执行**：`SubagentRunner.dispatchBackground` 依赖 parentConversationId，记忆整理无父
   会话；需要 runner 支持 orphan 运行 + memory_tool 信封 + 账本展示，是一条独立特性线。
 - **MONTHLY / 随机窗口**：`ScheduleMath` 支持，但截图没有、需求无来源；枚举不放即不可配。

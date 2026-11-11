@@ -57,6 +57,9 @@ class MemoryConsolidationSchedulerTest {
         /** 每次扫库用的执行路径（限流/基线取舍只看 path，见 TriggerPath 契约） */
         val manualScans = mutableListOf<TriggerPath>()
 
+        /** 模拟「数据库扫描结果」与内存待整理表不一致（墙钟路径替换语义用） */
+        var findPendingOverride: List<PendingMemoryConversation>? = null
+
         /** 下一次整理提出什么建议（测「建议比 lastRun 更黏」） */
         var proposals: List<MemoryConsolidationProposal> = emptyList()
 
@@ -72,7 +75,8 @@ class MemoryConsolidationSchedulerTest {
             pending.map { (id, turns) -> item(id, turns).memoryId }.distinct()
 
         override suspend fun findPending(memoryId: String, path: TriggerPath): List<PendingMemoryConversation> {
-            val found = pending.map { (id, turns) -> item(id, turns) }.filter { it.memoryId == memoryId }
+            val found = findPendingOverride
+                ?: pending.map { (id, turns) -> item(id, turns) }.filter { it.memoryId == memoryId }
             manualScans += path
             scanGate?.await()
             return found
@@ -858,6 +862,20 @@ class MemoryConsolidationSchedulerTest {
         runCurrent()
         assertTrue("有未处理建议 ⇒ 不整理（产出会覆盖待办）", worker.calls.isEmpty())
         assertTrue(scheduler.statusOf(memoryId).first().waitingForReview)
+    }
+
+    @Test
+    fun `scheduled run replaces stale in-memory pending with the fresh scan`() = runTest {
+        val scheduler = scheduler(MemoryTriggerConfig(mode = MemoryTriggerMode.CRON))
+        // 内存里留着旧模式遗留的待整理项，但数据库扫描（当前范围/配置下）已为空
+        worker.pending[chat.id] = 5
+        worker.findPendingOverride = emptyList()
+
+        scheduler.runScheduled(memoryId)
+        runCurrent()
+
+        assertTrue("扫描为空就不该拿旧 pending 去整理（它们可能已不在范围内）", worker.calls.isEmpty())
+        assertEquals("状态表也随替换清空", 0, scheduler.statusOf(memoryId).first().pendingTurns)
     }
 
     private fun srcRoot(): File {

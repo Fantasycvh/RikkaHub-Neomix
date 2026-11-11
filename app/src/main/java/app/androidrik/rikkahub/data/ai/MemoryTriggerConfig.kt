@@ -25,11 +25,14 @@ enum class MemoryTriggerMode {
     /** 第 N 轮：会话累计用户轮数首次达到阈值时整理一次，命中后失效（决议 #1） */
     TURN_N,
 
-    // ---- 墙钟四模式（P1）：复用定时任务的 SchedulePayload/ScheduleMath ----
+    // ---- 墙钟模式（P1）：复用定时任务的 SchedulePayload/ScheduleMath ----
     ONCE,
     INTERVAL,
     DAILY,
     WEEKLY,
+
+    /** 5 字段 cron（P2）：自有最小解析器 [CronExpression]，与 [schedule] 参数互不影响 */
+    CRON,
 }
 
 /** [MemoryTriggerMode] 是否属于墙钟模式（触发权来自闹钟而非聊天事件）。 */
@@ -37,7 +40,8 @@ val MemoryTriggerMode.isWallClock: Boolean
     get() = this == MemoryTriggerMode.ONCE ||
         this == MemoryTriggerMode.INTERVAL ||
         this == MemoryTriggerMode.DAILY ||
-        this == MemoryTriggerMode.WEEKLY
+        this == MemoryTriggerMode.WEEKLY ||
+        this == MemoryTriggerMode.CRON
 
 /**
  * 映射到定时任务的 [app.androidrik.rikkahub.data.db.entity.ScheduleType]
@@ -48,7 +52,8 @@ fun MemoryTriggerMode.toScheduleType(): app.androidrik.rikkahub.data.db.entity.S
     MemoryTriggerMode.INTERVAL -> app.androidrik.rikkahub.data.db.entity.ScheduleType.INTERVAL
     MemoryTriggerMode.DAILY -> app.androidrik.rikkahub.data.db.entity.ScheduleType.DAILY
     MemoryTriggerMode.WEEKLY -> app.androidrik.rikkahub.data.db.entity.ScheduleType.WEEKLY
-    else -> error("$this is not a wall-clock mode")
+    // CRON 没有对应的 ScheduleType：调用方（firstNextRun/claim）必须先分支
+    else -> error("$this has no ScheduleType")
 }
 
 /**
@@ -60,6 +65,8 @@ fun MemoryTriggerMode.toScheduleType(): app.androidrik.rikkahub.data.db.entity.S
 fun MemoryTriggerConfig.firstNextRun(now: Long): Long? = when {
     !mode.isWallClock -> null
     mode == MemoryTriggerMode.ONCE -> if (onceFired) null else schedule.runAt.takeIf { it > now }
+    mode == MemoryTriggerMode.CRON ->
+        runCatching { CronExpression.parse(cronExpression).nextAfter(now) }.getOrNull()
     else -> app.androidrik.rikkahub.data.scheduled.ScheduleMath.firstRunAt(
         mode.toScheduleType(),
         schedule,
@@ -75,6 +82,11 @@ fun MemoryTriggerConfig.claim(now: Long): MemoryTriggerConfig {
     if (!mode.isWallClock) return this
     val due = nextRunAt ?: return this
     if (mode == MemoryTriggerMode.ONCE) return copy(nextRunAt = null, onceFired = true)
+    if (mode == MemoryTriggerMode.CRON) {
+        // 从认领时刻往后找：错过的多个槽位不补（一次整理吃掉积压即可，不连环补跑）
+        val next = runCatching { CronExpression.parse(cronExpression).nextAfter(now) }.getOrNull()
+        return copy(nextRunAt = next)
+    }
     val next = app.androidrik.rikkahub.data.scheduled.ScheduleMath.advance(
         mode.toScheduleType(),
         schedule,
@@ -100,6 +112,11 @@ data class MemoryTriggerConfig(
     val triggerTurn: Int = 8,
     /** 墙钟模式的周期参数（P1）；复用定时任务的载荷类型，DST/补跑逻辑同源 */
     val schedule: SchedulePayload = SchedulePayload(),
+    /**
+     * [MemoryTriggerMode.CRON] 的表达式（5 字段：分 时 日 月 周）。
+     * 非法表达式不排程（[firstNextRun] 返回 null），UI 实时报错；默认每天 03:00。
+     */
+    val cronExpression: String = "0 3 * * *",
     /** 墙钟模式已排程的槽位（advance 的输入）；重启后凭它 rearm。null = 未排程 */
     val nextRunAt: Long? = null,
     /** ONCE 已执行（认领后置 true；重新配置 ONCE 时复位） */

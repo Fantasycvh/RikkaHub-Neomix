@@ -3073,6 +3073,13 @@
   <string name="memory_trigger_status_next">下次觸發：%1$s</string>
   <string name="memory_trigger_status_once_done">這次一次性觸發已完成。</string>
   <string name="memory_trigger_status_pending">等待選擇有效的時刻後排程。</string>
+  <string name="memory_trigger_mode_cron">Cron 表達式</string>
+  <string name="memory_trigger_mode_cron_desc">依 5 欄位 cron 週期觸發：分 時 日 月 週</string>
+  <string name="memory_trigger_param_cron">Cron 表達式</string>
+  <string name="memory_trigger_param_cron_desc">5 個欄位：分 時 日 月 週；支援星號、步進、區間與列表，例如 0 3 * * *</string>
+  <string name="memory_trigger_cron_invalid">cron 表達式不合法</string>
+  <string name="memory_trigger_cron_next">下次觸發：%1$s</string>
+  <string name="memory_trigger_cron_never">該表達式不會觸發。</string>
   <string name="memory_trigger_fgs_notif_title">正在整理記憶…</string>
   <string name="memory_trigger_page_title">整理觸發方式</string>
   <string name="memory_trigger_mode_idle">空閒後整理</string>

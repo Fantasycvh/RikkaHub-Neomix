@@ -3086,6 +3086,13 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="memory_trigger_status_next">Next run: %1$s</string>
   <string name="memory_trigger_status_once_done">This one-time trigger has completed.</string>
   <string name="memory_trigger_status_pending">Waiting for a valid time to schedule.</string>
+  <string name="memory_trigger_mode_cron">Cron</string>
+  <string name="memory_trigger_mode_cron_desc">Run on a 5-field cron schedule: minute hour day month weekday</string>
+  <string name="memory_trigger_param_cron">Cron expression</string>
+  <string name="memory_trigger_param_cron_desc">5 fields: minute hour day month weekday. Supports *, steps, ranges and lists, e.g. 0 3 * * *</string>
+  <string name="memory_trigger_cron_invalid">Invalid cron expression</string>
+  <string name="memory_trigger_cron_next">Next run: %1$s</string>
+  <string name="memory_trigger_cron_never">This expression never fires.</string>
   <string name="memory_trigger_fgs_notif_title">Consolidating memory…</string>
   <string name="memory_trigger_page_title">Consolidation Trigger</string>
   <string name="memory_trigger_mode_idle">After idle</string>

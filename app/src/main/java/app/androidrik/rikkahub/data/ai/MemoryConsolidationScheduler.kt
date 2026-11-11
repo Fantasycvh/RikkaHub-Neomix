@@ -519,8 +519,10 @@ class MemoryConsolidationScheduler(
             return
         }
         // 墙钟模式下事件入口全部静默 ⇒ 内存里的待整理表是空的：像 organize 一样先从库里
-        // merge 一遍（SCHEDULED 路径：绕限流、保基线），否则 run() 看到 ids 为空直接返回
-        mergePending(memoryId, worker.findPending(memoryId, TriggerPath.SCHEDULED))
+        // merge 一遍（SCHEDULED 路径：绕限流、保基线），否则 run() 看到 ids 为空直接返回。
+        // 用**替换**而不是 merge：墙钟模式下没有轮末并发写入（onTurnFinished 在墙钟模式提前
+        // return），而旧模式遗留的 pending 可能已不在当前范围/配置内——它们不该绕过范围门控。
+        replacePending(memoryId, worker.findPending(memoryId, TriggerPath.SCHEDULED))
         run(memoryId, fullReview = false, path = TriggerPath.SCHEDULED)
             ?.let { _automaticRuns.emit(it) }
     }
@@ -634,6 +636,24 @@ class MemoryConsolidationScheduler(
         // 又有新轮次了：把「失败过」摘掉，这次该再试
         synchronized(lock) { failed -= item.memoryId }
         mergePending(item.memoryId, listOf(item))
+    }
+
+    /**
+     * 用 [items]（数据库扫描结果）**整体替换**该库的待整理表。
+     *
+     * 只给墙钟路径用：那条路径上不存在「扫描期间又有轮次结束」的并发（见 [runScheduled]），
+     * 替换才不会像 [mergePending] 的注释警告那样弄丢刚结束的轮次。
+     */
+    private fun replacePending(memoryId: String, items: List<PendingMemoryConversation>) {
+        val conversations = synchronized(lock) {
+            items.associate { it.conversationId to it.turns }.also { pending[memoryId] = it }
+        }
+        updateStatus(memoryId) {
+            it.copy(
+                pendingTurns = conversations.values.sum(),
+                pendingConversations = conversations.size,
+            )
+        }
     }
 
     /**
