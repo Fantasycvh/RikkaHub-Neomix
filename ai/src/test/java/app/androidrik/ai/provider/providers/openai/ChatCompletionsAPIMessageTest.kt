@@ -46,12 +46,14 @@ class ChatCompletionsAPIMessageTest {
         messages: List<UIMessage>,
         includeHistoryReasoning: Boolean = true,
         backfillToolReasoning: Boolean = false,
+        mistralThinkingReplay: Boolean = false,
     ): JsonArray {
         val method = ChatCompletionsAPI::class.java.getDeclaredMethod(
             "buildMessages",
             List::class.java,
             Boolean::class.javaPrimitiveType,
             List::class.java,
+            Boolean::class.javaPrimitiveType,
             Boolean::class.javaPrimitiveType,
         )
         method.isAccessible = true
@@ -61,6 +63,7 @@ class ChatCompletionsAPIMessageTest {
             includeHistoryReasoning,
             listOf(Modality.TEXT, Modality.IMAGE),
             backfillToolReasoning,
+            mistralThinkingReplay,
         ) as JsonArray
     }
 

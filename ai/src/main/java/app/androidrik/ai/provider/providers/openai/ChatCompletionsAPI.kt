@@ -374,6 +374,8 @@ class ChatCompletionsAPI(
                 supportInputModalities = params.model.inputModalities,
                 // 见 requiresToolReasoningBackfill：网关要求「思考模式 + 带 tool_calls」的消息必须回传思维链
                 backfillReasoning = requiresToolReasoningBackfill(host, params.model),
+                // Mistral 不接受 reasoning_content，历史思考要作为 content 里的 thinking 块回传
+                mistralThinkingReplay = host == "api.mistral.ai",
             )
             put("messages", builtMessages)
 
@@ -596,6 +598,7 @@ class ChatCompletionsAPI(
         includeHistoryReasoning: Boolean = true,
         supportInputModalities: List<Modality> = listOf(Modality.TEXT, Modality.IMAGE),
         backfillReasoning: Boolean = false,
+        mistralThinkingReplay: Boolean = false,
     ) = buildJsonArray {
         val filteredMessages = messages.filter { it.isValidToUpload() }
 
@@ -606,6 +609,7 @@ class ChatCompletionsAPI(
                     includeReasoning = includeHistoryReasoning,
                     supportInputModalities = supportInputModalities,
                     backfillReasoning = backfillReasoning,
+                    mistralThinkingReplay = mistralThinkingReplay,
                 )
             } else {
                 addNonAssistantMessage(message)
@@ -618,6 +622,7 @@ class ChatCompletionsAPI(
         includeReasoning: Boolean,
         supportInputModalities: List<Modality>,
         backfillReasoning: Boolean = false,
+        mistralThinkingReplay: Boolean = false,
     ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
@@ -644,6 +649,7 @@ class ChatCompletionsAPI(
                         tools = group.tools,
                         reasoningPart = reasoningPart,
                         backfillReasoning = backfillReasoning,
+                        mistralThinkingReplay = mistralThinkingReplay,
                     )?.let { assistantMessage ->
                         add(assistantMessage)
                     }
@@ -669,6 +675,7 @@ class ChatCompletionsAPI(
                 tools = emptyList(),
                 reasoningPart = reasoningPart,
                 backfillReasoning = backfillReasoning,
+                mistralThinkingReplay = mistralThinkingReplay,
             )?.let { assistantMessage ->
                 add(assistantMessage)
             }
@@ -680,6 +687,7 @@ class ChatCompletionsAPI(
         tools: List<UIMessagePart.Tool>,
         reasoningPart: UIMessagePart.Reasoning?,
         backfillReasoning: Boolean = false,
+        mistralThinkingReplay: Boolean = false,
     ): JsonObject? {
         val hasUsableContent = contentParts.any { part ->
             when (part) {
@@ -696,10 +704,18 @@ class ChatCompletionsAPI(
         return buildJsonObject {
             put("role", "assistant")
 
+            // Mistral 不接受 reasoning_content 字段，思考内容要作为 content 里的 thinking 块回传
+            // https://docs.mistral.ai/capabilities/reasoning
+            val mistralThinking = if (hasReasoning && mistralThinkingReplay) {
+                reasoningPart?.reasoning
+            } else {
+                null
+            }
+
             // reasoning_content
-            if (hasReasoning) {
+            if (hasReasoning && mistralThinking == null) {
                 put("reasoning_content", reasoningPart.reasoning)
-            } else if (backfillReasoning) {
+            } else if (backfillReasoning && mistralThinking == null) {
                 // 网关的结构性校验：**思考模式下每条 assistant 消息都必须回传思维链**，
                 // 而这条没有可回传的（旧消息 / 只给加密推理 / 用户关了回传 / 推理被删空）⇒
                 // 回填**空串**。空串被接受（2026-10-13 对 api.deepseek.com 实测：
@@ -724,12 +740,23 @@ class ChatCompletionsAPI(
             }
 
             // content
-            if (contentParts.isEmpty()) {
+            if (mistralThinking == null && contentParts.isEmpty()) {
                 put("content", "")
-            } else if (contentParts.size == 1 && contentParts[0] is UIMessagePart.Text) {
+            } else if (mistralThinking == null && contentParts.size == 1 && contentParts[0] is UIMessagePart.Text) {
                 put("content", (contentParts[0] as UIMessagePart.Text).text)
             } else {
                 putJsonArray("content") {
+                    if (mistralThinking != null) {
+                        add(buildJsonObject {
+                            put("type", "thinking")
+                            putJsonArray("thinking") {
+                                add(buildJsonObject {
+                                    put("type", "text")
+                                    put("text", mistralThinking)
+                                })
+                            }
+                        })
+                    }
                     contentParts.forEach { part ->
                         when (part) {
                             is UIMessagePart.Text -> {
@@ -873,16 +900,12 @@ class ChatCompletionsAPI(
             ?: MessageRole.ASSISTANT
 
         // 也许支持其他模态的输出content?
-        val content = jsonObject["content"]?.jsonPrimitiveOrNull?.contentOrNull ?: ""
+        // 一般是字符串；Mistral 开启推理时是块列表（thinking / text 可同帧出现），见 parseChatCompletionsContent
+        val parsedContent = parseChatCompletionsContent(jsonObject["content"])
+        val content = parsedContent.text
         val reasoning = jsonObject["reasoning_content"]?.jsonPrimitiveOrNull?.contentOrNull
             ?: jsonObject["reasoning"]?.jsonPrimitiveOrNull?.contentOrNull
-            ?: jsonObject["content"]?.takeIf { it is JsonArray }?.let { arr ->
-                // Mistral接口
-                // {"id":"","object":"chat.completion.chunk","created":1772351733,"model":"magistral-medium-2509","choices":[{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"好的"}]}]},"finish_reason":null}]}
-                arr.jsonArrayOrNull?.getOrNull(0)?.jsonObjectOrNull?.get("thinking")?.jsonArrayOrNull?.getOrNull(0)?.jsonObjectOrNull?.get(
-                    "text"
-                )?.jsonPrimitiveOrNull?.contentOrNull
-            }
+            ?: parsedContent.reasoning
         val toolCalls = jsonObject["tool_calls"] as? JsonArray ?: JsonArray(emptyList())
         val images = jsonObject["images"] as? JsonArray ?: JsonArray(emptyList())
 

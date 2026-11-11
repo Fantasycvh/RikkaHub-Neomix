@@ -5,7 +5,9 @@
 > **同步点（2026-11-07 更新）**：已评估到上游 **`fe5a28f9a`**（2026-11-07，上游 HEAD，已发 `3.1.2`），`903e058b9` 之后共 **25 提交**（逐条见「2026-11-07 同步评估」）；issue 扫描到 **#2304**。**当日已吸收落地**：bettertext bump v0.1.5（#2285/#2301）、`3733bac8f` DAO/仓库部分（本仓确认 #2299 同构孤儿收藏 bug 后修复）、`6328f4a8d` 余额查询 POST+JSON、`b40d7a273` 顶栏胶囊（方案定案「两套共存加开关」，haze 维持 2.0.1）；**等价五条**：`e011970cb`（跳板机）、`dba9fa574`（收藏去重）、`ae599e8d7`（图片压缩缓存，本仓 MediaEncodingCache 覆盖热路径）、`e85c1d901`（压缩直填，NumericDialogField 领先）、`88dee920c`（世界书拖拽，本仓整页领先）；**大体等价**：`4ebfde221`+`27ef05ede`（后台任务三件套/任务中心/进程树杀本仓均已领先，唯一缺口「任务完成主动通知模型」挂账待专项批次）。用户拍板不跟：`bbae6d3a7`+`6687f636c` 推荐提供商弹窗线；`c512338d5` deps update 稍后。详见文末实施记录。
 
 > **同步点（2026-11-10 更新）**：已评估到上游 **`8a837b27e`**（2026-11-10，上游 HEAD），`fe5a28f9a` 之后共 **16 提交**（逐条见「2026-11-10 同步评估」）；issue 扫描到 **#2310**。本批**只评不施**（未改源码、未提交）：**吸收 0 条**；**候选 8 条**——`bcc649abc` 一轮中途自动压缩（P2）、`5b7ca774b` 对话地图滑动卡顿（P2）、`921427f95` web 输入 token 取最后一次（P2，连带补 `UIMessage.lastUsage` 旧账）、`e1667163c` 的两处残件（P2：`signature_delta` 累加 / 非流式相邻 thinking 不合并）、`62d6acd31` 通知权限卡（P3）、`90fe936ed` 信任用户 CA（P3，需拍板）、`1c93ca72c` 500k token 调试对话（P3）、`9bc0fd658` 默认提供商全开（**用户 2026-11-10 已放弃，不再列为候选**）（P3，需拍板）；**已有等价 2 条**（`5863c4e4c` 地图搜索框悬浮、`0cd90ef12` 比例自动压缩——本仓压缩引擎更强，仅「压缩组装搬离主线程」留 P3 残件）；**不跟/不适用 6 条**（`25b70392a`+`ffb1c79e1` Phone Use 线、`da498cb2d` STA1N、`7691e385d`/`8a837b27e` i18n、`9135903d1` specialUse）。issue **#2306 多图上传跳过图片编辑＝本仓同构 bug（`ChatFilesPickerSheet.kt:125`）**，待用户拍板立项。
->
+
+> **同步点（2026-11-11 更新）**：已评估到上游 **`90269e39d`**（2026-11-10 HEAD，已发 `3.2.0`），`8a837b27e` 之后共 **6 提交**（逐条见「2026-11-11 同步评估」）；issue 扫描到 **#2312**。本批评估阶段只评不施，随后按用户指令落地 `d3ef8174b`（Mistral 422 修复，本地未提交）。**吸收候选 2 条**——`d3ef8174b` Mistral 推理多轮 422（P2，已修 + 解析丢字同构风险实核）、`055faeb38` 快捷消息换行/长按替换（P3，即 11-10 轮 #2305 挂账项，源码已到手）；**已有等价 1 条**（`88a11a3b2` 模型面板手动刷新——本仓模型目录线刷新/错误/保留旧列表更强）；**不适用 3 条**（3.2.0 版本号、publish skill、README）。issue：**#2311 gpt-6 内置生图崩溃＝本仓有防线、待真机核（观察项）**；**#2312 自定义压缩提示词＝P3 需求线，需拍板**。
+
 > **同步点（2026-11-03 更新）**：已评估到上游 **`903e058b9`**，`a5db9c9b7` 之后共 **3 提交**；issue 扫描到 **#2290**。按用户指定分四批落地：收藏重复 key 防崩、设置页局域网权限入口、OCR 配置失效明确报错、多关键词模型搜索。`20e9ddcc5`（配色库去 submodule）暂缓；后台 shell PR #2268 仍未合并，继续专项观察。详见文末「2026-11-03 同步评估与四批吸收」。
 
 > **同步点（2026-10-31 更新）**：已评估到上游 **`a5db9c9b7`**（2026-10-29，上游 HEAD，版本 `3.1.1`+dev），本批 `ad2c4430d`..`a5db9c9b7` 共 **10 提交**（逐条见「2026-10-31 同步评估」）：**两条 P1 已吸收（fork `beb6fb1fb`）**——`1575d179d`（空 role 崩溃容错 + 3 条回归用例）、`79f4b6fb2`（SAF 导出防闪退两处）；**余吸收候选**：`a046505a6`（加号面板滚动，P2）、`a5db9c9b7`（Tinyfish purpose，P2）、`eb530b0ff` 的 LatexText 行距正则（P3）、`281c9525a`（停止后队列卡住，P2 待核）、`a1c61c3cb`+`fa5d5f3f6`+`20c24e7d3`（构建/依赖小件，P3 一批）；已等价 3 条（`2c4d1979c` 本仓 10-25 已修同根因、`50bb57857` 决策 8 覆盖更强、`4af510624` 前批已结）；不跟 4 条（BetterText 迁移、ANSI 色块等）。**未合入分支 `feat/background-shell` 两条（shell 后台命令 + 会话收件箱）记账观察**。issue 扫描至 #2275，**#2271（Mistral 422 reasoning_content，open）本仓同构风险**。
@@ -1853,6 +1855,42 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - **`90fe936ed` 信任用户 CA**：新增 `app/src/main/res/xml/network_security_config.xml`（system + user anchors），`AndroidManifest.xml` 挂载；`base-config` 显式 `cleartextTrafficPermitted="true"`，因为声明 networkSecurityConfig 后 manifest 的 `usesCleartextTraffic` 不再生效，必须保留明文许可避免回归。
 - **#2306 已自行实现**（上游仍 open）：多图逐张裁剪队列 `useMultiCropLauncher`，单图取消语义不变、多图取消不丢已选内容。
 - **仍未动**：`bcc649abc` 轮中压缩、`921427f95`/web `lastUsage`、`9bc0fd658` 默认提供商全开、Phone Use 两条、`62d6acd31`/`1c93ca72c`/`0cd90ef12` 残件等，均待拍板或另立批次。
+
+## 2026-11-11 同步评估（`8a837b27e`..`90269e39d`，6 提交）+ issue 扫描（#2311–#2312）
+
+> fetch 后 `upstream/master` = `90269e39d`（2026-11-10 23:33 HEAD，已发 tag `3.2.0`）；本批 `8a837b27e` 之后共 **6 提交**。本轮**只评不施**。上游侧读 diff；本仓侧以源码 grep 实核（file:line）。注意：本机首次 `git fetch` 走 schannel 报 `SSL/TLS handshake`，改用 `git -c http.sslBackend=openssl fetch upstream` 成功（未改全局 config）。
+
+### 总评
+
+**6 提交：吸收候选 2（P2×1、P3×1）/ 已有等价 1 / 不适用 3**。
+
+本批价值集中在 `d3ef8174b`：它把 10-31 轮就已挂账的「#2271 Mistral 422」从**风险**变成**上游已修**，且顺带修掉 content 块列表解析的**数据丢失**（非流式整段回答丢失、流式过渡帧首段文本丢失）——本仓两处解析逻辑与上游修复前**逐字同构**。`055faeb38` 是 11-10 轮 issue 扫描里挂账的 #2305 关闭提交（当时不在本地 ref），这次随 fetch 到手，改动只有 2 文件、可直接吸收。`88a11a3b2` 的模型面板手动刷新在本仓已有更强实现（模型目录线），不重复造。
+
+### 逐条结论
+
+| 上游提交 | 内容 | 判决 | 依据 / 本仓落点 |
+|---|---|---|---|
+| `055faeb38` | 快捷消息短按追加并自动换行、长按替换输入框（Closes #2305） | **吸收候选 P3** | 本仓同构两缺口：`ChatInputState.appendText`（`ChatInputState.kt:70`）直接 `append`，**非空时不补换行**；`QuickMessageButton`（`ChatInputCompletions.kt:141-145`）只有 `onClick → appendText`，**无长按替换**。移植 = `appendText` 加「current 非空且不以 `\n` 结尾则补换行」+ `combinedClickable(onLongClick)` 调 `setMessageText`（`:66` 已带 `contentEquals` 比较，符合 TextField Host Rules 的单向写回）+ 长按触感反馈；~1h |
+| `88a11a3b2` | 可用模型面板手动刷新（Refs #2281） | **已有等价（更强）** | 本仓模型目录线已覆盖三点：①手动刷新按钮 + 转圈 + 状态文案（`ModelCatalogControls.kt:101` `CatalogProviderStatus`，`ProviderModelCatalogRepository.kt:83` `refresh`）；②失败保留上次列表（`lastComplete` 与 `lastAttempt.error` 分离，`catalogErrorText` 按错误类别 + HTTP 状态显示）；③请求键不含已添加模型——自动刷新只依赖**提供商 id 集合**（`ModelCatalogControls.kt:48-51`），增删/排序模型不触发远端重取。另本仓还有上游没有的缺口汇总（`catalog_missing_aggregate`）与批量刷新 |
+| `d3ef8174b` | 修复 Mistral 推理模型多轮对话报 422（Fixes #2271） | **吸收候选 P2**（本仓同构风险已实核） | ①请求侧：本仓对所有 provider 有 reasoning 就发 `reasoning_content`（`ChatCompletionsAPI.kt:699-701`），仅对 Mistral 特判了 `stream_options`（`:388`）⇒ 多轮带历史思考时 422 风险仍在。②解析侧：`content` 为数组时只取 `getOrNull(0)` 的 `thinking`（非流式 `ChatCompletionsAPI.kt:877-889`、流式 `ChatCompletionsStreamDecoder.kt:115-122`）⇒ 非流式整段回答丢失（content 数组走不进 Text），流式「thinking 收尾 + 回答首段」同帧时首段文本被丢弃。移植范围：新增 `parseChatCompletionsContent`（遍历所有块，text/thinking 分别拼接）+ 两处 `parseMessage` 换用 + 请求侧 `host == "api.mistral.ai"` 时把历史思考改成 `content` 开头的 thinking 块且不写 `reasoning_content`。**本仓无 OpenRouter `reasoning_details` 回传**（只有元数据累积，无回传），故不需要上游的 `ReasoningReplayFormat` 三态枚举，用布尔参数即可；~0.5–1 天含 3 个回归测试 |
+| `d10fedaf9` | bump version to 3.2.0 | **不适用** | 本仓版本号独立（`1.0.28-beta.x`） |
+| `e033a47d3` | update publish skill | **不适用** | 本仓发版流程为 tag 触发 CI（`.agents/skills/publish-release` 未同步） |
+| `90269e39d` | README 功能列表（Phone Use 增、暗色模式/多模态删） | **不适用** | 上游产品面文案；本仓 README 独立 |
+
+### issue 扫描（#2311–#2312，2026-11-10 之后新增）
+
+- **#2311 gpt-6 等模型内置图像生成报错 failed requirement（open，3.2.0 用户上报）**——崩溃点是上游 `ConversationRepository.conversationToConversationEntity` 的 `require(no base64 part)`。**本仓同族防线已在**：生成图以 `data:image/png;base64,…` 进 Image part（`StreamChunkHandler.kt:248-256`）→ 生成结束 `Base64ImageToLocalFileTransformer` 转本地文件（注册于 `TransformerChainRegistry.kt:120`）→ 保存前 `Base64ImageSanitizer` 再兜底转占位（`FilesManager.kt:408-411`、`ConversationEntityMapper.kt:23`）。上游仍未修（open，无 diff 可借）。判**观察项**：本仓生图路径未真机验证，若复现再按「生图结果不走 output transformer」排查，不立项。
+- **#2312 自定义压缩提示词（open，需求）**——本仓压缩提示词为硬编码常量（`CompressPrompt.kt` 的检查点前导语 + 摘要正文），压缩档只带 2 个数值（`CompressPreset.kt` 保留比例/目标 token），**无提示词自定义位**。若做 = Settings 字段 + 组装点注入 + 设置页 UI + 3 locale，~0.5–1 天；但会改变摘要风格且引入提示词注入面，**目录线需用户拍板**。
+
+### 本轮实施状态
+
+**评估阶段只评不施**；用户随后指令「开始修复」，`d3ef8174b` 已本地落地（未 commit）：
+
+- **新增 `ChatCompletionsContent.kt`**：`parseChatCompletionsContent` 遍历 content 块列表，分别拼接 text 与 thinking（thinking 内层再遍历 text 块），字符串 content 原样返回。
+- **两条解析路径换用**：非流式 `ChatCompletionsAPI.parseMessage`、流式 `ChatCompletionsStreamDecoder.parseMessage`；`reasoning_content` / `reasoning` 字段仍优先。
+- **请求侧**：`buildChatCompletionRequest` 按 `host == "api.mistral.ai"` 传 `mistralThinkingReplay`；`buildAssistantMessageJson` 在该模式下**不写 `reasoning_content`**（含 backfill 分支），把历史思考写成 `content` 首块 `{"type":"thinking","thinking":[{"type":"text","text":…}]}`，再跟原有 text/image 块。本仓无 OpenRouter `reasoning_details` 回传，故用布尔开关而非上游三态枚举。
+- **测试**：新增 `ChatCompletionsMistralContentTest`（5 例：流式过渡帧、非流式块列表、字符串兜底、Mistral 回传形状、默认仍回 reasoning_content）；`ChatCompletionsAPIMessageTest` 反射 helper 补第 5 参。`./gradlew :ai:testDebugUnitTest` **532 项 0 失败**。
+- **未做**：`055faeb38` 快捷消息（P3，等确认）；`#2312`/`#2311` 待拍板或真机核验。真机验证需自建 `api.mistral.ai` 的 OpenAI 兼容 provider 并做「带历史思考的多轮」对话。
 
 ## 关联
 
