@@ -6,7 +6,7 @@
 
 > **同步点（2026-11-10 更新）**：已评估到上游 **`8a837b27e`**（2026-11-10，上游 HEAD），`fe5a28f9a` 之后共 **16 提交**（逐条见「2026-11-10 同步评估」）；issue 扫描到 **#2310**。本批**只评不施**（未改源码、未提交）：**吸收 0 条**；**候选 8 条**——`bcc649abc` 一轮中途自动压缩（P2）、`5b7ca774b` 对话地图滑动卡顿（P2）、`921427f95` web 输入 token 取最后一次（P2，连带补 `UIMessage.lastUsage` 旧账）、`e1667163c` 的两处残件（P2：`signature_delta` 累加 / 非流式相邻 thinking 不合并）、`62d6acd31` 通知权限卡（P3）、`90fe936ed` 信任用户 CA（P3，需拍板）、`1c93ca72c` 500k token 调试对话（P3）、`9bc0fd658` 默认提供商全开（**用户 2026-11-10 已放弃，不再列为候选**）（P3，需拍板）；**已有等价 2 条**（`5863c4e4c` 地图搜索框悬浮、`0cd90ef12` 比例自动压缩——本仓压缩引擎更强，仅「压缩组装搬离主线程」留 P3 残件）；**不跟/不适用 6 条**（`25b70392a`+`ffb1c79e1` Phone Use 线、`da498cb2d` STA1N、`7691e385d`/`8a837b27e` i18n、`9135903d1` specialUse）。issue **#2306 多图上传跳过图片编辑＝本仓同构 bug（`ChatFilesPickerSheet.kt:125`）**，待用户拍板立项。
 
-> **同步点（2026-11-11 更新）**：已评估到上游 **`90269e39d`**（2026-11-10 HEAD，已发 `3.2.0`），`8a837b27e` 之后共 **6 提交**（逐条见「2026-11-11 同步评估」）；issue 扫描到 **#2312**。本批评估阶段只评不施，随后按用户指令落地 `d3ef8174b`（Mistral 422 修复，本地未提交）。**吸收候选 2 条**——`d3ef8174b` Mistral 推理多轮 422（P2，已修 + 解析丢字同构风险实核）、`055faeb38` 快捷消息换行/长按替换（P3，即 11-10 轮 #2305 挂账项，源码已到手）；**已有等价 1 条**（`88a11a3b2` 模型面板手动刷新——本仓模型目录线刷新/错误/保留旧列表更强）；**不适用 3 条**（3.2.0 版本号、publish skill、README）。issue：**#2311 gpt-6 内置生图崩溃＝本仓有防线、待真机核（观察项）**；**#2312 自定义压缩提示词＝P3 需求线，需拍板**。
+> **同步点（2026-11-11 更新）**：已评估到上游 **`90269e39d`**（2026-11-10 HEAD，已发 `3.2.0`），`8a837b27e` 之后共 **6 提交**（逐条见「2026-11-11 同步评估」）；issue 扫描到 **#2312**。本批评估阶段只评不施，随后按用户指令落地 `d3ef8174b`（Mistral 422 修复，本地未提交）。**吸收候选 2 条**——`d3ef8174b` Mistral 推理多轮 422（P2，已修 + 解析丢字同构风险实核）、`055faeb38` 快捷消息换行/长按替换（P3，即 11-10 轮 #2305 挂账项，源码已到手）；**已有等价 1 条**（`88a11a3b2` 模型面板手动刷新——本仓模型目录线刷新/错误/保留旧列表更强）；**不适用 3 条**（3.2.0 版本号、publish skill、README）。issue：**#2311 gpt-6 内置生图崩溃＝本仓有防线、待真机核（观察项）**；**#2312 自定义压缩提示词＝已有等价**（`Settings.compressPrompt` 全局可编辑 + `{content}`/`{target_tokens}`/`{additional_context}` 变量 + 手动压缩附加指令 + 一键重置；2026-11-11 复核修正原「无自定义位」误判）。
 
 > **同步点（2026-11-03 更新）**：已评估到上游 **`903e058b9`**，`a5db9c9b7` 之后共 **3 提交**；issue 扫描到 **#2290**。按用户指定分四批落地：收藏重复 key 防崩、设置页局域网权限入口、OCR 配置失效明确报错、多关键词模型搜索。`20e9ddcc5`（配色库去 submodule）暂缓；后台 shell PR #2268 仍未合并，继续专项观察。详见文末「2026-11-03 同步评估与四批吸收」。
 
@@ -1880,7 +1880,7 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 ### issue 扫描（#2311–#2312，2026-11-10 之后新增）
 
 - **#2311 gpt-6 等模型内置图像生成报错 failed requirement（open，3.2.0 用户上报）**——崩溃点是上游 `ConversationRepository.conversationToConversationEntity` 的 `require(no base64 part)`。**本仓同族防线已在**：生成图以 `data:image/png;base64,…` 进 Image part（`StreamChunkHandler.kt:248-256`）→ 生成结束 `Base64ImageToLocalFileTransformer` 转本地文件（注册于 `TransformerChainRegistry.kt:120`）→ 保存前 `Base64ImageSanitizer` 再兜底转占位（`FilesManager.kt:408-411`、`ConversationEntityMapper.kt:23`）。上游仍未修（open，无 diff 可借）。判**观察项**：本仓生图路径未真机验证，若复现再按「生图结果不走 output transformer」排查，不立项。
-- **#2312 自定义压缩提示词（open，需求）**——本仓压缩提示词为硬编码常量（`CompressPrompt.kt` 的检查点前导语 + 摘要正文），压缩档只带 2 个数值（`CompressPreset.kt` 保留比例/目标 token），**无提示词自定义位**。若做 = Settings 字段 + 组装点注入 + 设置页 UI + 3 locale，~0.5–1 天；但会改变摘要风格且引入提示词注入面，**目录线需用户拍板**。
+- **#2312 自定义压缩提示词（open，需求）**——**已有等价（2026-11-11 复核修正，此前误判为「无自定义位」）**：本仓全局 `Settings.compressPrompt` 可在「设置 → 模型 → 提示词 → 压缩提示词」编辑与一键重置（`SettingModelPromptPage.kt:101`，默认 `DEFAULT_COMPRESS_PROMPT`）；支持 `{content}` / `{target_tokens}` / `{additional_context}`（代码另支持 `{locale}`，UI 变量提示未列出）；手动压缩对话框另有 `additionalPrompt` 附加指令（`CompressContextDialog.kt:151`，注入 `{additional_context}`）。仅与上游要求存在粒度差异：本仓为**全局模板**而非按助手/按会话覆盖，但核心诉求（自定义摘要风格、写作连续性指令）已满足，不立项。
 
 ### 本轮实施状态
 
@@ -1891,7 +1891,7 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - **请求侧**：`buildChatCompletionRequest` 按 `host == "api.mistral.ai"` 传 `mistralThinkingReplay`；`buildAssistantMessageJson` 在该模式下**不写 `reasoning_content`**（含 backfill 分支），把历史思考写成 `content` 首块 `{"type":"thinking","thinking":[{"type":"text","text":…}]}`，再跟原有 text/image 块。本仓无 OpenRouter `reasoning_details` 回传，故用布尔开关而非上游三态枚举。
 - **测试**：新增 `ChatCompletionsMistralContentTest`（5 例：流式过渡帧、非流式块列表、字符串兜底、Mistral 回传形状、默认仍回 reasoning_content）；`ChatCompletionsAPIMessageTest` 反射 helper 补第 5 参。`./gradlew :ai:testDebugUnitTest` **532 项 0 失败**。
 - **`055faeb38` 快捷消息也已落地（本地未提交）**：`ChatInputState.appendText` 非空且不以换行结尾时自动补 `\n`；`QuickMessageButton` 改 `combinedClickable`，长按触感反馈 + `setMessageText` 整段替换。`ChatInputTextUpdatesTest` 补 2 项并更新追加断言；真机 PJX110 验证：空输入短按无前导换行、二次短按自动换行、长按整段替换均通过。
-- **未做**：`#2312`/`#2311` 待拍板或真机核验。Mistral 真机验证需自建 `api.mistral.ai` 的 OpenAI 兼容 provider 并做「带历史思考的多轮」对话。
+- **未做**：`#2311` 待真机核验。Mistral 真机验证需自建 `api.mistral.ai` 的 OpenAI 兼容 provider 并做「带历史思考的多轮」对话。
 - **附带修复（非上游批次）**：真机验证时复现 `MemoryTriggerBootReceiver` 在「startKoin 推迟到换库之后」窗口内解析 Koin → `NoDefinitionFoundException` 崩溃（安装后 ROM 重投 BOOT_COMPLETED 触发）；改为独立 scope + `RikkaHubApp.awaitBootReady(8s)`，等不到即放弃（下次启动 reconcile）。真机两轮 BOOT 重投无 FATAL。详见 `docs/changelog/2026-11.md` 同日条目。
 
 ## 关联
