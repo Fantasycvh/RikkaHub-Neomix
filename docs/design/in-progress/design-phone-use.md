@@ -1,7 +1,7 @@
 # Phone Use：AI 通过无障碍服务操作手机（design-phone-use）
 
-> 状态：**v1 已落地（2026-11-11）**，P2 前两项（60s 审批超时、用户可编辑黑名单）已完成；
-> 每轮步数硬上限、元素列表差分压缩仍开放。
+> 状态：**v1 + P2 已落地（2026-11-11）**；P2 的超时、自定义黑名单、每轮步数上限、
+> 元素列表差分压缩均已完成。
 > 真机验证（2026-11-11，Example Assistant + glm-4.5-air）：无障碍服务绑定 →
 > 悬浮窗开着 → AI 打开 ColorOS 便签（`com.coloros.note`）→ 新建并输入
 > “Phone Use works.” → 保存成功；会话回报 4 项完成。
@@ -121,6 +121,21 @@ Web 的发送/编辑入口传 false；App 默认 true。`PromptInspection` 只�
 - `acting` 改引用计数，嵌套/并发时不会提前把悬浮窗恢复成可触摸。
 - 工具串行：保留 `concurrentSafe=false`（默认），不与其他工具并行。
 
+### 2.6 预算与上下文压缩
+
+- **单轮步数硬上限**：`PhoneUseTurnBudget`（默认 40 步，
+  `data/ai/PhoneUseTurnBudget.kt`）挂在 `ConversationSession`，跨审批续跑累积、
+  新一轮 `beginNewTurn` 清零。语义与 `WorkspaceTurnBudget` 一致——**执行后判定**：
+  超限那一步的结果照常回填，随后以 `GenerationNotice.PhoneUseBudgetExhausted`
+  优雅结束本轮，聊天页给用户可见提示；失败调用同样计步（它们也耗时间与上下文）。
+- **元素列表差分压缩**：动作后自动回带的列表与模型已见过的上一份比较——
+  - 完全一致（含坐标）→ 只回一行“未变化”，旧索引继续有效；
+  - 仅文字/勾选等状态变化，且元素数量、类名、资源 ID、坐标都没变 → 只回变化元素；
+  - 换应用、键盘出现、增删元素、位置变化、截断状态变化 → 回全量列表。
+  
+  索引是**列表位置**而不是稳定 id，布局一变旧编号就可能指向别的控件，因此不做跨结构
+  差分。`observe` 是模型显式重读，始终回全量。
+
 ---
 
 ## 三、审批状态机
@@ -169,6 +184,10 @@ phone_use(action):
    `startKoin`，无障碍服务可能在它之前绑定；服务里 `by inject()` 会抛
    `NoDefinitionFound` 并触发安全模式。`PhoneUseManager` 用进程级静态单例，
    Koin 的 `single` 返回同一实例，服务不依赖 Koin。
+9. **预算与压缩挂点（P2，2026-11-11）**：步数预算记录在 `GenerationHandler` 的工具
+   结果合并点（成功/失败两条路径都计），与 `workspaceBudget` 并列；差分压缩在
+   `PhoneUseTool.describe(screen, previous)`，基线 `lastDescribedScreen` 与
+   `lastScreen` 分开维护，屏幕世代（epoch）变化时一起失效。
 
 ---
 
@@ -180,9 +199,9 @@ phone_use(action):
 - **P2 审批**：回合授权/拒绝、`ConversationSession` 状态、`GenerationHandler` 判定、
   悬浮窗/聊天审批卡“允许本轮”。
 - **P3 体验/隐私**：tool UI renderer、悬浮窗让位与自动展开、截图落独立目录、
-  password/系统窗口过滤、FLAG_SECURE 错误。
-- **P2 已落地（2026-11-11，`1c38e9512`）**：60s 审批超时自动拒绝、用户可编辑黑名单。
-- **P2 剩余**：每轮步数硬上限、元素列表差分压缩。
+  password/系统窗口过滤、FLAG_SECURE 错误——**均已随 v1 落地（2026-11-11）**。
+- **P2 已落地（2026-11-11）**：`1c38e9512` 60s 审批超时自动拒绝、用户可编辑黑名单；
+  每轮步数硬上限（`PhoneUseTurnBudget`）、元素列表差分压缩。
 - **P4 验证**：FakeController 单测、全量单测、debug 构建、真机验收。
 
 ---
@@ -194,7 +213,10 @@ JVM：
 - 网格换算、元素编号过期、scroll 方向、被禁应用、本应用前台、悬浮窗关闭；
 - S2：screenshot/tap/type 触发 needsApproval，observe/list_apps/wait/HOME 不触发；
 - 回合授权：批准后同轮不再问，拒绝后同轮不再装配/执行；
-- 来源：`allowPhoneUse=false` 时工具集合里没有 `phone_use`。
+- 来源：`allowPhoneUse=false` 时工具集合里没有 `phone_use`；
+- 步数预算：40 步内 Continue，第 41 步 Exceeded，`reset()` 后清零；
+- 差分压缩：屏幕不变回单行、仅文字/状态变化回变化元素、位置或增删元素回全量、
+  `observe` 始终回全量。
 
 真机：
 
@@ -215,5 +237,8 @@ JVM：
 - **不做 Web 远程**：认证不等于本人在设备旁；如未来要做，必须设备端二次确认 + 独立总开关。
 - **不做虚拟屏**：公开 SDK 的 `VirtualDisplay` 只能承载自有内容；`ActivityView` 不在公开 SDK，
   `dispatchGesture` 无 display 参数；最多做节点动作型研究，不进 v1。
-- **步数硬上限**、**元素列表差分压缩**放 P2；当前依赖内置+自定义黑名单、S2 审批、
-  60s 超时兜底、LoopGuard/上下文闸与用户停止。
+- **步数硬上限**、**元素列表差分压缩**已随 P2 落地；当前依赖内置+自定义黑名单、S2 审批、
+  60s 超时兜底、单轮步数上限、LoopGuard/上下文闸与用户停止。
+- **微信限制（2026-11-11 用户反馈）**：微信疑似已下发防截图/防读屏配置，Phone Use 对其
+  截图与元素读取可能失败；不做绕过，失败按可读错误返回，后续可能要求具备相应模块/配置
+  才能操作该应用。

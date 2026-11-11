@@ -249,6 +249,12 @@ class WorkspaceBudgetExhaustedException(
     val by: WorkspaceTurnBudget.ExceedReason,
 ) : Exception("workspace budget: $usedChars/$budgetChars chars, $steps steps")
 
+/** Phone Use 单轮步数耗尽（见 `data/ai/PhoneUseTurnBudget.kt`），本轮已提前结束。 */
+class PhoneUseBudgetExhaustedException(
+    val steps: Int,
+    val limit: Int,
+) : Exception("phone use steps: $steps/$limit")
+
 /**
  * 拼装预览 / 上下文容量面板的**重活统一调度器**。
  *

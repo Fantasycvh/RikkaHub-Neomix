@@ -63,6 +63,12 @@ internal fun evaluateCompletion(
                 AgentRunEntity.ERROR_BUDGET_EXHAUSTED,
                 "${stopNotice.usedChars}/${stopNotice.budgetChars} chars, ${stopNotice.steps} steps",
             )
+        is GenerationNotice.PhoneUseBudgetExhausted ->
+            // 无头 run 不装配 phone_use（来源门控），分支仅为 when 穷尽；仍按预算类失败记录
+            return RunOutcome.Failed(
+                AgentRunEntity.ERROR_BUDGET_EXHAUSTED,
+                "${stopNotice.steps}/${stopNotice.limit} steps",
+            )
         is GenerationNotice.TooManyDenials ->
             return RunOutcome.Failed(AgentRunEntity.ERROR_PERMISSION_DENIED, "${stopNotice.denials} denials")
         is GenerationNotice.ThinkingDegenerationStopped ->

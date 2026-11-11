@@ -199,9 +199,14 @@ private class PhoneUseSession(
     private var lastScreen: PhoneScreen? = null
     private var lastEpoch: Long? = null
 
+    // 模型手上那份元素列表对应的屏幕：与 lastScreen 分开——后者只用于编号换算，
+    // 而差分压缩只在「模型确实见过全量列表」时才敢回“没变化”
+    private var lastDescribedScreen: PhoneScreen? = null
+
     suspend fun execute(params: JsonObject): List<UIMessagePart> = manager.withPhoneControl(this) { epoch ->
         if (lastEpoch != epoch) {
             lastScreen = null
+            lastDescribedScreen = null
             lastEpoch = epoch
         }
         // 开启工具时已经要求过，这里防的是之后又把悬浮窗或它的权限关掉
@@ -260,7 +265,8 @@ private class PhoneUseSession(
 
             "observe" -> {
                 ensureOperable(controller)
-                text(describeCurrent(controller))
+                // 显式读屏是模型重新拿到全量列表的入口，不做差分
+                text(describeCurrent(controller, forceFull = true))
             }
 
             "screenshot" -> {
@@ -371,10 +377,18 @@ private class PhoneUseSession(
         controller.visiblePackages().blocked()?.let { error(blockedMessage(it)) }
     }
 
-    /** 读取并描述当前界面；到了被禁的应用里不把界面内容交给模型 */
-    private suspend fun describeCurrent(controller: PhoneController): String {
+    /**
+     * 读取并描述当前界面；到了被禁的应用里不把界面内容交给模型。
+     *
+     * [forceFull] 为真时忽略差分（`observe`）：模型显式读屏就应该拿到完整列表。
+     */
+    private suspend fun describeCurrent(controller: PhoneController, forceFull: Boolean = false): String {
         val screen = capture(controller)
-        return screen.packages.blocked()?.let(::blockedMessage) ?: describe(screen)
+        screen.packages.blocked()?.let { return blockedMessage(it) }
+        val text = describe(screen, previous = lastDescribedScreen.takeUnless { forceFull })
+        // 差分文本同样让模型对新列表建立完整认知：作为下一份基线
+        lastDescribedScreen = screen
+        return text
     }
 
     private fun blockedPackages(): Set<String> = PHONE_USE_BLOCKED_APPS + userBlockedPackages()
@@ -419,34 +433,95 @@ private fun PhoneScreen.appName() = when {
     else -> packageName
 }
 
-internal fun describe(screen: PhoneScreen): String = buildString {
-    appendLine("App: ${screen.appName()}")
-    if (screen.keyboardVisible) appendLine("Keyboard: visible")
-    if (screen.elements.isEmpty()) {
-        append("No elements found. The screen may still be loading (wait), or needs a screenshot.")
-        return@buildString
+/**
+ * 把界面交给模型。给了 [previous]（模型已见过的上一份列表）时做差分压缩：
+ *
+ * - 完全一致（含坐标）→ 只回一行“没变化”，索引仍然有效；
+ * - 只有文字/勾选等状态变化、布局与坐标都没动 → 只回变化的元素；
+ * - 其余情况（换应用、键盘出现、增删元素、位置变化、列表截断状态变化）→ 回全量列表。
+ *
+ * 索引是列表位置而不是稳定 id：一旦增删/移动元素，旧编号就会指向别的控件，所以那种
+ * 情况必须回全量，不能猜。
+ */
+internal fun describe(screen: PhoneScreen, previous: PhoneScreen? = null): String {
+    if (previous != null) {
+        unchangedText(screen, previous)?.let { return it }
+        changedText(screen, previous)?.let { return it }
     }
-    appendLine("Elements as [index] type \"label\" (or #resource-id when unlabeled) flags @(x,y):")
-    screen.elements.forEach { element ->
-        append("[${element.index}] ${element.className}")
-        if (element.label.isNotEmpty()) {
-            append(" \"${element.label}\"")
-        } else {
-            // 没有文字的图标按钮只剩资源 ID 能说明用途；有文字时不带，省些篇幅
-            element.resourceId?.let { append(" #$it") }
+    return buildString {
+        appendLine("App: ${screen.appName()}")
+        if (screen.keyboardVisible) appendLine("Keyboard: visible")
+        if (screen.elements.isEmpty()) {
+            append("No elements found. The screen may still be loading (wait), or needs a screenshot.")
+            return@buildString
         }
-        if (element.password) append(" password")
-        if (element.clickable) append(" clickable")
-        if (element.editable) append(" editable")
-        if (element.scrollable) append(" scrollable")
-        element.checked?.let { append(if (it) " checked" else " unchecked") }
-        if (element.focused) append(" focused")
-        val x = (element.left + element.right) / 2 * GRID / screen.width.coerceAtLeast(1)
-        val y = (element.top + element.bottom) / 2 * GRID / screen.height.coerceAtLeast(1)
-        appendLine(" @($x,$y)")
+        appendLine("Elements as [index] type \"label\" (or #resource-id when unlabeled) flags @(x,y):")
+        screen.elements.forEach { appendElement(it, screen) }
+        if (screen.truncated) append("More elements were omitted; scroll or take a screenshot to see the rest.")
+    }.trimEnd()
+}
+
+private fun unchangedText(screen: PhoneScreen, previous: PhoneScreen): String? {
+    if (screen != previous) return null
+    return "Screen unchanged: still ${screen.appName()} with the same ${screen.elements.size} elements " +
+        "at the same positions. The element list you already have still applies." +
+        if (screen.truncated) " More elements were omitted; scroll or take a screenshot to see the rest." else ""
+}
+
+private fun changedText(screen: PhoneScreen, previous: PhoneScreen): String? {
+    // 编号 = 位置：布局层面的任何变化都可能让旧编号失效，直接退回全量
+    if (screen.packageName != previous.packageName ||
+        screen.packages != previous.packages ||
+        screen.width != previous.width ||
+        screen.height != previous.height ||
+        screen.keyboardVisible != previous.keyboardVisible ||
+        screen.truncated != previous.truncated ||
+        screen.elements.size != previous.elements.size
+    ) {
+        return null
     }
-    if (screen.truncated) append("More elements were omitted; scroll or take a screenshot to see the rest.")
-}.trimEnd()
+    val changed = mutableListOf<PhoneElement>()
+    screen.elements.forEachIndexed { index, element ->
+        val old = previous.elements[index]
+        if (element == old) return@forEachIndexed
+        if (element.className != old.className ||
+            element.resourceId != old.resourceId ||
+            element.left != old.left ||
+            element.top != old.top ||
+            element.right != old.right ||
+            element.bottom != old.bottom
+        ) {
+            return null
+        }
+        changed += element
+    }
+    if (changed.isEmpty()) return null
+    return buildString {
+        appendLine("Screen: ${screen.appName()} (same layout, ${screen.elements.size} elements)")
+        appendLine("Only these elements changed; indexes, positions and the rest of the list are unchanged:")
+        changed.forEach { appendElement(it, screen) }
+        if (screen.truncated) append("More elements were omitted; scroll or take a screenshot to see the rest.")
+    }.trimEnd()
+}
+
+private fun StringBuilder.appendElement(element: PhoneElement, screen: PhoneScreen) {
+    append("[${element.index}] ${element.className}")
+    if (element.label.isNotEmpty()) {
+        append(" \"${element.label}\"")
+    } else {
+        // 没有文字的图标按钮只剩资源 ID 能说明用途；有文字时不带，省些篇幅
+        element.resourceId?.let { append(" #$it") }
+    }
+    if (element.password) append(" password")
+    if (element.clickable) append(" clickable")
+    if (element.editable) append(" editable")
+    if (element.scrollable) append(" scrollable")
+    element.checked?.let { append(if (it) " checked" else " unchecked") }
+    if (element.focused) append(" focused")
+    val x = (element.left + element.right) / 2 * GRID / screen.width.coerceAtLeast(1)
+    val y = (element.top + element.bottom) / 2 * GRID / screen.height.coerceAtLeast(1)
+    appendLine(" @($x,$y)")
+}
 
 // 模型有时把数字写成字符串，按内容解析
 private fun JsonObject.string(key: String) = (this[key] as? JsonPrimitive)?.contentOrNull

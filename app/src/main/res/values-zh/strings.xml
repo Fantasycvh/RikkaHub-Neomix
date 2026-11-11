@@ -526,6 +526,7 @@
   <string name="agent_run_error_exception">运行出错</string>
   <string name="chat_tool_loop_title">工具调用重复，已结束本轮</string>
   <string name="chat_workspace_budget_title">工作区工具用量已达上限，已结束本轮</string>
+  <string name="chat_phone_use_budget_title">Phone Use 步数已达上限，已结束本轮</string>
   <string name="chat_memory_disabled_toggle">本对话不使用记忆</string>
   <string name="chat_memory_disabled_toast_on">本对话已不使用记忆</string>
   <string name="chat_memory_disabled_toast_off">本对话已恢复使用记忆</string>

@@ -1805,6 +1805,8 @@ class ChatService(
                 loopGuard = session.toolLoopGuard,
                 ruleEngine = session.ruleEngine,
                 workspaceBudget = session.workspaceTurnBudget,
+                // Phone Use 单轮步数：与 workspace 同款挂 session，跨审批续跑累积
+                phoneUseBudget = session.phoneUseTurnBudget,
                 // 思考退化护栏（家族第四员）：同上取 session 上的实例，跨审批续跑累积
                 thinkingGuard = session.thinkingGuard,
                 // 上下文预算守卫（design-tool-context-gate §6）：无累积状态，调用点直接新建。
@@ -1973,6 +1975,17 @@ class ChatService(
                                 ),
                                 conversationId,
                                 title = context.getString(R.string.chat_workspace_budget_title),
+                            )
+                        }
+                        is GenerationNotice.PhoneUseBudgetExhausted -> {
+                            Log.w(
+                                TAG,
+                                "phone use steps exhausted: ${notice.steps}/${notice.limit} (conv=$conversationId)",
+                            )
+                            addError(
+                                PhoneUseBudgetExhaustedException(notice.steps, notice.limit),
+                                conversationId,
+                                title = context.getString(R.string.chat_phone_use_budget_title),
                             )
                         }
                         is GenerationNotice.ThinkingDegenerationStopped -> {

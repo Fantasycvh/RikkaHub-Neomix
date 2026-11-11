@@ -22,6 +22,7 @@ import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
 import app.androidrik.rikkahub.data.ai.guardThresholds
 import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_BUDGET_CHARS
 import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_MAX_STEPS
+import app.androidrik.rikkahub.data.ai.PhoneUseTurnBudget
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.model.Conversation
@@ -140,6 +141,12 @@ class ConversationSession(
     )
 
     /**
+     * Phone Use 单轮步数上限（见 `data/ai/PhoneUseTurnBudget.kt`）。与 [workspaceTurnBudget]
+     * 同款挂载理由：跨审批续跑累积，新一轮由 [beginNewTurn] 清零。
+     */
+    val phoneUseTurnBudget = PhoneUseTurnBudget()
+
+    /**
      * **思考退化护栏**（护栏家族第四员，见 `data/ai/ThinkingDegenerationGuard.kt`）。
      *
      * 与 [toolLoopGuard] 同款挂载理由与重置时机：一次「轮」跨多次 generateText（审批续跑），
@@ -213,6 +220,7 @@ class ConversationSession(
     var phoneUseDeniedForTurn: Boolean = false
 
     fun beginNewTurn(forcedTurnOwner: String? = null) {
+        turnLoopGate = null
         externalNoticeRootScope = null
         lastScheduledMemoryState = null
         lastScheduledMemoryReceipts = null
@@ -223,10 +231,10 @@ class ConversationSession(
         replyMessageId.value = null
         toolLoopGuard.reset()
         workspaceTurnBudget.reset()
+        phoneUseTurnBudget.reset()
         thinkingGuard.reset()
         ruleEngine.reset()
         backgroundTaskOwner = forcedTurnOwner?.takeIf { it.isNotBlank() } ?: newTurnToken()
-        turnLoopGate = null
         turnRevision.value++
     }
 

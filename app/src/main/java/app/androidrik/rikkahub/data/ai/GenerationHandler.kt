@@ -409,6 +409,12 @@ class GenerationHandler(
          */
         workspaceBudget: WorkspaceTurnBudget = WorkspaceTurnBudget(),
         /**
+         * Phone Use 的**单轮步数上限**。与 [workspaceBudget] 同款：挂在 session 上跨审批
+         * 累积、新一轮重置；超限的调用结果照常回填后优雅停止本轮。
+         * 见 [PhoneUseTurnBudget] 类注释。默认值只服务于单测等场景。
+         */
+        phoneUseBudget: PhoneUseTurnBudget = PhoneUseTurnBudget(),
+        /**
          * 无头 run 的**自动拒绝**：`needsApproval=true` 的工具不进入「等用户」状态，
          * 而是直接置为策略拒绝（文本经既有 Denied 通路回给模型，见 §9.2.1）。
          * 配合 [denialGuard] 使用（聊天路径两个都走默认值，行为不变）。
@@ -1110,6 +1116,23 @@ class GenerationHandler(
                             )
                         }
                     }
+                    // Phone Use 单轮步数：同样执行后计数（失败调用也耗时间与上下文）。
+                    if (tool.toolName == PHONE_USE_TOOL_NAME) {
+                        when (val verdict = phoneUseBudget.record()) {
+                            PhoneUseTurnBudget.Verdict.Continue -> Unit
+                            is PhoneUseTurnBudget.Verdict.Exceeded -> if (stopNotice == null) {
+                                Log.w(
+                                    TAG,
+                                    "generateText: phone use steps exceeded " +
+                                        "(${verdict.steps}/${verdict.limit}), will stop this turn after applying results",
+                                )
+                                stopNotice = GenerationNotice.PhoneUseBudgetExhausted(
+                                    steps = verdict.steps,
+                                    limit = verdict.limit,
+                                )
+                            }
+                        }
+                    }
                 }.onFailure {
                     // 取消必须向上传播，否则停止生成会被误报为工具执行错误
                     if (it is CancellationException) throw it
@@ -1137,6 +1160,22 @@ class GenerationHandler(
                     }
                     if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
                         workspaceBudget.record(errorText.length)
+                    }
+                    if (tool.toolName == PHONE_USE_TOOL_NAME) {
+                        when (val verdict = phoneUseBudget.record()) {
+                            PhoneUseTurnBudget.Verdict.Continue -> Unit
+                            is PhoneUseTurnBudget.Verdict.Exceeded -> if (stopNotice == null) {
+                                Log.w(
+                                    TAG,
+                                    "generateText: phone use steps exceeded " +
+                                        "(${verdict.steps}/${verdict.limit}), will stop this turn after applying results",
+                                )
+                                stopNotice = GenerationNotice.PhoneUseBudgetExhausted(
+                                    steps = verdict.steps,
+                                    limit = verdict.limit,
+                                )
+                            }
+                        }
                     }
                     // 失败输出同样走车道合并点（只合并不发射，冲刷点统一补发）
                     withContext(NonCancellable) {

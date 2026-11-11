@@ -489,6 +489,7 @@
   <string name="agent_run_error_exception">Run failed with an error</string>
   <string name="chat_tool_loop_title">Repeated tool call - turn ended</string>
   <string name="chat_workspace_budget_title">Workspace tool budget reached - turn ended</string>
+  <string name="chat_phone_use_budget_title">Phone Use step limit reached - turn ended</string>
   <string name="chat_memory_disabled_toggle">Do not use memories in this chat</string>
   <string name="chat_memory_disabled_toast_on">Memories are off in this chat</string>
   <string name="chat_memory_disabled_toast_off">Memories are back on in this chat</string>

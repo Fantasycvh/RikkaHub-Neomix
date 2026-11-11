@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.ai.tools
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.tools.local.buildPhoneUseTool
+import app.androidrik.rikkahub.data.ai.tools.local.describe
 import app.androidrik.rikkahub.data.ai.tools.local.phoneUseActionNeedsApproval
 import app.androidrik.rikkahub.phoneuse.PhoneApp
 import app.androidrik.rikkahub.phoneuse.PhoneController
@@ -221,6 +222,58 @@ class PhoneUseToolTest {
         assertTrue(savedScreenshots.single().isNotEmpty())
         val text = parts.filterIsInstance<UIMessagePart.Text>().single().text
         assertTrue(text.contains("1000 x 1000 grid"))
+    }
+
+    @Test
+    fun `unchanged screen after an action is compressed to a one-liner`() = runTest {
+        manager.attach(controller)
+        call { put("action", "observe") }
+        // FakeController 的 tap 不改界面：差分应命中“没变化”，而不是再回一份全量列表
+        val output = call {
+            put("action", "tap")
+            put("element", 0)
+        }
+        assertTrue(output.contains("Screen unchanged"))
+        assertFalse(output.contains("Elements as [index]"))
+    }
+
+    @Test
+    fun `only changed labels are returned when the layout is stable`() = runTest {
+        manager.attach(controller)
+        call { put("action", "observe") }
+        controller.screen = controller.screen.copy(
+            elements = controller.screen.elements.map {
+                if (it.index == 0) it.copy(label = "Send now") else it
+            },
+        )
+        val output = call { put("action", "wait"); put("seconds", 0.5) }
+        assertTrue(output.contains("Only these elements changed"))
+        assertTrue(output.contains("\"Send now\""))
+        assertFalse(output.contains("Elements as [index]"))
+        // 未变化的元素不再重复
+        assertFalse(output.contains("\"Message\""))
+    }
+
+    @Test
+    fun `position changes fall back to the full element list`() = runTest {
+        manager.attach(controller)
+        val before = controller.screen
+        val after = before.copy(
+            elements = before.elements.map {
+                if (it.index == 0) it.copy(top = it.top + 10) else it
+            },
+        )
+        val output = describe(after, before)
+        assertTrue(output.contains("Elements as [index]"))
+    }
+
+    @Test
+    fun `added elements fall back to the full element list`() = runTest {
+        manager.attach(controller)
+        val before = controller.screen
+        val after = before.copy(elements = before.elements + before.elements.first().copy(index = 4))
+        val output = describe(after, before)
+        assertTrue(output.contains("Elements as [index]"))
     }
 
     private class FakeController(private val manager: PhoneUseManager) : PhoneController {

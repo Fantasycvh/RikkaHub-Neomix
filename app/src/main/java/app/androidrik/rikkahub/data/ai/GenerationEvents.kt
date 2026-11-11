@@ -43,6 +43,15 @@ sealed interface GenerationNotice {
     ) : GenerationNotice
 
     /**
+     * Phone Use 单轮步数耗尽，已提前结束本轮（见 [PhoneUseTurnBudget]）。
+     * 堵的是「每步换参数的手机操作」把一轮拖到几十次读屏/手势。
+     */
+    data class PhoneUseBudgetExhausted(
+        val steps: Int,
+        val limit: Int,
+    ) : GenerationNotice
+
+    /**
      * 无头 run 的重复拒绝达阈值（见 [DenialGuard]）——模型被策略拒绝后换着方式反复撞，
      * 继续跑只会到空响应；提前结束，run 以 `failed(permission_denied)` 收尾。
      */
