@@ -1,1 +1,9 @@
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 手动 `am instrument` 跑基准时目标包不在 Gradle 注入的 queries 里（README「底层等价命令」路径），
+         Android 11+ 包可见性下 Macrobenchmark 解析目标包会 NameNotFoundException。release 目标由
+         androidx.baselineprofile 插件自动接线；这里显式声明 debug 目标（suppressed DEBUGGABLE 跑 debug 变体）。 -->
+    <queries>
+        <package android:name="app.androidrik.rikkahub.debug" />
+        <package android:name="app.androidrik.rikkahub" />
+    </queries>
+</manifest>

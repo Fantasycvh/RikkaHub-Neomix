@@ -249,3 +249,17 @@
 2. **`:app:baselineprofile` 未编译**：`androidx.benchmark:benchmark-macro-junit4:1.4.1`、
    `androidx.test.uiautomator:2.4.0` 本机 Gradle 缓存没有，`--offline` 解析失败；且无设备 ⇒
    journey 指标未运行（README 已写「未运行验证」）。首次联网构建时需确认 API 兼容。
+
+### 6.8 2026-11-11 第四轮：联网验证 + P3 收尾（本地提交，未推送）
+
+| 项 | 状态 | 落点 |
+|---|---|---|
+| 第三轮遗留①：web-ui 构建 | **已验证** | 本机 pnpm 11.15.1 可用：`pnpm install` + `pnpm typecheck` + `pnpm build` 全过（lastUsage 的 DTO/types/locales 改动无回归）；`./gradlew :web:buildWebUi` 全链路通过，产物拷至 `web/src/main/resources/static` |
+| P3 通知权限卡（`62d6acd31`） | **已落地+真机验证** | `NotificationPermissionCard.kt`（对齐 `LocalNetworkPermissionCard` 模式，`Lucide.BellRing`）+ `SettingPage` 条目（`SDK>=33 && 未授权` 才显示，复用 `rememberPermissionState`/`PermissionManager`）；字符串三语已有，零新增。真机：pm revoke → 卡片出现 → 说明弹窗 → 系统授权 → 卡片消失 |
+| P3 压缩请求组装搬 IO（`0cd90ef12` 残件） | **已落地** | `ChatService.compressToCheckpoint` 四处纯 CPU 段包 `withContext(Dispatchers.IO)`：①会话快照+窗口切分+计划估算（midTurn 快照写回保持在 Main）；②`compressChunk` 提示词组装；③`sourceText` 拼接；④`attachTraceSection`。网络请求仍可取消在外。`CompressionTraceWiringTest` 守卫字面量随迁 |
+| P3 世界书 4 个触发时序字段（NMoi D307-D308） | **已落地+真机验证** | ①`RegexInjection` 加 `matchWholeWords`/`sticky`/`cooldown`/`delay`（默认 0/false=关，存量零回归）；②新增 `isTriggered(messages, extraTexts)` 时序判定：delay=历史不足 N 条不激活（常驻同受控）、sticky=扫描窗口伸到 `scanDepth+sticky`、cooldown=「最近一次提到」落在最近 N 条内则抑制（零状态，不与归档/压缩打架；借判据不抄 NMoi 的恒假死代码）；③整词匹配 `\b` 包转义关键词（界面文案写明「对连续中文基本不生效」）；④`PromptInjectionTransformer` 改走消息列表判定；⑤ST 导入：独立文件顶层字段 + 卡内嵌 `extensions` 双路解析（可空缺省）；⑥编辑对话框 3 个数字框 + 1 个开关，三语字符串；⑦新增 `LorebookTimingTriggerTest` 9 例。真机：四控件上屏、文案正确、delay=2 编辑持久化后还原 |
+| 第三轮遗留②：`:app:baselineprofile` 编译 | **已验证（2026-11-11 补）** | 直连 `google()`/`mavenCentral` 即完成解析下载（无需镜像）；模块用 `com.android.test` 插件（无 `compileDebugKotlin`，任务为 `compileBenchmarkReleaseKotlin`）；修 `BenchmarkRunner.kt` 的 `MacrobenchmarkRule` 导包（`androidx.benchmark.macro.junit4`，同 JourneyBenchmarks），两变体编译全过。运行验证（真机跑 journey 指标）仍开放 |
+
+验证：`pnpm typecheck`/`build`、`:web:buildWebUi`、`:app:compileDebugKotlin` 通过；
+`:app:testDebugUnitTest` 全绿（守卫测试随迁后）；两条 audit 脚本 exit 0；真机（6c841f95，
+arm64 debug）走查通知权限卡与世界书编辑对话框，logcat 无新增崩溃。
