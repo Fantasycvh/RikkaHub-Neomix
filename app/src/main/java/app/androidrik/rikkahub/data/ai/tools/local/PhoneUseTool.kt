@@ -101,6 +101,8 @@ internal fun buildPhoneUseTool(
     isFloatingWindowOn: () -> Boolean,
     isSelfInForeground: suspend () -> Boolean = ::isAppInForeground,
     isDeviceLocked: () -> Boolean = { false },
+    /** 用户附加黑名单（包名）；内置支付/银行表不可移除 */
+    userBlockedPackages: () -> Set<String> = { emptySet() },
 ): Tool {
     val session = PhoneUseSession(
         ownPackageName,
@@ -109,6 +111,7 @@ internal fun buildPhoneUseTool(
         isFloatingWindowOn,
         isSelfInForeground,
         isDeviceLocked,
+        userBlockedPackages,
     )
     return Tool(
         name = PHONE_USE_TOOL_NAME,
@@ -190,6 +193,7 @@ private class PhoneUseSession(
     private val isFloatingWindowOn: () -> Boolean,
     private val isSelfInForeground: suspend () -> Boolean,
     private val isDeviceLocked: () -> Boolean,
+    private val userBlockedPackages: () -> Set<String>,
 ) {
     // 元素编号和坐标换算都以模型最后看到的那份为准；别的会话插进来操作后要丢弃
     private var lastScreen: PhoneScreen? = null
@@ -213,7 +217,8 @@ private class PhoneUseSession(
         )
         when (val action = params.string("action") ?: error("action is required")) {
             "list_apps" -> {
-                val apps = controller.listApps().filterNot { it.packageName in PHONE_USE_BLOCKED_APPS }
+                val blocked = blockedPackages()
+                val apps = controller.listApps().filterNot { it.packageName in blocked }
                 text(
                     buildString {
                         apps.take(MAX_LISTED_APPS).forEach { appendLine("${it.label} (${it.packageName})") }
@@ -227,7 +232,7 @@ private class PhoneUseSession(
             "open_app" -> {
                 val app = resolveApp(controller, params.string("app") ?: error("app is required"))
                 check(app.packageName != ownPackageName) { "This app itself cannot be operated." }
-                check(app.packageName !in PHONE_USE_BLOCKED_APPS) {
+                check(app.packageName !in blockedPackages()) {
                     "${app.label} is blocked for safety. Tell the user to do this step themselves."
                 }
                 check(controller.openApp(app.packageName)) { "Failed to open ${app.label}" }
@@ -372,7 +377,9 @@ private class PhoneUseSession(
         return screen.packages.blocked()?.let(::blockedMessage) ?: describe(screen)
     }
 
-    private fun Set<String>.blocked(): String? = firstOrNull { it in PHONE_USE_BLOCKED_APPS }
+    private fun blockedPackages(): Set<String> = PHONE_USE_BLOCKED_APPS + userBlockedPackages()
+
+    private fun Set<String>.blocked(): String? = firstOrNull { it in blockedPackages() }
 
     private fun blockedMessage(packageName: String) =
         "$packageName is now on screen and is blocked for safety: you cannot read or operate anything " +

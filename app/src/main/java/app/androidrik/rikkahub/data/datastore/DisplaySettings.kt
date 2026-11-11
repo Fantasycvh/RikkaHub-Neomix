@@ -179,6 +179,11 @@ data class DisplaySetting(
     val enableNotificationOnMessageGeneration: Boolean = false,
     val enableLiveUpdateNotification: Boolean = false,
     val enableFloatingChatWindow: Boolean = false,
+    /**
+     * Phone Use 用户附加黑名单（包名）。内置支付/银行表不可移除，这里只追加；
+     * 由 `PhoneUseTool` 与内置表合并后用于读屏、打开应用与可见窗口检查。
+     */
+    val phoneUseBlockedPackages: Set<String> = emptySet(),
     val codeBlockAutoWrap: Boolean = false,
     val codeBlockAutoCollapse: Boolean = false,
     val showLineNumbers: Boolean = false,

@@ -50,6 +50,9 @@ class LocalTools(
                 context.getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
                     !context.getSystemService(PowerManager::class.java).isInteractive
             },
+            userBlockedPackages = {
+                settingsStore.settingsFlow.value.displaySetting.phoneUseBlockedPackages
+            },
             saveScreenshot = { bytes ->
                 // 截图可能含敏感屏幕内容：落独立目录，不进备份（见 FileFolders.PHONE_USE）
                 filesManager.createChatFilesByByteArrays(

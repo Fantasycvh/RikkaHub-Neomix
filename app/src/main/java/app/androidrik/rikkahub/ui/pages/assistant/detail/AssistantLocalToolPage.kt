@@ -4,29 +4,53 @@ import android.Manifest
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.ai.tools.local.LocalToolOption
+import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_BLOCKED_APPS
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField
+import kotlinx.coroutines.launch
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Delete01
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
@@ -92,6 +116,10 @@ private fun AssistantLocalToolContent(
     val settingsStore: SettingsStore = koinInject()
     val phoneUseManager: PhoneUseManager = koinInject()
     val phoneUseServiceOn = phoneUseManager.controller.collectAsStateWithLifecycle().value != null
+    val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
+    val coroutineScope = rememberCoroutineScope()
+    var showPhoneUseBlockedApps by remember { mutableStateOf(false) }
+    val phoneUseBlockedPackages = settings.displaySetting.phoneUseBlockedPackages
     val permissionRequiredText =
         stringResource(R.string.assistant_page_local_tools_screen_time_permission_required)
     val floatingWindowRequiredText =
@@ -329,6 +357,24 @@ private fun AssistantLocalToolContent(
                             )
                         }
                     )
+                    item(
+                        onClick = { showPhoneUseBlockedApps = true },
+                        headlineContent = {
+                            Text(stringResource(R.string.assistant_page_local_tools_phone_use_blocked_apps_title))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.assistant_page_local_tools_phone_use_blocked_apps_desc))
+                        },
+                        trailingContent = {
+                            Text(
+                                text = stringResource(
+                                    R.string.assistant_page_local_tools_phone_use_blocked_apps_count,
+                                    phoneUseBlockedPackages.size,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    )
                 }
             }
         }
@@ -396,6 +442,164 @@ private fun AssistantLocalToolContent(
                     )
                 }
             )
+        }
+    }
+
+    if (showPhoneUseBlockedApps) {
+        PhoneUseBlockedAppsSheet(
+            userBlocked = phoneUseBlockedPackages,
+            onAdd = { packageName ->
+                coroutineScope.launch {
+                    settingsStore.update { current ->
+                        current.copy(
+                            displaySetting = current.displaySetting.copy(
+                                phoneUseBlockedPackages = current.displaySetting.phoneUseBlockedPackages + packageName,
+                            )
+                        )
+                    }
+                }
+            },
+            onRemove = { packageName ->
+                coroutineScope.launch {
+                    settingsStore.update { current ->
+                        current.copy(
+                            displaySetting = current.displaySetting.copy(
+                                phoneUseBlockedPackages = current.displaySetting.phoneUseBlockedPackages - packageName,
+                            )
+                        )
+                    }
+                }
+            },
+            onDismiss = { showPhoneUseBlockedApps = false },
+        )
+    }
+}
+
+private val PACKAGE_NAME_REGEX = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
+
+@Composable
+private fun PhoneUseBlockedAppsSheet(
+    userBlocked: Set<String>,
+    onAdd: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var input by remember { mutableStateOf("") }
+    var invalid by remember { mutableStateOf(false) }
+    // 只允许完全展开：默认半展开 + 键盘弹起会把输入框压在 IME 下面
+    val sheetState = rememberBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded),
+    )
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.assistant_page_local_tools_phone_use_blocked_sheet_title),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                text = stringResource(R.string.assistant_page_local_tools_phone_use_blocked_sheet_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AppOutlinedTextField(
+                    value = input,
+                    onValueChange = {
+                        input = it
+                        invalid = false
+                    },
+                    modifier = Modifier.weight(1f),
+                    label = {
+                        Text(stringResource(R.string.assistant_page_local_tools_phone_use_blocked_placeholder))
+                    },
+                    singleLine = true,
+                    isError = invalid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
+                )
+                Button(
+                    onClick = {
+                        val packageName = input.trim()
+                        if (!PACKAGE_NAME_REGEX.matches(packageName)) {
+                            invalid = true
+                            return@Button
+                        }
+                        onAdd(packageName)
+                        input = ""
+                        invalid = false
+                    }
+                ) {
+                    Text(stringResource(R.string.assistant_page_local_tools_phone_use_blocked_add))
+                }
+            }
+            if (invalid) {
+                Text(
+                    text = stringResource(R.string.assistant_page_local_tools_phone_use_blocked_invalid),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Text(
+                text = stringResource(R.string.assistant_page_local_tools_phone_use_blocked_builtin),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                PHONE_USE_BLOCKED_APPS.sorted().forEach { packageName ->
+                    Text(
+                        text = packageName,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Text(
+                text = stringResource(R.string.assistant_page_local_tools_phone_use_blocked_extra),
+                style = MaterialTheme.typography.labelLarge,
+            )
+            if (userBlocked.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.assistant_page_local_tools_phone_use_blocked_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                userBlocked.sorted().forEach { packageName ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = packageName,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        IconButton(onClick = { onRemove(packageName) }) {
+                            Icon(
+                                imageVector = HugeIcons.Delete01,
+                                contentDescription = stringResource(
+                                    R.string.assistant_page_local_tools_phone_use_blocked_remove
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
         }
     }
 }

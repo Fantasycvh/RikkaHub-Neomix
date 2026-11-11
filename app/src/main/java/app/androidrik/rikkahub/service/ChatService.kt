@@ -1230,6 +1230,30 @@ class ChatService(
      * Phone Use 的回合授权/拒绝要覆盖**同批所有** Pending 的 `phone_use`：
      * 模型可能一次发多个动作，批准一个后其余仍停在 Pending 会等一张不会再出现的卡。
      */
+    /**
+     * 待批的 Phone Use 超过 60s 无人处理：按拒绝落地。
+     * 用户在此之前批准/拒绝时，计时到点会看到「已不再是 Pending」而自动作废。
+     */
+    private fun schedulePhoneUseApprovalTimeout(conversationId: Uuid, toolCallId: String) {
+        appScope.launch {
+            kotlinx.coroutines.delay(PHONE_USE_APPROVAL_TIMEOUT_MS.inWholeMilliseconds)
+            val session = sessions[conversationId] ?: return@launch
+            val stillPending = session.state.value.currentMessages.any { message ->
+                message.getTools().any {
+                    it.toolCallId == toolCallId && it.isPending && it.toolName == PHONE_USE_TOOL_NAME
+                }
+            }
+            if (stillPending) {
+                handleToolApproval(
+                    conversationId = conversationId,
+                    toolCallId = toolCallId,
+                    approved = false,
+                    reason = PHONE_USE_APPROVAL_TIMEOUT_REASON,
+                )
+            }
+        }
+    }
+
     private fun applyPhoneUseBatchDecision(
         conversation: Conversation,
         approved: Boolean,
@@ -1429,6 +1453,11 @@ class ChatService(
          * 超时说明读链异常，此时退回 dummy 并让下游报「未配置模型」的可见错误，而不是挂死。
          */
         val SETTINGS_AWAIT_TIMEOUT = 15.seconds
+
+        /** Phone Use 首次变更动作的审批等待上限：无人应答自动拒绝，避免挂住生成 */
+        val PHONE_USE_APPROVAL_TIMEOUT_MS = 60.seconds
+        const val PHONE_USE_APPROVAL_TIMEOUT_REASON =
+            "Phone Use approval timed out after 60 seconds. Ask the user before operating the phone again."
     }
 
     /** 极轻量的预览头信息：只读会话快照的条数，不触发任何组装/分词。 */
@@ -1766,6 +1795,9 @@ class ChatService(
                 sessionId = conversationId.toString(),
                 // Phone Use 回合授权：同一轮跨审批续跑时不再弹卡
                 phoneUseApprovedForTurn = session.phoneUseApprovedForTurn,
+                onPhoneUseApprovalPending = { toolCallId ->
+                    schedulePhoneUseApprovalTimeout(conversationId, toolCallId)
+                },
                 processingStatus = session.processingStatus,
                 // 护栏取自 session（不是在此处新建）：一次「轮」会跨多次 generateText——
                 // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能

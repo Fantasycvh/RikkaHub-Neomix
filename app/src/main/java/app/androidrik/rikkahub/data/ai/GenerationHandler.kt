@@ -419,6 +419,11 @@ class GenerationHandler(
          * 只对 `phone_use` 生效；其他工具的审批不受影响。
          */
         phoneUseApprovedForTurn: Boolean = false,
+        /**
+         * 本轮某个 `phone_use` 调用刚被置为 Pending 时回调（toolCallId）。
+         * ChatService 用它启动 60s 审批超时；已有的 Pending 不会重复回调。
+         */
+        onPhoneUseApprovalPending: ((String) -> Unit)? = null,
         /** 重复拒绝护栏（仅无头 run 传入；见 [DenialGuard] 类注释的覆盖盲区说明）。 */
         denialGuard: DenialGuard? = null,
         /**
@@ -835,6 +840,17 @@ class GenerationHandler(
                     },
                     autoDeny = autoDenyApproval,
                 )
+
+                // Phone Use 审批超时：只对新出现的 Pending 起计时，续跑时不重复起
+                onPhoneUseApprovalPending?.let { notify ->
+                    val alreadyPending = tools.filter { it.isPending }.map { it.toolCallId }.toSet()
+                    updatedTools
+                        .filter {
+                            it.isPending && it.toolName == PHONE_USE_TOOL_NAME &&
+                                it.toolCallId !in alreadyPending
+                        }
+                        .forEach { notify(it.toolCallId) }
+                }
 
                 // If any tools were updated to Pending, update the message so the UI can ask
                 if (updatedTools != tools) {

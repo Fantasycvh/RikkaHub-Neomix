@@ -180,6 +180,30 @@ class PhoneUseToolTest {
     }
 
     @Test
+    fun `custom blocked packages are enforced`() = runTest {
+        manager.attach(controller)
+        val customTool = buildPhoneUseTool(
+            ownPackageName = "app.androidrik.rikkahub",
+            manager = manager,
+            saveScreenshot = { "file:///screenshot.jpg" },
+            isFloatingWindowOn = { floatingWindowOn },
+            isSelfInForeground = { selfInForeground },
+            userBlockedPackages = { setOf("com.other") },
+        )
+        val list = customTool.execute(buildJsonObject { put("action", "list_apps") })
+            .filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
+        assertFalse(list.contains("Other"))
+        val error = runCatching {
+            customTool.execute(buildJsonObject {
+                put("action", "open_app")
+                put("app", "com.other")
+            })
+        }.exceptionOrNull()
+        assertTrue(error!!.message!!.contains("blocked"))
+        assertTrue(controller.opened.isEmpty())
+    }
+
+    @Test
     fun `blocked app on screen stops reading and acting`() = runTest {
         manager.attach(controller)
         controller.screen = controller.screen.copy(packages = setOf("com.eg.android.AlipayGphone"))
@@ -262,6 +286,7 @@ class PhoneUseToolTest {
 
         override fun listApps(): List<PhoneApp> = listOf(
             PhoneApp("com.demo", "Demo"),
+            PhoneApp("com.other", "Other"),
             PhoneApp("com.eg.android.AlipayGphone", "Alipay"),
         )
 
