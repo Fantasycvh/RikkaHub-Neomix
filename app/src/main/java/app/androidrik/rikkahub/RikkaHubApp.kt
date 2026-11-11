@@ -66,6 +66,7 @@ import app.androidrik.rikkahub.ui.theme.installPluginChatAppearanceBridge
 import app.androidrik.rikkahub.ui.components.message.tools.installPluginToolUIBridge
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.service.MediaCreationService
+import app.androidrik.rikkahub.service.MemoryTriggerScheduleManager
 import app.androidrik.rikkahub.service.WebServerService
 import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
@@ -417,6 +418,10 @@ class RikkaHubApp : Application() {
         // ProcessLifecycleOwner 要求在主线程注册观察者（与 ChatNotificationManager 同款）。
         // 整理本身仍然只在设置里那个助手级开关开着时才跑（门控在 scheduler 的 worker 契约里）。
         get<MemoryConsolidationRuntime>().start()
+
+        // 做梦墙钟触发（P1）：配置流常驻对账——排首槽 / 错过重排 / 模式切走撤闹钟。
+        // 只排闹钟不直接执行（BOOT/后台态的 BG-FGS 限制，见 MemoryTriggerScheduleManager）。
+        get<MemoryTriggerScheduleManager>().start()
 
         // 真 tokenizer 预热（设计：token 预算精度）。**后台装载、不阻塞启动**：
         // 预热完成前所有 `estimateTokens` 走字符启发式兜底（行为不中断，只是精度低一点）。

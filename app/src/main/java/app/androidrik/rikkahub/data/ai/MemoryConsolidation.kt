@@ -41,7 +41,7 @@ internal fun Assistant.memoryConsolidationEnabled(): Boolean =
  * - 只看开启时刻 ⇒ 已整理过的会话会被反复整理同一批轮次（进度行就白记了）。
  *
  * **想要历史内容被整理**，两条路：①把基线选成 [MEMORY_CONSOLIDATION_ALL_HISTORY]（「从最早开始」）；
- * ②走**手动整理**——`findPending(manual = true)` 会把「开启时刻」那一半丢掉
+ * ②走**手动整理**——`findPending(path = MANUAL)` 会把「开启时刻」那一半丢掉
  * （只保留每会话的 `consolidated_at` 进度），即「把手动整理定义为『所有还没整理过的轮次』，
  * 不论多老」。见 `docs/design/design-memory-retrieval-and-consolidation.md` §4。
  */

@@ -3078,6 +3078,16 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="workspace_ssh_editor_jump_auth">跳板机认证</string>
   <string name="workspace_ssh_editor_jump_host_key">跳板机主机密钥</string>
   <string name="workspace_ssh_editor_jump_host_key_changed_title">跳板机主机密钥已变更</string>
+  <string name="memory_trigger_param_once_date">日期</string>
+  <string name="memory_trigger_param_time">时刻</string>
+  <string name="memory_trigger_param_interval">间隔（分钟）</string>
+  <string name="memory_trigger_param_interval_desc">每隔 N 分钟整理一次（系统下限 15 分钟）</string>
+  <string name="memory_trigger_param_weekday">星期</string>
+  <string name="memory_trigger_status_title">排程状态</string>
+  <string name="memory_trigger_status_next">下次触发：%1$s</string>
+  <string name="memory_trigger_status_once_done">这次一次性触发已完成。</string>
+  <string name="memory_trigger_status_pending">等待选择有效的时刻后排程。</string>
+  <string name="memory_trigger_fgs_notif_title">正在整理记忆…</string>
   <string name="memory_trigger_page_title">整理触发方式</string>
   <string name="memory_trigger_mode_idle">空闲后整理</string>
   <string name="memory_trigger_mode_idle_desc">等对话停下来再整理；攒够轮数会提前（默认）</string>

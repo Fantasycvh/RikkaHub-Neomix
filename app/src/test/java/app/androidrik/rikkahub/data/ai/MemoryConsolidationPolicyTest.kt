@@ -7,12 +7,14 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.repository.MemoryRepository
+import app.androidrik.rikkahub.data.scheduled.SchedulePayload
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.time.Duration.Companion.minutes
@@ -170,5 +172,85 @@ class MemoryConsolidationPolicyTest {
         assertEquals("历史硬编码值：空闲 2 分钟", 2.minutes, config.idleDelay)
         assertEquals("历史硬编码值：攒 6 轮走捷径", 6, config.effectiveEveryNTurns)
         assertTrue("范围默认 = 全部", config.scopeAssistantIds.isEmpty())
+    }
+
+    // ---- 墙钟模式：首槽计算 / 认领推进（docs/design/design-memory-consolidation-trigger.md §3.4）----
+
+    private fun epoch(hours: Int, minutes: Int = 0, plusDays: Long = 0): Long =
+        kotlinx.datetime.LocalDateTime.parse(
+            "2026-01-01T${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}"
+        ).toInstant(zone).toEpochMilliseconds() + plusDays * 86_400_000L
+
+    @Test
+    fun `wall-clock first run follows the configured slot`() {
+        val now = epoch(9)
+        // DAILY 8:00 已过 ⇒ 次日 8:00
+        val daily = MemoryTriggerConfig(
+            mode = MemoryTriggerMode.DAILY,
+            schedule = SchedulePayload(hour = 8, minute = 0),
+        )
+        assertEquals(epoch(8, plusDays = 1), daily.firstNextRun(now))
+
+        // INTERVAL 30 分钟 ⇒ now + 30min
+        val interval = MemoryTriggerConfig(
+            mode = MemoryTriggerMode.INTERVAL,
+            schedule = SchedulePayload(intervalMinutes = 30),
+        )
+        assertEquals(now + 30 * 60_000L, interval.firstNextRun(now))
+
+        // WEEKLY 周一 8:00（2026-01-01 是周四 ⇒ 下周一 1 月 5 日）
+        val weekly = MemoryTriggerConfig(
+            mode = MemoryTriggerMode.WEEKLY,
+            schedule = SchedulePayload(dayOfWeek = 1, hour = 8, minute = 0),
+        )
+        assertEquals(epoch(8, plusDays = 4), weekly.firstNextRun(now))
+    }
+
+    @Test
+    fun `once first run never schedules a past or missing time`() {
+        val now = epoch(9)
+        val future = MemoryTriggerConfig(
+            mode = MemoryTriggerMode.ONCE,
+            schedule = SchedulePayload(runAt = epoch(10)),
+        )
+        assertEquals(epoch(10), future.firstNextRun(now))
+
+        val past = future.copy(schedule = SchedulePayload(runAt = epoch(8)))
+        assertNull("过去时刻不许当首槽（否则排程会立刻触发一次用户没要求的整理）", past.firstNextRun(now))
+
+        val missing = future.copy(schedule = SchedulePayload(runAt = 0))
+        assertNull(missing.firstNextRun(now))
+    }
+
+    @Test
+    fun `turn-based modes have no wall-clock first run`() {
+        assertNull(MemoryTriggerConfig().firstNextRun(epoch(9)))
+        assertNull(
+            MemoryTriggerConfig(mode = MemoryTriggerMode.EVERY_N_TURNS).firstNextRun(epoch(9)),
+        )
+        assertNull(MemoryTriggerConfig(mode = MemoryTriggerMode.TURN_N).firstNextRun(epoch(9)))
+    }
+
+    @Test
+    fun `claim advances recurring slots and completes once`() {
+        val now = epoch(9)
+        val daily = MemoryTriggerConfig(
+            mode = MemoryTriggerMode.DAILY,
+            schedule = SchedulePayload(hour = 8, minute = 0),
+            nextRunAt = epoch(8),
+        )
+        assertEquals("认领后推进到下一个槽位", epoch(8, plusDays = 1), daily.claim(now).nextRunAt)
+
+        val once = MemoryTriggerConfig(
+            mode = MemoryTriggerMode.ONCE,
+            schedule = SchedulePayload(runAt = epoch(8)),
+            nextRunAt = epoch(8),
+        )
+        val claimed = once.claim(now)
+        assertNull("ONCE 认领即完成", claimed.nextRunAt)
+        assertTrue(claimed.onceFired)
+
+        val idle = MemoryTriggerConfig()
+        assertEquals("轮次类模式没有可认领的槽位", idle, idle.claim(now))
     }
 }

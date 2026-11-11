@@ -580,8 +580,8 @@ class MemoryConsolidatorTest {
         dao.candidates = listOf(old.id.toString())
         val worker = consolidator(listOf(assistant))
 
-        assertTrue(worker.findPending(assistant.id.toString(), manual = false).isEmpty())
-        val selected = worker.findPending(assistant.id.toString(), manual = true)
+        assertTrue(worker.findPending(assistant.id.toString(), TriggerPath.AUTO).isEmpty())
+        val selected = worker.findPending(assistant.id.toString(), TriggerPath.MANUAL)
         assertEquals(2, selected.single().turns)
         worker.consolidate(assistant.id.toString(), selected.map { it.conversationId }.toSet(), fullReview = true)
 

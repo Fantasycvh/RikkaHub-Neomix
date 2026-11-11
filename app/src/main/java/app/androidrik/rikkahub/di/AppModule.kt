@@ -19,6 +19,7 @@ import app.androidrik.rikkahub.ui.floating.PerfFloatingWindows
 import app.androidrik.rikkahub.service.ChatNotificationManager
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.MediaCreationService
+import app.androidrik.rikkahub.service.MemoryTriggerScheduleManager
 import app.androidrik.rikkahub.service.ScheduledTaskExecutor
 import app.androidrik.rikkahub.service.ScheduledTaskRunner
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
@@ -295,6 +296,15 @@ val appModule = module {
 
     single {
         ScheduledTaskSweeperKeeper(context = get())
+    }
+
+    single {
+        MemoryTriggerScheduleManager(
+            context = get(),
+            settingsStore = get(),
+            scheduler = get(),
+            appScope = get(),
+        )
     }
 
     // 任务中心读模型（P0）：三套底座只读聚合 + 取消转发；不持有并发准入。

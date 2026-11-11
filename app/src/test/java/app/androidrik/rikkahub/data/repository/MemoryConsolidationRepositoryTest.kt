@@ -6,6 +6,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_ALL_HISTORY
 import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
 import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
+import app.androidrik.rikkahub.data.ai.TriggerPath
 import app.androidrik.rikkahub.data.ai.memoryConsolidationEnabled
 import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
@@ -318,7 +319,7 @@ class MemoryConsolidationRepositoryTest {
         assertEquals(
             "手动整理不受频次上限约束（用户显式点击即授权）",
             1,
-            repository.findPending(assistant.id.toString(), manual = true).size,
+            repository.findPending(assistant.id.toString(), TriggerPath.MANUAL).size,
         )
     }
 
@@ -351,9 +352,9 @@ class MemoryConsolidationRepositoryTest {
 
         assertTrue(
             "自动路径必须看不见开启之前的历史 —— 否则拨开开关就会把几百个历史会话灌进队列",
-            repository.findPending(assistant.memoryId(), manual = false).isEmpty(),
+            repository.findPending(assistant.memoryId(), TriggerPath.AUTO).isEmpty(),
         )
-        val manual = repository.findPending(assistant.memoryId(), manual = true)
+        val manual = repository.findPending(assistant.memoryId(), TriggerPath.MANUAL)
         assertEquals("手动整理要能到达全部历史", 1, manual.size)
         assertEquals(3, manual.first().turns)
     }
@@ -366,7 +367,7 @@ class MemoryConsolidationRepositoryTest {
         // 已整理到第 2 小时 ⇒ 只剩第 3 轮
         dao.progress[old.id.toString()] = MemoryConsolidationEntity(old.id.toString(), millis(2))
 
-        val manual = repository(listOf(assistant)).findPending(assistant.memoryId(), manual = true)
+        val manual = repository(listOf(assistant)).findPending(assistant.memoryId(), TriggerPath.MANUAL)
         assertEquals(1, manual.size)
         assertEquals("进度行仍生效：不把已整理过的轮次再灌一遍", 1, manual.first().turns)
     }
@@ -381,7 +382,7 @@ class MemoryConsolidationRepositoryTest {
         val ancient = conversation(assistant, 1, 2)
         remember(assistant, ancient, lastActivityAt = millis(2))
 
-        val auto = repository(listOf(assistant)).findPending(assistant.memoryId(), manual = false)
+        val auto = repository(listOf(assistant)).findPending(assistant.memoryId(), TriggerPath.AUTO)
         assertEquals("选「全部历史」后连自动路径也能覆盖开启之前的轮次", 1, auto.size)
         assertEquals(2, auto.first().turns)
     }
@@ -395,7 +396,7 @@ class MemoryConsolidationRepositoryTest {
         remember(off, conversation, lastActivityAt = millis(2))
         assertTrue(
             "开关关闭时手动整理也必须为空（门控是总闸）",
-            repository(listOf(off)).findPending(off.memoryId(), manual = true).isEmpty(),
+            repository(listOf(off)).findPending(off.memoryId(), TriggerPath.MANUAL).isEmpty(),
         )
     }
 
@@ -437,7 +438,7 @@ class MemoryConsolidationRepositoryTest {
         assertEquals(
             "手动整理不受「第 N 轮」约束（它的语义是所有还没整理过的轮次，不挑时机）",
             1,
-            repository.findPending(assistant.memoryId(), manual = true).size,
+            repository.findPending(assistant.memoryId(), TriggerPath.MANUAL).size,
         )
     }
 

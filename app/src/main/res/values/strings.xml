@@ -3077,6 +3077,16 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_display_page_top_bar_style_capsules">Capsules</string>
   <string name="workspace_detail_disk_usage">Disk usage</string>
   <string name="workspace_detail_disk_usage_computing">Computing… (tap to recalculate)</string>
+  <string name="memory_trigger_param_once_date">Date</string>
+  <string name="memory_trigger_param_time">Time</string>
+  <string name="memory_trigger_param_interval">Interval (minutes)</string>
+  <string name="memory_trigger_param_interval_desc">Consolidate every N minutes (system minimum 15 minutes)</string>
+  <string name="memory_trigger_param_weekday">Day of week</string>
+  <string name="memory_trigger_status_title">Schedule status</string>
+  <string name="memory_trigger_status_next">Next run: %1$s</string>
+  <string name="memory_trigger_status_once_done">This one-time trigger has completed.</string>
+  <string name="memory_trigger_status_pending">Waiting for a valid time to schedule.</string>
+  <string name="memory_trigger_fgs_notif_title">Consolidating memory…</string>
   <string name="memory_trigger_page_title">Consolidation Trigger</string>
   <string name="memory_trigger_mode_idle">After idle</string>
   <string name="memory_trigger_mode_idle_desc">Wait for the conversation to go idle, or consolidate early once enough turns pile up (default)</string>

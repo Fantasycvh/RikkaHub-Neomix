@@ -40,6 +40,51 @@ val MemoryTriggerMode.isWallClock: Boolean
         this == MemoryTriggerMode.WEEKLY
 
 /**
+ * 映射到定时任务的 [app.androidrik.rikkahub.data.db.entity.ScheduleType]
+ * （`ScheduleMath` 只认那边的枚举）。轮次类模式没有对应物——调用方先过 [isWallClock]。
+ */
+fun MemoryTriggerMode.toScheduleType(): app.androidrik.rikkahub.data.db.entity.ScheduleType = when (this) {
+    MemoryTriggerMode.ONCE -> app.androidrik.rikkahub.data.db.entity.ScheduleType.ONCE
+    MemoryTriggerMode.INTERVAL -> app.androidrik.rikkahub.data.db.entity.ScheduleType.INTERVAL
+    MemoryTriggerMode.DAILY -> app.androidrik.rikkahub.data.db.entity.ScheduleType.DAILY
+    MemoryTriggerMode.WEEKLY -> app.androidrik.rikkahub.data.db.entity.ScheduleType.WEEKLY
+    else -> error("$this is not a wall-clock mode")
+}
+
+/**
+ * 配置还没有 `nextRunAt` 时应排的**首槽**（纯函数，对账层用）。
+ *
+ * 返回 null 的三态：非墙钟模式 / ONCE 已完成 / **ONCE 的时刻已过去或缺失**
+ * （后者必须等用户重选——若把过去时刻当首槽，排程会立刻触发一次用户没要求的整理）。
+ */
+fun MemoryTriggerConfig.firstNextRun(now: Long): Long? = when {
+    !mode.isWallClock -> null
+    mode == MemoryTriggerMode.ONCE -> if (onceFired) null else schedule.runAt.takeIf { it > now }
+    else -> app.androidrik.rikkahub.data.scheduled.ScheduleMath.firstRunAt(
+        mode.toScheduleType(),
+        schedule,
+        now,
+    )
+}
+
+/**
+ * 到点**认领**后的新配置（纯函数）：普通模式推进到下一个槽位；ONCE 认领即完成
+ * （`nextRunAt = null` + `onceFired = true`，对账层据此撤闹钟）。
+ */
+fun MemoryTriggerConfig.claim(now: Long): MemoryTriggerConfig {
+    if (!mode.isWallClock) return this
+    val due = nextRunAt ?: return this
+    if (mode == MemoryTriggerMode.ONCE) return copy(nextRunAt = null, onceFired = true)
+    val next = app.androidrik.rikkahub.data.scheduled.ScheduleMath.advance(
+        mode.toScheduleType(),
+        schedule,
+        due,
+        now,
+    )
+    return copy(nextRunAt = next)
+}
+
+/**
  * 触发配置（全局一份，存 Settings 的 DataStore JSON；`JsonInstant` ignoreUnknownKeys + 默认值
  * ⇒ 加字段零迁移）。每助手的 `Assistant.memoryConsolidationSince`（开关 + 基线）与本配置**正交**：
  * 那边管「要不要/从哪算」，这边管「什么时候」。

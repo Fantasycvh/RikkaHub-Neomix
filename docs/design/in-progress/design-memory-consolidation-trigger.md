@@ -1,6 +1,6 @@
 # 记忆整理触发方式配置（design-memory-consolidation-trigger）
 
-> 状态：**rev 2——2026-11-11 P0 已实施（配置模型/三种轮次模式/范围/触发页），P1（墙钟四模式）未实施**。
+> 状态：**rev 3——2026-11-11 P0+P1 均已实施**（七模式/TriggerPath/闹钟层/FGS/BOOT 重排）；待提交与真机 Doze 验证。
 > 挂靠 `../completed/design-memory-consolidation.md`（做梦 V3，已发布）与
 > `../completed/design-scheduled-ai-tasks.md`（定时任务，时间层基建来源）的增量稿；
 > 不改动两条已定案语义，只在其上叠一层「触发方式可配置」。
@@ -222,8 +222,24 @@ MemoryTriggerAlarmReceiver → MemoryTriggerRunService(FGS) → scheduler.runSch
    `memory_consolidation`，低优先级 + 整理中动态文案）。进程同体，直接取 Koin 单例。
 3. **重排时机**：配置保存 / `advance` 回写 / app 启动（`resumePending` 处顺带 rearm）/
    `BOOT_COMPLETED`（并入现有定时任务 boot receiver 的一个分支，不新建 receiver）。
+   > **rev 3 实施修订**：仓里**没有**现成 boot receiver（定时任务靠 WorkManager 跨重启），
+   > 于是新建了 `MemoryTriggerBootReceiver`（BOOT_COMPLETED）并加 `RECEIVE_BOOT_COMPLETED` 权限；
+   > **重排时机收敛为「配置流对账」**：`MemoryTriggerScheduleManager.start()` 常驻观察 settingsFlow，
+   > 配置保存/认领回写都会自动对账，无需逐点接线；app 启动即开始观察，BOOT 广播调一次
+   > `reconcileCurrent()`。
 4. **闹钟可见性**：`setAlarmClock` 会在系统里显示「下次闹钟」——照定时任务的既成事实接受，
    文案写「记忆整理」。
+5. **FGS 与「只排闹钟不直接执行」**（rev 3 修订）：BOOT/后台态直接 `startForegroundService`
+   不在 BG-FGS 豁免名单里，所以对账层**只排闹钟**——错过的槽位也排「现在」的闹钟，
+   由带临时豁免的闹钟广播把 `MemoryTriggerRunService` 拉起来。通知渠道复用
+   `KEEP_ALIVE_NOTIFICATION_CHANNEL_ID`（IMPORTANCE_LOW，与 `ScheduledTaskRunService` 同款），
+   不新建渠道（原稿的「新渠道」被否决：同款后台任务的既有渠道语义已足够）。
+6. **`runScheduled` 需要先 merge 库**（rev 3 修订，实施时发现的真缺口）：墙钟模式下事件入口
+   全静默 ⇒ 内存里的待整理表为空，`runScheduled` 必须像 `organize` 一样先
+   `findPending(SCHEDULED)` 再 `run`，否则到点必然空跑返回。
+7. **ONCE 的过去时刻不许当首槽**（rev 3 修订）：`firstNextRun` 对 ONCE 只在
+   `runAt > now` 时返回；UI 切到 ONCE 时预填「一小时后」，参数改动把 `nextRunAt` 置空重算。
+   否则「选了一个已过去的时间」会立刻触发一次用户没要求的整理。
 
 ## 七、UI
 

@@ -61,8 +61,8 @@ class MemoryConsolidator(
 
     override suspend fun memoryIdsWithUpdates(): List<String> = repository.memoryIdsWithUpdates()
 
-    override suspend fun findPending(memoryId: String, manual: Boolean): List<PendingMemoryConversation> =
-        repository.findPending(memoryId, manual)
+    override suspend fun findPending(memoryId: String, path: TriggerPath): List<PendingMemoryConversation> =
+        repository.findPending(memoryId, path)
 
     // ---- 建议的落库与应用：只做委托（存储侧知识不进调度器，见接口契约第 1 条） ----
 

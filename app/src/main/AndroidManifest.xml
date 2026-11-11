@@ -14,6 +14,7 @@
   <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
   <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -370,6 +371,29 @@
 
     <service
       android:name=".service.ScheduledTaskRunService"
+      android:exported="false"
+      android:stopWithTask="false"
+      android:foregroundServiceType="dataSync" />
+
+    <!--
+      记忆整理墙钟触发（design-memory-consolidation-trigger.md §六）：
+      闹钟广播（豁免可后台拉 FGS）→ 执行服务；BOOT_COMPLETED 只重排闹钟（排「现在」的
+      闹钟再由带豁免的广播拉服务，避开 BOOT 态的 BG-FGS 限制）。
+    -->
+    <receiver
+      android:name=".service.MemoryTriggerAlarmReceiver"
+      android:exported="false" />
+
+    <receiver
+      android:name=".service.MemoryTriggerBootReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+      </intent-filter>
+    </receiver>
+
+    <service
+      android:name=".service.MemoryTriggerRunService"
       android:exported="false"
       android:stopWithTask="false"
       android:foregroundServiceType="dataSync" />

@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.repository
 import app.androidrik.rikkahub.data.ai.PendingMemoryConversation
 import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
 import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
+import app.androidrik.rikkahub.data.ai.TriggerPath
 import app.androidrik.rikkahub.data.ai.inTriggerScope
 import app.androidrik.rikkahub.data.ai.memoryConsolidationBaseline
 import app.androidrik.rikkahub.data.ai.memoryConsolidationEnabled
@@ -195,17 +196,18 @@ class MemoryConsolidationRepository(
      * 但迁移/恢复旧库会让它撒谎），真正算数的是消息时间；精算为 0 的会话直接丢掉，不写进度行
      * （写了就把还没整理的内容标记成整理过了）。
      */
-    suspend fun findPending(memoryId: String, manual: Boolean = false): List<PendingMemoryConversation> {
+    suspend fun findPending(memoryId: String, path: TriggerPath = TriggerPath.AUTO): List<PendingMemoryConversation> {
         val cfg = config()
         val assistants = assistants()
         val participants = assistants.filter { it.memoryConsolidationEnabled() && it.memoryId() == memoryId }
         if (participants.isEmpty()) return emptyList()
-        // 自动路径服从频次上限；手动整理（用户点了「整理一下」）不判
-        if (!manual && !autoIntervalElapsed(participants)) return emptyList()
-        // **手动整理丢掉「开启时刻」基线**（只留每会话进度行）⇒ 「所有还没整理过的轮次，不论多老」。
-        // 自动路径仍用完整基线（否则刚拨开开关就会把几百个历史会话一次性灌进队列——那正是
-        // 基线存在的理由，见 memoryConsolidationBaseline 的 kdoc）。
-        val baseline = if (manual) 0L else storeBaseline(participants)
+        // 6h 自动频次上限只约束 AUTO 路径：手动是用户显式授权，墙钟是用户配置的明确指令（决议 #3）
+        if (path == TriggerPath.AUTO && !autoIntervalElapsed(participants)) return emptyList()
+        // MANUAL 丢掉「开启时刻」基线（只留每会话进度行）⇒ 「所有还没整理过的轮次，不论多老」。
+        // AUTO / SCHEDULED 仍用完整基线（否则刚拨开开关就会把几百个历史会话一次性灌进队列——
+        // 那正是基线存在的理由；墙钟的内容口径与自动路径一致，见 TriggerPath 的表）。
+        val ignoreSince = path == TriggerPath.MANUAL
+        val baseline = if (ignoreSince) 0L else storeBaseline(participants)
         val byId = assistants.associateBy { it.id }
         return participants
             .flatMap { assistant ->
@@ -215,7 +217,7 @@ class MemoryConsolidationRepository(
             .mapNotNull { id ->
                 val conversation = Uuid.parseOrNull(id)?.let { conversationLoader(it) } ?: return@mapNotNull null
                 val assistant = byId[conversation.assistantId] ?: return@mapNotNull null
-                pendingOfIgnoringInterval(conversation, assistant, ignoreSince = manual, cfg = cfg)
+                pendingOfIgnoringInterval(conversation, assistant, ignoreSince = ignoreSince, cfg = cfg)
             }
             .take(limitPerRun)
     }

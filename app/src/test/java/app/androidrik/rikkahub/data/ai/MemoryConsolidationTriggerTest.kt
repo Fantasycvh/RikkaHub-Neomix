@@ -62,7 +62,7 @@ class MemoryConsolidationTriggerTest {
 
         override suspend fun memoryIdsWithUpdates(): List<String> = updatedStores
 
-        override suspend fun findPending(memoryId: String, manual: Boolean): List<PendingMemoryConversation> {
+        override suspend fun findPending(memoryId: String, path: TriggerPath): List<PendingMemoryConversation> {
             scanned += memoryId
             return listOf(PendingMemoryConversation(Uuid.random(), memoryId, pendingTurns ?: 1))
         }

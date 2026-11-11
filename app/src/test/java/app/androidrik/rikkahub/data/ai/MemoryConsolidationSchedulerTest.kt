@@ -54,8 +54,8 @@ class MemoryConsolidationSchedulerTest {
         /** 查数据库卡在这里（测「重新扫库期间又有轮次结束」） */
         var scanGate: CompletableDeferred<Unit>? = null
 
-        /** 每次扫库是不是「手动整理」路径（频次上限只约束自动路径，见 findPending 契约） */
-        val manualScans = mutableListOf<Boolean>()
+        /** 每次扫库用的执行路径（限流/基线取舍只看 path，见 TriggerPath 契约） */
+        val manualScans = mutableListOf<TriggerPath>()
 
         /** 下一次整理提出什么建议（测「建议比 lastRun 更黏」） */
         var proposals: List<MemoryConsolidationProposal> = emptyList()
@@ -71,9 +71,9 @@ class MemoryConsolidationSchedulerTest {
         override suspend fun memoryIdsWithUpdates() =
             pending.map { (id, turns) -> item(id, turns).memoryId }.distinct()
 
-        override suspend fun findPending(memoryId: String, manual: Boolean): List<PendingMemoryConversation> {
+        override suspend fun findPending(memoryId: String, path: TriggerPath): List<PendingMemoryConversation> {
             val found = pending.map { (id, turns) -> item(id, turns) }.filter { it.memoryId == memoryId }
-            manualScans += manual
+            manualScans += path
             scanGate?.await()
             return found
         }
@@ -608,10 +608,13 @@ class MemoryConsolidationSchedulerTest {
         scheduler.organize(memoryId)
         runCurrent()
 
-        assertTrue("手动整理必须带 manual 标记（频次上限只约束自动路径）", worker.manualScans.first())
+        assertTrue(
+            "手动整理必须带 MANUAL 标记（频次上限只约束自动路径）",
+            worker.manualScans.first() == TriggerPath.MANUAL,
+        )
         assertFalse(
             "整理之后的自动重扫不是手动路径（它要受频次上限约束，否则限流形同虚设）",
-            worker.manualScans.last(),
+            worker.manualScans.last() == TriggerPath.MANUAL,
         )
         assertTrue(worker.manualScans.size >= 2)
     }
@@ -818,6 +821,43 @@ class MemoryConsolidationSchedulerTest {
         scheduler.organize(memoryId)
         runCurrent()
         assertEquals("手动「整理一下」不受模式约束", 1, worker.calls.size)
+    }
+
+    @Test
+    fun `scheduled run bypasses the failed set on the next slot`() = runTest {
+        val scheduler = scheduler(MemoryTriggerConfig(mode = MemoryTriggerMode.DAILY))
+        worker.pending[chat.id] = 2
+
+        worker.failure = RuntimeException("boom")
+        scheduler.runScheduled(memoryId)
+        runCurrent()
+        assertEquals("到点就跑，哪怕上次失败过（决议 #3：失败只拦 AUTO）", 1, worker.calls.size)
+
+        worker.failure = null
+        scheduler.runScheduled(memoryId)
+        runCurrent()
+        assertEquals("下个槽位允许再试", 2, worker.calls.size)
+        assertTrue(
+            "扫库走 SCHEDULED 路径（绕 6h 限流、保基线）",
+            worker.manualScans.contains(TriggerPath.SCHEDULED),
+        )
+    }
+
+    @Test
+    fun `scheduled run yields to unhandled proposals and marks waiting`() = runTest {
+        val scheduler = scheduler(MemoryTriggerConfig(mode = MemoryTriggerMode.DAILY))
+        worker.pending[chat.id] = 2
+        worker.proposals = listOf(MemoryConsolidationProposal("create", content = "x"))
+        runCurrent() // pendingProposals 现在非空（闸门判据）
+        worker.proposals = emptyList()
+        worker.storedProposals[memoryId] = mutableListOf(
+            MemoryConsolidationProposal("create", content = "x").copy(id = 1),
+        )
+
+        scheduler.runScheduled(memoryId)
+        runCurrent()
+        assertTrue("有未处理建议 ⇒ 不整理（产出会覆盖待办）", worker.calls.isEmpty())
+        assertTrue(scheduler.statusOf(memoryId).first().waitingForReview)
     }
 
     private fun srcRoot(): File {

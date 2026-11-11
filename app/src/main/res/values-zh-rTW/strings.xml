@@ -3064,6 +3064,16 @@
   <string name="workspace_ssh_editor_jump_auth">跳板機驗證</string>
   <string name="workspace_ssh_editor_jump_host_key">跳板機主機金鑰</string>
   <string name="workspace_ssh_editor_jump_host_key_changed_title">跳板機主機金鑰已變更</string>
+  <string name="memory_trigger_param_once_date">日期</string>
+  <string name="memory_trigger_param_time">時刻</string>
+  <string name="memory_trigger_param_interval">間隔（分鐘）</string>
+  <string name="memory_trigger_param_interval_desc">每隔 N 分鐘整理一次（系統下限 15 分鐘）</string>
+  <string name="memory_trigger_param_weekday">星期</string>
+  <string name="memory_trigger_status_title">排程狀態</string>
+  <string name="memory_trigger_status_next">下次觸發：%1$s</string>
+  <string name="memory_trigger_status_once_done">這次一次性觸發已完成。</string>
+  <string name="memory_trigger_status_pending">等待選擇有效的時刻後排程。</string>
+  <string name="memory_trigger_fgs_notif_title">正在整理記憶…</string>
   <string name="memory_trigger_page_title">整理觸發方式</string>
   <string name="memory_trigger_mode_idle">空閒後整理</string>
   <string name="memory_trigger_mode_idle_desc">等對話停下來再整理；攢夠輪數會提前（預設）</string>

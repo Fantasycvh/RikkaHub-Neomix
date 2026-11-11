@@ -30,6 +30,17 @@ data class PendingMemoryConversation(
 )
 
 /**
+ * 整理的**执行路径**——决定仓库层两道闸的取舍（见 `findPending` 契约第 3 条）：
+ *
+ * | path | 6h 自动限流 | since 基线 |
+ * |---|---|---|
+ * | [AUTO] | 判 | 判 |
+ * | [MANUAL] | 不判（用户显式点击即授权） | 不判（「所有还没整理过的轮次」） |
+ * | [SCHEDULED] | **不判**（墙钟是用户配置的明确指令，决议 2026-11-11 #3） | **判**（内容口径与自动路径一致） |
+ */
+enum class TriggerPath { AUTO, MANUAL, SCHEDULED }
+
+/**
  * 一次整理的结果。
  *
  * [changedMemories] 由 worker 填（新建 / 改写 / 退役 / 合并的合计）：调度器与状态面板只需要
@@ -216,11 +227,12 @@ interface MemoryConsolidationWorker {
     /**
      * 记忆库 [memoryId] 下还有轮次没整理的对话，最多返回一次整理能处理的数量。
      *
-     * [manual] 区分这条路径是不是**用户手动整理**（`organize`）：自动路径要服从「每库自动频次上限」
-     * （否则活跃会话会变成「聊两句就后台整理一次」），手动路径不受它约束——用户显式点击即授权。
-     * 调度器每次整理成功后也会重扫（自动路径），所以这个区分不能省，否则限流形同虚设。
+     * [path] 区分执行路径（见 [TriggerPath]）：自动路径服从「每库自动频次上限」（否则活跃会话
+     * 会变成「聊两句就后台整理一次」）；手动路径不受它约束——用户显式点击即授权；墙钟路径
+     * 绕过限流（用户配置的明确指令）但保留基线。调度器每次整理成功后也会重扫（自动路径），
+     * 所以这个区分不能省，否则限流形同虚设。
      */
-    suspend fun findPending(memoryId: String, manual: Boolean = false): List<PendingMemoryConversation>
+    suspend fun findPending(memoryId: String, path: TriggerPath = TriggerPath.AUTO): List<PendingMemoryConversation>
     /** 把 [conversation] 现有的内容都算作整理过；之后新增的轮次才会被整理（分叉时用） */
     suspend fun markConsolidated(conversation: Conversation)
 
@@ -453,8 +465,8 @@ class MemoryConsolidationScheduler(
             var started = false
             try {
                 // 进程重启后内存里的待整理列表可能是空的，把数据库里的也算上
-                // （manual = true：手动整理不受自动频次上限约束）
-                mergePending(memoryId, worker.findPending(memoryId, manual = true))
+                // （MANUAL：手动整理不受自动频次上限与开启时刻基线约束）
+                mergePending(memoryId, worker.findPending(memoryId, TriggerPath.MANUAL))
                 started = true
                 run(memoryId, fullReview = true)
             } finally {
@@ -491,17 +503,44 @@ class MemoryConsolidationScheduler(
         run(memoryId, fullReview = false)?.let { _automaticRuns.emit(it) }
     }
 
+    /**
+     * 墙钟到点入口（闹钟 / 前台服务调用，P1）。
+     *
+     * 与 [runAutomatically] 同样的建议闸门 + 单飞锁 + 失败记账，但：
+     * - 走 [TriggerPath.SCHEDULED]：绕过 6h 限流（决议 #3）、保留 since 基线；
+     * - `failed` 集不拦截（run 内按 path 放行）：失败后**下个墙钟槽位**允许再试；
+     * - 建议闸门命中时**槽位由调用方照常推进**（不静默重排也不堆积）——用户处理完建议后
+     *   `resumeAfterReview` 的主动重扫自然把活干掉。
+     */
+    suspend fun runScheduled(memoryId: String) {
+        cancelTimer(memoryId)
+        if (hasUnhandledProposals(memoryId)) {
+            updateStatus(memoryId) { it.copy(waitingForReview = true) }
+            return
+        }
+        // 墙钟模式下事件入口全部静默 ⇒ 内存里的待整理表是空的：像 organize 一样先从库里
+        // merge 一遍（SCHEDULED 路径：绕限流、保基线），否则 run() 看到 ids 为空直接返回
+        mergePending(memoryId, worker.findPending(memoryId, TriggerPath.SCHEDULED))
+        run(memoryId, fullReview = false, path = TriggerPath.SCHEDULED)
+            ?.let { _automaticRuns.emit(it) }
+    }
+
     /** 该库还有没有**没被处理过**的建议（闸门与状态共用同一判据，避免两处各判一套） */
     private suspend fun hasUnhandledProposals(memoryId: String): Boolean =
         runCatching { worker.pendingProposals(memoryId).isNotEmpty() }.getOrDefault(false)
 
     /** 整理 [memoryId] 下所有待整理的对话；没得做返回 null */
-    private suspend fun run(memoryId: String, fullReview: Boolean): MemoryConsolidationRun? =
+    private suspend fun run(
+        memoryId: String,
+        fullReview: Boolean,
+        path: TriggerPath = TriggerPath.AUTO,
+    ): MemoryConsolidationRun? =
         synchronized(lock) { runLocks.getOrPut(memoryId) { Mutex() } }.withLock {
             val ids = synchronized(lock) {
                 // **失败后不自动重试**：模型一直出错时，切后台/离开对话会一次次重打模型（花钱、烧配额）。
-                // 待整理内容留着，等下一轮对话结束（用户又有新动作）或用户手动触发
-                if (!fullReview && memoryId in failed) return null
+                // 待整理内容留着，等下一轮对话结束（用户又有新动作）或用户手动触发。
+                // 拦截只对 AUTO 生效——MANUAL 是用户显式动作，SCHEDULED 的下个槽位照常再试（决议 #3）
+                if (!fullReview && path == TriggerPath.AUTO && memoryId in failed) return null
                 pending[memoryId]?.keys.orEmpty()
             }
             if (ids.isEmpty() && !fullReview) return null
@@ -539,8 +578,9 @@ class MemoryConsolidationScheduler(
                         // 只减掉这次整理的对话；期间新结束的轮次不能被一起清掉
                         pending[memoryId] = pending[memoryId].orEmpty() - ids
                     }
-                    // 有对话可能因超出长度预算被留到下一次，从数据库里再找一遍
-                    if (mergePending(memoryId, worker.findPending(memoryId))) restartTimer(memoryId)
+                    // 有对话可能因超出长度预算被留到下一次，从数据库里再找一遍。
+                    // 重扫沿用本次的 path：墙钟路径若退回 AUTO，6h 限流会把残留捞成空（形同截断）
+                    if (mergePending(memoryId, worker.findPending(memoryId, path))) restartTimer(memoryId)
                 }
             } finally {
                 hold.close()
