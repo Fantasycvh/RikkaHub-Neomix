@@ -5,6 +5,7 @@ package app.androidrik.rikkahub.ui.components.ai
 
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
@@ -138,14 +141,24 @@ internal fun QuickMessageButton(
             modifier = Modifier
                 .widthIn(min = 200.dp, max = 360.dp)
         ) {
+            val hapticFeedback = LocalHapticFeedback.current
             quickMessages.forEach { quickMessage ->
+                // 短按追加到输入框末尾，长按替换输入框内容
                 Surface(
-                    onClick = {
-                        state.appendText(quickMessage.content)
-                        expanded = false
-                    },
                     color = Color.Transparent,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .combinedClickable(
+                            onClick = {
+                                state.appendText(quickMessage.content)
+                                expanded = false
+                            },
+                            onLongClick = {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                state.setMessageText(quickMessage.content)
+                                expanded = false
+                            },
+                        ),
                 ) {
                     Column(
                         modifier = Modifier.padding(8.dp)

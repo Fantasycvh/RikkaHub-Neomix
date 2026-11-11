@@ -69,7 +69,10 @@ class ChatInputState {
 
     fun appendText(content: String) {
         if (content.isEmpty()) return
+        val current = textContent.text.toString()
         textContent.edit {
+            // 追加到已有文本之后；已有内容且不以换行结尾时自动补一个换行
+            if (current.isNotBlank() && !current.endsWith('\n')) append("\n")
             append(content)
             placeCursorAtEnd()
         }

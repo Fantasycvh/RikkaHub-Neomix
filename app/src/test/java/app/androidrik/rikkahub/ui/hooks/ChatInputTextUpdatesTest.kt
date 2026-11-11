@@ -13,14 +13,27 @@ class ChatInputTextUpdatesTest {
         assertEquals(TextRange(20, 40), state.textContent.selection)
     }
 
-    @Test fun `append keeps existing content and moves caret to end`() {
+    @Test fun `append keeps existing content, adds newline and moves caret to end`() {
         val state = ChatInputState()
         val original = "文".repeat(100_000)
         state.setMessageText(original)
         state.textContent.edit { selection = TextRange(25) }
         state.appendText("追加😀")
-        assertEquals(original + "追加😀", state.textContent.text.toString())
-        assertEquals(TextRange(original.length + "追加😀".length), state.textContent.selection)
+        assertEquals(original + "\n追加😀", state.textContent.text.toString())
+        assertEquals(TextRange(original.length + "\n追加😀".length), state.textContent.selection)
+    }
+
+    @Test fun `append to blank input adds no leading newline`() {
+        val state = ChatInputState()
+        state.appendText("第一句")
+        assertEquals("第一句", state.textContent.text.toString())
+    }
+
+    @Test fun `append to text ending with newline adds no extra newline`() {
+        val state = ChatInputState()
+        state.setMessageText("第一句\n")
+        state.appendText("第二句")
+        assertEquals("第一句\n第二句", state.textContent.text.toString())
     }
 
     @Test fun `empty append preserves selection`() {

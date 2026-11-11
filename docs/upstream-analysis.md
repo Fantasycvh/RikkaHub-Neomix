@@ -1890,7 +1890,9 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - **两条解析路径换用**：非流式 `ChatCompletionsAPI.parseMessage`、流式 `ChatCompletionsStreamDecoder.parseMessage`；`reasoning_content` / `reasoning` 字段仍优先。
 - **请求侧**：`buildChatCompletionRequest` 按 `host == "api.mistral.ai"` 传 `mistralThinkingReplay`；`buildAssistantMessageJson` 在该模式下**不写 `reasoning_content`**（含 backfill 分支），把历史思考写成 `content` 首块 `{"type":"thinking","thinking":[{"type":"text","text":…}]}`，再跟原有 text/image 块。本仓无 OpenRouter `reasoning_details` 回传，故用布尔开关而非上游三态枚举。
 - **测试**：新增 `ChatCompletionsMistralContentTest`（5 例：流式过渡帧、非流式块列表、字符串兜底、Mistral 回传形状、默认仍回 reasoning_content）；`ChatCompletionsAPIMessageTest` 反射 helper 补第 5 参。`./gradlew :ai:testDebugUnitTest` **532 项 0 失败**。
-- **未做**：`055faeb38` 快捷消息（P3，等确认）；`#2312`/`#2311` 待拍板或真机核验。真机验证需自建 `api.mistral.ai` 的 OpenAI 兼容 provider 并做「带历史思考的多轮」对话。
+- **`055faeb38` 快捷消息也已落地（本地未提交）**：`ChatInputState.appendText` 非空且不以换行结尾时自动补 `\n`；`QuickMessageButton` 改 `combinedClickable`，长按触感反馈 + `setMessageText` 整段替换。`ChatInputTextUpdatesTest` 补 2 项并更新追加断言；真机 PJX110 验证：空输入短按无前导换行、二次短按自动换行、长按整段替换均通过。
+- **未做**：`#2312`/`#2311` 待拍板或真机核验。Mistral 真机验证需自建 `api.mistral.ai` 的 OpenAI 兼容 provider 并做「带历史思考的多轮」对话。
+- **附带修复（非上游批次）**：真机验证时复现 `MemoryTriggerBootReceiver` 在「startKoin 推迟到换库之后」窗口内解析 Koin → `NoDefinitionFoundException` 崩溃（安装后 ROM 重投 BOOT_COMPLETED 触发）；改为独立 scope + `RikkaHubApp.awaitBootReady(8s)`，等不到即放弃（下次启动 reconcile）。真机两轮 BOOT 重投无 FATAL。详见 `docs/changelog/2026-11.md` 同日条目。
 
 ## 关联
 
