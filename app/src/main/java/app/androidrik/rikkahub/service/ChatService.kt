@@ -93,6 +93,7 @@ import app.androidrik.rikkahub.data.ai.UsageSource
 import app.androidrik.rikkahub.data.ai.UsageTag
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
+import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_TOOL_NAME
 import app.androidrik.rikkahub.data.ai.tools.shouldUseExternalWebSearch
 import app.androidrik.rikkahub.data.ai.transformers.TemplateTransformer
 import app.androidrik.rikkahub.data.ai.transformers.TransformerUse
@@ -656,6 +657,7 @@ class ChatService(
          * （design-ask-user-interrupt §3.1，工具结果 status=skipped）。
          */
         reason: InterruptReason = InterruptReason.QueueJumped,
+        allowPhoneUse: Boolean = true,
     ) {
         if (content.isEmptyInputMessage()) return
 
@@ -670,7 +672,12 @@ class ChatService(
                 )
                 synchronized(session) {
                     if (session.messageQueue.state.value.messages.isEmpty()) session.messageQueue.resume()
-                    session.messageQueue.enqueue(content, answer, annotations = annotations)
+                    session.messageQueue.enqueue(
+                        content,
+                        answer,
+                        annotations = annotations,
+                        allowPhoneUse = allowPhoneUse,
+                    )
                     dispatchNextQueuedMessage(conversationId)
                 }
             }
@@ -683,6 +690,7 @@ class ChatService(
         content: List<UIMessagePart>,
         answer: Boolean = true,
         annotations: List<UIMessageAnnotation> = emptyList(),
+        allowPhoneUse: Boolean = true,
     ) {
         if (content.isEmptyInputMessage()) return
         val session = getOrCreateSession(conversationId)
@@ -691,7 +699,14 @@ class ChatService(
                 session.withRefSuspend {
                     session.taskHandoffInProgress = true
                     try {
-                        synchronized(session) { session.messageQueue.enqueueFirst(content, answer, annotations) }
+                        synchronized(session) {
+                            session.messageQueue.enqueueFirst(
+                                content,
+                                answer,
+                                annotations,
+                                allowPhoneUse = allowPhoneUse,
+                            )
+                        }
                         stopGeneration(conversationId, reason = InterruptReason.QueueJumped, preserveTasks = true)
                         synchronized(session) {
                             session.messageQueue.resume()
@@ -731,6 +746,11 @@ class ChatService(
          * runId」的取消入口能停掉这一轮起的东西（见 [QueuedMessage.turnOwner]）。
          */
         turnOwner: String? = null,
+        /**
+         * Phone Use 来源门控（design-phone-use.md §2.3）：App 交互回合默认 true；
+         * Web/API 与定时任务执行层传 false，装配期不提供 `phone_use`。
+         */
+        allowPhoneUse: Boolean = true,
     ) {
         if (content.isEmptyInputMessage()) return
 
@@ -750,6 +770,7 @@ class ChatService(
                 annotations = annotations,
                 loopGate = loopGate,
                 turnOwner = turnOwner,
+                allowPhoneUse = allowPhoneUse,
             )
             dispatchNextQueuedMessage(conversationId)
         }
@@ -897,6 +918,9 @@ class ChatService(
         session.beginNewTurn(queued.turnOwner)
         // 闸门随本轮队列项带入（beginNewTurn 已清空，这里覆盖；用户发起的轮次恒为 null）
         session.turnLoopGate = queued.loopGate
+        // Phone Use 来源门控随本轮队列项带入：只有 App 交互回合允许；重生成/续写不经过这里，
+        // beginNewTurn 已把它们重置为 false。
+        session.phoneUseAllowedForTurn = queued.allowPhoneUse
         val job = appScope.launch {
             try {
                 // 派发新消息前的兜底收尾：正常情况下闸门（getJob() != null / pending 工具）已经保证
@@ -1202,6 +1226,46 @@ class ChatService(
 
     // ---- 处理工具调用审批 ----
 
+    /**
+     * Phone Use 的回合授权/拒绝要覆盖**同批所有** Pending 的 `phone_use`：
+     * 模型可能一次发多个动作，批准一个后其余仍停在 Pending 会等一张不会再出现的卡。
+     */
+    private fun applyPhoneUseBatchDecision(
+        conversation: Conversation,
+        approved: Boolean,
+        reason: String,
+    ): Conversation {
+        val state = if (approved) ToolApprovalState.Approved else ToolApprovalState.Denied(reason)
+        var changed = false
+        val nodes = conversation.messageNodes.map { node ->
+            var nodeChanged = false
+            val messages = node.messages.map { msg ->
+                var msgChanged = false
+                val parts = msg.parts.map { part ->
+                    if (part is UIMessagePart.Tool && part.isPending && part.toolName == PHONE_USE_TOOL_NAME) {
+                        msgChanged = true
+                        part.copy(approvalState = state)
+                    } else {
+                        part
+                    }
+                }
+                if (msgChanged) {
+                    nodeChanged = true
+                    msg.copy(parts = parts)
+                } else {
+                    msg
+                }
+            }
+            if (nodeChanged) {
+                changed = true
+                node.copy(messages = messages)
+            } else {
+                node
+            }
+        }
+        return if (changed) conversation.copy(messageNodes = nodes) else conversation
+    }
+
     fun handleToolApproval(
         conversationId: Uuid,
         toolCallId: String,
@@ -1237,6 +1301,19 @@ class ChatService(
                     if (conversation.currentMessages.none { message ->
                             message.getTools().any { it.toolCallId == toolCallId && it.isPending }
                         }) return@afterPreviousGeneration
+                    // Phone Use：批准 = 本轮后续动作也不再问；拒绝 = 本轮后续变更动作不再装配。
+                    val phoneUseApproval = conversation.currentMessages.any { message ->
+                        message.getTools().any {
+                            it.toolCallId == toolCallId && it.toolName == PHONE_USE_TOOL_NAME
+                        }
+                    }
+                    if (phoneUseApproval) {
+                        if (approved && !skip) {
+                            session.phoneUseApprovedForTurn = true
+                        } else {
+                            session.phoneUseDeniedForTurn = true
+                        }
+                    }
                     val skipped = InterruptReason.SkippedQuestion
                     val newApprovalState = when {
                         answer != null -> ToolApprovalState.Answered(answer)
@@ -1279,15 +1356,25 @@ class ChatService(
                             )
                         }
                     }
-                    val updatedConversation = conversation.copy(messageNodes = updatedNodes)
+                    // 同批可能还有别的 phone_use 在 Pending：本轮授权/拒绝要一并落地，
+                    // 否则批准后它们继续等一张不会再出现的卡（工具已从本轮装配里移除）。
+                    val decidedConversation = if (phoneUseApproval) {
+                        applyPhoneUseBatchDecision(
+                            conversation = conversation.copy(messageNodes = updatedNodes),
+                            approved = approved && !skip,
+                            reason = reason,
+                        )
+                    } else {
+                        conversation.copy(messageNodes = updatedNodes)
+                    }
 
                     // 持久化移 IO 线程：Room 写 + 深拷贝不在主线程执行
                     withContext(Dispatchers.IO) {
-                        saveConversation(conversationId, updatedConversation)
+                        saveConversation(conversationId, decidedConversation)
                     }
 
-                    // Check if there are still pending tools
-                    val hasPendingTools = updatedNodes.any { node ->
+                    // Check if there are still pending tools（用批量决策后的树：同批 phone_use 已一并落地）
+                    val hasPendingTools = decidedConversation.messageNodes.any { node ->
                         node.currentMessage.parts.any { part ->
                             part is UIMessagePart.Tool && part.isPending
                         }
@@ -1369,6 +1456,9 @@ class ChatService(
                             if (part is UIMessagePart.Tool && part.isPending) {
                                 nodeChanged = true
                                 approvedCount++
+                                if (part.toolName == PHONE_USE_TOOL_NAME) {
+                                    session.phoneUseApprovedForTurn = true
+                                }
                                 part.copy(approvalState = ToolApprovalState.Approved)
                             } else {
                                 part
@@ -1528,6 +1618,8 @@ class ChatService(
                     }
                 },
                 memoryDisabled = conversation.memoryDisabled,
+                // Phone Use：只有 App 交互回合、且本轮没有被用户拒绝过才装配
+                allowPhoneUse = session.phoneUseAllowedForTurn && !session.phoneUseDeniedForTurn,
                 // 插件工具与内置/MCP 段重名 → 该插件段拒绝装配（P2a 拍板 1），这里落成用户可见错误
                 onPluginToolsRejected = { pluginId, conflicting ->
                     addError(
@@ -1672,6 +1764,8 @@ class ChatService(
                 debugKey = conversationId.toString(),
                 // 提示缓存/账号类提供商的会话键（对齐上游 #2186 的 prompt_cache_key 语义）
                 sessionId = conversationId.toString(),
+                // Phone Use 回合授权：同一轮跨审批续跑时不再弹卡
+                phoneUseApprovedForTurn = session.phoneUseApprovedForTurn,
                 processingStatus = session.processingStatus,
                 // 护栏取自 session（不是在此处新建）：一次「轮」会跨多次 generateText——
                 // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能

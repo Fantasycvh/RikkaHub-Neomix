@@ -43,7 +43,7 @@ internal fun approvalBaseline(source: ToolSource): ApprovalBaseline = when (sour
     ToolSource.Search -> ApprovalBaseline(ApprovalPolicy.NONE, "搜索只读，无可否决副作用")
     ToolSource.Local -> ApprovalBaseline(
         ApprovalPolicy.DYNAMIC,
-        "calendar/ask_user 恒拦，其余本地工具（时间/剪贴板/TTS 等）不拦",
+        "calendar/ask_user 恒拦；phone_use 按 action 分档（读屏/列应用/等待/回桌面不拦，其余含截图要拦）；其余本地工具不拦",
     )
     ToolSource.Image -> ApprovalBaseline(ApprovalPolicy.DYNAMIC, "跟随 assistant.imageGenApproval")
     ToolSource.TaskManage -> ApprovalBaseline(ApprovalPolicy.DYNAMIC, "按动作分档 taskManageNeedsApproval")

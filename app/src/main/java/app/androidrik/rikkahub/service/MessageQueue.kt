@@ -38,6 +38,11 @@ data class QueuedMessage(
      * 行为与过去逐位一致）；非 null = 只有定时任务执行层显式指定，形如 `sched:<runId>`。
      */
     val turnOwner: String? = null,
+    /**
+     * Phone Use 来源门控（design-phone-use.md §2.3）：只有 App 交互回合为 true。
+     * 随队列项走，避免「排在前面的 Web/定时任务轮次」影响下一轮。
+     */
+    val allowPhoneUse: Boolean = true,
 )
 
 data class MessageQueueState(
@@ -67,10 +72,20 @@ class MessageQueue {
 
     /** Explicit immediate send takes priority while retaining all previously queued input. */
     @Synchronized
-    fun enqueueFirst(parts: List<UIMessagePart>, answer: Boolean, annotations: List<UIMessageAnnotation>) {
+    fun enqueueFirst(
+        parts: List<UIMessagePart>,
+        answer: Boolean,
+        annotations: List<UIMessageAnnotation>,
+        allowPhoneUse: Boolean = true,
+    ) {
         if (parts.isEmptyInputMessage()) return
         mutableState.value = state.value.copy(messages = listOf(
-            QueuedMessage(parts = parts.toList(), answer = answer, annotations = annotations.toList())
+            QueuedMessage(
+                parts = parts.toList(),
+                answer = answer,
+                annotations = annotations.toList(),
+                allowPhoneUse = allowPhoneUse,
+            )
         ) + state.value.messages)
     }
 
@@ -94,6 +109,8 @@ class MessageQueue {
         loopGate: LoopGateConfig? = null,
         /** 见 [QueuedMessage.turnOwner]；null = 派发时由 session 换新令牌（用户路径） */
         turnOwner: String? = null,
+        /** 见 [QueuedMessage.allowPhoneUse] */
+        allowPhoneUse: Boolean = true,
     ) {
         if (parts.isEmptyInputMessage()) {
             reply?.complete(null)
@@ -107,6 +124,7 @@ class MessageQueue {
                 annotations = annotations.toList(),
                 loopGate = loopGate,
                 turnOwner = turnOwner,
+                allowPhoneUse = allowPhoneUse,
             ),
         )
     }

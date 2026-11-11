@@ -82,6 +82,11 @@ internal val BACKUP_FOLDER_SPECS: List<BackupFolderSpec> = listOf(
         excludedReason = "会话级临时产物，启动即清（2026-09-15 用户拍板；旧备份仍按 legacy 分支恢复）",
     ),
     BackupFolderSpec(
+        FileFolders.PHONE_USE,
+        recursive = false,
+        excludedReason = "Phone Use 截图可能包含屏幕上的敏感内容，不进备份",
+    ),
+    BackupFolderSpec(
         FileFolders.LOGS,
         recursive = false,
         excludedReason = "诊断日志，可再生",

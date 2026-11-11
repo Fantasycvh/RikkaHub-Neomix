@@ -88,7 +88,14 @@ class SubagentPresetsVM(
         // 预设没指定模型时"跟随当前对话"，管理页没有"当前对话"⇒ 用全局默认模型当口径，
         // 只是为了让候选工具列表可用（工具集与模型无关，只有 provider 形态会影响聚合）。
         val model = current.findModelById(preset.modelId ?: current.chatModelId) ?: return null
-        return chatToolFactory.createToolSegments(current, profile, model, workspaceCwd = null)
+        // 与 run 侧同口径：子代理不装配 Phone Use
+        return chatToolFactory.createToolSegments(
+            current,
+            profile,
+            model,
+            workspaceCwd = null,
+            allowPhoneUse = false,
+        )
     }
 
     private fun update(fn: (Settings) -> Settings) {

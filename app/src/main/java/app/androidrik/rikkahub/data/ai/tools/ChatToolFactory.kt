@@ -136,6 +136,11 @@ class ChatToolFactory(
         /** 插件工具与既有段重名时的用户可见报错通道；null = 只记日志（预览/子代理路径） */
         onPluginToolsRejected: PluginToolsRejectedListener? = null,
         awaitBackgroundTasks: (suspend () -> List<String>)? = null,
+        /**
+         * Phone Use 来源门控（design-phone-use.md §2.3）：只有 App 交互回合为 true。
+         * 定时任务、子代理、Web 远程会话传 false，装配期就不提供 `phone_use`。
+         */
+        allowPhoneUse: Boolean = true,
     ): List<Tool> = createToolSegments(
         settings = settings,
         assistant = assistant,
@@ -147,6 +152,7 @@ class ChatToolFactory(
         memoryDisabled = memoryDisabled,
         onPluginToolsRejected = onPluginToolsRejected,
         awaitBackgroundTasks = awaitBackgroundTasks,
+        allowPhoneUse = allowPhoneUse,
     )
         .flatMap { it.tools }
 
@@ -189,6 +195,8 @@ class ChatToolFactory(
         /** 插件工具跨段重名的报错通道（P2a 拍板 1）；见 [createPluginToolSegments] */
         onPluginToolsRejected: PluginToolsRejectedListener? = null,
         awaitBackgroundTasks: (suspend () -> List<String>)? = null,
+        /** Phone Use 来源门控，见 [createTools] */
+        allowPhoneUse: Boolean = true,
     ): List<ToolSegment> {
         val segments = mutableListOf<ToolSegment>()
         if (settings.workspaceTaskNoticeEnabled && workspaceNoticeTarget?.allowWake == true && awaitBackgroundTasks != null) {
@@ -262,7 +270,14 @@ class ChatToolFactory(
             segments += ToolSegment(ToolSource.Search, createSearchTools(settings).toList())
         }
 
-        segments += ToolSegment(ToolSource.Local, localTools.getTools(assistant.localTools))
+        segments += ToolSegment(
+            ToolSource.Local,
+            localTools.getTools(
+                options = assistant.localTools,
+                phoneUseApproval = assistant.phoneUseApproval,
+                allowPhoneUse = allowPhoneUse,
+            ),
+        )
 
         // 会话内生图（上游 #2123）。**门控 = 配置里能解析出生图模型**：没配就一个 token 都不付
         // （工具 schema 每次请求都要下发），也避免出现"一调用就报错"的工具——沿用本文件

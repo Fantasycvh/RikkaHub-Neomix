@@ -75,6 +75,25 @@ private val EXPLORE_TOOLS = setOf(
 internal fun classifyToolEffect(toolName: String, arguments: JsonElement?): ToolEffect {
     // 唯一需要看参数的：memory_tool 的 action（create/edit/delete = 落地，read = 探索）。
     // 照抄 bigeye 对 execute_advanced_tool 的处理方式（按内层动作名分类）。
+    // Phone Use：读屏/截图/列应用/等待是探索，其余动作改变界面（落地）。
+    if (toolName == "phone_use") {
+        val action = (arguments as? JsonObject)
+            ?.get("action")
+            ?.let { it as? JsonPrimitive }
+            ?.contentOrNull
+            .orEmpty()
+        return when (action) {
+            "observe", "screenshot", "list_apps", "wait" -> ToolEffect.EXPLORE
+            "press" -> {
+                val key = (arguments as? JsonObject)
+                    ?.get("key")
+                    ?.let { it as? JsonPrimitive }
+                    ?.contentOrNull
+                if (key.equals("home", ignoreCase = true)) ToolEffect.EXPLORE else ToolEffect.LANDING
+            }
+            else -> ToolEffect.LANDING
+        }
+    }
     if (toolName == "memory_tool") {
         val action = (arguments as? JsonObject)
             ?.get("action")

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LargeFlexibleTopAppBar
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -24,18 +25,25 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.ai.tools.local.LocalToolOption
+import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.phoneuse.PhoneUseManager
+import app.androidrik.rikkahub.phoneuse.isFloatingChatWindowOn
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionInfo
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberPermissionState
+import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.hasUsageStatsPermission
+import app.androidrik.rikkahub.utils.openAccessibilitySettings
 import app.androidrik.rikkahub.utils.openUsageAccessSettings
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 
 @Composable
@@ -80,8 +88,16 @@ private fun AssistantLocalToolContent(
 ) {
     val context = LocalContext.current
     val toaster = LocalToaster.current
+    val navController = LocalNavController.current
+    val settingsStore: SettingsStore = koinInject()
+    val phoneUseManager: PhoneUseManager = koinInject()
+    val phoneUseServiceOn = phoneUseManager.controller.collectAsStateWithLifecycle().value != null
     val permissionRequiredText =
         stringResource(R.string.assistant_page_local_tools_screen_time_permission_required)
+    val floatingWindowRequiredText =
+        stringResource(R.string.assistant_page_local_tools_phone_use_floating_window_required)
+    val enablePhoneUseServiceText =
+        stringResource(R.string.assistant_page_local_tools_phone_use_enable_service)
 
     val calendarPermissionState = rememberPermissionState(
         permissions = setOf(
@@ -102,6 +118,19 @@ private fun AssistantLocalToolContent(
     PermissionManager(permissionState = calendarPermissionState)
 
     fun toggleLocalTool(option: LocalToolOption, enabled: Boolean) {
+        // 没有悬浮窗就看不到 AI 在做什么、也不方便随时停下，先去把它打开，这次不开启工具
+        if (enabled && option == LocalToolOption.PhoneUse &&
+            !isFloatingChatWindowOn(context, settingsStore.settingsFlow.value)
+        ) {
+            toaster.show(message = floatingWindowRequiredText, type = ToastType.Warning)
+            navController.navigate(Screen.SettingPreferencesNotification)
+            return
+        }
+        // 无障碍服务还没开时带用户去系统设置，开关照常打开，开完服务就能用
+        if (enabled && option == LocalToolOption.PhoneUse && !phoneUseServiceOn) {
+            toaster.show(message = enablePhoneUseServiceText, type = ToastType.Warning)
+            context.openAccessibilitySettings()
+        }
         if (enabled && option == LocalToolOption.ScreenTime && !context.hasUsageStatsPermission()) {
             toaster.show(message = permissionRequiredText, type = ToastType.Warning)
             context.openUsageAccessSettings()
@@ -254,6 +283,54 @@ private fun AssistantLocalToolContent(
                     )
                 }
             )
+            // 只有 Android 11+ 才有；低版本打开过（比如导入备份）也不会装配
+            if (PhoneUseManager.isSupported) {
+                val phoneUseEnabled = assistant.localTools.contains(LocalToolOption.PhoneUse)
+                item(
+                    headlineContent = {
+                        Text(stringResource(R.string.assistant_page_local_tools_phone_use_title))
+                    },
+                    supportingContent = {
+                        Column {
+                            Text(stringResource(R.string.assistant_page_local_tools_phone_use_desc))
+                            Text(
+                                text = stringResource(R.string.assistant_page_local_tools_phone_use_interactive_only),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            // 开了工具但服务没开时模型调用会直接报错，在这里说明原因
+                            if (phoneUseEnabled && !phoneUseServiceOn) {
+                                Text(
+                                    text = stringResource(R.string.assistant_page_local_tools_phone_use_service_off),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = phoneUseEnabled,
+                            onCheckedChange = { toggleLocalTool(LocalToolOption.PhoneUse, it) }
+                        )
+                    }
+                )
+                if (phoneUseEnabled) {
+                    item(
+                        headlineContent = {
+                            Text(stringResource(R.string.assistant_page_local_tools_phone_use_approval_title))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.assistant_page_local_tools_phone_use_approval_desc))
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = assistant.phoneUseApproval,
+                                onCheckedChange = { onUpdate(assistant.copy(phoneUseApproval = it)) }
+                            )
+                        }
+                    )
+                }
+            }
         }
 
         // AI 管理任务（Yuihub 形态，design-proactive-task-management.md §三.2）：

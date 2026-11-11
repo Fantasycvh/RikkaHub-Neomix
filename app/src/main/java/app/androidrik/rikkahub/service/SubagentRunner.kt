@@ -562,6 +562,8 @@ class SubagentRunner(
                 // owner 落成 null ⇒ run 被取消后它的后台命令变孤儿——没人轮询输出、没人收进程，
                 // 却继续吃 CPU/网络直到 30 分钟看门狗。取消 scope 时据此级联 killByScope。
                 turnOwner = ExecutionScope.run(runId.toString()),
+                // 子代理无头执行：不装配 Phone Use（design-phone-use.md §2.3）
+                allowPhoneUse = false,
             )
             val envelope = resolveSubagentEnvelope(segments, allowedTools, parentToolEnvelope,
                 profile.workspaceId, parentWorkspaceId)

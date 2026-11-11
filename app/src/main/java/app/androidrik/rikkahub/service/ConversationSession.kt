@@ -197,11 +197,29 @@ class ConversationSession(
     var externalNoticeRootScope: String? = null
     val scheduledMemoryDecisions = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
+    /**
+     * Phone Use 来源门控：只有 App 交互回合为 true。定时任务/Web/子代理/重生成/续写为 false。
+     * 由 [ChatService.sendQueuedMessage] 按队列项覆盖。
+     */
+    @Volatile
+    var phoneUseAllowedForTurn: Boolean = false
+
+    /** 本轮已批准 Phone Use：本轮回合内不再弹审批 */
+    @Volatile
+    var phoneUseApprovedForTurn: Boolean = false
+
+    /** 本轮已拒绝 Phone Use：本轮回合内不再装配/执行 */
+    @Volatile
+    var phoneUseDeniedForTurn: Boolean = false
+
     fun beginNewTurn(forcedTurnOwner: String? = null) {
         externalNoticeRootScope = null
         lastScheduledMemoryState = null
         lastScheduledMemoryReceipts = null
         scheduledMemoryDecisions.clear()
+        phoneUseAllowedForTurn = false
+        phoneUseApprovedForTurn = false
+        phoneUseDeniedForTurn = false
         replyMessageId.value = null
         toolLoopGuard.reset()
         workspaceTurnBudget.reset()

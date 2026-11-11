@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_TOOL_NAME
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import kotlin.uuid.Uuid
 
@@ -79,8 +80,21 @@ class ChatFloatingTracker(
 
     private fun trackInBackground(): Flow<FloatingChatWindow?> =
         merge(chatService.getFloatingConversationIds().map { Action.TurnsChanged(it) }, actions)
-            .scan(TrackingState()) { state, action -> state.reduce(action) }
+            .scan(TrackingState()) { state, action -> state.reduce(action, ::usedPhoneUse) }
             .map { it.window }
+
+    /**
+     * 本轮回复里用过 Phone Use 吗？用过就在轮末自动展开面板，让用户看到结果/错误/待处理事项。
+     * 普通聊天不展开，用户切出去做别的事时不被打断。
+     */
+    private fun usedPhoneUse(conversationId: Uuid): Boolean {
+        val replyId = chatService.getReplyMessageIdFlow(conversationId).value ?: return false
+        return chatService.getConversationFlow(conversationId).value.messageNodes.any { node ->
+            node.messages.any { message ->
+                message.id == replyId && message.getTools().any { it.toolName == PHONE_USE_TOOL_NAME }
+            }
+        }
+    }
 
     internal sealed interface Action {
         data class JobsChanged(val running: Set<Uuid>) : Action
@@ -98,16 +112,29 @@ class ChatFloatingTracker(
     ) {
         val window: FloatingChatWindow? get() = target?.let { FloatingChatWindow(it, expanded) }
 
-        fun reduce(action: Action): TrackingState = when (action) {
+        /**
+         * [expandWhenFinished] 决定目标会话这一轮结束时要不要自动展开面板。
+         * Phone Use 的轮次停下来（做完、出错、等审批）时用户正看着别的应用，结果直接展开给他看。
+         */
+        fun reduce(
+            action: Action,
+            expandWhenFinished: (Uuid) -> Boolean = { false },
+        ): TrackingState = when (action) {
             is Action.JobsChanged -> copy(
                 running = action.running,
                 target = (action.running - running).lastOrNull() ?: target,
             )
-            is Action.TurnsChanged -> copy(
-                running = action.turns.keys,
-                turns = action.turns,
-                target = action.turns.entries.lastOrNull { (id, revision) -> turns[id] != revision }?.key ?: target,
-            )
+            is Action.TurnsChanged -> {
+                val started = action.turns.entries
+                    .lastOrNull { (id, revision) -> turns[id] != revision }?.key
+                val finished = target?.takeIf { it in running && it !in action.turns }
+                copy(
+                    running = action.turns.keys,
+                    turns = action.turns,
+                    target = started ?: target,
+                    expanded = expanded || (finished != null && expandWhenFinished(finished)),
+                )
+            }
             Action.Expand -> copy(expanded = target != null)
             Action.Collapse -> copy(expanded = false)
             Action.Dismiss -> copy(target = null, expanded = false)

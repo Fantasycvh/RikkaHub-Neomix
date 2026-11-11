@@ -40,4 +40,8 @@ sealed class LocalToolOption {
     @Serializable
     @SerialName("todo_plan")
     data object TodoPlan : LocalToolOption()
+
+    @Serializable
+    @SerialName("phone_use")
+    data object PhoneUse : LocalToolOption()
 }

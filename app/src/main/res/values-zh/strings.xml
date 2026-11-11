@@ -3122,4 +3122,39 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="memory_trigger_scope_selected">已选助手：%1$d 个</string>
   <string name="memory_trigger_scope_pick_desc">只有所选助手的会话会被整理；全不选 = 全部助手。</string>
   <string name="memory_trigger_note_per_assistant">整理开关与基线仍在每个助手的记忆页单独设置。</string>
+
+  <!-- Phone Use -->
+  <string name="phone_use_accessibility_description">启用 Phone Use 工具后，允许 AI 助手读取屏幕并为您执行点按、滑动和文本输入。除非助手正在运行您请求的任务，否则不会执行任何操作。</string>
+  <string name="assistant_page_local_tools_phone_use_title">Phone Use</string>
+  <string name="assistant_page_local_tools_phone_use_desc">允许 AI 读取屏幕并操作此手机上的其他应用</string>
+  <string name="assistant_page_local_tools_phone_use_service_off">无障碍服务已关闭。请将此开关关闭再打开，以进入设置。若该选项在系统中呈灰色不可用，请先在“应用信息”中为此应用允许受限设置。</string>
+  <string name="assistant_page_local_tools_phone_use_enable_service">在无障碍设置中开启 “Neomix Phone Use”</string>
+  <string name="assistant_page_local_tools_phone_use_floating_window_required">请先开启后台悬浮窗</string>
+  <string name="assistant_page_local_tools_phone_use_interactive_only">仅在本机聊天中可用；定时任务和远程网页会话不会执行手机操作。</string>
+  <string name="assistant_page_local_tools_phone_use_approval_title">每轮首次操作前确认</string>
+  <string name="assistant_page_local_tools_phone_use_approval_desc">关闭后 AI 会直接操作手机；悬浮窗仍会显示当前动作。</string>
+  <string name="chat_message_tool_phone_use_observe">读取屏幕</string>
+  <string name="chat_message_tool_phone_use_screenshot">截屏</string>
+  <string name="chat_message_tool_phone_use_tap">点击</string>
+  <string name="chat_message_tool_phone_use_tap_target">点击 %1$s</string>
+  <string name="chat_message_tool_phone_use_long_press">长按</string>
+  <string name="chat_message_tool_phone_use_long_press_target">长按 %1$s</string>
+  <string name="chat_message_tool_phone_use_swipe">滑动</string>
+  <string name="chat_message_tool_phone_use_swipe_path">滑动 %1$s → %2$s</string>
+  <string name="chat_message_tool_phone_use_scroll_up">向上滚动</string>
+  <string name="chat_message_tool_phone_use_scroll_down">向下滚动</string>
+  <string name="chat_message_tool_phone_use_scroll_left">向左滚动</string>
+  <string name="chat_message_tool_phone_use_scroll_right">向右滚动</string>
+  <string name="chat_message_tool_phone_use_type">输入文字</string>
+  <string name="chat_message_tool_phone_use_type_text">输入：%1$s</string>
+  <string name="chat_message_tool_phone_use_press_back">按返回键</string>
+  <string name="chat_message_tool_phone_use_press_home">回到桌面</string>
+  <string name="chat_message_tool_phone_use_press_recents">打开最近任务</string>
+  <string name="chat_message_tool_phone_use_press_notifications">打开通知栏</string>
+  <string name="chat_message_tool_phone_use_press_enter">按回车键</string>
+  <string name="chat_message_tool_phone_use_open_app">打开应用</string>
+  <string name="chat_message_tool_phone_use_open_app_name">打开应用：%1$s</string>
+  <string name="chat_message_tool_phone_use_list_apps">列出应用</string>
+  <string name="chat_message_tool_phone_use_wait">等待 %1$s 秒</string>
+  <string name="chat_message_tool_allow_turn">允许本轮</string>
 </resources>

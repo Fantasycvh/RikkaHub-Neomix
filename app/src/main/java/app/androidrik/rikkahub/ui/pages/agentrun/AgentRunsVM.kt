@@ -61,6 +61,8 @@ class AgentRunsVM(
                 profile.copy(enableMemory = false),
                 model,
                 workspaceCwd = null,
+                // 与 run 侧同口径：子代理不装配 Phone Use
+                allowPhoneUse = false,
             )
         )
     }

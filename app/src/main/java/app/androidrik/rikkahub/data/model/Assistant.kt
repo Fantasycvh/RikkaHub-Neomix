@@ -106,6 +106,14 @@ data class Assistant(
      */
     val imageGenApproval: Boolean = false,
     /**
+     * Phone Use 审批：为 true 时，本轮第一个需要审批的手机动作（见 `PhoneUseTool` 分级）
+     * 先弹一次“允许本轮”；批准后本轮后续动作不再问。
+     *
+     * **默认 true**——这是能操作其他应用的最高权限工具，opt-in 的应该是“免确认”，不是“确认”。
+     * 关闭后行为对齐上游：AI 直接操作，悬浮窗仍显示当前动作。
+     */
+    val phoneUseApproval: Boolean = true,
+    /**
      * **空闲后整理记忆（做梦，V3）**：`0` = 关；`> 0` = 开启时刻（epoch millis）。
      *
      * 用一个时间戳而不是 `Boolean`：它**同时是基线**——做梦只对「开启之后的新轮次」负责。

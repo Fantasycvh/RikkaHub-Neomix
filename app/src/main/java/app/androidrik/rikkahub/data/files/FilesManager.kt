@@ -369,9 +369,10 @@ class FilesManager(
         byteArrays: List<ByteArray>,
         displayName: String = "image.png",
         mimeType: String = "image/png",
+        folder: String = FileFolders.UPLOAD,
     ): List<Uri> {
         val newUris = mutableListOf<Uri>()
-        val dir = context.filesDir.resolve(FileFolders.UPLOAD)
+        val dir = context.filesDir.resolve(folder)
         if (!dir.exists()) {
             dir.mkdirs()
         }
@@ -391,7 +392,7 @@ class FilesManager(
             }
             val newUri = file.toUri()
             trackManagedFile(
-                folder = FileFolders.UPLOAD,
+                folder = folder,
                 file = file,
                 displayName = displayName,
                 mimeType = mimeType
@@ -882,6 +883,11 @@ data class SyncResult(
 
 object FileFolders {
     const val UPLOAD = "upload"
+    /**
+     * Phone Use 截图。可能包含屏幕上的敏感内容，**不进备份**（见 `BackupFolderRegistry`）；
+     * 与 `upload/` 分开，避免被「清理聊天文件」误删正在被会话引用的截图。
+     */
+    const val PHONE_USE = "phone_use"
     const val IMAGES = "images"
     const val SKILLS = "skills"
     const val BUILTIN_SKILLS = "builtin_skills"

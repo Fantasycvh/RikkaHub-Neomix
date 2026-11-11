@@ -47,6 +47,7 @@ import com.petterp.floatingx.core.gesture.FxGesture
 import com.petterp.floatingx.core.layout.FxAdsorb
 import com.petterp.floatingx.core.layout.FxGravity
 import com.petterp.floatingx.core.storage.FxSpStorage
+import com.petterp.floatingx.system.container.FxWindowContainer
 import com.petterp.floatingx.system.permission.FxPermission
 import com.petterp.floatingx.system.permission.FxPermissionStrategy
 import com.petterp.floatingx.system.systemHost
@@ -69,7 +70,9 @@ import app.androidrik.rikkahub.conversationIntent
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.GenerationPhase
 import app.androidrik.rikkahub.data.model.generationPhase
+import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_TOOL_NAME
 import app.androidrik.rikkahub.data.model.pendingToolCalls
+import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatFloatingTracker
 import app.androidrik.rikkahub.service.ChatService
@@ -89,11 +92,16 @@ class ChatFloatingWindows(
     private val context: Application,
     private val appScope: AppScope,
     private val tracker: ChatFloatingTracker,
+    private val phoneUseManager: PhoneUseManager,
     lazyChatService: Lazy<ChatService>,
 ) {
     private val chatService by lazyChatService
+    private val windowManager = context.getSystemService(WindowManager::class.java)
     private var bubble: FxControl? = null
     private var panel: FxControl? = null
+
+    /** Phone Use 截图/手势期间悬浮窗让位；render 重建窗口后要重新应用 */
+    private var yielding = false
     private val sizePreferences = context.getSharedPreferences("floating_chat_window", Context.MODE_PRIVATE)
     private var preferredGeometry by mutableStateOf<WindowGeometry?>(null)
     private var preMaximize by mutableStateOf<WindowGeometry?>(null)
@@ -126,6 +134,18 @@ class ChatFloatingWindows(
     }
 
     init {
+        appScope.launch {
+            phoneUseManager.acting.collect(::yieldScreen)
+        }
+        appScope.launch {
+            // Phone Use 的审批卡必须让用户看得到：出现待批的 phone_use 时自动展开面板。
+            // distinctUntilChanged：用户手动收起后不反复弹。
+            uiState.map { state ->
+                state?.pendingTools?.any { it.toolName == PHONE_USE_TOOL_NAME } == true
+            }.distinctUntilChanged().collect { pending ->
+                if (pending) tracker.expand()
+            }
+        }
         appScope.launch {
             combine(tracker.window, overlayPermission().map { granted ->
                 tracker.setOverlayAllowed(granted)
@@ -196,6 +216,31 @@ class ChatFloatingWindows(
         } else {
             panel?.hide()
             bubble.show()
+        }
+        applyYield()
+    }
+
+    /**
+     * Phone Use 截图或执行手势时让出屏幕：悬浮窗不能出现在截图里，也不能挡住落在它位置上的点击。
+     * 不用 hide()，它带动画，每个动作都收起再弹出会一直闪；这里只让窗口透明并且不接收触摸。
+     * 透明度要改窗口参数而不是 View：Android 12 起，触摸穿过不透明的悬浮窗落到别的应用上会被系统丢弃。
+     */
+    private fun yieldScreen(yieldingNow: Boolean) {
+        yielding = yieldingNow
+        // 展开的面板盖住屏幕上半部分还占着输入焦点，模型操作时直接收起
+        if (yieldingNow) tracker.collapse()
+        applyYield()
+    }
+
+    private fun applyYield() {
+        listOfNotNull(bubble, panel).forEach { control ->
+            val window = generateSequence(control.contentView?.parent) { it.parent }
+                .filterIsInstance<FxWindowContainer>()
+                .firstOrNull() ?: return@forEach
+            window.windowParams.alpha = if (yielding) 0f else 1f
+            window.setWindowTouchable(!yielding)
+            // setWindowTouchable 在标志没变时不会提交，透明度单独提交一次
+            if (window.isAttachedToWm) windowManager.updateViewLayout(window, window.windowParams)
         }
     }
 

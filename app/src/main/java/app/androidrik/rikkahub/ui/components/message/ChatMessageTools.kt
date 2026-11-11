@@ -65,6 +65,7 @@ import me.rerere.hugeicons.stroke.CheckmarkCircle02
 import me.rerere.hugeicons.stroke.Tick01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.tools.local.ASK_USER_TOOL_NAME
+import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_TOOL_NAME
 import app.androidrik.rikkahub.ui.components.message.tools.DefaultToolPreview
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIContext
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRegistry
@@ -248,7 +249,10 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
                     ) {
                         Icon(
                             imageVector = HugeIcons.Tick01,
-                            contentDescription = stringResource(R.string.chat_message_tool_approve),
+                            contentDescription = stringResource(
+                                if (tool.toolName == PHONE_USE_TOOL_NAME) R.string.chat_message_tool_allow_turn
+                                else R.string.chat_message_tool_approve
+                            ),
                             modifier = Modifier.size(14.dp)
                         )
                     }

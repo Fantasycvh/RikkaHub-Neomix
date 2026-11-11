@@ -133,6 +133,7 @@ object ToolUIRegistry {
         TaskStatusToolUI,
         KillTaskToolUI,
         GenerateImageToolUI,
+        PhoneUseToolUI,
     ).associateBy { it.toolName }
 
     private class Contribution(val renderer: ToolUIRenderer)

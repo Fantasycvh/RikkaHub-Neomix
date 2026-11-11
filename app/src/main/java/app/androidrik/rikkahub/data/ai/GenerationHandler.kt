@@ -45,6 +45,7 @@ import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_TOOL_NAME
 import app.androidrik.rikkahub.data.ai.tools.local.TODO_TOOL_NAME
 import app.androidrik.rikkahub.data.ai.tools.local.hasUnfinishedItems
 import app.androidrik.rikkahub.data.ai.tools.local.latestTodoPlan
@@ -413,6 +414,11 @@ class GenerationHandler(
          * 配合 [denialGuard] 使用（聊天路径两个都走默认值，行为不变）。
          */
         autoDenyApproval: Boolean = false,
+        /**
+         * Phone Use 回合授权：本轮已经批准过，同一回合跨审批续跑时不再弹卡。
+         * 只对 `phone_use` 生效；其他工具的审批不受影响。
+         */
+        phoneUseApprovedForTurn: Boolean = false,
         /** 重复拒绝护栏（仅无头 run 传入；见 [DenialGuard] 类注释的覆盖盲区说明）。 */
         denialGuard: DenialGuard? = null,
         /**
@@ -816,12 +822,13 @@ class GenerationHandler(
                     tools = tools,
                     requiresApproval = { tool ->
                         val toolDef = toolsInternal.find { it.name == tool.toolName }
-                        val requiresApproval = toolDef?.needsApproval(tool.inputAsJson()) == true
+                        val requiresApproval = toolDef?.needsApproval(tool.inputAsJson()) == true &&
+                            !(phoneUseApprovedForTurn && tool.toolName == PHONE_USE_TOOL_NAME)
                         if (requiresApproval) {
                             Log.i(
                                 TAG,
                                 "approval check: tool=${tool.toolName} state=${tool.approvalState} " +
-                                    "autoDeny=$autoDenyApproval",
+                                    "autoDeny=$autoDenyApproval phoneUseGranted=$phoneUseApprovedForTurn",
                             )
                         }
                         requiresApproval

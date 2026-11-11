@@ -293,8 +293,9 @@ fun Route.conversationRoutes(
                 modeInjectionIds = request.modeInjectionIds,
                 lorebookIds = request.lorebookIds,
             )
-            if (request.preserveTasks) chatService.sendRetainingTasks(uuid, request.parts)
-            else chatService.sendMessage(uuid, request.parts, answer = true)
+            // Phone Use 只服务设备旁的交互回合；远程 Web 会话不装配（design-phone-use.md §2.3）
+            if (request.preserveTasks) chatService.sendRetainingTasks(uuid, request.parts, allowPhoneUse = false)
+            else chatService.sendMessage(uuid, request.parts, answer = true, allowPhoneUse = false)
 
             call.respond(HttpStatusCode.Accepted, mapOf("status" to "accepted"))
         }

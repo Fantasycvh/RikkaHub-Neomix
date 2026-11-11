@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.data.plugin.DataStorePluginStateStore
+import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.plugin.manager.PluginStateStore
 import app.androidrik.rikkahub.service.ChatFloatingTracker
@@ -63,8 +64,13 @@ val appModule = module {
         )
     }
 
+    // 无障碍服务可能在 startKoin 之前绑定，必须与静态单例共享同一个实例
     single {
-        LocalTools(get(), get(), get(), get())
+        PhoneUseManager.instance
+    }
+
+    single {
+        LocalTools(get(), get(), get(), get(), get(), get())
     }
 
     single {
@@ -200,6 +206,7 @@ val appModule = module {
             context = get(),
             appScope = get(),
             tracker = get(),
+            phoneUseManager = get(),
             lazyChatService = lazy { get() },
         )
     }

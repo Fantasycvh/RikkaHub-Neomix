@@ -82,6 +82,8 @@ import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.Wrench01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.tools.local.ASK_USER_TOOL_NAME
+import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_TOOL_NAME
+import app.androidrik.rikkahub.data.ai.tools.local.phoneUseActionOf
 import app.androidrik.rikkahub.data.ai.SubagentApprovalQueue
 import app.androidrik.rikkahub.data.model.GenerationPhase
 import app.androidrik.rikkahub.service.ChatError
@@ -404,7 +406,14 @@ private fun PendingToolCard(
                     Button(onClick = onOpenConversation) { Text(stringResource(R.string.floating_chat_answer)) }
                 } else {
                     OutlinedButton(onClick = { onApproval(false) }) { Text(stringResource(R.string.chat_message_tool_deny)) }
-                    Button(onClick = { onApproval(true) }) { Text(stringResource(R.string.chat_message_tool_approve)) }
+                    Button(onClick = { onApproval(true) }) {
+                        Text(
+                            stringResource(
+                                if (tool.toolName == PHONE_USE_TOOL_NAME) R.string.chat_message_tool_allow_turn
+                                else R.string.chat_message_tool_approve
+                            )
+                        )
+                    }
                 }
             }
         }
@@ -485,9 +494,15 @@ private fun FloatingChatUiState.statusText(): String {
     }
     processingStatus?.let { return it }
     return when (phase) {
-        is GenerationPhase.RunningTool -> stringResource(R.string.notification_live_update_tool, phase.toolName)
+        is GenerationPhase.RunningTool -> stringResource(R.string.notification_live_update_tool, phase.displayName())
         is GenerationPhase.Thinking -> stringResource(R.string.notification_live_update_thinking)
         is GenerationPhase.Writing -> stringResource(R.string.notification_live_update_writing)
         GenerationPhase.Waiting -> stringResource(R.string.notification_live_update_title)
     }
+}
+
+// Phone Use 一轮要调用很多次同一个工具，带上动作名才看得出进行到哪一步
+private fun GenerationPhase.RunningTool.displayName(): String {
+    if (toolName != PHONE_USE_TOOL_NAME) return toolName
+    return phoneUseActionOf(input)?.let { "$toolName · $it" } ?: toolName
 }

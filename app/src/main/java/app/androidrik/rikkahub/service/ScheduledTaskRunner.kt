@@ -340,6 +340,8 @@ class ScheduledTaskRunner(
             annotations = listOf(app.androidrik.ai.ui.UIMessageAnnotation.ScheduledTrigger(runId)),
             loopGate = loopGate,
             turnOwner = turnOwner,
+            // 定时任务无人值守：不装配 Phone Use（design-phone-use.md §2.3）
+            allowPhoneUse = false,
         )
 
         // 把本轮 generation Job 登记进 registry：取消入口只有 runId，反查到 Job 才停得下来。
