@@ -66,8 +66,10 @@ import app.androidrik.rikkahub.data.datastore.isNotConfigured
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.permission.LocalNetworkPermissionCard
+import app.androidrik.rikkahub.ui.components.ui.permission.NotificationPermissionCard
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberLocalNetworkPermissionState
+import app.androidrik.rikkahub.ui.components.ui.permission.rememberNotificationPermissionState
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.pages.setting.search.SettingSearchBar
@@ -90,6 +92,8 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val filesManager: FilesManager = koinInject()
     val localNetworkPermission = rememberLocalNetworkPermissionState()
     localNetworkPermission?.let { PermissionManager(it) }
+    val notificationPermission = rememberNotificationPermissionState()
+    notificationPermission?.let { PermissionManager(it) }
 
     Scaffold(
         topBar = {
@@ -129,6 +133,15 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 item("localNetworkPermission") {
                     LocalNetworkPermissionCard(
                         permissionState = localNetworkPermission,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                }
+            }
+
+            if (notificationPermission?.allRequiredPermissionsGranted == false) {
+                item("notificationPermission") {
+                    NotificationPermissionCard(
+                        permissionState = notificationPermission,
                         modifier = Modifier.padding(horizontal = 8.dp),
                     )
                 }
