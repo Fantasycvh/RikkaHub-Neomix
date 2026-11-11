@@ -125,9 +125,11 @@ Web 的发送/编辑入口传 false；App 默认 true。`PromptInspection` 只�
 
 - **单轮步数硬上限**：`PhoneUseTurnBudget`（默认 40 步，
   `data/ai/PhoneUseTurnBudget.kt`）挂在 `ConversationSession`，跨审批续跑累积、
-  新一轮 `beginNewTurn` 清零。语义与 `WorkspaceTurnBudget` 一致——**执行后判定**：
-  超限那一步的结果照常回填，随后以 `GenerationNotice.PhoneUseBudgetExhausted`
-  优雅结束本轮，聊天页给用户可见提示；失败调用同样计步（它们也耗时间与上下文）。
+  新一轮 `beginNewTurn` 清零。上限可在 设置 → 通用 → 护栏与预算 调整
+  （`Settings.phoneUseTurnMaxSteps`，5–200；会话创建时读取，进行中的会话保持旧值）。
+  语义与 `WorkspaceTurnBudget` 一致——**执行后判定**：超限那一步的结果照常回填，
+  随后以 `GenerationNotice.PhoneUseBudgetExhausted` 优雅结束本轮，聊天页给用户可见提示；
+  失败调用同样计步（它们也耗时间与上下文）。
 - **元素列表差分压缩**：动作后自动回带的列表与模型已见过的上一份比较——
   - 完全一致（含坐标）→ 只回一行“未变化”，旧索引继续有效；
   - 仅文字/勾选等状态变化，且元素数量、类名、资源 ID、坐标都没变 → 只回变化元素；
@@ -214,9 +216,10 @@ JVM：
 - S2：screenshot/tap/type 触发 needsApproval，observe/list_apps/wait/HOME 不触发；
 - 回合授权：批准后同轮不再问，拒绝后同轮不再装配/执行；
 - 来源：`allowPhoneUse=false` 时工具集合里没有 `phone_use`；
-- 步数预算：40 步内 Continue，第 41 步 Exceeded，`reset()` 后清零；
+- 步数预算：40 步内 Continue，第 41 步 Exceeded，`reset()` 后清零；设置项 5–200 生效；
 - 差分压缩：屏幕不变回单行、仅文字/状态变化回变化元素、位置或增删元素回全量、
-  `observe` 始终回全量。
+  `observe` 始终回全量；
+- 受限应用：注册表内应用的空元素树/截图失败/索引失效回针对性说明；普通应用空树仍提示加载。
 
 真机：
 
@@ -239,6 +242,9 @@ JVM：
   `dispatchGesture` 无 display 参数；最多做节点动作型研究，不进 v1。
 - **步数硬上限**、**元素列表差分压缩**已随 P2 落地；当前依赖内置+自定义黑名单、S2 审批、
   60s 超时兜底、单轮步数上限、LoopGuard/上下文闸与用户停止。
-- **微信限制（2026-11-11 用户反馈）**：微信疑似已下发防截图/防读屏配置，Phone Use 对其
-  截图与元素读取可能失败；不做绕过，失败按可读错误返回，后续可能要求具备相应模块/配置
-  才能操作该应用。
+- **受限应用（当前实例：微信，2026-11-11 用户反馈）**：`PHONE_USE_RESTRICTED_APPS`
+  注册表登记已知会阻止读屏/截图的应用；命中时按应用名返回针对性提示（截图失败、空元素树、
+  元素索引失效三条路径共用，要求模型停止重试并让用户自行完成）。微信的防截图/防读屏配置
+  是当前唯一实例，新增应用只需把包名加入注册表；不在注册表内的应用仍走通用错误。
+- **打开应用解析**：包名 > 完整标签（忽略大小写）> 前缀匹配 > 包含匹配；模糊档取最短标签，
+  避免 `note` 命中更长的无关应用（真机验证 `Notes` → `com.coloros.note`，`WeNote` 不会被误选）。

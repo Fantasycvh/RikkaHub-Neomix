@@ -40,6 +40,7 @@ import app.androidrik.rikkahub.data.ai.LoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.parseLoopGuardSensitivity
 import app.androidrik.rikkahub.data.ai.RuleReminderSensitivity
 import app.androidrik.rikkahub.data.ai.parseRuleReminderSensitivity
+import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.rikkahub.ui.components.ui.OutlinedNumberInput
 import androidx.compose.foundation.layout.width
 import app.androidrik.rikkahub.R
@@ -736,6 +737,23 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
                 )
             },
         )
+        // Phone Use 只在 Android 11+ 可用；旧系统上不显示这条（避免无效设置）
+        if (PhoneUseManager.isSupported) {
+            item(
+                headlineContent = { Text(stringResource(R.string.setting_page_guardrails_phone_use_steps)) },
+                supportingContent = { Text(stringResource(R.string.setting_page_guardrails_phone_use_steps_desc)) },
+                trailingContent = {
+                    OutlinedNumberInput(
+                        value = settings.phoneUseTurnMaxSteps,
+                        onValueChange = {
+                            vm.updateSettings(settings.copy(phoneUseTurnMaxSteps = it))
+                        },
+                        label = stringResource(R.string.setting_page_guardrails_unit_steps),
+                        modifier = Modifier.width(96.dp),
+                    )
+                },
+            )
+        }
         item(
             headlineContent = { Text(stringResource(R.string.setting_page_guardrails_subagent_concurrency)) },
             supportingContent = { Text(stringResource(R.string.setting_page_guardrails_subagent_concurrency_desc)) },

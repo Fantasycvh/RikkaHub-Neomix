@@ -420,6 +420,7 @@ class SettingsStore(
         val RULE_REMINDER_SENSITIVITY = stringPreferencesKey("rule_reminder_sensitivity")
         val WORKSPACE_TURN_BUDGET_CHARS = intPreferencesKey("workspace_turn_budget_chars")
         val WORKSPACE_TURN_MAX_STEPS = intPreferencesKey("workspace_turn_max_steps")
+        val PHONE_USE_TURN_MAX_STEPS = intPreferencesKey("phone_use_turn_max_steps")
         val SUBAGENT_MAX_CONCURRENT_RUNS = intPreferencesKey("subagent_max_concurrent_runs")
         val WORKSPACE_TASK_MAX_DURATION_MINUTES = intPreferencesKey("workspace_task_max_duration_minutes")
         val AUTO_COMPRESS_THRESHOLD_PERCENT = intPreferencesKey("auto_compress_threshold_percent")
@@ -645,6 +646,8 @@ class SettingsStore(
                     ?: DEFAULT_WORKSPACE_TURN_BUDGET_CHARS).coerceIn(32_000, 2_000_000),
                 workspaceTurnMaxSteps = (preferences[WORKSPACE_TURN_MAX_STEPS]
                     ?: DEFAULT_WORKSPACE_TURN_MAX_STEPS).coerceIn(8, 512),
+                phoneUseTurnMaxSteps = (preferences[PHONE_USE_TURN_MAX_STEPS]
+                    ?: DEFAULT_PHONE_USE_TURN_MAX_STEPS).coerceIn(5, 200),
                 subagentMaxConcurrentRuns = (preferences[SUBAGENT_MAX_CONCURRENT_RUNS]
                     ?: DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS).coerceIn(1, 8),
                 workspaceTaskMaxDurationMinutes = (preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES]
@@ -962,6 +965,7 @@ class SettingsStore(
             preferences[RULE_REMINDER_SENSITIVITY] = settings.ruleReminderSensitivity
             preferences[WORKSPACE_TURN_BUDGET_CHARS] = settings.workspaceTurnBudgetChars
             preferences[WORKSPACE_TURN_MAX_STEPS] = settings.workspaceTurnMaxSteps
+            preferences[PHONE_USE_TURN_MAX_STEPS] = settings.phoneUseTurnMaxSteps
             preferences[SUBAGENT_MAX_CONCURRENT_RUNS] = settings.subagentMaxConcurrentRuns
             preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES] = settings.workspaceTaskMaxDurationMinutes
             preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent

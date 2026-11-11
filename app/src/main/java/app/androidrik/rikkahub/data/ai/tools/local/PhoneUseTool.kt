@@ -43,6 +43,18 @@ private const val SCREENSHOT_MAX_SIDE = 1568
 private const val MAX_LISTED_APPS = 120
 
 /**
+ * 已知会阻止读屏/截图的**受限应用**（应用自身的保护配置，不是系统权限）。
+ *
+ * 失败时按应用名给出针对性说明（停止重试、让用户手动完成），而不是通用错误；新增应用
+ * 只需把包名加进这个注册表。微信的防截图/防读屏配置是当前已知实例（2026-11-11）。
+ */
+internal val PHONE_USE_RESTRICTED_APPS = setOf(
+    "com.tencent.mm", // 微信
+)
+
+private enum class RestrictionKind { READING, SCREENSHOT }
+
+/**
  * 不允许 AI 操作的应用：支付和银行类。
  * 不能打开，从别的应用跳转进去后也不能读屏和操作，只能返回或回到桌面。
  */
@@ -272,7 +284,13 @@ private class PhoneUseSession(
             "screenshot" -> {
                 ensureOperable(controller)
                 val screen = capture(controller)
-                val bytes = hidingOverlays { controller.screenshot(SCREENSHOT_MAX_SIDE) }
+                val bytes = try {
+                    hidingOverlays { controller.screenshot(SCREENSHOT_MAX_SIDE) }
+                } catch (e: Exception) {
+                    // 受限应用的防截图会以 FLAG_SECURE/空窗口形式失败：给针对性说明，别让模型反复试
+                    screen.restrictedMessage(RestrictionKind.SCREENSHOT)?.let { throw IllegalStateException(it) }
+                    throw e
+                }
                 listOf(
                     UIMessagePart.Image(url = saveScreenshot(bytes)),
                     UIMessagePart.Text(
@@ -385,6 +403,10 @@ private class PhoneUseSession(
     private suspend fun describeCurrent(controller: PhoneController, forceFull: Boolean = false): String {
         val screen = capture(controller)
         screen.packages.blocked()?.let { return blockedMessage(it) }
+        // 受限应用可能返回空元素树：这不是“还在加载”，重试没有意义
+        if (screen.elements.isEmpty()) {
+            screen.restrictedMessage(RestrictionKind.READING)?.let { return it }
+        }
         val text = describe(screen, previous = lastDescribedScreen.takeUnless { forceFull })
         // 差分文本同样让模型对新列表建立完整认知：作为下一份基线
         lastDescribedScreen = screen
@@ -411,9 +433,11 @@ private class PhoneUseSession(
     }
 
     private fun resolveApp(controller: PhoneController, query: String) = controller.listApps().let { apps ->
+        // 包名 > 完整标签 > 前缀 > 包含；模糊档取最短标签，避免 "note" 命中更长的无关应用
         apps.find { it.packageName == query }
             ?: apps.find { it.label.equals(query, ignoreCase = true) }
-            ?: apps.find { it.label.contains(query, ignoreCase = true) }
+            ?: apps.filter { it.label.startsWith(query, ignoreCase = true) }.minByOrNull { it.label.length }
+            ?: apps.filter { it.label.contains(query, ignoreCase = true) }.minByOrNull { it.label.length }
             ?: error("App not found: $query. Use list_apps to see installed apps.")
     }
 }
@@ -421,7 +445,23 @@ private class PhoneUseSession(
 private fun text(text: String) = listOf(UIMessagePart.Text(text))
 
 private fun PhoneScreen.element(index: Int): PhoneElement =
-    elements.getOrNull(index) ?: error("Element $index is not in the latest element list. Observe the screen again.")
+    elements.getOrNull(index) ?: error(
+        restrictedMessage(RestrictionKind.READING)
+            ?: "Element $index is not in the latest element list. Observe the screen again."
+    )
+
+/** 受限应用的针对性说明；不在注册表内的应用返回 null（走通用错误） */
+private fun PhoneScreen.restrictedMessage(kind: RestrictionKind): String? {
+    if (packages.none { it in PHONE_USE_RESTRICTED_APPS } && packageName !in PHONE_USE_RESTRICTED_APPS) {
+        return null
+    }
+    val capability = when (kind) {
+        RestrictionKind.READING -> "screen reading"
+        RestrictionKind.SCREENSHOT -> "screenshots"
+    }
+    return "${appName()} restricts $capability on this device (the app's own protection). " +
+        "Do not retry; press back or home, and ask the user to do this step themselves."
+}
 
 private fun PhoneScreen.gridToX(value: Double) = (value.coerceIn(0.0, GRID.toDouble()) / GRID * width).toFloat()
 

@@ -2124,6 +2124,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_guardrails_unit_kchars">K chars</string>
   <string name="setting_page_guardrails_turn_budget_steps">Workspace per-turn max steps</string>
   <string name="setting_page_guardrails_turn_budget_steps_desc">Max workspace tool calls in one turn</string>
+  <string name="setting_page_guardrails_phone_use_steps">Phone Use per-turn max steps</string>
+  <string name="setting_page_guardrails_phone_use_steps_desc">Max phone actions (screen reads, taps, typing) in one turn; 5–200</string>
   <string name="setting_page_guardrails_unit_steps">steps</string>
   <string name="setting_page_guardrails_subagent_concurrency">Subagent concurrency</string>
   <string name="setting_page_guardrails_subagent_concurrency_desc">Max simultaneously running subagent tasks</string>

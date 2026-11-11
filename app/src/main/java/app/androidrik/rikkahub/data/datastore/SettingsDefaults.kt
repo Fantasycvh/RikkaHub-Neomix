@@ -116,6 +116,7 @@ val DEFAULT_BACKUP_ITEMS: List<BackupItem> = BackupItem.entries.toList()
 // ---- 护栏与预算的默认值（与原写死常量一致；可配置化不改变默认行为） ----
 const val DEFAULT_WORKSPACE_TURN_BUDGET_CHARS = 256 * 1024
 const val DEFAULT_WORKSPACE_TURN_MAX_STEPS = 64
+const val DEFAULT_PHONE_USE_TURN_MAX_STEPS = 40
 const val DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS = 2
 const val DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES = 30
 

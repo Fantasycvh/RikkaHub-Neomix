@@ -276,6 +276,63 @@ class PhoneUseToolTest {
         assertTrue(output.contains("Elements as [index]"))
     }
 
+    @Test
+    fun `restricted app with empty element tree gets a targeted explanation`() = runTest {
+        manager.attach(controller)
+        controller.screen = controller.screen.copy(
+            packageName = "com.tencent.mm",
+            appLabel = "WeChat",
+            packages = setOf("com.tencent.mm"),
+            elements = emptyList(),
+        )
+        val output = call { put("action", "observe") }
+        assertTrue(output.contains("restricts screen reading"))
+        assertTrue(output.contains("WeChat (com.tencent.mm)"))
+        assertFalse(output.contains("No elements found"))
+    }
+
+    @Test
+    fun `empty element tree in an ordinary app still means loading`() = runTest {
+        manager.attach(controller)
+        controller.screen = controller.screen.copy(elements = emptyList())
+        val output = call { put("action", "observe") }
+        assertTrue(output.contains("No elements found"))
+        assertFalse(output.contains("restricts"))
+    }
+
+    @Test
+    fun `restricted app screenshot failure is explained instead of retried`() = runTest {
+        manager.attach(controller)
+        controller.screen = controller.screen.copy(
+            packageName = "com.tencent.mm",
+            appLabel = "WeChat",
+            packages = setOf("com.tencent.mm"),
+        )
+        controller.screenshotException = IllegalStateException("Screenshot blocked by a secure window (FLAG_SECURE).")
+        val error = runCatching { call { put("action", "screenshot") } }.exceptionOrNull()
+        assertTrue(error!!.message!!.contains("restricts screenshots"))
+        assertTrue(error.message!!.contains("Do not retry"))
+        assertTrue(savedScreenshots.isEmpty())
+    }
+
+    @Test
+    fun `ordinary screenshot failure keeps the original reason`() = runTest {
+        manager.attach(controller)
+        controller.screenshotException = IllegalStateException("Screenshot blocked by a secure window (FLAG_SECURE).")
+        val error = runCatching { call { put("action", "screenshot") } }.exceptionOrNull()
+        assertEquals("Screenshot blocked by a secure window (FLAG_SECURE).", error!!.message)
+    }
+
+    @Test
+    fun `open_app prefers exact labels and shortest fuzzy match`() = runTest {
+        manager.attach(controller)
+        call { put("action", "open_app"); put("app", "Notes") }
+        call { put("action", "open_app"); put("app", "note") }
+        call { put("action", "open_app"); put("app", "WPS") }
+        // 完整标签命中 ColorOS Notes；模糊档取最短标签而不是 WeNote；WPS 走包含匹配
+        assertEquals(listOf("com.coloros.note", "com.coloros.note", "cn.wps.moffice_eng"), controller.opened)
+    }
+
     private class FakeController(private val manager: PhoneUseManager) : PhoneController {
         var screen = PhoneScreen(
             packageName = "com.demo",
@@ -317,12 +374,14 @@ class PhoneUseToolTest {
         val actingDuringGesture = mutableListOf<Boolean>()
         val keys = mutableListOf<PhoneKey>()
         val opened = mutableListOf<String>()
+        var screenshotException: Exception? = null
 
         override fun visiblePackages(): Set<String> = screen.packages
 
         override suspend fun captureScreen(): PhoneScreen = screen
 
-        override suspend fun screenshot(maxSide: Int): ByteArray = byteArrayOf(1, 2, 3)
+        override suspend fun screenshot(maxSide: Int): ByteArray =
+            screenshotException?.let { throw it } ?: byteArrayOf(1, 2, 3)
 
         override suspend fun gesture(fromX: Float, fromY: Float, toX: Float, toY: Float, durationMs: Long): Boolean {
             gestures += listOf(fromX, fromY, toX, toY)
@@ -341,6 +400,9 @@ class PhoneUseToolTest {
             PhoneApp("com.demo", "Demo"),
             PhoneApp("com.other", "Other"),
             PhoneApp("com.eg.android.AlipayGphone", "Alipay"),
+            PhoneApp("com.coloros.note", "Notes"),
+            PhoneApp("com.yocto.wenote", "WeNote"),
+            PhoneApp("cn.wps.moffice_eng", "WPS Office"),
         )
 
         override fun openApp(packageName: String): Boolean {

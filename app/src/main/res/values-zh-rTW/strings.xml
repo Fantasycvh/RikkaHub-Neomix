@@ -2144,6 +2144,8 @@
   <string name="setting_page_guardrails_unit_kchars">千字元</string>
   <string name="setting_page_guardrails_turn_budget_steps">工作區單輪步數上限</string>
   <string name="setting_page_guardrails_turn_budget_steps_desc">一輪對話內工作區工具呼叫次數上限</string>
+  <string name="setting_page_guardrails_phone_use_steps">Phone Use 單輪步數上限</string>
+  <string name="setting_page_guardrails_phone_use_steps_desc">一輪對話內手機操作次數上限（讀屏/點擊/輸入等），5–200</string>
   <string name="setting_page_guardrails_unit_steps">步</string>
   <string name="setting_page_guardrails_subagent_concurrency">子代理並行上限</string>
   <string name="setting_page_guardrails_subagent_concurrency_desc">同時執行的子代理任務數上限</string>

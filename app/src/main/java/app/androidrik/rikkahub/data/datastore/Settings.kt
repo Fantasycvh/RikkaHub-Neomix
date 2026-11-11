@@ -236,6 +236,8 @@ data class Settings(
     val workspaceTurnBudgetChars: Int = DEFAULT_WORKSPACE_TURN_BUDGET_CHARS,
     /** workspace_* 工具单轮步数上限，见 [DEFAULT_WORKSPACE_TURN_MAX_STEPS] */
     val workspaceTurnMaxSteps: Int = DEFAULT_WORKSPACE_TURN_MAX_STEPS,
+    /** Phone Use 工具单轮步数上限，见 [DEFAULT_PHONE_USE_TURN_MAX_STEPS] */
+    val phoneUseTurnMaxSteps: Int = DEFAULT_PHONE_USE_TURN_MAX_STEPS,
     /** 子代理并行运行上限（满了拒绝新派发） */
     val subagentMaxConcurrentRuns: Int = DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS,
     /** 后台任务最长存活分钟数（到点杀进程树记 TIMED_OUT） */

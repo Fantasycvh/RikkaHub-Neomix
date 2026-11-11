@@ -496,6 +496,13 @@ object SettingSearchIndex {
             section = R.string.setting_page_guardrails_title
         ),
         entry(
+            title = R.string.setting_page_guardrails_phone_use_steps,
+            description = R.string.setting_page_guardrails_phone_use_steps_desc,
+            route = Screen.SettingPreferencesGeneral,
+            pageTitle = R.string.setting_page_preferences_general,
+            section = R.string.setting_page_guardrails_title
+        ),
+        entry(
             title = R.string.setting_page_guardrails_subagent_concurrency,
             description = R.string.setting_page_guardrails_subagent_concurrency_desc,
             route = Screen.SettingPreferencesGeneral,

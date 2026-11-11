@@ -20,6 +20,7 @@ import app.androidrik.rikkahub.data.ai.RuleReminderSensitivity
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.ToolCallLoopGuard
 import app.androidrik.rikkahub.data.ai.guardThresholds
+import app.androidrik.rikkahub.data.datastore.DEFAULT_PHONE_USE_TURN_MAX_STEPS
 import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_BUDGET_CHARS
 import app.androidrik.rikkahub.data.datastore.DEFAULT_WORKSPACE_TURN_MAX_STEPS
 import app.androidrik.rikkahub.data.ai.PhoneUseTurnBudget
@@ -61,6 +62,8 @@ class ConversationSession(
     /** workspace_* 单轮输出预算（字符）与步数上限 */
     turnBudgetChars: Int = DEFAULT_WORKSPACE_TURN_BUDGET_CHARS,
     turnBudgetSteps: Int = DEFAULT_WORKSPACE_TURN_MAX_STEPS,
+    /** Phone Use 单轮步数上限 */
+    phoneUseTurnMaxSteps: Int = DEFAULT_PHONE_USE_TURN_MAX_STEPS,
 ) {
     // 待发消息队列（生成期间入队，当前轮次结束后自动派发）
     val messageQueue = MessageQueue()
@@ -144,7 +147,7 @@ class ConversationSession(
      * Phone Use 单轮步数上限（见 `data/ai/PhoneUseTurnBudget.kt`）。与 [workspaceTurnBudget]
      * 同款挂载理由：跨审批续跑累积，新一轮由 [beginNewTurn] 清零。
      */
-    val phoneUseTurnBudget = PhoneUseTurnBudget()
+    val phoneUseTurnBudget = PhoneUseTurnBudget(maxSteps = phoneUseTurnMaxSteps)
 
     /**
      * **思考退化护栏**（护栏家族第四员，见 `data/ai/ThinkingDegenerationGuard.kt`）。

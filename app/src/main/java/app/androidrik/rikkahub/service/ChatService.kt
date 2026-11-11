@@ -373,6 +373,7 @@ class ChatService(
                 ruleReminderSensitivity = parseRuleReminderSensitivity(settings.ruleReminderSensitivity),
                 turnBudgetChars = settings.workspaceTurnBudgetChars,
                 turnBudgetSteps = settings.workspaceTurnMaxSteps,
+                phoneUseTurnMaxSteps = settings.phoneUseTurnMaxSteps,
                 onIdle = { removeSession(it) },
                 onTurnCancelled = { owner -> killBackgroundTasksOfCancelledTurn(owner) },
                 onGenerationFinished = { sessionId, cause ->
