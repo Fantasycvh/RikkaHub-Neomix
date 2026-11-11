@@ -657,6 +657,31 @@ sealed class PromptInjection {
          * 不开（默认）时行为与旧版一致——只扫最近 N 条对话消息。
          */
         val matchAssistantPrompt: Boolean = false,
+        /**
+         * 整词匹配：非正则关键词按词边界命中（`cat` 不再命中 `category`）。
+         *
+         * 对**连续中文基本不生效**（汉字之间没有词边界，`\b` 落不到汉字上），
+         * 界面文案必须写明这一点（NMoi D308 约束；其界面文案「等于匹配不到」不严格，不照抄）。
+         */
+        val matchWholeWords: Boolean = false,
+        /**
+         * 粘性：扫描窗口由 [scanDepth] 伸到 `scanDepth + sticky`（NMoi D308 判据）。
+         *
+         * 效果近似 ST 的「触发后额外保持 N 条」：关键词滑出常规扫描深度后的 N 条内仍算命中。
+         * 按消息数**无状态**判定，不与归档/压缩打架。
+         */
+        val sticky: Int = 0,
+        /**
+         * 冷却：最近 [cooldown] 条消息里**提到过**关键词则暂不注入。
+         *
+         * 判据是「最近一次提到」而非「上次生效」（NMoi D308 约束）：后者要跨轮状态，
+         * 与归档/压缩冲突；本判定从消息历史直接推出，零状态。常驻条目无关键词，不受影响。
+         */
+        val cooldown: Int = 0,
+        /**
+         * 延迟：历史消息不足 [delay] 条时不激活（常驻条目同样受控）。
+         */
+        val delay: Int = 0,
     ) : PromptInjection()
 }
 
@@ -758,6 +783,15 @@ private fun PromptInjection.RegexInjection.matchesKeyword(context: String, keywo
         } catch (e: Exception) {
             false
         }
+    } else if (matchWholeWords) {
+        // 词边界用 `\b` 包住转义后的关键词；`\b` 是 ASCII 词字符语义 ⇒ 汉字间无边界，
+        // 连续中文基本不命中（见 [PromptInjection.RegexInjection.matchWholeWords] 注释）
+        try {
+            val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+            Regex("\\b${Regex.escape(keyword)}\\b", options).containsMatchIn(context)
+        } catch (e: Exception) {
+            false
+        }
     } else {
         if (caseSensitive) {
             context.contains(keyword)
@@ -801,6 +835,43 @@ fun PromptInjection.RegexInjection.isTriggered(context: String): Boolean {
         // 全部次要键都命中才通过
         SelectiveLogic.AND_ALL -> matches.all { it }
     }
+}
+
+/**
+ * 触发时序判定（[PromptInjection.RegexInjection.delay] / [sticky] / [cooldown]）。
+ *
+ * 全部按**消息条数**无状态推出（NMoi D308 判据），不维护跨轮状态：
+ * - [PromptInjection.RegexInjection.delay]：历史不足 N 条不激活（常驻条目同样受控）；
+ * - [PromptInjection.RegexInjection.sticky]：扫描窗口伸到 `scanDepth + sticky`；
+ * - [PromptInjection.RegexInjection.cooldown]：基判定通过后，若关键词的**最近一次提到**
+ *   落在最近 N 条内则暂不注入（常驻条目无关键词，自然不受控）。
+ *
+ * 刻意借判据不抄 NMoi 代码：其 `is_active` 里 `nearest >= reach` 是恒假死判断
+ * （`window.iter().rev().position` 值域 ≤ reach−1）。
+ *
+ * @param messages 用于匹配的历史消息（调用方应已滤掉 SYSTEM）
+ * @param extraTexts 额外纳入扫描的文本（同 [extractContextForMatching]）
+ */
+fun PromptInjection.RegexInjection.isTriggered(
+    messages: List<UIMessage>,
+    extraTexts: List<String> = emptyList(),
+): Boolean {
+    if (!enabled) return false
+    if (delay > 0 && messages.size < delay) return false
+    val context = extractContextForMatching(
+        messages = messages,
+        scanDepth = scanDepth + sticky.coerceAtLeast(0),
+        extraTexts = extraTexts,
+    )
+    if (!isTriggered(context)) return false
+    if (cooldown > 0 && keywords.isNotEmpty()) {
+        val lastMention = messages.asReversed().indexOfFirst { message ->
+            val text = message.toText()
+            keywords.any { matchesKeyword(text, it) }
+        }
+        if (lastMention >= 0 && lastMention < cooldown) return false
+    }
+    return true
 }
 
 /**

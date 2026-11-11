@@ -9,7 +9,6 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.InjectionPosition
 import app.androidrik.rikkahub.data.model.PromptInjection
 import app.androidrik.rikkahub.data.model.Lorebook
-import app.androidrik.rikkahub.data.model.extractContextForMatching
 import app.androidrik.rikkahub.data.model.isTriggered
 import app.androidrik.rikkahub.data.model.limitByTokenBudget
 import app.androidrik.rikkahub.utils.estimateTokens
@@ -138,12 +137,11 @@ internal fun collectInjections(
         enabledLorebooks.forEach { lorebook ->
             lorebook.entries
                 .filter { entry ->
-                    val context = extractContextForMatching(
+                    // 时序判定（delay/sticky/cooldown）与匹配都在消息列表上做
+                    entry.isTriggered(
                         messages = nonSystemMessages,
-                        scanDepth = entry.scanDepth,
                         extraTexts = if (entry.matchAssistantPrompt) listOf(assistantPromptText) else emptyList(),
                     )
-                    entry.isTriggered(context)
                 }
                 .forEach { triggered.add(it) }
         }

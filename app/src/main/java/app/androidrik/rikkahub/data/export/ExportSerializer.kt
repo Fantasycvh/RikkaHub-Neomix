@@ -389,6 +389,10 @@ internal fun SillyTavernEntry.toRegexInjection(): PromptInjection.RegexInjection
             matchCharacterDepthPrompt ||
             matchCreatorNotes ||
             matchPersonaDescription,
+        matchWholeWords = matchWholeWords ?: false,
+        sticky = sticky ?: 0,
+        cooldown = cooldown ?: 0,
+        delay = delay ?: 0,
     )
 }
 
@@ -529,6 +533,11 @@ internal data class SillyTavernEntry(
     val matchScenario: Boolean = false,
     @SerialName("matchCreatorNotes")
     val matchCreatorNotes: Boolean = false,
+    // 触发时序四字段（ST WorldInfoEntry 顶层字段；旧文件没有时按「关」缺省）
+    val matchWholeWords: Boolean? = null,
+    val sticky: Int? = null,
+    val cooldown: Int? = null,
+    val delay: Int? = null,
 )
 
 /**
@@ -592,6 +601,11 @@ internal data class SillyTavernBookEntryExtensions(
     val selectiveLogic: Int? = null,
     val scanDepth: Int? = null,
     val caseSensitive: Boolean? = null,
+    // 触发时序四字段（卡内嵌书按 ST 转换约定塞 extensions）
+    val matchWholeWords: Boolean? = null,
+    val sticky: Int? = null,
+    val cooldown: Int? = null,
+    val delay: Int? = null,
 )
 
 /**
@@ -647,6 +661,10 @@ internal fun SillyTavernBookEntry.toRegexInjection(defaultScanDepth: Int): Promp
         selectiveLogic = mapSillyTavernSelectiveLogic(extensions.selectiveLogic ?: 0),
         // 卡内嵌 spec 不携带 match* 字段（那是世界书文件的字段）→ 统一 false，与 ST 转换一致
         matchAssistantPrompt = false,
+        matchWholeWords = extensions.matchWholeWords ?: false,
+        sticky = extensions.sticky ?: 0,
+        cooldown = extensions.cooldown ?: 0,
+        delay = extensions.delay ?: 0,
     )
 }
 // endregion

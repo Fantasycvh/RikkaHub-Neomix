@@ -976,6 +976,51 @@ internal fun RegexInjectionEditDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
+                // 触发时序（NMoi D307-D308）：sticky/cooldown/delay 按消息条数判定，0 = 关
+                OutlinedTextField(
+                    value = entry.sticky.toString(),
+                    onValueChange = {
+                        it.toIntOrNull()?.let { d -> onEdit(entry.copy(sticky = d)) }
+                    },
+                    label = { Text(stringResource(R.string.prompt_page_sticky)) },
+                    supportingText = { Text(stringResource(R.string.prompt_page_sticky_desc)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                OutlinedTextField(
+                    value = entry.cooldown.toString(),
+                    onValueChange = {
+                        it.toIntOrNull()?.let { d -> onEdit(entry.copy(cooldown = d)) }
+                    },
+                    label = { Text(stringResource(R.string.prompt_page_cooldown)) },
+                    supportingText = { Text(stringResource(R.string.prompt_page_cooldown_desc)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                OutlinedTextField(
+                    value = entry.delay.toString(),
+                    onValueChange = {
+                        it.toIntOrNull()?.let { d -> onEdit(entry.copy(delay = d)) }
+                    },
+                    label = { Text(stringResource(R.string.prompt_page_delay)) },
+                    supportingText = { Text(stringResource(R.string.prompt_page_delay_desc)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                FormItem(
+                    label = { Text(stringResource(R.string.prompt_page_match_whole_words)) },
+                    description = { Text(stringResource(R.string.prompt_page_match_whole_words_desc)) },
+                    tail = {
+                        Switch(
+                            checked = entry.matchWholeWords,
+                            onCheckedChange = { onEdit(entry.copy(matchWholeWords = it)) }
+                        )
+                    }
+                )
+
                 AnimatedVisibility(visible = entry.position.usesStandaloneMessage()) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(
