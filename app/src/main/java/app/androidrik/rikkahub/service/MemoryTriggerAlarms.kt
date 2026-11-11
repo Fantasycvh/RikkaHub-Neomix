@@ -7,8 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
-import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.RouteActivity
+import app.androidrik.rikkahub.RikkaHubApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import org.koin.core.context.GlobalContext
 
@@ -129,16 +133,27 @@ class MemoryTriggerAlarmReceiver : BroadcastReceiver() {
 class MemoryTriggerBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        val app = context.applicationContext as? RikkaHubApp ?: return
         val pending = goAsync()
-        val scope: AppScope = GlobalContext.get().get()
-        scope.launch {
+        val rearmScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        rearmScope.launch {
             try {
+                // startKoin 被推迟到换库之后（见 RikkaHubApp.boot 的不变量）：BOOT 广播可能
+                // 抢在 Ready 前到达，此时解析 Koin = 空根作用域 NoDefinitionFound（R3 同因；
+                // 2026-11-11 真机复现：安装后 ROM 重投 BOOT_COMPLETED → 进程崩溃）。
+                // 等不到 Ready 就放弃——整理积压没有时效性，下次 app 启动的 reconcile
+                // 会把闹钟排回去（goAsync 总预算 10s，等待上限取 8s）。
+                if (!app.awaitBootReady(timeoutMs = 8_000)) {
+                    Log.w(TAG, "boot rearm skipped: startup not Ready in time; retried on next app start")
+                    return@launch
+                }
                 GlobalContext.get().get<MemoryTriggerScheduleManager>().reconcileCurrent()
                 Log.i(TAG, "boot rearm done")
             } catch (e: Exception) {
                 Log.w(TAG, "boot rearm failed", e)
             } finally {
                 pending.finish()
+                rearmScope.cancel()
             }
         }
     }
