@@ -1,9 +1,13 @@
 package app.androidrik.rikkahub.data.repository
 
 import app.androidrik.rikkahub.data.ai.PendingMemoryConversation
+import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
+import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
+import app.androidrik.rikkahub.data.ai.inTriggerScope
 import app.androidrik.rikkahub.data.ai.memoryConsolidationBaseline
 import app.androidrik.rikkahub.data.ai.memoryConsolidationEnabled
 import app.androidrik.rikkahub.data.ai.memoryId
+import app.androidrik.rikkahub.data.ai.totalUserTurns
 import app.androidrik.rikkahub.data.ai.unconsolidatedTurns
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO
@@ -39,6 +43,8 @@ class MemoryConsolidationRepository(
     private val limitPerRun: Int = DEFAULT_LIMIT_PER_RUN,
     /** 判定「自动整理间隔」用的时钟；测试注入固定时刻，生产用真实时间 */
     private val now: () -> Long = System::currentTimeMillis,
+    /** 触发方式配置（全局，Settings 注入）；决定「第 N 轮」阈值与范围门控 */
+    private val config: suspend () -> MemoryTriggerConfig = { MemoryTriggerConfig() },
 ) {
     /**
      * 该记忆库的**全库复核水位**（已复核到的 `sortKey`，含）。无行 = 0 = 从头。
@@ -85,9 +91,12 @@ class MemoryConsolidationRepository(
      * 后者的失败必须返回 null 而不是 0 轮，否则调度器会把"没东西整理"记成一次成功的整理。
      */
     suspend fun pendingOf(conversation: Conversation): PendingMemoryConversation? {
+        val cfg = config()
         val assistant = assistants().firstOrNull { it.id == conversation.assistantId } ?: return null
+        // 范围门控（决议 #5）：空集 = 全部助手；不在范围内的会话在**任何**模式下都不触发
+        if (!assistant.inTriggerScope(cfg)) return null
         if (!autoIntervalElapsed(listOf(assistant))) return null
-        return pendingOfIgnoringInterval(conversation, assistant)
+        return pendingOfIgnoringInterval(conversation, assistant, cfg = cfg)
     }
 
     /**
@@ -107,20 +116,28 @@ class MemoryConsolidationRepository(
          * 所以不会把已整理过的轮次再灌一遍。
          */
         ignoreSince: Boolean = false,
+        /** 触发配置（调用方已读则传入，免重复读 Settings）；TURN_N 判据与范围都来自它 */
+        cfg: MemoryTriggerConfig? = null,
     ): PendingMemoryConversation? {
         if (!assistant.memoryConsolidationEnabled()) return null
         if (conversation.memoryDisabled) return null
+        val triggerConfig = cfg ?: config()
         val baseline = if (ignoreSince) {
             baselineOf(conversation, assistant, ignoreSince = true)
         } else {
             baselineOf(conversation, assistant)
         }
         val turns = unconsolidatedTurns(conversation, baseline)
-        return if (turns > 0) {
-            PendingMemoryConversation(conversation.id, assistant.memoryId(), turns)
-        } else {
-            null
+        if (turns <= 0) return null
+        // 「第 N 轮」（决议 #1）：会话累计用户轮数首次达到阈值才触发，命中过（fired=1）不再触发。
+        // 命中标记与水位在同一行提交（见 markConsolidated），这里读不到半提交状态。
+        // 手动整理（ignoreSince）不受它约束——「整理所有还没整理过的轮次」不挑时机。
+        if (triggerConfig.mode == MemoryTriggerMode.TURN_N && !ignoreSince) {
+            val progress = consolidationDAO.getProgress(conversation.id.toString())
+            if ((progress?.triggerTurnFired ?: 0) != 0) return null
+            if (totalUserTurns(conversation) < triggerConfig.effectiveTriggerTurn) return null
         }
+        return PendingMemoryConversation(conversation.id, assistant.memoryId(), turns)
     }
 
     /**
@@ -179,6 +196,7 @@ class MemoryConsolidationRepository(
      * （写了就把还没整理的内容标记成整理过了）。
      */
     suspend fun findPending(memoryId: String, manual: Boolean = false): List<PendingMemoryConversation> {
+        val cfg = config()
         val assistants = assistants()
         val participants = assistants.filter { it.memoryConsolidationEnabled() && it.memoryId() == memoryId }
         if (participants.isEmpty()) return emptyList()
@@ -197,7 +215,7 @@ class MemoryConsolidationRepository(
             .mapNotNull { id ->
                 val conversation = Uuid.parseOrNull(id)?.let { conversationLoader(it) } ?: return@mapNotNull null
                 val assistant = byId[conversation.assistantId] ?: return@mapNotNull null
-                pendingOfIgnoringInterval(conversation, assistant, ignoreSince = manual)
+                pendingOfIgnoringInterval(conversation, assistant, ignoreSince = manual, cfg = cfg)
             }
             .take(limitPerRun)
     }
@@ -216,7 +234,14 @@ class MemoryConsolidationRepository(
      */
     suspend fun markConsolidated(conversationId: Uuid, watermark: Long) {
         consolidationDAO.upsertProgress(
-            MemoryConsolidationEntity(conversationId = conversationId.toString(), consolidatedAt = watermark),
+            MemoryConsolidationEntity(
+                conversationId = conversationId.toString(),
+                consolidatedAt = watermark,
+                // 「第 N 轮」的命中标记与水位**同一行同一次 REPLACE**（认领即失效，决议 #1）——
+                // 不存在「水位进了、标记没进」的半提交。非 TURN_N 模式恒 0：模式切走后，
+                // 下一次任何路径的水位提交会把旧标记自然归一（该模式下没人读它）。
+                triggerTurnFired = if (config().mode == MemoryTriggerMode.TURN_N) 1 else 0,
+            ),
         )
     }
 
@@ -236,7 +261,9 @@ class MemoryConsolidationRepository(
      * 分组而不是逐个助手处理：契约里整理的粒度是记忆库，一次 run 要覆盖库里所有助手的待整理会话。
      */
     private suspend fun participantsByStore(): Map<String, List<Assistant>> =
-        assistants().filter { it.memoryConsolidationEnabled() }.groupBy { it.memoryId() }
+        assistants().filter {
+            it.memoryConsolidationEnabled() && it.inTriggerScope(config())
+        }.groupBy { it.memoryId() }
 
     /**
      * 一个记忆库的基线取**参与助手的最晚开启时刻**。

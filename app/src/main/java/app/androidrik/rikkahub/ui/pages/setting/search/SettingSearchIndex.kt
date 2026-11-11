@@ -76,6 +76,14 @@ object SettingSearchIndex {
             keywords = listOf("定时任务", "周期任务", "自动运行", "cron", "scheduled", "dingshi")
         ),
         entry(
+            title = R.string.memory_trigger_page_title,
+            route = Screen.SettingMemoryTrigger,
+            keywords = listOf(
+                "记忆", "记忆整理", "触发", "做梦", "整理",
+                "memory", "trigger", "consolidation", "zhenli", "jiyi",
+            )
+        ),
+        entry(
             title = R.string.setting_mcp_page_title,
             route = Screen.SettingMcp,
             keywords = listOf("mcp", "工具服务器")

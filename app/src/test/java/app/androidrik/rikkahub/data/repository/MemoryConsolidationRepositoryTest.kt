@@ -4,6 +4,8 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_ALL_HISTORY
+import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
+import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
 import app.androidrik.rikkahub.data.ai.memoryConsolidationEnabled
 import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
@@ -44,7 +46,9 @@ class MemoryConsolidationRepositoryTest {
     private class FakeConsolidationDAO : MemoryConsolidationDAO {
         /** assistantId -> (conversationId -> 末尾消息时间) */
         val lastActivity = mutableMapOf<String, MutableMap<String, Long>>()
-        val progress = mutableMapOf<String, Long>()
+
+        /** 完整进度行（含 trigger_turn_fired；真实表 v65 起有这一列） */
+        val progress = mutableMapOf<String, MemoryConsolidationEntity>()
 
         /** 每次候选查询用的 (assistantId, 基线)，用来断言基线取的是「最晚开启」 */
         val queriedBaselines = mutableListOf<Pair<String, Long>>()
@@ -53,13 +57,14 @@ class MemoryConsolidationRepositoryTest {
             lastActivity.getOrPut(assistantId) { mutableMapOf() }[conversationId] = lastActivityAt
         }
 
-        override suspend fun getConsolidatedAt(conversationId: String): Long? = progress[conversationId]
+        override suspend fun getConsolidatedAt(conversationId: String): Long? =
+            progress[conversationId]?.consolidatedAt
 
         override suspend fun getProgress(conversationId: String): MemoryConsolidationEntity? =
-            progress[conversationId]?.let { MemoryConsolidationEntity(conversationId, it) }
+            progress[conversationId]
 
         override suspend fun upsertProgress(progress: MemoryConsolidationEntity) {
-            this.progress[progress.conversationId] = progress.consolidatedAt
+            this.progress[progress.conversationId] = progress
         }
 
         override suspend fun deleteProgress(conversationId: String) {
@@ -69,7 +74,7 @@ class MemoryConsolidationRepositoryTest {
         /** 等价于 SQL 的 `MAX(consolidated_at)` over 该助手的会话：频次上限的近似口径 */
         override suspend fun getLastConsolidatedAt(assistantId: String): Long? =
             lastActivity[assistantId].orEmpty().keys
-                .mapNotNull { progress[it] }
+                .mapNotNull { progress[it]?.consolidatedAt }
                 .maxOrNull()
 
         override suspend fun getCandidateConversationIds(
@@ -79,7 +84,7 @@ class MemoryConsolidationRepositoryTest {
         ): List<String> {
             queriedBaselines += assistantId to baseline
             return lastActivity[assistantId].orEmpty()
-                .filter { (id, last) -> last > maxOf(baseline, progress[id] ?: 0L) }
+                .filter { (id, last) -> last > maxOf(baseline, progress[id]?.consolidatedAt ?: 0L) }
                 .entries
                 .sortedByDescending { it.value }
                 .map { it.key }
@@ -94,6 +99,7 @@ class MemoryConsolidationRepositoryTest {
         assistants: List<Assistant>,
         limitPerRun: Int = MemoryConsolidationRepository.DEFAULT_LIMIT_PER_RUN,
         now: Long = millis(23),
+        config: MemoryTriggerConfig = MemoryTriggerConfig(),
     ) = MemoryConsolidationRepository(
         consolidationDAO = dao,
         reviewCursorDAO = FakeReviewCursorDAO(),
@@ -101,6 +107,7 @@ class MemoryConsolidationRepositoryTest {
         conversationLoader = { id -> conversations[id] },
         limitPerRun = limitPerRun,
         now = { now },
+        config = { config },
     )
 
     private fun assistant(
@@ -217,7 +224,7 @@ class MemoryConsolidationRepositoryTest {
         val repository = repository(listOf(assistant))
 
         repository.markConsolidated(conversation, now = millis(7))
-        assertEquals(millis(7), dao.progress[conversation.id.toString()])
+        assertEquals(millis(7), dao.progress[conversation.id.toString()]?.consolidatedAt)
         assertEquals(millis(7), dao.getProgress(conversation.id.toString())?.consolidatedAt)
     }
 
@@ -301,7 +308,8 @@ class MemoryConsolidationRepositoryTest {
         // 第 9 轮还没整理（进度停在第 8 小时），而「现在」是第 9 小时 ⇒ 间隔只过了 1 小时
         val conversation = conversation(assistant, 9)
         remember(assistant, conversation, lastActivityAt = millis(9))
-        dao.progress[conversation.id.toString()] = millis(8)
+        dao.progress[conversation.id.toString()] =
+            MemoryConsolidationEntity(conversation.id.toString(), millis(8))
 
         val repository = repository(listOf(assistant), now = millis(9))
         assertNull("间隔内不再自动排新活（否则活跃会话每 2 分钟烧一次模型）", repository.pendingOf(conversation))
@@ -320,7 +328,8 @@ class MemoryConsolidationRepositoryTest {
         val conversation = conversation(assistant, 9)
         remember(assistant, conversation, lastActivityAt = millis(9))
         // 上次整理在第 1 小时，距「现在」8 小时 > 6 小时
-        dao.progress[conversation.id.toString()] = millis(1)
+        dao.progress[conversation.id.toString()] =
+            MemoryConsolidationEntity(conversation.id.toString(), millis(1))
 
         val repository = repository(listOf(assistant), now = millis(9))
         assertEquals(1, repository.pendingOf(conversation)?.turns)
@@ -355,7 +364,7 @@ class MemoryConsolidationRepositoryTest {
         val old = conversation(assistant, 1, 2, 3)
         remember(assistant, old, lastActivityAt = millis(3))
         // 已整理到第 2 小时 ⇒ 只剩第 3 轮
-        dao.progress[old.id.toString()] = millis(2)
+        dao.progress[old.id.toString()] = MemoryConsolidationEntity(old.id.toString(), millis(2))
 
         val manual = repository(listOf(assistant)).findPending(assistant.memoryId(), manual = true)
         assertEquals(1, manual.size)
@@ -387,6 +396,68 @@ class MemoryConsolidationRepositoryTest {
         assertTrue(
             "开关关闭时手动整理也必须为空（门控是总闸）",
             repository(listOf(off)).findPending(off.memoryId(), manual = true).isEmpty(),
+        )
+    }
+
+    // ---- 触发方式（docs/design/design-memory-consolidation-trigger.md）----
+
+    @Test
+    fun `turn-N trigger fires when the conversation reaches the threshold`() = runBlocking {
+        val assistant = assistant(since = millis(0))
+        val config = MemoryTriggerConfig(mode = MemoryTriggerMode.TURN_N, triggerTurn = 3)
+        val short = conversation(assistant, 1, 2)
+        val reached = conversation(assistant, 1, 2, 3)
+        remember(assistant, short, lastActivityAt = millis(2))
+        remember(assistant, reached, lastActivityAt = millis(3))
+        val repository = repository(listOf(assistant), config = config)
+
+        assertNull("没到第 N 轮不触发（决议 #1：按会话累计用户轮数）", repository.pendingOf(short))
+        assertEquals("到达第 N 轮且未命中过 ⇒ 触发", 3, repository.pendingOf(reached)?.turns)
+
+        // 认领（水位提交）即失效：fired 标记与水位同一行写入
+        repository.markConsolidated(reached, now = millis(3))
+        assertEquals(1, dao.getProgress(reached.id.toString())?.triggerTurnFired)
+        assertNull("命中过就不再触发（一次性机会，决议 #1）", repository.pendingOf(reached))
+    }
+
+    @Test
+    fun `turn-N fired marker does not block manual consolidation`() = runBlocking {
+        val assistant = assistant(since = millis(0))
+        val config = MemoryTriggerConfig(mode = MemoryTriggerMode.TURN_N, triggerTurn = 2)
+        val conversation = conversation(assistant, 1, 2, 3)
+        remember(assistant, conversation, lastActivityAt = millis(3))
+        dao.progress[conversation.id.toString()] = MemoryConsolidationEntity(
+            conversationId = conversation.id.toString(),
+            consolidatedAt = millis(0),
+            triggerTurnFired = 1,
+        )
+        val repository = repository(listOf(assistant), config = config)
+
+        assertNull("自动路径被 fired 标记拦住", repository.pendingOf(conversation))
+        assertEquals(
+            "手动整理不受「第 N 轮」约束（它的语义是所有还没整理过的轮次，不挑时机）",
+            1,
+            repository.findPending(assistant.memoryId(), manual = true).size,
+        )
+    }
+
+    @Test
+    fun `scope limits which assistants trigger in every path`() = runBlocking {
+        val inScope = assistant(since = millis(0))
+        val outOfScope = assistant(since = millis(0))
+        val config = MemoryTriggerConfig(scopeAssistantIds = setOf(inScope.id))
+        val inConversation = conversation(inScope, 1)
+        val outConversation = conversation(outOfScope, 1)
+        remember(inScope, inConversation, lastActivityAt = millis(1))
+        remember(outOfScope, outConversation, lastActivityAt = millis(1))
+        val repository = repository(listOf(inScope, outOfScope), config = config)
+
+        assertEquals(1, repository.pendingOf(inConversation)?.turns)
+        assertNull("范围外助手的会话不触发（决议 #5；范围对所有模式一致生效）", repository.pendingOf(outConversation))
+        assertEquals(
+            "启动补漏也只补范围内的库",
+            listOf(inScope.id.toString()),
+            repository.memoryIdsWithUpdates(),
         )
     }
 

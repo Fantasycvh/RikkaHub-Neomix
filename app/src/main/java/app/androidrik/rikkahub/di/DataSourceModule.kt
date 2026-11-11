@@ -442,6 +442,7 @@ val dataSourceModule = module {
 
     single {
         val foreground: AppForegroundState = get()
+        val settingsStore: SettingsStore = get()
         MemoryConsolidationScheduler(
             // **必须是后台调度器**：AppScope 是 Dispatchers.Main，而整理要跑模型循环、
             // 切轮次、数 token——放主线程等于拿输入响应当代价（同 AppScope 的那批主线程账单）。
@@ -449,6 +450,8 @@ val dataSourceModule = module {
             scope = CoroutineScope(get<AppScope>().coroutineContext + Dispatchers.Default),
             worker = get(),
             isAppVisible = { foreground.isForeground },
+            // 触发方式配置每次事件现读（改了立刻生效，见 MemoryTriggerConfig 的 kdoc）
+            config = { settingsStore.settingsFlow.first().memoryTriggerConfig },
         )
     }
 

@@ -15,6 +15,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.Uuid
 
 /**
@@ -125,5 +126,49 @@ class MemoryConsolidationPolicyTest {
         val assistant = json.decodeFromString<Assistant>("""{"id":"${Uuid.random()}","name":"legacy"}""")
         assertEquals("缺字段必须落到 0（关）", 0L, assistant.memoryConsolidationSince)
         assertFalse(assistant.memoryConsolidationEnabled())
+    }
+
+    // ---- 触发方式：范围解析（docs/design/design-memory-consolidation-trigger.md §2.3）----
+
+    @Test
+    fun `resolveMemoryIds dedupes a shared global store`() {
+        val a = assistant(useGlobalMemory = true)
+        val b = assistant(useGlobalMemory = true)
+        val c = assistant() // 自己的库
+
+        assertEquals(
+            "共享 __global__ 的两个助手只算一个库（决议 #5）",
+            setOf(MemoryRepository.GLOBAL_MEMORY_ID, c.id.toString()),
+            resolveMemoryIds(MemoryTriggerConfig(), listOf(a, b, c)),
+        )
+    }
+
+    @Test
+    fun `resolveMemoryIds honours the scope and drops disabled participants`() {
+        val wanted = assistant()
+        val unwanted = assistant()
+        val off = assistant(since = 0L) // 做梦关着
+
+        assertEquals(
+            setOf(wanted.id.toString()),
+            resolveMemoryIds(
+                MemoryTriggerConfig(scopeAssistantIds = setOf(wanted.id)),
+                listOf(wanted, unwanted, off),
+            ),
+        )
+        assertEquals(
+            "空集 = 全部（但做梦没开的助手仍不在内）",
+            setOf(wanted.id.toString(), unwanted.id.toString()),
+            resolveMemoryIds(MemoryTriggerConfig(), listOf(wanted, unwanted, off)),
+        )
+    }
+
+    @Test
+    fun `trigger config defaults reproduce the historical behaviour`() {
+        val config = MemoryTriggerConfig()
+        assertEquals(MemoryTriggerMode.IDLE, config.mode)
+        assertEquals("历史硬编码值：空闲 2 分钟", 2.minutes, config.idleDelay)
+        assertEquals("历史硬编码值：攒 6 轮走捷径", 6, config.effectiveEveryNTurns)
+        assertTrue("范围默认 = 全部", config.scopeAssistantIds.isEmpty())
     }
 }

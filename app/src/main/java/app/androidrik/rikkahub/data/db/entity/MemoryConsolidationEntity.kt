@@ -34,4 +34,17 @@ data class MemoryConsolidationEntity(
     /** epoch millis；「这一刻之前的内容都算整理过」 */
     @ColumnInfo("consolidated_at")
     val consolidatedAt: Long,
+    /**
+     * 「第 N 轮」触发是否已在**本会话**命中过（0/1；见 design-memory-consolidation-trigger.md §3.3）。
+     *
+     * 语义：该会话自创建起的累计用户轮数首次达到阈值、且触发路径已经认领（水位提交）⇒ 置 1，
+     * 之后不再触发——「第 N 轮」是一次性机会，想重来走手动整理（手动整理同样推进水位，
+     * 内容已消费后判据自然不再命中）。
+     *
+     * 为什么放进度表不放会话 JSON：它与 `consolidated_at` 同属「整理进度」，且进度行的
+     * CASCADE 生命周期（随会话删除）恰好是标记想要的。写入与水位**同一行同一次 REPLACE**，
+     * 不会出现「水位进了、标记没进」的半提交。v64→65：NOT NULL + DEFAULT 0 ⇒ AutoMigration 免 spec。
+     */
+    @ColumnInfo("trigger_turn_fired", defaultValue = "0")
+    val triggerTurnFired: Int = 0,
 )

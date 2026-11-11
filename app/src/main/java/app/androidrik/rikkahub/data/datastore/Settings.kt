@@ -34,6 +34,7 @@ import app.androidrik.rikkahub.data.model.asSinglePreset
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.data.model.CustomTheme
+import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.search.SearchCommonOptions
 import app.androidrik.search.SearchServiceOptions
@@ -79,6 +80,11 @@ data class Settings(
      */
     val memoryConsolidationReasoningLevel: ReasoningLevel? = null,
     val memoryConsolidationPrompt: String = MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
+    /**
+     * 记忆整理的触发方式（`docs/design/design-memory-consolidation-trigger.md`）：单选互斥，
+     * 默认 IDLE = 历史行为（轮末空闲 2 分钟 + 攒 6 轮）。范围空集 = 全部助手。
+     */
+    val memoryTriggerConfig: MemoryTriggerConfig = MemoryTriggerConfig(),
     val titleModelId: Uuid? = null,
     val imageGenerationModelId: Uuid = Uuid.random(),
     val titlePrompt: String = DEFAULT_TITLE_PROMPT,

@@ -160,6 +160,7 @@ val repositoryModule = module {
             reviewCursorDAO = database.memoryReviewCursorDao(),
             assistants = { settingsStore.settingsFlow.first().assistants },
             conversationLoader = { id -> conversationRepository.getConversationById(id) },
+            config = { settingsStore.settingsFlow.first().memoryTriggerConfig },
         )
     }
 }

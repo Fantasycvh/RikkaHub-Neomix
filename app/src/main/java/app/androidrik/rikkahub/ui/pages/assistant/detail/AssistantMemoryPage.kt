@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -93,6 +94,9 @@ import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.pages.setting.titleRes
 import app.androidrik.rikkahub.ui.hooks.EditStateContent
 import app.androidrik.rikkahub.ui.hooks.useEditState
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -287,6 +291,9 @@ internal fun AssistantMemoryContent(
     val listState = rememberLazyListState()
     val listScope = rememberCoroutineScope()
     val toaster = LocalToaster.current
+    // 触发方式入口（LazyListScope 不是 composable 作用域，CompositionLocal 在这里先读好）
+    val navController = LocalNavController.current
+    val triggerModeTitleRes = LocalSettings.current.memoryTriggerConfig.mode.titleRes()
     val sourceOrder = memories.sortedWith(compareBy<AssistantMemory> { it.displayOrder }.thenBy { it.sortKey })
     var pendingIds by remember(assistant.memoryId()) { mutableStateOf<List<String>?>(null) }
     var dragging by remember(assistant.memoryId()) { mutableStateOf(false) }
@@ -697,6 +704,15 @@ internal fun AssistantMemoryContent(
                     )
                 }
             )
+            // 触发方式（全局配置）：什么时候整理。与上面的助手级开关正交——那边管「要不要/从哪算」。
+            // 摘要显示当前模式；具体参数在触发页里配。
+            if (assistant.enableMemory) {
+                item(
+                    onClick = { navController.navigate(Screen.SettingMemoryTrigger) },
+                    headlineContent = { Text(stringResource(R.string.memory_trigger_page_title)) },
+                    supportingContent = { Text(stringResource(triggerModeTitleRes)) },
+                )
+            }
             item(
                 headlineContent = { Text(stringResource(R.string.assistant_page_memory_consolidation)) },
                 supportingContent = {

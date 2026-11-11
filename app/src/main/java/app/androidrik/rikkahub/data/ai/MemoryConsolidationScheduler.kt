@@ -20,8 +20,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 import kotlin.uuid.Uuid
 
 /** 一个对话里还没整理进记忆库 [memoryId] 的轮数。 */
@@ -265,15 +263,19 @@ fun interface MemoryDreamKeepAlive {
 
 /**
  * 决定什么时候整理记忆（**做梦框架**，V3；移植上游 #2130 的 `MemoryConsolidationScheduler`，
- * 见 `docs/design/design-memory-consolidation.md`）。
+ * 见 `docs/design/design-memory-consolidation.md`；触发方式可配置见
+ * `docs/design/design-memory-consolidation-trigger.md`）。
  *
- * 触发面（五个入口，都只做「什么时候」，不做「整理什么」）：
- * - **轮末空闲**：[onTurnFinished] 后等 [idleDelay]（应用不可见时先占住保活，否则进程可能在
- *   计时走完前被冻结）；
- * - **攒够轮数**：待整理轮数 ≥ [maxPendingTurns] 就不再等——否则一直聊下去永远不整理；
- * - **切后台**：[onAppHidden]（后台的计时不一定还能走完）；
- * - **离开对话**：[onConversationLeft]（短时间内不会再有新消息，不必等空闲）；
- * - **启动补漏 / 手动**：[resumePending] 与 [organize]。
+ * 触发面（按 [MemoryTriggerConfig.mode] 单选互斥，决议 2026-11-11 #2）：
+ * - **IDLE（默认 = 历史行为）**：五个入口全开——轮末空闲（[onTurnFinished] 后等
+ *   `config.idleDelay`，应用不可见时先占住保活）、攒够轮数就不再等、切后台（[onAppHidden]）、
+ *   启动补漏（[resumePending]）与手动（[organize]）；
+ * - **EVERY_N_TURNS**：轮末达标（待整理轮数 ≥ 阈值）立即整理，**不挂空闲计时**；
+ *   切后台/启动补漏保留（捞「达标后进程被杀」的漏）；
+ * - **TURN_N**：轮末判据（会话累计用户轮数首达阈值且未命中过）由仓库层编码在 `pendingOf`
+ *   的返回值里，非 null 即触发；切后台/启动补漏保留；
+ * - **墙钟模式（ONCE/INTERVAL/DAILY/WEEKLY，P1）**：轮末/切后台/补漏入口全部停用
+ *   （互斥的严格执行——用户配「每天 9 点」就是「只在 9 点花钱」），只留闹钟到点与手动。
  *
  * 整理以**记忆库**为单位，一次覆盖该库下所有待整理对话；同一个库同一时间只跑一次（[runLocks]）。
  */
@@ -283,16 +285,12 @@ class MemoryConsolidationScheduler(
     private val keepAlive: MemoryDreamKeepAlive = MemoryDreamKeepAlive { AutoCloseable {} },
     /** 应用当前是否有界面在前台 */
     private val isAppVisible: () -> Boolean = { true },
-    private val idleDelay: Duration = DEFAULT_IDLE_DELAY,
-    private val maxPendingTurns: Int = DEFAULT_MAX_PENDING_TURNS,
+    /**
+     * 触发配置（全局一份，Settings 注入）。每次触发事件时**现读**（配置改了立刻生效），
+     * 不缓存——读它是一次内存级的 DataStore 流取值，不构成触发路径的热点。
+     */
+    private val config: suspend () -> MemoryTriggerConfig = { MemoryTriggerConfig() },
 ) {
-    companion object {
-        /** 轮末到整理的等待时长；期间又有新轮次就重新计时（连续对话只在停下来之后整理一次） */
-        val DEFAULT_IDLE_DELAY: Duration = 2.minutes
-
-        /** 攒够这么多未整理轮数就不再等空闲——否则「一直聊」会永远不整理 */
-        const val DEFAULT_MAX_PENDING_TURNS: Int = 6
-    }
 
     /**
      * 状态与待整理列表的锁。
@@ -373,7 +371,7 @@ class MemoryConsolidationScheduler(
         runAutomatically(memoryId)
     }
 
-    /** 一轮对话结束：空闲一段时间后整理，攒够轮数就不再等 */
+    /** 一轮对话结束：按当前模式分派触发（模式语义见类 doc） */
     fun onTurnFinished(conversation: Conversation) {
         // 应用不在前台时，进程随时可能被冻结、空闲计时走不完。所以趁生成用的前台服务还没释放，
         // 先把保活占住，一直占到这次整理结束（在前台时不需要，别白占）
@@ -381,13 +379,28 @@ class MemoryConsolidationScheduler(
         scope.launch {
             var handedOver = false
             try {
+                val cfg = config()
                 val item = worker.pendingOf(conversation) ?: return@launch
+                // 墙钟模式只标状态不触发（互斥的严格执行）；内存里的 pending 仍供状态面板展示
+                if (cfg.mode.isWallClock) return@launch
                 markPending(item)
-                if (item.turns >= maxPendingTurns) {
-                    runAutomatically(item.memoryId)
-                } else {
-                    restartTimer(item.memoryId, hold)
-                    handedOver = true
+                when (cfg.mode) {
+                    MemoryTriggerMode.IDLE ->
+                        if (item.turns >= cfg.effectiveEveryNTurns) {
+                            runAutomatically(item.memoryId)
+                        } else {
+                            restartTimer(item.memoryId, hold)
+                            handedOver = true
+                        }
+
+                    // 达标即跑；未达标不计时（等下一轮再判，切后台/启动补漏兜漏）
+                    MemoryTriggerMode.EVERY_N_TURNS ->
+                        if (item.turns >= cfg.effectiveEveryNTurns) runAutomatically(item.memoryId)
+
+                    // pendingOf 非 null 本身就是「第 N 轮命中且未失效」——仓库层已把判据编码进返回值
+                    MemoryTriggerMode.TURN_N -> runAutomatically(item.memoryId)
+
+                    else -> Unit
                 }
             } finally {
                 // 保活要么交给定时器管，要么现在就放开——不能因为提前 return 泄漏
@@ -416,9 +429,13 @@ class MemoryConsolidationScheduler(
 
     /** 应用启动时补上进程被杀前没来得及整理的对话 */
     suspend fun resumePending() {
-        // 每个记忆库各查各的：一起查再截断的话，对话少的记忆库会被对话多的挤掉
-        worker.memoryIdsWithUpdates().forEach { memoryId ->
-            if (mergePending(memoryId, worker.findPending(memoryId))) restartTimer(memoryId)
+        // 墙钟模式互斥：不补漏、不计时（闹钟凭配置里的 nextRunAt 自会重排，P1）；
+        // 待决策建议的恢复不受模式影响（界面要靠它回到「有建议待处理」的状态）
+        if (!config().mode.isWallClock) {
+            // 每个记忆库各查各的：一起查再截断的话，对话少的记忆库会被对话多的挤掉
+            worker.memoryIdsWithUpdates().forEach { memoryId ->
+                if (mergePending(memoryId, worker.findPending(memoryId))) restartTimer(memoryId)
+            }
         }
         // 待决策建议也要恢复（落库的正是为了这件事：进程重启后它们仍应在界面上）
         runCatching { worker.memoryIdsWithProposals() }
@@ -448,7 +465,11 @@ class MemoryConsolidationScheduler(
     }
 
     private fun launchRun(memoryId: String) {
-        scope.launch { runAutomatically(memoryId) }
+        scope.launch {
+            // 墙钟模式互斥（决议 #2）：事件驱动的入口不触发——只有闹钟到点与手动「整理一下」可用
+            if (config().mode.isWallClock) return@launch
+            runAutomatically(memoryId)
+        }
     }
 
     private suspend fun runAutomatically(memoryId: String) {
@@ -543,9 +564,18 @@ class MemoryConsolidationScheduler(
         }
 
     /** [hold] 交给定时器管：一直占到整理结束；定时器被取消或被新的顶掉时放开 */
-    private fun restartTimer(memoryId: String, hold: AutoCloseable? = null) {
+    private suspend fun restartTimer(memoryId: String, hold: AutoCloseable? = null) {
+        val cfg = config()
+        // 空闲计时是 IDLE 独有的触发路径：计数/墙钟模式下 run() 重扫后的 restartTimer
+        // 不能凭空多出一条「等 N 分钟再跑」的触发路径（模式变了，旧入口必须跟着失效）
+        if (cfg.mode != MemoryTriggerMode.IDLE) {
+            hold?.close()
+            return
+        }
         val timer = scope.launch(start = CoroutineStart.LAZY) {
-            delay(idleDelay)
+            delay(cfg.idleDelay)
+            // 挂起期间模式可能已切走：醒来后按**当下**的模式重新裁决（定时器静默作废）
+            if (config().mode != MemoryTriggerMode.IDLE) return@launch
             // 整理开始时会取消还在等的定时器；先把自己摘出来，免得被自己取消
             val self = currentCoroutineContext().job
             synchronized(lock) { if (timers[memoryId] === self) timers.remove(memoryId) }

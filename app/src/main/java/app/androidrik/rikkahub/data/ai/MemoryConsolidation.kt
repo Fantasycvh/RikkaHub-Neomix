@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.ai.core.MessageRole
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.MemoryRepository
@@ -79,3 +80,15 @@ internal fun unconsolidatedTurns(conversation: Conversation, baseline: Long): In
         node.messages.any { it.createdAt.toInstant(zone).toEpochMilliseconds() > baseline }
     }
 }
+
+/**
+ * 会话自创建起的**累计用户轮数**（「第 N 轮」触发的计数口径，决议 2026-11-11 #1）。
+ *
+ * 与 [unconsolidatedTurns] 同款判法（`any` 而不是 `currentMessage`，候选损坏不打掉后台路径）：
+ * 一个节点里有用户消息就计一轮。分叉会话带着原计数走——fork 已被 `markConsolidated` 盖掉
+ * （水位 + fired 标记同一次提交），不会因复制过来的历史轮次提前命中。
+ */
+internal fun totalUserTurns(conversation: Conversation): Int =
+    conversation.messageNodes.count { node ->
+        node.messages.any { it.role == MessageRole.USER }
+    }

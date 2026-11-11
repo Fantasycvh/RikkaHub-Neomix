@@ -161,6 +161,10 @@ sealed interface Screen : NavKey {
     @Serializable
     data object SettingScheduledTasks : Screen
 
+    /** 记忆整理触发方式（全局配置，docs/design/design-memory-consolidation-trigger.md） */
+    @Serializable
+    data object SettingMemoryTrigger : Screen
+
     @Serializable
     data class SettingScheduledTaskDetail(val taskId: String) : Screen
 

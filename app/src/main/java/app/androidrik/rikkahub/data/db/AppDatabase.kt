@@ -87,7 +87,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 64,
+    version = 65,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -196,6 +196,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 61, to = 62),
         AutoMigration(from = 62, to = 63),
         AutoMigration(from = 63, to = 64),
+        // 64→65：「第 N 轮」触发标记（memory_consolidation.trigger_turn_fired，NOT NULL + DEFAULT 0
+        // ⇒ 免 spec）。与 consolidated_at 同行提交，见 design-memory-consolidation-trigger.md §3.3。
+        AutoMigration(from = 64, to = 65),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -253,7 +256,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 64
+        const val SCHEMA_VERSION = 65
     }
 }
 

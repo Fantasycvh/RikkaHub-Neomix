@@ -896,6 +896,14 @@
   <string name="prompt_page_role_assistant">助手（預填充）</string>
   <string name="prompt_page_role_user">使用者</string>
   <string name="prompt_page_scan_depth">掃描深度（訊息）</string>
+  <string name="prompt_page_sticky">黏性 (訊息數)</string>
+  <string name="prompt_page_sticky_desc">關鍵詞滑出掃描深度後，再保持這麼多條訊息內可命中；0 = 關</string>
+  <string name="prompt_page_cooldown">冷卻 (訊息數)</string>
+  <string name="prompt_page_cooldown_desc">最近這麼多條訊息裡提到過關鍵詞時暫不注入；0 = 關</string>
+  <string name="prompt_page_delay">延遲 (訊息數)</string>
+  <string name="prompt_page_delay_desc">歷史訊息不足這麼多條時不啟用；0 = 關</string>
+  <string name="prompt_page_match_whole_words">整詞匹配</string>
+  <string name="prompt_page_match_whole_words_desc">關鍵詞按詞邊界匹配（cat 不會命中 category）。對連續中文基本不生效——中文沒有詞邊界</string>
   <string name="prompt_page_title">提示注入</string>
   <string name="prompt_page_cache_migration_hint">%1$d 個條目位於「系統提示詞前/後」，會改寫系統區、作廢整段提示詞快取</string>
   <string name="prompt_page_cache_migration_action">一鍵遷移到對話末尾</string>
@@ -3056,5 +3064,30 @@
   <string name="workspace_ssh_editor_jump_auth">跳板機驗證</string>
   <string name="workspace_ssh_editor_jump_host_key">跳板機主機金鑰</string>
   <string name="workspace_ssh_editor_jump_host_key_changed_title">跳板機主機金鑰已變更</string>
+  <string name="memory_trigger_page_title">整理觸發方式</string>
+  <string name="memory_trigger_mode_idle">空閒後整理</string>
+  <string name="memory_trigger_mode_idle_desc">等對話停下來再整理；攢夠輪數會提前（預設）</string>
+  <string name="memory_trigger_mode_every_n">每 N 輪</string>
+  <string name="memory_trigger_mode_every_n_desc">會話攢夠 N 個未整理輪次就立即整理，不等空閒</string>
+  <string name="memory_trigger_mode_turn_n">第 N 輪</string>
+  <string name="memory_trigger_mode_turn_n_desc">會話到達第 N 輪時整理一次（每個會話只觸發一次）</string>
+  <string name="memory_trigger_mode_once">一次性</string>
+  <string name="memory_trigger_mode_once_desc">在指定時刻整理一次</string>
+  <string name="memory_trigger_mode_interval">固定間隔</string>
+  <string name="memory_trigger_mode_interval_desc">每隔 N 分鐘整理一次（系統下限 15 分鐘）</string>
+  <string name="memory_trigger_mode_daily">每日</string>
+  <string name="memory_trigger_mode_daily_desc">每天在指定時刻整理一次</string>
+  <string name="memory_trigger_mode_weekly">每週</string>
+  <string name="memory_trigger_mode_weekly_desc">每週在指定時刻整理一次</string>
+  <string name="memory_trigger_param_idle_delay">空閒等待（分鐘）</string>
+  <string name="memory_trigger_param_idle_delay_desc">最後一輪結束後等待這麼久才整理</string>
+  <string name="memory_trigger_param_every_n">輪數閾值</string>
+  <string name="memory_trigger_param_every_n_desc">單個會話攢夠這麼多未整理輪次就提前整理</string>
+  <string name="memory_trigger_param_turn_n">輪數 N</string>
+  <string name="memory_trigger_param_turn_n_desc">會話累計到達這一輪時整理一次（從會話開頭計數）</string>
+  <string name="memory_trigger_scope">整理範圍</string>
+  <string name="memory_trigger_scope_all">全部助手</string>
+  <string name="memory_trigger_scope_selected">已選助手：%1$d 個</string>
+  <string name="memory_trigger_scope_pick_desc">只有所選助手的會話會被整理；全不選 = 全部助手。</string>
+  <string name="memory_trigger_note_per_assistant">整理開關與基線仍在每個助手的記憶頁單獨設置。</string>
 </resources>
-

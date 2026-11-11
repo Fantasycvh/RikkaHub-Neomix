@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.data.ai
 
 import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
+import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
+import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
 import app.androidrik.rikkahub.data.model.Conversation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -143,18 +145,19 @@ class MemoryConsolidationSchedulerTest {
     private var activeHolds = 0
     private var totalHolds = 0
 
-    private fun TestScope.scheduler() = MemoryConsolidationScheduler(
-        scope = backgroundScope,
-        worker = worker,
-        keepAlive = {
-            activeHolds++
-            totalHolds++
-            AutoCloseable { activeHolds-- }
-        },
-        isAppVisible = { appVisible },
-        idleDelay = 2.minutes,
-        maxPendingTurns = 3,
-    )
+    private fun TestScope.scheduler(config: MemoryTriggerConfig = MemoryTriggerConfig(idleDelayMinutes = 2, everyNTurns = 3)) =
+        MemoryConsolidationScheduler(
+            scope = backgroundScope,
+            worker = worker,
+            keepAlive = {
+                activeHolds++
+                totalHolds++
+                AutoCloseable { activeHolds-- }
+            },
+            isAppVisible = { appVisible },
+            // 历史默认：空闲 2 分钟、攒 3 轮就走捷径（原构造参数等价迁移到配置）
+            config = { config },
+        )
 
     /** 一轮对话结束：[pendingTurns] 是该对话累计的未整理轮数（worker 从数据库算出来的） */
     private fun MemoryConsolidationScheduler.finishTurn(conversation: Conversation, pendingTurns: Int) {
@@ -756,6 +759,65 @@ class MemoryConsolidationSchedulerTest {
         assertEquals("delete · 7bd20f45", MemoryConsolidationProposal("delete", "7bd20f45").detailTitle())
         // create 没有目标 id：不许拼出「create · 」这种悬空分隔符
         assertFalse(MemoryConsolidationProposal("create", content = "x").detailTitle().endsWith("·"))
+    }
+
+    // ---- 触发方式（docs/design/design-memory-consolidation-trigger.md）----
+
+    @Test
+    fun `every-N mode runs immediately at the threshold without an idle timer`() = runTest {
+        val scheduler = scheduler(
+            MemoryTriggerConfig(mode = MemoryTriggerMode.EVERY_N_TURNS, everyNTurns = 3),
+        )
+
+        scheduler.finishTurn(chat, pendingTurns = 2)
+        runCurrent()
+        assertTrue("未达标不触发", worker.calls.isEmpty())
+        advanceTimeBy(10.minutes)
+        assertTrue("计数模式下没有空闲计时器（未达标就等下一轮再判）", worker.calls.isEmpty())
+
+        scheduler.finishTurn(chat, pendingTurns = 3)
+        runCurrent()
+        assertEquals("达标即跑，不等空闲", 1, worker.calls.size)
+    }
+
+    @Test
+    fun `turn-N mode runs immediately when the repository reports a hit`() = runTest {
+        val scheduler = scheduler(MemoryTriggerConfig(mode = MemoryTriggerMode.TURN_N))
+
+        // pendingOf 非 null 本身就是「第 N 轮命中且未失效」——判据编码在仓库层，调度器只看返回值
+        scheduler.finishTurn(chat, pendingTurns = 1)
+        runCurrent()
+        assertEquals("命中即跑（无空闲计时）", 1, worker.calls.size)
+
+        // 未命中（仓库层返回 null）⇒ 无事发生
+        worker.pending.remove(chat.id)
+        scheduler.onTurnFinished(chat)
+        runCurrent()
+        assertEquals(1, worker.calls.size)
+        advanceTimeBy(10.minutes)
+        assertEquals("没有挂空闲计时器", 1, worker.calls.size)
+    }
+
+    @Test
+    fun `wall-clock mode silences every event-driven entry but keeps manual`() = runTest {
+        val scheduler = scheduler(MemoryTriggerConfig(mode = MemoryTriggerMode.DAILY))
+        worker.pending[chat.id] = 5
+
+        scheduler.onTurnFinished(chat)
+        runCurrent()
+        assertTrue("轮末入口停用（互斥的严格执行）", worker.calls.isEmpty())
+
+        scheduler.onAppHidden()
+        runCurrent()
+        assertTrue("切后台停用", worker.calls.isEmpty())
+
+        scheduler.resumePending()
+        runCurrent()
+        assertTrue("启动补漏停用", worker.calls.isEmpty())
+
+        scheduler.organize(memoryId)
+        runCurrent()
+        assertEquals("手动「整理一下」不受模式约束", 1, worker.calls.size)
     }
 
     private fun srcRoot(): File {

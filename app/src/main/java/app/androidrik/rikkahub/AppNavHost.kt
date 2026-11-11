@@ -73,6 +73,7 @@ import app.androidrik.rikkahub.ui.pages.setting.SettingSearchDetailPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingSearchPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingSpeechPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingStoragePage
+import app.androidrik.rikkahub.ui.pages.setting.SettingMemoryTriggerPage
 import app.androidrik.rikkahub.ui.pages.setting.SettingThemePage
 import app.androidrik.rikkahub.ui.pages.setting.SettingWebPage
 import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskCreatePage
@@ -138,6 +139,10 @@ internal fun appEntryProvider(): (NavKey) -> NavEntry<NavKey> = entryProvider {
 
                     entry<Screen.AssistantMemory> { key ->
     AssistantMemoryPage(key.id)
+                    }
+
+                    entry<Screen.SettingMemoryTrigger> {
+    SettingMemoryTriggerPage()
                     }
 
                     entry<Screen.AssistantRequest> { key ->
