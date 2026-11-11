@@ -905,6 +905,7 @@
   <string name="reasoning_off_desc">Turn off reasoning functionality, the model will directly answer questions.</string>
   <string name="reasoning_picker_hint">Not all models support depth adjustment. Refer to the model and provider documentation.</string>
   <string name="reasoning_picker_title">Adjust Model Thinking Depth</string>
+  <string name="reasoning_picker_custom_body_conflict">The custom request body already sets %1$s, which overrides the reasoning level chosen here. Remove that key from the custom request body to adjust it here.</string>
   <string name="reasoning_xhigh">XHigh</string>
   <string name="reasoning_max">Max</string>
   <string name="regenerate">Regenerate</string>

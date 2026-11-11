@@ -112,6 +112,28 @@ fun ResponseBody.stringSafe(): String? {
     }
 }
 
+/**
+ * 自定义请求体里会覆盖「思考档位」的顶层键（bigeye 判据：档位被源级参数盖掉必须显式提示）。
+ *
+ * `mergeCustomBody` 在 body 组装**之后**执行，同名键直接替换，用户选什么档位都不生效且零提示。
+ * 只比对顶层键：本仓 CustomBody 只在同键 JsonObject 之间递归合并，深层冲突留待实际用例再扩。
+ */
+val REASONING_OVERRIDE_BODY_KEYS: Set<String> = setOf(
+    "reasoning",
+    "reasoning_effort",
+    "reasoning_details",
+    "thinking",
+    "thinking_budget",
+    "enable_thinking",
+    "include_thoughts",
+)
+
+/** 命中的覆盖键（按自定义请求体顺序去重）。 */
+fun List<CustomBody>.reasoningOverrideKeys(): Set<String> =
+    mapNotNullTo(LinkedHashSet()) { body ->
+        body.key.trim().takeIf { it in REASONING_OVERRIDE_BODY_KEYS }
+    }
+
 fun JsonObject.mergeCustomBody(bodies: List<CustomBody>): JsonObject {
     if (bodies.isEmpty()) return this
 

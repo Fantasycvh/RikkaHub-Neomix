@@ -36,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.ai.core.reasoningPresets
+import app.androidrik.ai.util.reasoningOverrideKeys
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.rikkahub.R
@@ -464,6 +465,9 @@ internal fun AssistantBasicContent(
                 },
             ) {
                 val reasoningModel = providers.flatMap { it.models }.find { it.id == assistant.chatModelId }
+                val overrideKeys = remember(reasoningModel?.id, reasoningModel?.customBodies, assistant.customBodies) {
+                    (assistant.customBodies + reasoningModel?.customBodies.orEmpty()).reasoningOverrideKeys()
+                }
                 ReasoningButton(
                     reasoningLevel = assistant.reasoningLevel,
                     presets = reasoningModel?.let { reasoningPresets(it, it.findProvider(providers)) }.orEmpty(),
@@ -476,7 +480,8 @@ internal fun AssistantBasicContent(
                     },
                     onUpdateReasoningLevel = { level ->
                         onUpdate(assistant.copy(reasoningLevel = level, reasoningPresetId = null))
-                    }
+                    },
+                    overrideKeys = overrideKeys,
                 )
             }
             HorizontalDivider()

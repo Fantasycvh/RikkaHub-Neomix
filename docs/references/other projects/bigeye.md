@@ -827,7 +827,7 @@ Tool 输出文本）⇒ 占用条与自动压缩触发都看不见推理；**压
 
 #### 候选（1）
 
-**① P3·量级 S — 思考档位被自定义请求体静默覆盖时要显式提示**（`server.py:4497-4545` `/api/reasoning`、`public/index.html:21299-21303`）
+**① P3·量级 S — 思考档位被自定义请求体静默覆盖时要显式提示**（`server.py:4497-4545` `/api/reasoning`、`public/index.html:21299-21303`）——**已落地（2026-11-11）**：ai 侧 `REASONING_OVERRIDE_BODY_KEYS` + `List<CustomBody>.reasoningOverrideKeys()` 纯函数（`Request.kt`，3 项单测）；`ReasoningPicker`/`ReasoningButton` 新增 `overrideKeys`，命中时在面板顶部以 errorContainer 条提示「自定义请求体已写死 X，会覆盖此处档位」，不拦选择；聊天输入栏与助手详情页两处入口均已接线（助手级 + 模型级 customBodies 合并判断）。
 bigeye 的判据：接口一次给齐「生效形态 / 可选档位 / 建议依据 / **会不会被源级 `extra_body` 盖掉**」；`conflict` = 源 `extra_body` 键 ∩ 所选形态实际会写的键（`reasoning_effort`/`thinking`/`enable_thinking`），命中直接渲染「模型源的自定义参数里已经写死了 X，它会覆盖这里的档位。要在这里调档，先去自定义模型源把那一项删掉」；另配协议感知（Anthropic `/messages` 上无效的字段自动改用，`eff.coerced_from` 提示）。
 本仓：档位是**助手级**（`data/model/Assistant.kt:155 reasoningLevel`，默认 AUTO），粒度比 bigeye 的「源::模型」粗但语义更稳；缺口是**冲突静默**：`ai/src/main/java/app/androidrik/ai/util/Request.kt:115-135` 的 `mergeCustomBody()` 在 body 组装**之后**合并、同名键直接替换/递归合并，模型级自定义请求体（`Model.customBodies`，`ui/pages/assistant/detail/PropertyEditor.kt:124-217`）里若写了 `reasoning_effort`/`thinking`，UI 选什么档位都不生效且**零提示**。**量级 S（约 1 小时）**：在 `mergeCustomBody` 或组装处比对"本次实际写入的 reasoning 键 ∧ customBody 同名键"，命中在 ChatPage/模型编辑页给一条可关提示（不拦发送）。
 

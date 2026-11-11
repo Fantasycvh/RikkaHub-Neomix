@@ -105,6 +105,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.ai.core.reasoningPresets
 import app.androidrik.ai.provider.ModelAbility
+import app.androidrik.ai.util.reasoningOverrideKeys
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
 import app.androidrik.rikkahub.utils.formatContextLength
 import app.androidrik.ai.provider.ModelType
@@ -483,6 +484,9 @@ fun ChatInput(
                             // Reasoning
                             val model = settings.getCurrentChatModel()
                             if (model?.abilities?.contains(ModelAbility.REASONING) == true) {
+                                val overrideKeys = remember(model.id, model.customBodies, assistant.customBodies) {
+                                    (assistant.customBodies + model.customBodies).reasoningOverrideKeys()
+                                }
                                 ReasoningButton(
                                     reasoningLevel = assistant.reasoningLevel,
                                     presets = reasoningPresets(model, model.findProvider(settings.providers)),
@@ -497,6 +501,7 @@ fun ChatInput(
                                         onUpdateAssistant(assistant.copy(reasoningLevel = it, reasoningPresetId = null))
                                     },
                                     onlyIcon = true,
+                                    overrideKeys = overrideKeys,
                                 )
                             }
 

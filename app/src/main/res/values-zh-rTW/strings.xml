@@ -935,6 +935,7 @@
   <string name="reasoning_off_desc">關閉推理功能，模型將直接回答問題。</string>
   <string name="reasoning_picker_hint">並非所有模型都支援深度調整。請參閱模型與提供者文件。</string>
   <string name="reasoning_picker_title">調整模型思考深度</string>
+  <string name="reasoning_picker_custom_body_conflict">自訂請求體裡已寫死 %1$s，會覆蓋此處選擇的思考檔位。要在此調檔，請先刪除自訂請求體中的該項。</string>
   <string name="reasoning_xhigh">超高</string>
   <string name="reasoning_max">最大</string>
   <string name="regenerate">重新生成</string>

@@ -23,6 +23,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SliderState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
@@ -42,6 +43,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import app.androidrik.ai.core.ReasoningLevel
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Alert02
 import me.rerere.hugeicons.stroke.Idea
 import me.rerere.hugeicons.stroke.Idea01
 import app.androidrik.rikkahub.R
@@ -63,6 +65,7 @@ fun ReasoningButton(
     presets: List<ReasoningPreset> = emptyList(),
     selectedPresetId: String? = null,
     onSelectPreset: (ReasoningPreset?) -> Unit = {},
+    overrideKeys: Set<String> = emptySet(),
 ) {
     var showPicker by remember { mutableStateOf(false) }
 
@@ -74,6 +77,7 @@ fun ReasoningButton(
             presets = presets,
             selectedPresetId = selectedPresetId,
             onSelectPreset = onSelectPreset,
+            overrideKeys = overrideKeys,
         )
     }
 
@@ -107,6 +111,8 @@ fun ReasoningPicker(
     presets: List<ReasoningPreset> = emptyList(),
     selectedPresetId: String? = null,
     onSelectPreset: (ReasoningPreset?) -> Unit = {},
+    /** 自定义请求体里会覆盖档位的键；非空时在面板顶部提示（不拦选择）。 */
+    overrideKeys: Set<String> = emptySet(),
 ) {
     val selectedPreset = presets.find { it.id == selectedPresetId }
     val currentIndex = levels.indexOf(reasoningLevel).coerceAtLeast(0)
@@ -151,6 +157,36 @@ fun ReasoningPicker(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                 )
+            }
+
+            // 自定义请求体覆盖提示：档位会被静默盖掉，必须显式告知（不拦选择）
+            if (overrideKeys.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Alert02,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.reasoning_picker_custom_body_conflict,
+                                overrideKeys.joinToString(" / "),
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                        )
+                    }
+                }
             }
 
             // 当前等级展示
