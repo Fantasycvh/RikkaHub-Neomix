@@ -21,7 +21,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -57,6 +56,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import app.androidrik.rikkahub.ui.components.ui.AppTextField as TextField
+import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.CardGroupScope
 import app.androidrik.rikkahub.ui.context.LocalSettings
@@ -537,7 +537,7 @@ private fun CardGroupScope.cronExpressionItem(
         val parseError = remember(text) {
             runCatching { CronExpression.parse(text) }.exceptionOrNull()
         }
-        OutlinedTextField(
+        AppOutlinedTextField(
             value = text,
             onValueChange = { input ->
                 text = input
@@ -604,7 +604,7 @@ private fun NumberField(
     modifier: Modifier = Modifier,
 ) {
     var text by remember(value) { mutableStateOf(value.toString()) }
-    OutlinedTextField(
+    AppOutlinedTextField(
         value = text,
         onValueChange = { input ->
             text = input.filter { it.isDigit() }.take(4)
