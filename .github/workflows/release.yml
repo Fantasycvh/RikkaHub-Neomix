@@ -171,9 +171,13 @@ jobs:
           [ "$launchers" -eq 5 ] \
             || { echo "启动入口应 5 个（默认 + 4 预置），实际 $launchers：桌面入口切换会缺项" >&2; exit 1; }
 
+          # 不要用 `printf | grep -q`：grep 命中即退出会让 printf 吃 SIGPIPE，
+          # 在 `set -o pipefail` 下整条管道被判失败（2026-11-11 beta.20 首次触发）。
           for want in RouteActivity LauncherRikkaHubActivity LauncherChatActivity LauncherNotesActivity LauncherAssistantActivity; do
-            printf '%s\n' "$tree" | grep -q "app.androidrik.rikkahub.$want" \
-              || { echo "APK manifest 里找不到启动入口 $want" >&2; exit 1; }
+            case "$tree" in
+              *"app.androidrik.rikkahub.$want"*) ;;
+              *) echo "APK manifest 里找不到启动入口 $want" >&2; exit 1 ;;
+            esac
           done
           echo "启动入口齐全 ✓"
 
