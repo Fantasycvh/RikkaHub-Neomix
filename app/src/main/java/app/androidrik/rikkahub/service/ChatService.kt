@@ -2321,22 +2321,26 @@ class ChatService(
                 latest.updateCurrentMessages(midTurnMessages.map { it.finishReasoning() })
             }
         }
-        // 当前会话快照（含内存态最新）
-        val conversation = getConversationFlow(conversationId).value
-        // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
-        val effectiveWindow = conversation.compressionWindow()
-        val window = effectiveWindow?.let { conversation.messageNodes.drop(it.boundaryIndex + 1) }
-            ?: conversation.messageNodes
-        val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
-        val plan = if (midTurn) {
-            // 中途压缩：不保留尾部（判据见参数注释）。窗口为空时 shouldCompress=false ⇒ 返回 null。
-            midTurnCompressionPlan(window)
-        } else {
-            estimateCompressionPlan(
-                nodes = window,
-                budgetTokens = budget,
-                minKeep = effectiveMinKeep(keepRecentMessages),
-            )
+        // 当前会话快照（含内存态最新）。窗口切分与计划估算是纯 CPU 段，大对话（数千节点）
+        // 在主线程逐节点扫会卡帧（AppScope 是 Main）→ 搬 IO（上游 0cd90ef12 残件）
+        val (conversation, plan) = withContext(Dispatchers.IO) {
+            val conversation = getConversationFlow(conversationId).value
+            // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
+            val effectiveWindow = conversation.compressionWindow()
+            val window = effectiveWindow?.let { conversation.messageNodes.drop(it.boundaryIndex + 1) }
+                ?: conversation.messageNodes
+            val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
+            val plan = if (midTurn) {
+                // 中途压缩：不保留尾部（判据见参数注释）。窗口为空时 shouldCompress=false ⇒ 返回 null。
+                midTurnCompressionPlan(window)
+            } else {
+                estimateCompressionPlan(
+                    nodes = window,
+                    budgetTokens = budget,
+                    minKeep = effectiveMinKeep(keepRecentMessages),
+                )
+            }
+            conversation to plan
         }
         if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
 
@@ -2355,31 +2359,34 @@ class ChatService(
         // 全部注入会让 prior 在 join 后的合并结果里出现 N 次，且随层层压缩滚雪球膨胀、
         // 稀释覆盖率闸的分母。单步路径（singleSummarize）恒注入。
         suspend fun compressChunk(chunk: List<UIMessage>, includePrior: Boolean): String {
-            val contentToCompress = chunk.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
-            val additional = buildString {
-                if (additionalPrompt.isNotBlank()) {
-                    appendLine("Additional instructions from user: $additionalPrompt")
-                    appendLine()
-                }
-                if (includePrior) {
-                    append(priorContext)
-                }
-            }.trim()
-            val prompt = buildString {
-                append(
-                    settings.compressPrompt.applyPlaceholders(
-                        "content" to contentToCompress,
-                        "target_tokens" to targetTokens.toString(),
-                        "additional_context" to additional,
-                        "locale" to Locale.getDefault().displayName,
+            // 提示词组装是纯 CPU 段（逐条 summaryAsText + 字符串拼接），与网络请求分开搬 IO
+            val prompt = withContext(Dispatchers.IO) {
+                val contentToCompress = chunk.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
+                val additional = buildString {
+                    if (additionalPrompt.isNotBlank()) {
+                        appendLine("Additional instructions from user: $additionalPrompt")
+                        appendLine()
+                    }
+                    if (includePrior) {
+                        append(priorContext)
+                    }
+                }.trim()
+                buildString {
+                    append(
+                        settings.compressPrompt.applyPlaceholders(
+                            "content" to contentToCompress,
+                            "target_tokens" to targetTokens.toString(),
+                            "additional_context" to additional,
+                            "locale" to Locale.getDefault().displayName,
+                        )
                     )
-                )
-                // 中途压缩指令追加在**用户模板之后**：不改用户手改过的提示词，也不与
-                // {additional_context}（用户附加指令）抢位置。
-                if (midTurn) {
-                    appendLine()
-                    appendLine()
-                    append(MID_TURN_COMPRESS_INSTRUCTION)
+                    // 中途压缩指令追加在**用户模板之后**：不改用户手改过的提示词，也不与
+                    // {additional_context}（用户附加指令）抢位置。
+                    if (midTurn) {
+                        appendLine()
+                        appendLine()
+                        append(MID_TURN_COMPRESS_INSTRUCTION)
+                    }
                 }
             }
             val result = providerHandler.generateText(
@@ -2397,7 +2404,9 @@ class ChatService(
         // 落确定性兜底（原文截断 + incomplete 声明）——宁可明说没压好，不静默入档。
         // C2 在原文过长时跳过（单步请求自身会超窗）；各档同用上面的 model/providerHandler
         // （同一次压缩冻结模型，NMoi D76 同款原则）。
-        val sourceText = messagesToCompress.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
+        val sourceText = withContext(Dispatchers.IO) {
+            messagesToCompress.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
+        }
         val ladder = runCompressionLadder(
             sourceText = sourceText,
             chunkedSummarize = {
@@ -2425,12 +2434,14 @@ class ChatService(
         // 不调模型、不幻觉。**覆盖率闸已在阶梯里跑完**（分母 sourceText 只含原文正文），
         // 附录在此之后才拼上，不参与「硬事实逐字命中」判据；附录 token 超过摘要目标 1/4
         // 时整节不接（草稿正文永远优先，见 CompressionTraces.attachTraceSection）。
-        val checkpointBody = attachTraceSection(
-            summary = combined,
-            priorSummary = priorSummary,
-            messages = messagesToCompress,
-            targetTokens = targetTokens,
-        )
+        val checkpointBody = withContext(Dispatchers.IO) {
+            attachTraceSection(
+                summary = combined,
+                priorSummary = priorSummary,
+                messages = messagesToCompress,
+                targetTokens = targetTokens,
+            )
+        }
 
         val boundaryNode = plan.toCompress.lastOrNull() ?: return@runCatching null
         val boundaryNodeId = boundaryNode.id.toString()

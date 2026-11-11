@@ -45,7 +45,8 @@ class CompressionTraceWiringTest {
         val source = read("app/androidrik/rikkahub/service/ChatService.kt")
 
         val ladderIndex = source.indexOf("val ladder = runCompressionLadder(")
-        val attachIndex = source.indexOf("val checkpointBody = attachTraceSection(")
+        // 组装段已搬 Dispatchers.IO（纯 CPU 段离主线程），attachTraceSection 包在 withContext 块内
+        val attachIndex = source.indexOf("attachTraceSection(")
         assertTrue("两个调用点都必须存在", ladderIndex >= 0 && attachIndex >= 0)
         assertTrue(
             "覆盖率闸的分母只含原文正文：附录必须在阶梯跑完之后才拼（顺序反了会把清单算进逐字命中率）",
