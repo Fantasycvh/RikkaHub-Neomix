@@ -28,5 +28,12 @@ data class MessageNodeEntity(
     @ColumnInfo("messages")
     val messages: String,  // JSON serialized List<UIMessage>
     @ColumnInfo("select_index")
-    val selectIndex: Int
+    val selectIndex: Int,
+    /**
+     * 树形分支 P0：父节点 id（null = 根 / 尚未回填的旧行）。
+     * P0 为派生列（保存边界按列表序填充），读路径按 node_index（创建序）排序、不依赖它；
+     * P1 翻转为权威（分支 = 兄弟节点）。见 design-conversation-tree-branching.md §五。
+     */
+    @ColumnInfo("parent_id")
+    val parentId: String? = null,
 )

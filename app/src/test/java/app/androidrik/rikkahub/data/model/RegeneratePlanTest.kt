@@ -167,6 +167,32 @@ class RegeneratePlanTest {
         assertTrue(restored.none { textOf(it) == "half..." })
     }
 
+    // ---- 截断锚点（树形分支 P0：撤销按节点身份定位） ----
+
+    @Test
+    fun `truncation plan carries the anchor node id`() {
+        val conversation = conversation4()
+        val firstId = conversation.messageNodes[0].currentMessage.id
+        val plan = conversation.truncationPlan(firstId)!!
+        assertEquals(conversation.messageNodes[0].id, plan.anchorNodeId)
+    }
+
+    @Test
+    fun `restore locates the anchor by id even when prefix length drifted`() {
+        val conversation = conversation4()
+        val firstId = conversation.messageNodes[0].currentMessage.id
+        val plan = conversation.truncationPlan(firstId)!!
+        // 截断后未生成，但前缀里多了一个无关节点（模拟中间态漂移）：
+        // 锚点 id 定位仍回到「锚点为止」，数量语义会错 take 到 2
+        val drifted = listOf(MessageNode.of(msg(MessageRole.USER, "interloper"))) +
+            conversation.messageNodes.take(plan.sizeAfterTruncation)
+        val restored = restoreAfterTruncation(drifted, plan)
+        assertEquals(
+            listOf("interloper", "u1", "a1", "u2", "a2"),
+            restored.map { textOf(it) },
+        )
+    }
+
     // ---- 多分支（编辑/重生成产生的候选） ----
 
     @Test

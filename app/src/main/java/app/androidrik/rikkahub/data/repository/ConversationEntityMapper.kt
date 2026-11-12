@@ -49,6 +49,9 @@ internal fun conversationToConversationEntity(conversation: Conversation): Conve
         exportDisplayOverrides = conversation.exportDisplayOverrides
             .takeIf { it.isNotEmpty() }
             ?.let { JsonInstant.encodeToString(it) },
+        // 树形分支 P0：叶子 = 末节点（派生量；P1 翻转为权威）。轻量元信息保存（无消息）
+        // 时为 null，由 DAO 的 COALESCE 保留库里原值（同 lastMessageAt）。
+        activeLeafNodeId = conversation.messageNodes.lastOrNull()?.id?.toString(),
         // 行内「最近活跃」= 末尾消息的 createdAt。消息在内存里（本映射点的入参就带 messageNodes）
         // 时按实际算；元信息保存（轻量 Conversation 无消息）时返回 null，
         // 由 DAO 的 COALESCE 保留库里原值（见 updateMetadata 注释）。
@@ -92,6 +95,8 @@ internal fun conversationEntityToConversation(
         exportDisplayOverrides = conversationEntity.exportDisplayOverrides
             ?.let { JsonInstant.decodeFromString<Map<String, ExportDisplayConfig>>(it) }
             ?: emptyMap(),
+        activeLeafNodeId = conversationEntity.activeLeafNodeId
+            ?.let { runCatching { Uuid.parse(it) }.getOrNull() },
     )
 }
 

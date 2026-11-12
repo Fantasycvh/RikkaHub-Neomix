@@ -135,7 +135,9 @@ import app.androidrik.rikkahub.data.ai.compression.runCompressionLadder
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
 import app.androidrik.rikkahub.data.ai.compression.stripTraceSection
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
-import app.androidrik.rikkahub.data.model.markGeneratingNodeIncomplete
+import app.androidrik.rikkahub.data.model.markGeneratingNodeIncompleteById
+import app.androidrik.rikkahub.data.model.mergeGenerationMessages
+import app.androidrik.rikkahub.data.model.pathNodes
 import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.service.QueuedMessage
@@ -536,7 +538,7 @@ class ChatService(
                 id = conversationId,
                 assistantId = assistant.id,
                 newConversation = true
-            ).updateCurrentMessages(assistant.presetMessages)
+            ).mergeGenerationMessages(assistant.presetMessages)
             updateConversation(conversationId, newConversation)
         }
     }
@@ -564,7 +566,7 @@ class ChatService(
             assistantId = assistant.id,
             newConversation = true,
         )
-            .updateCurrentMessages(assistant.presetMessages)
+            .mergeGenerationMessages(assistant.presetMessages)
             .copy(title = title, hidden = true)
         conversationRepo.insertConversation(conversation)
         updateConversation(conversationId, conversation)
@@ -1041,7 +1043,7 @@ class ChatService(
                     val current = session.state.value
                     val pendingIds = app.androidrik.rikkahub.data.task.pendingScheduledMemoryTools(current.currentMessages).map { it.toolCallId }.toSet()
                     val safe = decisions.filterKeys { it in pendingIds }
-                    saveConversation(session.id, current.updateCurrentMessages(
+                    saveConversation(session.id, current.mergeGenerationMessages(
                         app.androidrik.rikkahub.data.ai.applyApprovalDecisions(current.currentMessages, safe)))
                 }
             },
@@ -1672,7 +1674,7 @@ class ChatService(
             // 见 refreshFrozenAnchorsForAssistant）。为什么值得这么做：L1 在 system（位置 0），
             // 它一变其后整段前缀全部重算——真机实测命中率 98% → 0%（设计稿 §2）。
             val frozenAnchorIds = ensureFrozenAnchors(conversationId, conversation, loadedMemories)
-            // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
+            // 回写基线：**全量**消息（id 制合并 mergeGenerationMessages 按消息 id 寻址节点）；
             // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
             // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
             // GenerationHandler 从实际发送窗口取得查询并记录共享预算计划，不再另选一份日志集合。
@@ -1873,7 +1875,7 @@ class ChatService(
                 // Cancellation can interrupt a 50ms display window. Preserve its complete
                 // tail synchronously before completion/stop cleanup persists the conversation.
                 val current = getConversationFlow(conversationId).value
-                updateConversation(conversationId, current.updateCurrentMessages(pending.messages))
+                updateConversation(conversationId, current.mergeGenerationMessages(pending.messages))
             }).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
                 val updatedConversation = getConversationFlow(conversationId).value.copy(
@@ -1902,27 +1904,31 @@ class ChatService(
                     is GenerationChunk.Messages -> {
                         recordScheduledMemorySync(session, chunk.messages, assistant.enableMemory && !conversation.memoryDisabled && ModelAbility.TOOL in model.abilities, generationOwner)
                         val updatedConversation = getConversationFlow(conversationId).value
-                            .updateCurrentMessages(chunk.messages)
+                            .mergeGenerationMessages(chunk.messages)
                         updateConversation(conversationId, updatedConversation)
                         session.replyMessageId.value = chunk.messages.lastOrNull()
                             ?.takeIf { it.role == MessageRole.ASSISTANT }?.id
 
                         // 流式检查点：节流落库（崩溃/被杀时不丢断点前的内容）。
-                        // 索引取本次回写的末位消息（= 生成中的那个节点，见 checkpointGeneratingNode）。
+                        // 节点由末位消息 id 反查（id 寻址，不依赖回写列表下标；THIS_ONLY 重生成
+                        // 变动的是中间节点，见 checkpointGeneratingNode）。
                         // 失败只记日志——检查点是尽力而为的兜底，不能反过来打断生成。
                         val now = System.currentTimeMillis()
                         if (now - lastCheckpointAt >= STREAM_CHECKPOINT_INTERVAL_MS) {
                             lastCheckpointAt = now
-                            val nodeIndex = chunk.messages.lastIndex
-                            runCatching {
-                                // 写库的那份副本标记「未完成」：进程被杀时流收尾那行永远不会执行，
-                                // 不标记则恢复出来的半截内容看起来像正常完成的回复（见该函数注释）。
-                                // 内存态不标——它由流收尾的 markLastFinish 写真实状态。
-                                conversationRepo.checkpointGeneratingNode(
-                                    conversation = updatedConversation.markGeneratingNodeIncomplete(nodeIndex),
-                                    nodeIndex = nodeIndex,
-                                )
-                            }.onFailure { Log.w(TAG, "stream checkpoint failed", it) }
+                            val generatingNodeId = chunk.messages.lastOrNull()?.id
+                                ?.let { updatedConversation.getMessageNodeByMessageId(it)?.id }
+                            if (generatingNodeId != null) {
+                                runCatching {
+                                    // 写库的那份副本标记「未完成」：进程被杀时流收尾那行永远不会执行，
+                                    // 不标记则恢复出来的半截内容看起来像正常完成的回复（见该函数注释）。
+                                    // 内存态不标——它由流收尾的 markLastFinish 写真实状态。
+                                    conversationRepo.checkpointGeneratingNode(
+                                        conversation = updatedConversation.markGeneratingNodeIncompleteById(generatingNodeId),
+                                        nodeId = generatingNodeId,
+                                    )
+                                }.onFailure { Log.w(TAG, "stream checkpoint failed", it) }
+                            }
                         }
 
                         // 通知等边缘副作用由 ChatNotificationManager 消费；
@@ -2063,7 +2069,7 @@ class ChatService(
                     }
                 }
                 val updatedConversation = getConversationFlow(conversationId).value
-                    .updateCurrentMessages(annotated)
+                    .mergeGenerationMessages(annotated)
                 updateConversation(conversationId, updatedConversation)
                 // D1：落库防护——超大内容(>2MB blob)等写入失败时降级为可见错误，
                 // 不能让草稿保存异常在 onFailure 内静默上抛
@@ -2458,7 +2464,7 @@ class ChatService(
         // 顺带收尾推理块（检查点切分后旧回复不会再有新推理）。
         if (midTurn && midTurnMessages != null) {
             updateConversationState(conversationId) { latest ->
-                latest.updateCurrentMessages(midTurnMessages.map { it.finishReasoning() })
+                latest.mergeGenerationMessages(midTurnMessages.map { it.finishReasoning() })
             }
         }
         // 当前会话快照（含内存态最新）。窗口切分与计划估算是纯 CPU 段，大对话（数千节点）
@@ -2467,8 +2473,8 @@ class ChatService(
             val conversation = getConversationFlow(conversationId).value
             // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
             val effectiveWindow = conversation.compressionWindow()
-            val window = effectiveWindow?.let { conversation.messageNodes.drop(it.boundaryIndex + 1) }
-                ?: conversation.messageNodes
+            val window = effectiveWindow?.let { conversation.pathNodes().drop(it.boundaryIndex + 1) }
+                ?: conversation.pathNodes()
             val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
             val plan = if (midTurn) {
                 // 中途压缩：不保留尾部（判据见参数注释）。窗口为空时 shouldCompress=false ⇒ 返回 null。

@@ -144,7 +144,8 @@ interface ConversationDAO {
             memory_disabled = :memoryDisabled,
             hidden = :hidden,
             upstream_config = :upstreamConfig,
-            last_message_at = COALESCE(:lastMessageAt, last_message_at)
+            last_message_at = COALESCE(:lastMessageAt, last_message_at),
+            active_leaf_node_id = COALESCE(:activeLeafNodeId, active_leaf_node_id)
         WHERE id = :id
         """
     )
@@ -171,6 +172,11 @@ interface ConversationDAO {
         /** 隐藏会话（design-proactive-task-management.md §二）。直接赋值，语义同 memoryDisabled。 */
         hidden: Boolean,
         upstreamConfig: String?,
+        /**
+         * 树形分支 P0：激活路径叶子节点 id。COALESCE 保原值（同 last_message_at）——
+         * 元信息保存（无消息可算）传 null 时不抹掉库里的叶子指向。
+         */
+        activeLeafNodeId: String?,
     )
 
     /**

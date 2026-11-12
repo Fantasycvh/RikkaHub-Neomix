@@ -8,9 +8,11 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
+import app.androidrik.rikkahub.data.db.dao.MessageNodeDiffRow
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.ai.prompts.filterOutCheckpointMessages
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.asLinearChain
 import app.androidrik.rikkahub.data.model.repairCorruptedCandidates
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlin.uuid.Uuid
@@ -55,7 +57,7 @@ internal fun List<MessageNode>.repairLegacyCheckpointCandidates(): List<MessageN
  *
  * 加载侧带**页隔离恢复**：读失败先收窄到单行隔离坏行，最坏只丢一行（旧实现整页跳过会
  * 经增量保存放大成不可逆丢数据，见 [loadMessageNodes] 内注释）。
- * 保存侧按「公共内容前缀」diff，常规场景只写 1 行（见 [saveMessageNodes] 内注释）。
+ * 保存侧按 **id 键 signature map diff**（树形分支 P0），常规场景只写 1 行（见 [saveMessageNodes] 内注释）。
  */
 internal class ConversationNodeStore(
     private val messageNodeDAO: MessageNodeDAO,
@@ -109,6 +111,7 @@ internal class ConversationNodeStore(
                     nodes.add(
                         MessageNode(
                             id = nodeId,
+                            parentId = entity.parentId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
                             messages = rawMessages,
                             selectIndex = entity.selectIndex,
                             isFavorite = favoriteNodeIds.contains(nodeId)
@@ -121,8 +124,9 @@ internal class ConversationNodeStore(
                     pageSize = 64
                 }
             }
-            // 自愈早期压缩 bug 造成的跨节点候选副本（详见 repairCorruptedCandidates）
-            nodes.repairLegacyCheckpointCandidates()
+            // 自愈早期压缩 bug 造成的跨节点候选副本（详见 repairCorruptedCandidates）；
+            // asLinearChain：P0 树元数据派生（列表序 == 路径序），旧行 parent_id 为 null 时补齐内存态
+            nodes.repairLegacyCheckpointCandidates().asLinearChain()
         }.also { loaded ->
             // 耗时埋点：打开会话、列表加载都经过这里。
             // 触发窗口化的阈值（2026-09-20 实测修正，design-auto-compaction 附录 A §5.2）：
@@ -135,48 +139,72 @@ internal class ConversationNodeStore(
     }
 
     /**
-     * 增量保存消息节点：只写「与库中公共前缀之后」的部分，并清理已不存在的尾部节点。
+     * 增量保存消息节点（树形分支 P0：**id 键 signature map diff**，取代公共前缀 diff；
+     * 设计稿 design-conversation-tree-branching.md §五.2）。
      *
-     * **为何**：原实现每次保存都 `deleteByConversation` **删除全表再按下标重插**——
-     * 5000 节点的会话发一条消息就重写 5000 行；且该写法意味着
-     * 「内存列表 ≡ 全量」是写入侧依赖的不变量（窗口化前置障碍）。
+     * **为何换**：前缀 diff 假定「内存列表 ≡ 库中全量线性序」，树形分支（P1）下不再成立。
+     * id 键 diff 只依赖节点身份：变更 upsert、消失 delete、新增分配新创建序——
+     * 与列表顺序解耦，P1 分支乱序存储无需再改本算法。
      *
-     * 算法：求「库中签名序列」与「内存签名序列」的公共**内容**前缀
-     * （签名 = id + select_index + messages，盖住「编辑后候选变但 id 不变」）
-     * -> 删除库中前缀之后的旧行 -> 插入内存中前缀之后的新行。
-     * 常见场景（尾部追加/修改最后一条）即只写 1 行。
+     * `node_index` 语义 = **全局创建序**（append-only、永不复用）：存活行保持原值，
+     * 新行取 max+1。P0 无分支 ⇒ 创建序 == 路径序，加载按它排序即正确。
+     * `parent_id` 由 [asLinearChain] 派生随变更行写入（惰性回填，未变更行保持 null，
+     * P0 读路径不依赖它）。
      *
-     * `node_index` 用**绝对位置**（common + i）而非分片内下标，为将来窗口化留余地。
+     * 常见场景（尾部追加/修改最后一条）仍只写 1 行；签名计算量与前缀版同量级。
      */
     internal suspend fun saveMessageNodes(conversationId: String, nodes: List<MessageNode>) {
-        val existing = messageNodeDAO.getNodeSignaturesOfConversation(conversationId)
-        val incoming = nodes.map { node ->
-            node.id.toString() + SEP + node.selectIndex + SEP + JsonInstant.encodeToString(node.messages)
+        val plan = computeNodeDiff(
+            conversationId = conversationId,
+            existing = messageNodeDAO.getNodeDiffRows(conversationId),
+            chain = nodes.asLinearChain(),
+        )
+        if (plan.removedIds.isNotEmpty()) {
+            messageNodeDAO.deleteByIds(conversationId, plan.removedIds)
         }
-        val common = commonPrefixLength(existing, incoming)
-
-        // 库中前缀之后的旧行已不存在于内存 -> 删除（含 node_index = common）
-        if (common < existing.size) {
-            messageNodeDAO.deleteFromIndex(conversationId, common)
+        if (plan.toWrite.isNotEmpty()) {
+            messageNodeDAO.insertAll(plan.toWrite)
         }
-        if (common >= nodes.size) return
-        val entities = nodes.drop(common).mapIndexed { offset, node ->
-            MessageNodeEntity(
-                id = node.id.toString(),
-                conversationId = conversationId,
-                nodeIndex = common + offset,
-                messages = JsonInstant.encodeToString(node.messages),
-                selectIndex = node.selectIndex
-            )
-        }
-        messageNodeDAO.insertAll(entities)
     }
+}
 
-    /** 两个签名序列的公共前缀长度（签名 = id + select_index + messages） */
-    private fun commonPrefixLength(a: List<String>, b: List<String>): Int {
-        val max = minOf(a.size, b.size)
-        var i = 0
-        while (i < max && a[i] == b[i]) i++
-        return i
+/** [computeNodeDiff] 的结果：待 upsert 的行 + 待删除的节点 id。 */
+internal data class NodeDiffPlan(
+    val toWrite: List<MessageNodeEntity>,
+    val removedIds: List<String>,
+)
+
+/**
+ * id 键 diff 的纯计算（JVM 单测钉住；[ConversationNodeStore.saveMessageNodes] 只做 IO）。
+ *
+ * 签名 = select_index + messages JSON（盖住「编辑后候选变但 id 不变」）。
+ * **不比 parent_id**：P0 它是派生列，未变更行允许保持 null（惰性回填），
+ * 避免升级后首次保存整会话重写。
+ */
+internal fun computeNodeDiff(
+    conversationId: String,
+    existing: List<MessageNodeDiffRow>,
+    chain: List<MessageNode>,
+): NodeDiffPlan {
+    val existingById = existing.associateBy { it.id }
+    val incomingIds = chain.mapTo(HashSet()) { it.id.toString() }
+    val removedIds = existing.map { it.id }.filter { it !in incomingIds }
+    var nextIndex = (existing.maxOfOrNull { it.nodeIndex } ?: -1) + 1
+    val toWrite = ArrayList<MessageNodeEntity>()
+    chain.forEach { node ->
+        val id = node.id.toString()
+        val messagesJson = JsonInstant.encodeToString(node.messages)
+        val signature = node.selectIndex.toString() + SEP + messagesJson
+        val prev = existingById[id]
+        if (prev != null && prev.signature == signature) return@forEach
+        toWrite += MessageNodeEntity(
+            id = id,
+            conversationId = conversationId,
+            nodeIndex = prev?.nodeIndex ?: nextIndex++,
+            messages = messagesJson,
+            selectIndex = node.selectIndex,
+            parentId = node.parentId?.toString(),
+        )
     }
+    return NodeDiffPlan(toWrite = toWrite, removedIds = removedIds)
 }

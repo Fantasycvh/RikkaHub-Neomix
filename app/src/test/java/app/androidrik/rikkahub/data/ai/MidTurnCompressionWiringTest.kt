@@ -58,7 +58,7 @@ class MidTurnCompressionWiringTest {
         assertTrue("必须把 live 消息交给压缩", "midTurnMessages = request.messages" in chatService)
         assertTrue(
             "数据源写回必须在 compressToCheckpoint 内（同一段无挂起点）",
-            "latest.updateCurrentMessages(midTurnMessages.map { it.finishReasoning() })" in chatService,
+            "latest.mergeGenerationMessages(midTurnMessages.map { it.finishReasoning() })" in chatService,
         )
     }
 

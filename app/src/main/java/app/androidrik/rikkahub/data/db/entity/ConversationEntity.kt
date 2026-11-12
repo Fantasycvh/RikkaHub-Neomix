@@ -112,4 +112,12 @@ data class ConversationEntity(
      */
     @ColumnInfo("export_display_overrides")
     val exportDisplayOverrides: String? = null,
+    /**
+     * 树形分支 P0：激活路径的叶子节点 id（null = 旧数据 / 轻量投影）。
+     * P0 为派生列（映射层填末节点）；[dao.ConversationDAO.updateMetadata] 用 COALESCE
+     * 保原值（同 last_message_at）。P1 翻转为权威（路径 = root→此叶子）。
+     * 见 design-conversation-tree-branching.md §五。
+     */
+    @ColumnInfo("active_leaf_node_id")
+    val activeLeafNodeId: String? = null,
 )

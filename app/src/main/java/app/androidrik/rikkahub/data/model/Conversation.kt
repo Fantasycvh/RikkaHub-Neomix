@@ -32,6 +32,12 @@ data class Conversation(
     val title: String = "",
     val messageNodes: List<MessageNode>,
     /**
+     * 树形分支 P0：激活路径的叶子节点 id（设计稿 design-conversation-tree-branching.md §五）。
+     * P0 为**派生量**（落库边界按列表序填末节点，读路径不依赖）；P1 翻转为权威
+     * （激活路径 = root→此叶子）。null = 线性回退（旧数据/轻量投影）。
+     */
+    val activeLeafNodeId: Uuid? = null,
+    /**
      * 压缩检查点列表（末行 = 最新边界 = active）。从 compression_checkpoint 表按需加载注入，
      * 不存入 conversations 表（与 messageNodes 同模式——独立表管理，避免污染元数据列）。
      * 默认空 = 未压缩。设计见 [CompressionSummary] 与 `docs/design/design-auto-compaction.md` §4.4。
@@ -148,7 +154,8 @@ data class Conversation(
             .mapNotNull { it.fileUri() }
 
     /**
-     *  当前选中的 message
+     *  当前选中的 message。
+     *  P0：列表序 == 路径序，直接 map；P1 改为沿 [pathNodes] 遍历（树形分支设计稿 §三）。
      */
     val currentMessages
         get(): List<UIMessage> {
@@ -163,6 +170,10 @@ data class Conversation(
         return messageNodes.firstOrNull { node -> node.messages.any { it.id == messageId } }
     }
 
+    /**
+     * 索引对齐回写（历史实现）。**P0 起生成链改用 [mergeGenerationMessages]（id 制）**；
+     * 本函数保留作等价性测试基准（ConversationMessageUpdatesTest / StreamCheckpointIndexTest），P1 移除。
+     */
     fun updateCurrentMessages(messages: List<UIMessage>): Conversation {
         // Streaming snapshots normally share every message except the active reply.
         // Allocate candidate/node copies only where content actually changed.
@@ -205,7 +216,7 @@ data class Conversation(
     fun activeCompression(): CompressionSummary? {
         val checkpoint = compressionSummaries.lastOrNull() ?: return null
         val boundaryId = checkpoint.boundaryNodeId ?: return checkpoint
-        val boundaryIndex = messageNodes.indexOfFirst { it.id.toString() == boundaryId }
+        val boundaryIndex = pathNodes().indexOfFirst { it.id.toString() == boundaryId }
         if (boundaryIndex < 0) return null
         // 区域指纹校验：区域内节点或其选中消息被改动（编辑/删除/重新生成/切换分支）时，
         // 摘要已过时 -> 失效回退全量发送（避免 AI 上下文与用户所见不一致）。
@@ -222,9 +233,10 @@ data class Conversation(
      * 或「选中消息 id」的变化。窗口（边界之后）的改动不影响指纹：那部分本就原样发送。
      */
     private fun computeAreaFingerprint(boundaryIndex: Int): String {
+        val nodes = pathNodes()
         val builder = StringBuilder()
         for (index in 0..boundaryIndex) {
-            val node = messageNodes.getOrNull(index) ?: break
+            val node = nodes.getOrNull(index) ?: break
             builder.append(node.id).append(':')
             node.messages.getOrNull(node.selectIndex)?.let { builder.append(it.id) }
             builder.append('|')
@@ -267,17 +279,18 @@ data class Conversation(
      * （= 直接发送 live messages）。
      */
     fun compressionWindow(): CompressionWindow? {
-        val importedIndex = messageNodes.indexOfLast { node ->
+        val nodes = pathNodes()
+        val importedIndex = nodes.indexOfLast { node ->
             node.messages.getOrNull(node.selectIndex)?.isContextCheckpoint == true
         }
         val checkpoint = activeCompression()
         val boundaryIndex = checkpoint?.boundaryNodeId?.let { boundaryId ->
-            messageNodes.indexOfFirst { it.id.toString() == boundaryId }
+            nodes.indexOfFirst { it.id.toString() == boundaryId }
         } ?: -1
         // Native boundaries name the last excluded node; an upstream boundary is the
         // original retained checkpoint itself. Only a strictly newer native boundary wins.
         if (importedIndex >= 0 && importedIndex >= boundaryIndex) {
-            return CompressionWindow(messageNodes[importedIndex].currentMessage, importedIndex)
+            return CompressionWindow(nodes[importedIndex].currentMessage, importedIndex)
         }
         if (checkpoint == null || boundaryIndex < 0) return null
         val checkpointMessage = UIMessage(
@@ -310,14 +323,15 @@ data class Conversation(
      * 越界返回 null。
      */
     fun areaFingerprintFor(boundaryNodeIndex: Int): String? =
-        if (boundaryNodeIndex in messageNodes.indices) computeAreaFingerprint(boundaryNodeIndex) else null
+        if (boundaryNodeIndex in pathNodes().indices) computeAreaFingerprint(boundaryNodeIndex) else null
 
     /**
      * 边界之后的节点（存储侧视图，UI 折叠与压缩输入都以它为准）；无有效检查点时返回全量。
      */
     fun windowNodes(): List<MessageNode> {
-        val window = compressionWindow() ?: return messageNodes
-        return messageNodes.drop(window.boundaryIndex + 1)
+        val nodes = pathNodes()
+        val window = compressionWindow() ?: return nodes
+        return nodes.drop(window.boundaryIndex + 1)
     }
 
     /** Display-only projection; imported checkpoints remain authoritative persisted message nodes. */
@@ -328,9 +342,9 @@ data class Conversation(
         return CompressionSummary(
             conversationId = id,
             content = message.toText(),
-            messageCount = messageNodes.take(window.boundaryIndex)
+            messageCount = pathNodes().take(window.boundaryIndex)
                 .count { !it.currentMessage.isContextCheckpoint },
-            boundaryNodeId = messageNodes[window.boundaryIndex].id.toString(),
+            boundaryNodeId = pathNodes()[window.boundaryIndex].id.toString(),
             // 检查点自身的生成时间：ContextLength 的 usage 陈旧判定与原生检查点同口径。
             createdAt = java.time.Instant.ofEpochMilli(
                 message.createdAt.toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds(),
@@ -368,6 +382,11 @@ data class Conversation(
 @Serializable
 data class MessageNode(
     val id: Uuid = Uuid.random(),
+    /**
+     * 树形分支 P0：父节点 id（null = 根）。P0 由落库边界按列表序派生（[asLinearChain]）；
+     * P1 翻转为权威——分支 = 兄弟节点，各带独立子树。
+     */
+    val parentId: Uuid? = null,
     val messages: List<UIMessage>,
     val selectIndex: Int = 0,
     @Transient

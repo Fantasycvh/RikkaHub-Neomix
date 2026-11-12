@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.Flow
 import app.androidrik.workspace.WorkspaceTaskTerminal
 import app.androidrik.rikkahub.data.datastore.getAssistantById
+import app.androidrik.rikkahub.data.model.mergeGenerationMessages
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.entity.ExternalNoticeEntity
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -173,7 +174,7 @@ internal class WorkspaceNoticeInbox(
             val original = session.state.value
             val liveIds = live.map { it.id }.toSet()
             if (original.currentMessages.any { !it.isExternalNotice && it.id !in liveIds }) return@withContext live
-            val staged = original.updateCurrentMessages(live)
+            val staged = original.mergeGenerationMessages(live)
             session.state.value = staged
             try {
                 process(session, rows, beforeUser = true)

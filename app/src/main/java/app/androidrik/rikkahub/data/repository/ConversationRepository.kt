@@ -481,6 +481,7 @@ class ConversationRepository(
                     memoryDisabled = entity.memoryDisabled,
                     hidden = entity.hidden,
                     upstreamConfig = entity.upstreamConfig,
+                    activeLeafNodeId = entity.activeLeafNodeId,
                 )
             }
             // 增量保存（不再删全表重插；见 saveMessageNodes）。
@@ -504,16 +505,17 @@ class ConversationRepository(
      *   下一次正常保存（轮次结束）时补齐。进程若恰在生成中被杀，该会话暂不参与搜索，
      *   下次任意交互即恢复——可接受的取舍。
      *
-     * 语义约束（调用方保证）：[nodeIndex] 是**正在生成的那个节点**在 `conversation.messageNodes`
-     * 中的索引——它等于本次流回写的 `chunk.messages.lastIndex`（`updateCurrentMessages` 按索引映射），
-     * **不能假定它是 `messageNodes.lastIndex`**：`THIS_ONLY` scope 的重生成只改动中间节点，
-     * 其后仍有下游节点。节点 id 与已落库行一致（节点原地 `copy`）⇒ `@Insert(REPLACE)` 按主键
-     * 覆盖即 upsert，不需要前缀比对。
+     * 语义约束（调用方保证）：[nodeId] 是**正在生成的那个节点**的 id——由末位消息 id 反查
+     * （`getMessageNodeByMessageId`），**不能假定它是末节点**：`THIS_ONLY` scope 的重生成只改动
+     * 中间节点，其后仍有下游节点。节点 id 与已落库行一致（节点原地 `copy`）⇒ `@Insert(REPLACE)`
+     * 按主键覆盖即 upsert。`node_index`（创建序）保持库中原值；新节点（首个检查点）取 max+1，
+     * 永不复用旧下标（树形分支 P0，design-conversation-tree-branching.md §五.2）。
      *
      * 会话行尚不存在时（首条消息生成中）整会话落库——否则节点外键指向不存在的会话。
      */
-    suspend fun checkpointGeneratingNode(conversation: Conversation, nodeIndex: Int) {
-        val node = conversation.messageNodes.getOrNull(nodeIndex) ?: return
+    suspend fun checkpointGeneratingNode(conversation: Conversation, nodeId: Uuid) {
+        val position = conversation.messageNodes.indexOfFirst { it.id == nodeId }
+        val node = conversation.messageNodes.getOrNull(position) ?: return
         database.withTransaction {
             if (!conversationDAO.existsById(conversation.id.toString())) {
                 conversationDAO.insert(conversationToConversationEntity(conversation))
@@ -521,6 +523,8 @@ class ConversationRepository(
                 saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
                 return@withTransaction
             }
+            val nodeIndex = messageNodeDAO.getNodeIndexOf(nodeId.toString())
+                ?: (messageNodeDAO.getMaxNodeIndex(conversation.id.toString()) + 1)
             messageNodeDAO.insert(
                 MessageNodeEntity(
                     id = node.id.toString(),
@@ -528,6 +532,8 @@ class ConversationRepository(
                     nodeIndex = nodeIndex,
                     messages = JsonInstant.encodeToString(node.messages),
                     selectIndex = node.selectIndex,
+                    // P0：父 = 列表前驱（列表序 == 路径序）；P1 改读节点自身的 parentId
+                    parentId = conversation.messageNodes.getOrNull(position - 1)?.id?.toString(),
                 )
             )
         }

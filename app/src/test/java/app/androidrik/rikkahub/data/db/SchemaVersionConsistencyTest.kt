@@ -110,6 +110,40 @@ class SchemaVersionConsistencyTest {
     }
 
     @Test
+    fun `v66 adds only the nullable tree-branching metadata columns`() {
+        val directory = sequenceOf("schemas", "app/schemas")
+            .map { File(it, "app.androidrik.rikkahub.data.db.AppDatabase") }
+            .first { it.isDirectory }
+        fun entities(version: Int) = Json.parseToJsonElement(File(directory, "$version.json").readText())
+            .jsonObject.getValue("database").jsonObject.getValue("entities").jsonArray
+            .associate { it.jsonObject.getValue("tableName").jsonPrimitive.content to it.jsonObject }
+        val old = entities(65)
+        val new = entities(66)
+        assertEquals(old.keys, new.keys)
+        // 只允许会话表与节点表变化（其余表逐字节一致）
+        old.filterKeys { it != "ConversationEntity" && it != "message_node" }.forEach { (table, schema) ->
+            assertEquals("Unrelated table $table changed", schema, new.getValue(table))
+        }
+        fun fields(version: Map<String, kotlinx.serialization.json.JsonObject>, table: String) =
+            version.getValue(table).getValue("fields").jsonArray
+                .associate { it.jsonObject.getValue("columnName").jsonPrimitive.content to it.jsonObject }
+        // conversations：仅增 active_leaf_node_id（可空纯列，免 spec 免回填）
+        val prevConv = fields(old, "ConversationEntity")
+        val currConv = fields(new, "ConversationEntity")
+        prevConv.forEach { (column, schema) -> assertEquals(schema, currConv.getValue(column)) }
+        assertEquals(setOf("active_leaf_node_id"), currConv.keys - prevConv.keys)
+        assertTrue("notNull" !in currConv.getValue("active_leaf_node_id"))
+        assertTrue("defaultValue" !in currConv.getValue("active_leaf_node_id"))
+        // message_node：仅增 parent_id（可空纯列；P0 惰性回填，读路径按 node_index 排序）
+        val prevNode = fields(old, "message_node")
+        val currNode = fields(new, "message_node")
+        prevNode.forEach { (column, schema) -> assertEquals(schema, currNode.getValue(column)) }
+        assertEquals(setOf("parent_id"), currNode.keys - prevNode.keys)
+        assertTrue("notNull" !in currNode.getValue("parent_id"))
+        assertTrue("defaultValue" !in currNode.getValue("parent_id"))
+    }
+
+    @Test
     fun `SCHEMA_VERSION 与最新导出的 Room schema 一致`() {
         val schemaDir = sequenceOf("schemas", "app/schemas")
             .map { File(it, "app.androidrik.rikkahub.data.db.AppDatabase") }
