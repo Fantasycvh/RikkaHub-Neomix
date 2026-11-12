@@ -5,6 +5,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.mergeGenerationMessages
 import kotlin.uuid.Uuid
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -12,13 +13,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 流式检查点的**节点索引**语义（`ConversationRepository.checkpointGeneratingNode` 的前提）。
+ * 流式检查点的**节点寻址**语义（`ConversationRepository.checkpointGeneratingNode` 的前提）。
  *
- * 为什么需要钉住：检查点只 upsert 一个节点，索引取错就会把生成中的内容写进别的节点（数据破坏）。
- * 索引来源 = `chunk.messages.lastIndex`，其正确性依赖 [Conversation.updateCurrentMessages] 的
- * 「按索引映射」语义——而这条语义在两类路径下结论不同，正是本测试要固定的：
- * - 常规生成：基线是全会话 → 变动节点就是 `messageNodes.lastIndex`
- * - `THIS_ONLY` 重生成：基线是**前缀**，目标节点之后仍有下游节点 → 变动节点**不是** lastIndex
+ * 为什么需要钉住：检查点只 upsert 一个节点，寻址错就会把生成中的内容写进别的节点（数据破坏）。
+ * 生成中节点由 `chunk.messages.last()` 的 id 反查（`getMessageNodeByMessageId`，id 寻址），
+ * 其正确性依赖 [Conversation.mergeGenerationMessages] 的落点语义——两类路径结论不同：
+ * - 常规生成：新节点追加在路径尾 → 变动节点 = 新建的末节点；
+ * - `THIS_ONLY` 重生成：新回复落成**中间节点**候选 → 变动节点**不是**末节点。
  */
 class StreamCheckpointIndexTest {
 
@@ -36,11 +37,11 @@ class StreamCheckpointIndexTest {
         )
         // 基线 = 全会话；流式追加助手回复
         val streaming = listOf(msg("u0"), msg("u1"), msg("a2", MessageRole.ASSISTANT))
-        val updated = conversation.updateCurrentMessages(streaming)
+        val updated = conversation.mergeGenerationMessages(streaming)
 
         assertEquals(3, updated.messageNodes.size)
         assertEquals(streaming.lastIndex, updated.messageNodes.lastIndex)
-        // 变动节点即末位：其候选里能看到生成中的助手消息
+        // 变动节点即末位（新建）：其候选里能看到生成中的助手消息
         val target = updated.messageNodes[streaming.lastIndex]
         assertTrue(target.messages.any { it.role == MessageRole.ASSISTANT })
     }
@@ -58,7 +59,7 @@ class StreamCheckpointIndexTest {
         )
         // 重生成基线 = 0 until replyNodeIndex(=1)，随后流式追加新候选
         val streaming = listOf(msg("u0"), msg("a1-new", MessageRole.ASSISTANT))
-        val updated = conversation.updateCurrentMessages(streaming)
+        val updated = conversation.mergeGenerationMessages(streaming)
 
         val mutatedIndex = streaming.lastIndex
         assertEquals("变动节点索引 = 1", 1, mutatedIndex)
@@ -81,11 +82,11 @@ class StreamCheckpointIndexTest {
         val conversation = Conversation.ofId(id = Uuid.random()).copy(
             messageNodes = listOf(node(msg("u0"))),
         )
-        val first = conversation.updateCurrentMessages(
+        val first = conversation.mergeGenerationMessages(
             listOf(msg("u0"), msg("a1", MessageRole.ASSISTANT)),
         )
         val nodeIdAfterFirst = first.messageNodes[1].id
-        val second = first.updateCurrentMessages(
+        val second = first.mergeGenerationMessages(
             listOf(msg("u0"), msg("a1-longer", MessageRole.ASSISTANT)),
         )
         assertEquals(nodeIdAfterFirst, second.messageNodes[1].id)

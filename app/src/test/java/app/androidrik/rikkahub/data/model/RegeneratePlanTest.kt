@@ -10,24 +10,26 @@ import org.junit.Test
 import kotlin.uuid.Uuid
 
 /**
- * 重生成的纯计算（`docs/design/design-regenerate-scope.md`）。
+ * 重生成/剪枝的纯计算（`docs/design/design-regenerate-scope.md` +
+ * `docs/design/in-progress/design-conversation-tree-branching.md`）。
  *
  * 核心语义：**scope 与消息角色无关**——用户编辑后既可能想"只修正这一段"（THIS_ONLY）、
- * 也可能想"从这里重做"（INCLUDE_FOLLOWING），两种需求都正当，故不再按角色分派。
+ * 也可能想"从这里重做"（INCLUDE_FOLLOWING）。P1 起 scope B = 非破坏兄弟分支
+ * （激活叶子收回到分支点，旧子树原样保留），截断/撤销机制移除；删除 = 剪枝子树。
  */
 class RegeneratePlanTest {
 
     private fun msg(role: MessageRole, text: String): UIMessage =
         UIMessage(role = role, parts = listOf(UIMessagePart.Text(text)))
 
-    /** 构造 [user, assistant, user, assistant] 的四节点会话。 */
+    /** 构造 [user, assistant, user, assistant] 的四节点会话（parent 链完整，同生产加载态）。 */
     private fun conversation4(): Conversation {
         val nodes = listOf(
             msg(MessageRole.USER, "u1"),
             msg(MessageRole.ASSISTANT, "a1"),
             msg(MessageRole.USER, "u2"),
             msg(MessageRole.ASSISTANT, "a2"),
-        ).map { MessageNode.of(it) }
+        ).map { MessageNode.of(it) }.healMissingParents()
         return Conversation(id = Uuid.random(), assistantId = Uuid.random(), messageNodes = nodes)
     }
 
@@ -38,7 +40,7 @@ class RegeneratePlanTest {
 
     @Test
     fun `user message regenerates its reply (next node)`() {
-        // 用户消息重做的是「它的回复」→ 目标 = 下一节点（新回复作为该节点候选）
+        // 用户消息重做的是「它的回复」→ 目标 = 下一节点
         assertEquals(2, regenerateReplyNodeIndex(nodeIndex = 1, isUserMessage = true))
     }
 
@@ -47,7 +49,7 @@ class RegeneratePlanTest {
         assertEquals(1, regenerateReplyNodeIndex(nodeIndex = 1, isUserMessage = false))
     }
 
-    // ---- 基线范围（决定新回复落成候选而非新节点） ----
+    // ---- 基线范围（THIS_ONLY：新回复落成候选而非新节点） ----
 
     @Test
     fun `baseline excludes the target node so the reply becomes a candidate`() {
@@ -62,41 +64,16 @@ class RegeneratePlanTest {
         assertNull(regenerateBaselineRange(replyNodeIndex = 5, nodeCount = 4))
     }
 
-    // ---- 截断计划（scope B） ----
+    // ---- 下游计数（scope B 文案 / 编辑开关显示判据） ----
 
     @Test
-    fun `truncation removes strictly after the clicked message`() {
-        val conversation = conversation4()
-        // 点第 2 条（u1）→ 移除 a1/u2/a2，保留 u1 本身
-        val plan = conversation.truncationPlan(conversation.messageNodes[0].id.let { _ ->
-            conversation.messageNodes[0].currentMessage.id
-        })!!
-        assertEquals(1, plan.sizeAfterTruncation)
-        assertEquals(listOf("a1", "u2", "a2"), plan.removedNodes.map { textOf(it) })
-    }
-
-    @Test
-    fun `truncation on the last node is null (nothing to remove)`() {
-        val conversation = conversation4()
-        val lastId = conversation.messageNodes.last().currentMessage.id
-        assertNull("末条无下游 → 无破坏性、无需确认", conversation.truncationPlan(lastId))
-    }
-
-    @Test
-    fun `truncation on unknown message is null`() {
-        assertNull(conversation4().truncationPlan(Uuid.random()))
-    }
-
-    @Test
-    fun `following count and messages agree with truncation`() {
+    fun `following count and messages describe the downstream on the active path`() {
         val conversation = conversation4()
         val firstId = conversation.messageNodes[0].currentMessage.id
         assertEquals(3, conversation.followingCount(firstId))
         assertEquals(listOf("a1", "u2", "a2"), conversation.followingMessages(firstId).map { m ->
             (m.parts.first() as UIMessagePart.Text).text
         })
-        // 与截断计划同口径
-        assertEquals(conversation.followingCount(firstId), conversation.truncationPlan(firstId)!!.removedNodes.size)
     }
 
     @Test
@@ -107,97 +84,65 @@ class RegeneratePlanTest {
         assertNull(conversation.nodeIndexOfMessage(Uuid.random()))
     }
 
-    // ---- scope A 的关键性质：不删下游 ----
+    // ---- 剪枝（删除整节点 = 剪子树；设计稿 §四.2 删除语义） ----
 
     @Test
-    fun `scope A never truncates (no plan is applied)`() {
-        // THIS_ONLY 不调用 truncationPlan —— 由调用方决定；这里固化「计划本身只描述 B 的破坏」
+    fun `prune removes the target node with all descendants`() {
         val conversation = conversation4()
-        val plan = conversation.truncationPlan(conversation.messageNodes[1].currentMessage.id)!!
-        // 即使对助手消息（scope A 常见目标）也存在截断计划，说明"是否截断"由 scope 参数决定、
-        // 与角色无关——这正是本设计要的性质
-        assertEquals(2, plan.sizeAfterTruncation)
-        assertEquals(2, plan.removedNodes.size)
-    }
-
-    // ---- 撤销还原 ----
-
-    @Test
-    fun `restore brings back removed tail when nothing was generated`() {
-        // 截断后未生成 → 还原 = 原样
-        val conversation = conversation4()
-        val firstId = conversation.messageNodes[0].currentMessage.id
-        val plan = conversation.truncationPlan(firstId)!!
-        val afterTruncation = conversation.messageNodes.take(plan.sizeAfterTruncation)
-
-        val restored = restoreAfterTruncation(afterTruncation, plan)
-        assertEquals(conversation.messageNodes.map { it.id }, restored.map { it.id })
+        val pruned = conversation.pruneSubtree(conversation.messageNodes[1].id)!!
+        assertEquals("子树（a1 及其后代）整体移除", listOf("u1"), pruned.messageNodes.map { textOf(it) })
     }
 
     @Test
-    fun `restore discards nodes generated after truncation`() {
-        // 截断后已生成新回复（新节点）→ 撤销必须一并撤掉（撤销语义 = 回到截断前）
-        val conversation = conversation4()
-        val firstId = conversation.messageNodes[0].currentMessage.id
-        val plan = conversation.truncationPlan(firstId)!!
+    fun `prune of unknown node is null`() {
+        assertNull(conversation4().pruneSubtree(Uuid.random()))
+    }
 
-        val afterTruncation = conversation.messageNodes.take(plan.sizeAfterTruncation)
-        val withNewReply = afterTruncation + MessageNode.of(msg(MessageRole.ASSISTANT, "a1-new"))
-
-        val restored = restoreAfterTruncation(withNewReply, plan)
-        assertEquals(
-            "新生成的回复应被撤掉、尾巴应复原",
-            listOf("u1", "a1", "u2", "a2"),
-            restored.map { textOf(it) },
+    @Test
+    fun `prune retracts active leaf to the pruned node parent`() {
+        val base = conversation4()
+        val conversation = base.copy(activeLeafNodeId = base.messageNodes.last().id)
+        val replyNode = conversation.messageNodes[1]
+        val pruned = conversation.pruneSubtree(replyNode.id)!!
+        assertEquals("叶子收回被剪节点的父（u1 节点）", conversation.messageNodes[0].id, pruned.activeLeafNodeId)
+    }
+    @Test
+    fun `prune keeps active leaf when it lives outside the pruned subtree`() {
+        // 两条独立时间线：root → (A 链), (B 链)；激活叶子在 B，剪 A 的后代不影响叶子
+        val root = MessageNode.of(msg(MessageRole.USER, "root"))
+        val a1 = MessageNode.of(msg(MessageRole.ASSISTANT, "a1")).copy(parentId = root.id)
+        val a2 = MessageNode.of(msg(MessageRole.USER, "a2")).copy(parentId = a1.id)
+        val b1 = MessageNode.of(msg(MessageRole.ASSISTANT, "b1")).copy(parentId = root.id)
+        val conversation = Conversation(
+            id = Uuid.random(),
+            assistantId = Uuid.random(),
+            messageNodes = listOf(root, a1, a2, b1),
+            activeLeafNodeId = b1.id,
         )
-        assertTrue("新回复不应残留", restored.none { textOf(it) == "a1-new" })
+        val pruned = conversation.pruneSubtree(a1.id)!!
+        assertEquals(listOf("root", "b1"), pruned.messageNodes.map { textOf(it) })
+        assertEquals("off-path 叶子不动", b1.id, pruned.activeLeafNodeId)
     }
 
     @Test
-    fun `restore of half-written reply also discards it`() {
-        // #1812 半截草稿同样是"截断后新产生的节点"，撤销应一并撤掉
-        val conversation = conversation4()
-        val firstId = conversation.messageNodes[0].currentMessage.id
-        val plan = conversation.truncationPlan(firstId)!!
-        val afterTruncation = conversation.messageNodes.take(plan.sizeAfterTruncation)
-        val withHalfReply = afterTruncation + MessageNode.of(msg(MessageRole.ASSISTANT, "half..."))
-
-        val restored = restoreAfterTruncation(withHalfReply, plan)
-        assertEquals(4, restored.size)
-        assertTrue(restored.none { textOf(it) == "half..." })
-    }
-
-    // ---- 截断锚点（树形分支 P0：撤销按节点身份定位） ----
-
-    @Test
-    fun `truncation plan carries the anchor node id`() {
-        val conversation = conversation4()
-        val firstId = conversation.messageNodes[0].currentMessage.id
-        val plan = conversation.truncationPlan(firstId)!!
-        assertEquals(conversation.messageNodes[0].id, plan.anchorNodeId)
-    }
-
-    @Test
-    fun `restore locates the anchor by id even when prefix length drifted`() {
-        val conversation = conversation4()
-        val firstId = conversation.messageNodes[0].currentMessage.id
-        val plan = conversation.truncationPlan(firstId)!!
-        // 截断后未生成，但前缀里多了一个无关节点（模拟中间态漂移）：
-        // 锚点 id 定位仍回到「锚点为止」，数量语义会错 take 到 2
-        val drifted = listOf(MessageNode.of(msg(MessageRole.USER, "interloper"))) +
-            conversation.messageNodes.take(plan.sizeAfterTruncation)
-        val restored = restoreAfterTruncation(drifted, plan)
-        assertEquals(
-            listOf("interloper", "u1", "a1", "u2", "a2"),
-            restored.map { textOf(it) },
+    fun `prune of a mid-branch node retracts leaf to the shared parent`() {
+        val root = MessageNode.of(msg(MessageRole.USER, "root"))
+        val a1 = MessageNode.of(msg(MessageRole.ASSISTANT, "a1")).copy(parentId = root.id)
+        val b1 = MessageNode.of(msg(MessageRole.ASSISTANT, "b1")).copy(parentId = root.id)
+        val conversation = Conversation(
+            id = Uuid.random(),
+            assistantId = Uuid.random(),
+            messageNodes = listOf(root, a1, b1),
+            activeLeafNodeId = a1.id,
         )
+        val pruned = conversation.pruneSubtree(a1.id)!!
+        assertEquals(listOf("root", "b1"), pruned.messageNodes.map { textOf(it) })
+        assertEquals("被剪节点非根 → 叶子收回共享父（root），另一分支原样保留", root.id, pruned.activeLeafNodeId)
     }
 
-    // ---- 多分支（编辑/重生成产生的候选） ----
-
     @Test
-    fun `truncation keeps the clicked node with all its candidates`() {
-        // 节点内有多个候选（编辑/重生成过）时，截断只按节点粒度、不动该节点的候选
+    fun `prune keeps all candidates of the clicked node semantics via subtree identity`() {
+        // 多候选节点：剪枝按节点粒度（节点与其后代整棵走），不动候选粒度——候选删除走 deleteMessage 分支
         val multi = MessageNode(
             messages = listOf(
                 msg(MessageRole.USER, "u1"),
@@ -205,17 +150,13 @@ class RegeneratePlanTest {
             ),
             selectIndex = 1,
         )
+        val child = MessageNode.of(msg(MessageRole.ASSISTANT, "a1")).copy(parentId = multi.id)
         val conversation = Conversation(
             id = Uuid.random(),
             assistantId = Uuid.random(),
-            messageNodes = listOf(multi, MessageNode.of(msg(MessageRole.ASSISTANT, "a1"))),
+            messageNodes = listOf(multi, child),
         )
-        val plan = conversation.truncationPlan(multi.currentMessage.id)!!
-        assertEquals(1, plan.sizeAfterTruncation)
-        assertEquals(1, plan.removedNodes.size)
-        // 还原后候选仍在（非破坏性前提）
-        val restored = restoreAfterTruncation(conversation.messageNodes.take(1), plan)
-        assertEquals(2, restored.size)
-        assertEquals(2, restored[0].messages.size)
+        val pruned = conversation.pruneSubtree(multi.id)!!
+        assertTrue(pruned.messageNodes.isEmpty())
     }
 }

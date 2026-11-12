@@ -449,23 +449,11 @@ private fun ChatPageContent(
     val workspaceRepository: WorkspaceRepository = koinInject()
 
     /**
-     * 执行重生成；scope B 发生截断时弹「撤销」（snackbar）。
-     *
-     * 撤销用现有 toaster（sonner）的 action 能力，**不需要替换页面 scaffold**。
-     * 撤销覆盖范围含"已开始生成"——[app.androidrik.rikkahub.service.ChatService.undoRegenerateTruncation]
-     * 会先取消在飞生成再还原（见 `docs/design/design-regenerate-scope.md` §五）。
+     * 执行重生成。scope B = **非破坏分支**（树形分支 P1）：旧时间线保留、新回复开新子树，
+     * 数据零丢失 ⇒ 无需撤销（撤销机制已随 P1 移除，见设计稿 §四.3）。
      */
     fun doRegenerate(message: UIMessage, regenerateScope: ChatService.RegenerateScope) {
-        vm.regenerateAtMessage(message, regenerateScope) { truncation ->
-            toaster.show(
-                message = resources.getString(R.string.regenerate_truncated, truncation.removedNodes.size),
-                action = TextToastAction(resources.getString(R.string.regenerate_truncated_undo)) {
-                    vm.undoRegenerateTruncation(truncation)
-                },
-                type = ToastType.Info,
-                duration = 6.seconds,
-            )
-        }
+        vm.regenerateAtMessage(message, regenerateScope)
     }
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberRecoverableHazeState()
@@ -503,6 +491,12 @@ private fun ChatPageContent(
     var regenerateScopeFor by remember { mutableStateOf<UIMessage?>(null) }
     // 「导出后继续」：导出下游消息的 sheet；关闭后执行 scope B
     var exportThenRegenerateFor by remember { mutableStateOf<UIMessage?>(null) }
+    // 剪枝确认：删除整节点 = 剪掉其子树（含全部下游，不可恢复），有下游时先确认（树形分支 P1）
+    var deleteConfirmFor by remember { mutableStateOf<UIMessage?>(null) }
+    // 编辑「保留后续」开关（§四.4）：开 = 候选追加（下游共享，默认）；关 = 纯分支（下游归旧版本）
+    var editKeepFollowing by rememberSaveable { mutableStateOf(true) }
+    val showEditKeepFollowing = inputState.isEditing() &&
+        (inputState.editingMessage?.let { conversation.followingCount(it) } ?: 0) > 0
 
     val completionProviders = remember(assistant.workspaceId, conversation.workspaceCwd, workspaceRepository) {
         assistant.workspaceId?.let { workspaceId ->
@@ -612,6 +606,7 @@ private fun ChatPageContent(
                             vm.handleMessageEdit(
                                 parts = inputState.getContents(),
                                 messageId = inputState.editingMessage!!,
+                                keepFollowing = editKeepFollowing,
                             )
                         } else {
                             vm.handleMessageSend(
@@ -629,6 +624,7 @@ private fun ChatPageContent(
                             vm.handleMessageEdit(
                                 parts = inputState.getContents(),
                                 messageId = inputState.editingMessage!!,
+                                keepFollowing = editKeepFollowing,
                             )
                         } else {
                             vm.handleMessageSend(
@@ -696,6 +692,10 @@ private fun ChatPageContent(
                     // 该消息自身的注解（ChatService.editMessage 保留），不经过这里。
                     pendingQuote = inputState.pendingQuote.takeUnless { inputState.isEditing() },
                     onCancelQuote = { inputState.pendingQuote = null },
+                    // 编辑「保留后续」开关（树形分支 P1 §四.4）：仅编辑有下游的消息时显示
+                    editKeepFollowing = editKeepFollowing,
+                    onEditKeepFollowingChange = { editKeepFollowing = it },
+                    showEditKeepFollowing = showEditKeepFollowing,
                 )
                 }
             },
@@ -729,12 +729,14 @@ private fun ChatPageContent(
                     vm.continueMessage()
                 },
                 onEdit = {
+                    editKeepFollowing = true // 每次进入编辑默认「保留后续」（最小惊讶）
                     inputState.editingMessage = it.id
                     inputState.setContents(it.parts)
                 },
                 onEditSegment = { message, textPartIndex ->
                     // 多文本段消息（工具轮续跑形状）按段编辑：装的是被选中那段文本，
                     // 提交时 mergeEditedParts 只替换该段、原样保留 Tool/Reasoning。
+                    editKeepFollowing = true
                     inputState.editingMessage = message.id
                     inputState.setContents(message.parts, textPartIndex)
                 },
@@ -753,6 +755,9 @@ private fun ChatPageContent(
                 onDelete = {
                     if (loadingJob != null) {
                         vm.showDeleteBlockedWhileGeneratingError()
+                    } else if (conversation.followingCount(it.id) > 0) {
+                        // 删整节点 = 剪枝子树（下游一并消失）：先确认
+                        deleteConfirmFor = it
                     } else {
                         vm.deleteMessage(it)
                     }
@@ -772,6 +777,14 @@ private fun ChatPageContent(
                         // 不再用回调闭包里的 `conversation` 快照整对象替换。
                         vm.updateMessageNode(newNode)
                         vm.saveConversationAsync()
+                    }
+                },
+                onSwitchBranch = { nodeId ->
+                    // 分支（时间线）切换：改 activeLeafNodeId，整条下游换新
+                    if (loadingJob != null) {
+                        vm.showEditBlockedWhileGeneratingError()
+                    } else {
+                        vm.switchMessageBranch(nodeId)
                     }
                 },
                 onClickSuggestion = { suggestion ->
@@ -935,6 +948,35 @@ private fun ChatPageContent(
                     // 先打开导出（只含将被移除的下游）；导出成功后由 onExported 续作移除（取消则不续作）
                     exportThenRegenerateFor = message
                     showExportSheet = true
+                },
+            )
+        }
+
+        // 剪枝确认：删除整节点会连子树（全部下游）一起移除且不可恢复
+        deleteConfirmFor?.let { message ->
+            AlertDialog(
+                onDismissRequest = { deleteConfirmFor = null },
+                title = { Text(stringResource(R.string.chat_page_delete)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.chat_delete_branch_confirm,
+                            conversation.followingCount(message.id),
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        deleteConfirmFor = null
+                        vm.deleteMessage(message)
+                    }) {
+                        Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { deleteConfirmFor = null }) {
+                        Text(stringResource(R.string.cancel))
+                    }
                 },
             )
         }

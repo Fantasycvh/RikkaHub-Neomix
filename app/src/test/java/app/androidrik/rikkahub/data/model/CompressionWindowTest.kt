@@ -30,7 +30,7 @@ class CompressionWindowTest {
         Conversation(
             id = Uuid.random(),
             assistantId = Uuid.random(),
-            messageNodes = nodes,
+            messageNodes = nodes.healMissingParents(),
             compressionSummaries = checkpoints,
         )
 
@@ -164,7 +164,7 @@ class CompressionWindowTest {
 
     @Test
     fun `editing a node within area invalidates checkpoint`() {
-        // 编辑 = 节点候选追加新消息并选中（updateCurrentMessages 语义）
+        // 编辑 = 节点候选追加新消息并选中（mergeGenerationMessages 候选追加语义）
         val nodes = listOf(node("a"), node("b"), node("c"))
         val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 1)
         val edited = conversation.copy(
@@ -193,24 +193,21 @@ class CompressionWindowTest {
     }
 
     @Test
-    fun `scope B truncation invalidates checkpoint and undo restores it`() {
-        // 交叉用例：重生成 scope B（截断下游）后检查点必须失效；撤销还原后应重新有效
-        // （指纹是纯函数 → 失效可逆，见 docs/design/design-regenerate-scope.md §七）
+    fun `branching away invalidates checkpoint and switching back restores it`() {
+        // 树形分支 P1：scope B = 非破坏分支（激活叶子收回到分支点）。边界节点不在激活路径上
+        // ⇒ 检查点失效回退全量；切回旧时间线叶子 ⇒ 可逆恢复（边界节点回到路径上）
         val nodes = listOf(node("a"), node("b"), node("c"), node("d"))
         val (conversation, _) = conversationWithFingerprint(nodes, boundaryIndex = 2)
         assertNotNull("前置：检查点应有效", conversation.activeCompression())
 
-        // 点第 2 条 → scope B 截断掉 c/d
-        val clickedId = conversation.messageNodes[1].currentMessage.id
-        val plan = conversation.truncationPlan(clickedId)!!
-        val truncated = conversation.copy(messageNodes = conversation.messageNodes.take(plan.sizeAfterTruncation))
-        assertEquals(2, truncated.messageNodes.size)
-        assertNull("截断掉边界节点后检查点必须失效", truncated.activeCompression())
+        // scope B：叶子收回到分支点（node1）→ 边界节点不在激活路径
+        val branched = conversation.copy(activeLeafNodeId = conversation.messageNodes[1].id)
+        assertNull("开新时间线后旧边界不在路径上，检查点必须失效", branched.activeCompression())
 
-        // 撤销还原 → 检查点重新有效（可逆）
-        val restored = truncated.copy(messageNodes = restoreAfterTruncation(truncated.messageNodes, plan))
-        assertEquals(4, restored.messageNodes.size)
-        assertNotNull("撤销还原后检查点应重新有效（可逆）", restored.activeCompression())
+        // 切回旧时间线（叶子指回旧分支叶）→ 检查点重新有效（可逆，数据未删）
+        val switchedBack = branched.copy(activeLeafNodeId = conversation.messageNodes.last().id)
+        assertEquals(4, switchedBack.messageNodes.size)
+        assertNotNull("切回旧时间线后检查点应重新有效", switchedBack.activeCompression())
     }
 
     @Test

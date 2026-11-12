@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import app.androidrik.workspace.WorkspaceTaskTerminal
 import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.model.mergeGenerationMessages
+import app.androidrik.rikkahub.data.model.pathNodes
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.entity.ExternalNoticeEntity
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -218,10 +219,19 @@ internal class WorkspaceNoticeInbox(
             if (messages.isNotEmpty() && estimateTokenCount(messages.map { message -> message.copy(parts = message.parts.map { part ->
                 if (part is UIMessagePart.Notice) UIMessagePart.Text(part.text) else part
             }) }) + 4096 >= remainingTokens(session)) return@withContext
-            val updated = original.copy(
-                messageNodes = original.messageNodes + messages.map { app.androidrik.rikkahub.data.model.MessageNode(messages = listOf(it)) },
-                chatSuggestions = if (messages.isEmpty()) original.chatSuggestions else emptyList(),
-            )
+            val updated = if (messages.isEmpty()) original else {
+                // 树形分支 P1：notice 链挂激活叶子之子并推进叶子（保持「追加到路径尾」的可见语义）
+                var parent = original.pathNodes().lastOrNull()?.id
+                val added = messages.map { message ->
+                    app.androidrik.rikkahub.data.model.MessageNode(parentId = parent, messages = listOf(message))
+                        .also { parent = it.id }
+                }
+                original.copy(
+                    messageNodes = original.messageNodes + added,
+                    activeLeafNodeId = added.last().id,
+                    chatSuggestions = emptyList(),
+                )
+            }
             session.state.value = updated
             try {
                 withContext(NonCancellable) {

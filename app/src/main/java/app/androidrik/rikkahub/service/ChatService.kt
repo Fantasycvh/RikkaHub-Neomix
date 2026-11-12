@@ -147,12 +147,11 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.AssistantAffectScope
 import app.androidrik.rikkahub.data.model.MessageNode
-import app.androidrik.rikkahub.data.model.TruncationPlan
 import app.androidrik.rikkahub.data.model.nodeIndexOfMessage
 import app.androidrik.rikkahub.data.model.regenerateBaselineRange
 import app.androidrik.rikkahub.data.model.regenerateReplyNodeIndex
-import app.androidrik.rikkahub.data.model.restoreAfterTruncation
-import app.androidrik.rikkahub.data.model.truncationPlan
+import app.androidrik.rikkahub.data.model.pruneSubtree
+import app.androidrik.rikkahub.data.model.latestLeafIdOfSubtree
 import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.data.model.toMessageNode
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -939,15 +938,19 @@ class ChatService(
                     ?: settings.getCurrentAssistant()
                 val processedContent = preprocessUserInputParts(content, assistant)
 
-                // 添加消息到列表
+                // 添加消息：挂到**激活叶子**之下（树形分支 P1——不是列表尾，而是路径尾），
+                // 并把激活叶子推进到新节点（路径延伸）
+                val pathTailId = currentConversation.pathNodes().lastOrNull()?.id
+                val userNode = UIMessage(
+                    role = MessageRole.USER,
+                    isSynthetic = queued.annotations.any { it is UIMessageAnnotation.ScheduledTrigger },
+                    parts = processedContent,
+                    // #1906：引用随队列项一起落地成注解（展开成请求文本在 QuoteTransformer）
+                    annotations = queued.annotations,
+                ).toMessageNode().copy(parentId = pathTailId)
                 val newConversation = currentConversation.copy(
-                    messageNodes = currentConversation.messageNodes + UIMessage(
-                        role = MessageRole.USER,
-                        isSynthetic = queued.annotations.any { it is UIMessageAnnotation.ScheduledTrigger },
-                        parts = processedContent,
-                        // #1906：引用随队列项一起落地成注解（展开成请求文本在 QuoteTransformer）
-                        annotations = queued.annotations,
-                    ).toMessageNode(),
+                    messageNodes = currentConversation.messageNodes + userNode,
+                    activeLeafNodeId = userNode.id,
                 )
                 saveConversation(conversationId, newConversation)
                 session.submittingMessage = null
@@ -1081,7 +1084,10 @@ class ChatService(
         /** 仅本条与对应回复：不删下游。**非破坏**，无需确认。 */
         THIS_ONLY,
 
-        /** 含后续所有对话：先截断下游再重生成。**破坏**，须确认（UI 层负责）。 */
+        /**
+         * 含后续所有对话：**非破坏分支**（树形分支 P1）——旧回复与下游保留在旧兄弟子树，
+         * 新回复开新时间线。数据零丢失，无需确认（确认弹窗降级为告知）。
+         */
         INCLUDE_FOLLOWING,
     }
 
@@ -1089,19 +1095,18 @@ class ChatService(
      * 重生成消息。
      *
      * 目标节点（新回复归属的节点）：**用户消息重做的是它的回复**（下一个节点），
-     * **助手消息重做的是自身**——两者的共同点是"基线不含目标节点"，故新回复总是作为
-     * 该节点的**候选**追加（而非新建节点），与 [handleMessageComplete] 的索引写回一致。
+     * **助手消息重做的是自身**——两者的共同点是"基线不含目标节点"。
      *
-     * @param scope [RegenerateScope.THIS_ONLY] 不删下游；[RegenerateScope.INCLUDE_FOLLOWING] 先截断。
-     *   默认 [RegenerateScope.INCLUDE_FOLLOWING] 以**保持既有行为**（web/API 调用方不受影响）；
-     *   UI 总是显式传入用户所选 scope。
-     * @param onTruncated 仅在发生截断时回调（scope B 且有尾部），供 UI 弹「撤销」。
+     * @param scope [RegenerateScope.THIS_ONLY] 新回复落成目标节点的**候选**（下游共享）；
+     *   [RegenerateScope.INCLUDE_FOLLOWING] **非破坏分支**（树形分支 P1，设计稿 §四.2）：
+     *   激活叶子收回到分支点，新回复经 [mergeGenerationMessages] 开出新子树——旧回复与其下游
+     *   留在旧兄弟子树，数据零丢失（因此无需警告确认、无需撤销机制）。
+     *   默认 [RegenerateScope.INCLUDE_FOLLOWING]（web/API 调用方保持默认；UI 总是显式传入）。
      */
     fun regenerateAtMessage(
         conversationId: Uuid,
         message: UIMessage,
         scope: RegenerateScope = RegenerateScope.INCLUDE_FOLLOWING,
-        onTruncated: ((TruncationPlan) -> Unit)? = null,
     ) {
         val session = getOrCreateSession(conversationId)
         session.getJob()?.cancel()
@@ -1123,20 +1128,29 @@ class ChatService(
                     isUserMessage = message.role == MessageRole.USER,
                 )
 
-                if (scope == RegenerateScope.INCLUDE_FOLLOWING) {
-                    conversation.truncationPlan(message.id)?.let { plan ->
-                        saveConversation(
-                            conversationId,
-                            conversation.copy(messageNodes = conversation.messageNodes.take(plan.sizeAfterTruncation)),
-                        )
-                        onTruncated?.invoke(plan)
-                    }
+                // scope B：把激活叶子收回到分支点（路径上目标节点的前一个）。
+                // 之后基线 = 收短后的全量路径，流式新回复经 id 合并超出路径尾部 →
+                // 新建节点挂到分支点之下 = 旧回复的兄弟，旧子树原样保留。
+                // replyNodeIndex == 0（助手消息在根的极角落）无法表达「空路径」，
+                // 退化为候选追加（下游共享，数据不丢；见设计稿实施笔记）。
+                val branchRoot = scope == RegenerateScope.INCLUDE_FOLLOWING && replyNodeIndex > 0
+                if (branchRoot) {
+                    val branchParentId = conversation.pathNodes().getOrNull(replyNodeIndex - 1)?.id
+                    saveConversation(conversationId, conversation.copy(activeLeafNodeId = branchParentId))
                 }
 
-                // 基线不含目标节点本身 → 新回复作为该节点的候选追加。
+                // THIS_ONLY：基线不含目标节点 → 新回复作为该节点的候选追加；
+                // scope B（已收短路径）：全量基线（允许自动压缩），新回复开新子树。
                 handleMessageComplete(
                     conversationId,
-                    messageRange = regenerateBaselineRange(replyNodeIndex, conversation.messageNodes.size),
+                    messageRange = if (branchRoot) {
+                        null
+                    } else {
+                        regenerateBaselineRange(
+                            replyNodeIndex,
+                            getConversationFlow(conversationId).value.pathNodes().size,
+                        )
+                    },
                 )
 
                 _generationDoneFlow.emit(conversationId)
@@ -1189,42 +1203,6 @@ class ChatService(
         }
 
         session.setJob(job)
-    }
-
-    /**
-     * 撤销一次 [RegenerateScope.INCLUDE_FOLLOWING] 的截断（snackbar 撤销）。
-     *
-     * 步骤：**先取消在飞生成并等待结束**（避免还原后又追加），再 `take(sizeAfterTruncation)`
-     * 去掉「截断后新产生的节点」、拼回被移除的尾巴。
-     *
-     * 为什么用 `take` 而非直接追加：截断后生成可能已产出新回复（甚至 #1812 半截草稿），
-     * 而**撤销的语义是「回到截断前」**，故这些新内容一并撤掉是正确行为。
-     */
-    fun undoRegenerateTruncation(
-        conversationId: Uuid,
-        plan: TruncationPlan,
-    ) {
-        appScope.launch {
-            runCatching {
-                // persistStoppedContent=false：本函数的语义是「回到截断前」，下面的
-                // saveConversation(restored) 才是权威结果；让 stopGeneration 先落一次
-                // 半截内容纯属多余写入。
-                stopGeneration(conversationId, persistStoppedContent = false)
-                val current = getConversationFlow(conversationId).value
-                val restored = current.copy(
-                    messageNodes = restoreAfterTruncation(current.messageNodes, plan),
-                )
-                // 诊断：撤销是破坏性操作且难以从 UI 观察，记一行便于排查/验证
-                Log.i(
-                    TAG,
-                    "undoRegenerateTruncation: nodes ${current.messageNodes.size} -> ${restored.messageNodes.size} " +
-                        "(restored ${plan.removedNodes.size} removed)",
-                )
-                saveConversation(conversationId, restored)
-            }.onFailure {
-                addError(it, conversationId, title = context.getString(R.string.error_title_regenerate_message))
-            }
-        }
     }
 
     // ---- 处理工具调用审批 ----
@@ -3109,10 +3087,20 @@ class ChatService(
 
     // ---- 消息操作 ----
 
+    /**
+     * 编辑消息（树形分支 P1，设计稿 §四.4）。
+     *
+     * @param keepFollowing 「保留后续」开关（仅激活路径上有下游时 UI 才显示）：
+     *   **true（默认）** = 现 `editMessage` 语义，编辑落成所在节点的**候选**追加，下游共享（容忍错配）；
+     *   **false** = **纯分支**——新建被编辑节点的**兄弟节点**承载新版本并切换激活叶子过去，
+     *   下游归旧版本（独立时间线）。与 scope B 共用「兄弟化」原语；下游计数为 0 时退化为候选追加
+     *   （叶子编辑无下游可保留，两种路由等价）。
+     */
     suspend fun editMessage(
         conversationId: Uuid,
         messageId: Uuid,
-        parts: List<UIMessagePart>
+        parts: List<UIMessagePart>,
+        keepFollowing: Boolean = true,
     ) {
         if (parts.isEmptyInputMessage()) return
 
@@ -3121,42 +3109,65 @@ class ChatService(
         val assistant = settings.getAssistantById(currentConversation.assistantId)
             ?: settings.getCurrentAssistant()
         val processedParts = preprocessUserInputParts(parts, assistant)
-        var edited = false
 
-        val updatedNodes = currentConversation.messageNodes.mapIndexed { index, node ->
-            if (!node.messages.any { it.id == messageId }) {
-                return@mapIndexed node
-            }
-            edited = true
+        val targetNode = currentConversation.messageNodes.firstOrNull { node ->
+            node.messages.any { it.id == messageId }
+        } ?: return
 
-            // 被编辑的那条（而非 node.currentMessage——编辑候选时别串到别的分支）
-            val editedSource = node.messages.find { it.id == messageId }
-            val editedMessage = UIMessage(
-                role = node.role,
-                parts = processedParts,
-                annotations = editedSource?.annotations.orEmpty(),
-            ).let { base ->
-                // #1991 现象 B：编辑只改**内容**，不改**来源**——新分支必须继承「谁生成的」，
-                // 否则切到该分支时模型名/图标全空（上游实测，fork 同款）。
-                // 刻意**不继承** usage / finishedAt：它们描述的是被替换掉的那次生成，
-                // 套在用户手改后的文本上会把「手动编辑」误报成模型产出。
-                editedSource?.let { source ->
-                    base.copy(
-                        modelId = source.modelId,
-                        modelNameSnapshot = source.modelNameSnapshot,
-                        providerNameSnapshot = source.providerNameSnapshot,
-                        createdAt = source.createdAt,
-                    )
-                } ?: base
-            }
-
-            node.copy(
-                messages = node.messages + editedMessage,
-                selectIndex = node.messages.size
-            )
+        // 被编辑的那条（而非 node.currentMessage——编辑候选时别串到别的分支）
+        val editedSource = targetNode.messages.find { it.id == messageId }
+        val editedMessage = UIMessage(
+            role = targetNode.role,
+            parts = processedParts,
+            annotations = editedSource?.annotations.orEmpty(),
+        ).let { base ->
+            // #1991 现象 B：编辑只改**内容**，不改**来源**——新分支必须继承「谁生成的」，
+            // 否则切到该分支时模型名/图标全空（上游实测，fork 同款）。
+            // 刻意**不继承** usage / finishedAt：它们描述的是被替换掉的那次生成，
+            // 套在用户手改后的文本上会把「手动编辑」误报成模型产出。
+            editedSource?.let { source ->
+                base.copy(
+                    modelId = source.modelId,
+                    modelNameSnapshot = source.modelNameSnapshot,
+                    providerNameSnapshot = source.providerNameSnapshot,
+                    createdAt = source.createdAt,
+                )
+            } ?: base
         }
 
-        if (!edited) return
+        val hasFollowing = currentConversation.nodeIndexOfMessage(messageId)
+            ?.let { it < currentConversation.pathNodes().lastIndex } == true
+        // 纯分支需建兄弟节点；根节点无父、兄弟根不可表达（会破坏 heal 的「null 父 = 遗留线性」
+        // 前提），故在根处退化为候选追加（数据不丢，下游共享——同 scope B 的根角落，见实施笔记）
+        if (!keepFollowing && hasFollowing && targetNode.parentId != null) {
+            // 纯分支：兄弟节点承载新版本，激活叶子切过去；旧节点与其下游原样保留
+            val branchNode = MessageNode(
+                id = Uuid.random(),
+                parentId = targetNode.parentId,
+                messages = listOf(editedMessage),
+                selectIndex = 0,
+            )
+            saveConversation(
+                conversationId,
+                currentConversation.copy(
+                    messageNodes = currentConversation.messageNodes + branchNode,
+                    activeLeafNodeId = branchNode.id,
+                ),
+            )
+            return
+        }
+
+        // 候选追加（保留后续 / 无下游）：原语义逐字节不变
+        val updatedNodes = currentConversation.messageNodes.map { node ->
+            if (node.id != targetNode.id) {
+                node
+            } else {
+                node.copy(
+                    messages = node.messages + editedMessage,
+                    selectIndex = node.messages.size
+                )
+            }
+        }
 
         // 编辑区域内的消息后，检查点由 activeCompression 的指纹校验自动失效（无需显式处理）
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
@@ -3167,18 +3178,24 @@ class ChatService(
         messageId: Uuid
     ): Conversation {
         val currentConversation = getConversationFlow(conversationId).value
-        val targetNodeIndex = currentConversation.messageNodes.indexOfFirst { node ->
+        // 分叉复制的是**激活路径前缀**（树形分支 P1：列表序 = 创建序 ≠ 路径序，
+        // 用列表前缀会把 off-path 兄弟子树也带进新会话）
+        val path = currentConversation.pathNodes()
+        val targetNodeIndex = path.indexOfFirst { node ->
             node.messages.any { it.id == messageId }
         }
         if (targetNodeIndex == -1) {
             throw NotFoundException("Message not found")
         }
 
-        val copiedNodes = currentConversation.messageNodes
+        val copiedNodes = path
             .subList(0, targetNodeIndex + 1)
             .map { node ->
                 node.copy(
                     id = Uuid.random(),
+                    // 新会话是独立线性链：旧父 id 在新会话中不存在（悬空），清空后
+                    // 由 healMissingParents 按序补链（与迁移/导入同口径）
+                    parentId = null,
                     messages = node.messages.map { message ->
                         message.copy(
                             parts = message.parts.map { part ->
@@ -3228,6 +3245,28 @@ class ChatService(
         workspaceNoticeInbox.request()
     }
 
+    /**
+     * 分支切换（时间线切换，树形分支 P1 设计稿 §五.1/§7.2）：把激活叶子切到 [nodeId]
+     * 子树的「最近更新叶子」（沿后代消息 createdAt 取 max，无额外状态）——整条下游随之换新。
+     * 候选选择仍走 [selectMessageNode]（selectIndex，同一节点内）。
+     */
+    suspend fun switchMessageBranch(
+        conversationId: Uuid,
+        nodeId: Uuid,
+    ) {
+        val currentConversation = getConversationFlow(conversationId).value
+        val node = currentConversation.messageNodes.firstOrNull { it.id == nodeId }
+            ?: throw NotFoundException("Message node not found")
+
+        val leafId = currentConversation.messageNodes.latestLeafIdOfSubtree(node.id) ?: node.id
+        if (currentConversation.activeLeafNodeId == leafId) {
+            return
+        }
+
+        saveConversation(conversationId, currentConversation.copy(activeLeafNodeId = leafId))
+        workspaceNoticeInbox.request()
+    }
+
     suspend fun deleteMessage(
         conversationId: Uuid,
         messageId: Uuid,
@@ -3254,35 +3293,35 @@ class ChatService(
         deleteMessage(conversationId, message.id, failIfMissing = false)
     }
 
+    /**
+     * 消息删除（树形分支 P1，设计稿 §四.2 删除语义）：
+     * - 节点还有其它候选 → 只删该候选（selectIndex 夹取）；
+     * - 候选删空 → **剪枝子树**（该节点 + 全部后代移除，破坏性——UI 层负责确认）。
+     *   激活叶子在子树内时由 [pruneSubtree] 收回（父节点/剩余森林最新叶）。
+     */
     private fun buildConversationAfterMessageDelete(
         conversation: Conversation,
         messageId: Uuid,
     ): Conversation? {
-        val targetNodeIndex = conversation.messageNodes.indexOfFirst { node ->
+        val targetNode = conversation.messageNodes.firstOrNull { node ->
             node.messages.any { it.id == messageId }
-        }
-        if (targetNodeIndex == -1) {
-            return null
-        }
+        } ?: return null
 
-        val updatedNodes = conversation.messageNodes.mapIndexedNotNull { index, node ->
-            if (index != targetNodeIndex) {
-                return@mapIndexedNotNull node
-            }
-
-            val nextMessages = node.messages.filterNot { it.id == messageId }
-            if (nextMessages.isEmpty()) {
-                return@mapIndexedNotNull null
-            }
-
-            val nextSelectIndex = node.selectIndex.coerceAtMost(nextMessages.lastIndex)
-            node.copy(
-                messages = nextMessages,
-                selectIndex = nextSelectIndex,
+        val nextMessages = targetNode.messages.filterNot { it.id == messageId }
+        if (nextMessages.isNotEmpty()) {
+            val nextSelectIndex = targetNode.selectIndex.coerceAtMost(nextMessages.lastIndex)
+            return conversation.copy(
+                messageNodes = conversation.messageNodes.map { node ->
+                    if (node.id == targetNode.id) {
+                        node.copy(messages = nextMessages, selectIndex = nextSelectIndex)
+                    } else {
+                        node
+                    }
+                }
             )
         }
 
-        return conversation.copy(messageNodes = updatedNodes)
+        return conversation.pruneSubtree(targetNode.id)
     }
 
     private fun UIMessagePart.copyWithForkedFileUrl(): UIMessagePart {

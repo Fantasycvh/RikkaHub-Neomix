@@ -47,6 +47,7 @@ import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.mergeGenerationMessages
 import app.androidrik.rikkahub.data.model.toMessageNode
 import app.androidrik.rikkahub.ui.components.ai.ChatInput
 import app.androidrik.rikkahub.ui.components.ai.FullScreenEditor
@@ -134,7 +135,7 @@ class LongTextBaselineTest {
             listOf(UIMessage.user("固定长文测试样本").toMessageNode(), reply.toMessageNode()),
         ))
         fun replay(end: Int) {
-            conversation = conversation.updateCurrentMessages(listOf(
+            conversation = conversation.mergeGenerationMessages(listOf(
                 conversation.currentMessages.first(), reply.copy(parts = listOf(UIMessagePart.Text(text.take(end)))),
             ))
         }

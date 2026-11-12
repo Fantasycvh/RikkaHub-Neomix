@@ -20,6 +20,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.mergeGenerationMessages
 
 class TodoToolsTest {
 
@@ -99,7 +100,7 @@ class TodoToolsTest {
 
         val conversation = Conversation.ofId(
             id = Uuid.random(),
-        ).updateCurrentMessages(listOf(
+        ).mergeGenerationMessages(listOf(
             UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("hi"))),
             toolMsg("""{"todos":[{"content":"Old","status":"completed"}]}"""),
             toolMsg("""{"todos":[{"content":"New A","status":"in_progress"},{"content":"New B","status":"pending"}]}"""),
@@ -111,7 +112,7 @@ class TodoToolsTest {
 
     @Test
     fun `latestTodoPlan ignores non todo tools and returns empty without calls`() {
-        val conversation = Conversation.ofId(id = Uuid.random()).updateCurrentMessages(listOf(
+        val conversation = Conversation.ofId(id = Uuid.random()).mergeGenerationMessages(listOf(
             UIMessage(role = MessageRole.ASSISTANT, parts = listOf(
                 UIMessagePart.Tool(toolCallId = Uuid.random().toString(), toolName = "search_web", input = "{}")
             )),

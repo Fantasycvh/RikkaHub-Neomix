@@ -284,6 +284,79 @@ P0 独立有价值（消除索引制隐患，delta-emit 稿的前置），可随
 7. 截断计划新增 `anchorNodeId`，撤销还原优先按锚点 id 定位（数量语义回退）；
    P1 撤销随 scope B 分支化移除。
 
+### 九.3 P1 实施笔记（2026-11-12，实施中敲定的细节）
+
+1. **scope B 的树形化 = 收叶子而非删节点**：`regenerateAtMessage` scope B 不再截断——把
+   `activeLeafNodeId` 收回到分支点（路径上目标节点的前一个），基线走全量；流式新回复经
+   `mergeGenerationMessages` 位置兜底超出路径尾部 → 新建节点挂到分支点之下 = 旧回复的兄弟，
+   旧子树原样留在库中。撤销机制（`undoRegenerateTruncation` / `restoreAfterTruncation` /
+   `TruncationPlan` / snackbar）整体移除。**根角落**：`replyNodeIndex == 0`（助手消息在根）
+   无法表达「空路径」（null 叶 = 线性回退），退化为候选追加（下游共享，数据不丢）。
+2. **heal 取代整链派生**：`healMissingParents` 只给 null 父的**非首行**补列表前驱、绝不覆写
+   显式父（asLinearChain 会把树掰回线性）。加载与保存边界各调一次；`pathNodes()` 内部也先
+   heal（防内存态未补父构造在叶子推进后截断成后缀）。**安全前提（不变量）**：根 = 首个创建
+   节点、根无兄弟——分支只在非根节点间发生；否则非首行的 null 父无法与「兄弟根」区分
+   （编辑纯分支在根处同样退化为候选追加）。
+3. **mergeGenerationMessages 改为路径坐标系**：位置兜底按 `pathNodes()` 算（THIS_ONLY 的
+   目标节点、scope B 的尾部判断都基于路径）；新建节点链式挂 `lastLandedNodeId` 并推进
+   `activeLeafNodeId`；候选追加不推进叶子。入口先 heal。
+4. **发送/notice/编辑的挂父点**：`sendQueuedMessage` 新用户消息挂激活叶子并推进叶子；
+   `NoticeDelivery` / `WorkspaceNoticeInbox` 的 notice 节点同样（保持「追加到路径尾」的
+   可见语义——不推进叶子的追加在树形下会落到 off-path 而不可见，P0 语义依赖列表序）。
+5. **删除 = 剪枝**：`buildConversationAfterMessageDelete` 候选删空时改为
+   `pruneSubtree`（节点 + 全部后代），激活叶子在子树内时收回父节点（根被剪则落剩余森林
+   最新叶）；UI 在 `followingCount > 0` 时新增确认弹窗（`chat_delete_branch_confirm`）。
+   删候选行为不变。
+6. **编辑「保留后续」开关**：编辑 UI 实际是**输入栏编辑态**（非设计稿假设的 sheet）——开关
+   挂在 ChatInput 编辑横幅（`chat_edit_keep_following`，仅 `followingCount > 0` 时显示，
+   每次进入编辑默认开）。关 = `editMessage(keepFollowing=false)` → 兄弟节点承载新版本并
+   切叶子过去；根处退化（见 2）。
+7. **分支切换器**：`ChatBranchController`（全量节点 + 切换回调）经 CompositionLocal 从
+   ChatList 下发，`ChatMessageBranchSelector` 消费——避免给 ChatMessage 全链路加参。
+   时间线切换 = `ChatService.switchMessageBranch(nodeId)` → 该子树**最近更新叶子**
+   （消息 createdAt max，§五.1 落点规则）。切换后滚动定位留 P2（滚动锚点在 P2 范围）。
+8. **压缩×分支**：`activeCompression` 从末行恒取改为「从新到旧找第一条边界在激活路径上且
+   指纹匹配」的检查点——切走失效、切回可逆复活（多检查点场景）。
+9. **周边小修**：fork 改用**激活路径前缀**（列表序 = 创建序 ≠ 路径序）且复制后清 parentId
+   由 heal 补链；ChatList 渲染列表 `visibleNodes` 改 `pathNodes()`（原为 messageNodes，
+   树形下会把 off-path 节点渲染出来）；`ConversationEntityMapper` 叶子取会话内存态权威值
+   （null 回退末节点）；`checkpointGeneratingNode` 父 = 节点自身 parentId（null 回退列表前驱）。
+10. **文案**：scope B 弹窗降级为告知（旧时间线保留、随时切回），B 按钮去警示色；
+    `regenerate_truncated` / `regenerate_truncated_undo` 删除。web/API 默认 scope 仍为
+    INCLUDE_FOLLOWING（现在=非破坏分支，无破坏性语义变化）。
+11. **测试**：全量 3434 绿 / 0 失败 / 2 跳过（P0 基线 3437 − `ConversationMessageUpdatesTest`
+    3 例，等价性基准随 `updateCurrentMessages` 退役）。`updateCurrentMessages` /
+    `asLinearChain` / `withLinearTreeMeta` 全部删除。新增钉子：heal 语义、pathNodes 树遍历
+    与回退、merge 路径坐标系（scope B 兄弟分支/链式挂父/叶子推进/THIS_ONLY 中间节点）、
+    pruneSubtree（子树移除/叶子收回）、分支切换使压缩检查点失效且切回复活。
+    WorkspaceNoticeInboxTest 夹具随「追加必推进叶子」语义更新。
+
+### 九.4 P1 验证记录（2026-11-12）
+
+- **单测**：`:app:testDebugUnitTest` 3434 通过 / 0 失败 / 2 跳过（P0 基线 3437 −
+  ConversationMessageUpdatesTest 3 例随 updateCurrentMessages 退役）。
+- **构建**：`:app:assembleDebug` 成功。
+- **真机（6c841f95，智谱 glm-4.5-air）**：
+  - 流式回写：两条消息顺序发送，回复完整落库；拉库复核 parent_id 链
+    （root NULL → reply=父 id）与 `active_leaf_node_id` 指向末节点。
+  - **scope B 非破坏分支**：第二轮完成后对第一条用户消息重生成 → 弹窗为新告知文案
+    （「旧时间线原样保留，随时可切回 / 其后的 3 条消息将保留在旧时间线」，无警示色）→
+    选「重做并开新时间线」→ 新回复生成；拉库：5 节点，新回复 idx4 的 parent =
+    分支点（u1 节点）= 旧回复的兄弟；旧子树 idx1→2→3 原样保留；leaf = 新节点。
+  - **时间线切换**：消息下「时间线 2/2」控件点「<」→ 内容切回旧时间线（旧回复），
+    控件变 1/2；拉库 leaf = 旧子树叶（52a03bc5…），持久化正确。
+  - **编辑开关**：编辑第一条用户消息 → 输入栏横幅显示「保留后续」开关（默认开）→
+    关闭后提交 → **根节点退化生效**（u1 为根，兄弟根不可表达 ⇒ 候选追加）：
+    u1 节点 2 候选、selectIndex=1、叶子不动。非根纯分支路由由单测覆盖（与 scope B
+    共用兄弟化原语）。
+  - **删除剪枝**：删除第二条用户消息（有 1 条下游）→ 确认弹窗（「将同时删除其后的
+    1 条消息（整条分支），且不可恢复」）→ 确认后 5→3 节点（u2+a2 整棵子树移除）、
+    leaf 收回父节点（a1）、scope B 兄弟分支不受影响。
+  - 旧库（P0 写入的会话）加载渲染正常（heal 兜底生效）。
+- **未真机覆盖**：非根编辑纯分支 / THIS_ONLY 中间节点候选（P0 真机已验 + 单测钉住）/
+  强杀恢复（checkpointGeneratingNode 仅改父寻址）/ 压缩检查点路径判定（单测覆盖，
+  会话未触发压缩）。
+
 ### 九.2 P0 验证记录（2026-11-12）
 
 - **单测**：`:app:testDebugUnitTest` 3437 通过 / 0 失败 / 2 跳过（基线）。新增

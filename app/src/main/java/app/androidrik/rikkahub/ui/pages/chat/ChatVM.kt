@@ -38,7 +38,6 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
-import app.androidrik.rikkahub.data.model.TruncationPlan
 import app.androidrik.rikkahub.data.model.NodeFavoriteTarget
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FavoriteRepository
@@ -325,11 +324,11 @@ class ChatVM(
 
     fun stopVoiceMode() = voiceSession.stop()
 
-    fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid) {
+    fun handleMessageEdit(parts: List<UIMessagePart>, messageId: Uuid, keepFollowing: Boolean = true) {
         if (parts.isEmptyInputMessage()) return
 
         viewModelScope.launch {
-            chatService.editMessage(_conversationId, messageId, parts)
+            chatService.editMessage(_conversationId, messageId, parts, keepFollowing)
         }
     }
 
@@ -446,14 +445,15 @@ class ChatVM(
     fun regenerateAtMessage(
         message: UIMessage,
         scope: ChatService.RegenerateScope = ChatService.RegenerateScope.INCLUDE_FOLLOWING,
-        onTruncated: ((TruncationPlan) -> Unit)? = null,
     ) {
-        chatService.regenerateAtMessage(_conversationId, message, scope, onTruncated)
+        chatService.regenerateAtMessage(_conversationId, message, scope)
     }
 
-    /** 撤销一次 scope B 的截断（snackbar 撤销）。 */
-    fun undoRegenerateTruncation(truncation: TruncationPlan) {
-        chatService.undoRegenerateTruncation(_conversationId, truncation)
+    /** 分支切换（时间线）：把激活叶子切到 [nodeId] 子树的最近更新叶子（树形分支 P1）。 */
+    fun switchMessageBranch(nodeId: Uuid) {
+        viewModelScope.launch {
+            chatService.switchMessageBranch(_conversationId, nodeId)
+        }
     }
 
     fun handleToolApproval(

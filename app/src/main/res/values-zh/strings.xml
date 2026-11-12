@@ -944,13 +944,11 @@
   <string name="reasoning_max">最大</string>
   <string name="regenerate">重新生成</string>
   <string name="regenerate_confirm_message">确定要重新生成此消息吗？</string>
-  <string name="regenerate_scope_desc">只重做这一段，还是连同后续对话一起重做？</string>
+  <string name="regenerate_scope_desc">从这里重做：只重做这一段，还是开一条新时间线？旧时间线原样保留，随时可切回。</string>
   <string name="regenerate_scope_this_only">仅本条与对应回复</string>
-  <string name="regenerate_scope_include_following">含后续所有对话</string>
-  <string name="regenerate_scope_following_count">其后的 %1$d 条消息将被移除</string>
-  <string name="regenerate_scope_export_then_continue">先导出再移除（与上一项相同）</string>
-  <string name="regenerate_truncated">已移除 %1$d 条消息</string>
-  <string name="regenerate_truncated_undo">撤销</string>
+  <string name="regenerate_scope_include_following">重做并开新时间线</string>
+  <string name="regenerate_scope_following_count">其后的 %1$d 条消息将保留在旧时间线</string>
+  <string name="regenerate_scope_export_then_continue">先导出旧时间线，再继续</string>
   <string name="render_with_webview">网页视图渲染</string>
   <string name="safe_mode_assistants">助手</string>
   <string name="safe_mode_copy">复制</string>
@@ -3178,4 +3176,9 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="chat_message_tool_phone_use_list_apps">列出应用</string>
   <string name="chat_message_tool_phone_use_wait">等待 %1$s 秒</string>
   <string name="chat_message_tool_allow_turn">允许本轮</string>
+  <string name="chat_edit_keep_following">保留后续</string>
+  <string name="chat_delete_branch_confirm">将同时删除其后的 %1$d 条消息（整条分支），且不可恢复。</string>
+  <string name="chat_branch_timeline_index">时间线 %1$d/%2$d</string>
+  <string name="chat_branch_prev_timeline">上一条时间线</string>
+  <string name="chat_branch_next_timeline">下一条时间线</string>
 </resources>

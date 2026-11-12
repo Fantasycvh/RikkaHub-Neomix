@@ -32,9 +32,9 @@ data class Conversation(
     val title: String = "",
     val messageNodes: List<MessageNode>,
     /**
-     * 树形分支 P0：激活路径的叶子节点 id（设计稿 design-conversation-tree-branching.md §五）。
-     * P0 为**派生量**（落库边界按列表序填末节点，读路径不依赖）；P1 翻转为权威
-     * （激活路径 = root→此叶子）。null = 线性回退（旧数据/轻量投影）。
+     * 树形分支：激活路径的叶子节点 id（设计稿 design-conversation-tree-branching.md §五）。
+     * **P1 起权威**（激活路径 = root→此叶子，[pathNodes] 树遍历）。
+     * null = 线性回退（旧数据/轻量投影）：列表即路径。
      */
     val activeLeafNodeId: Uuid? = null,
     /**
@@ -154,12 +154,12 @@ data class Conversation(
             .mapNotNull { it.fileUri() }
 
     /**
-     *  当前选中的 message。
-     *  P0：列表序 == 路径序，直接 map；P1 改为沿 [pathNodes] 遍历（树形分支设计稿 §三）。
+     *  当前选中的 message。P1：沿激活路径（[pathNodes] = root→activeLeaf 树遍历）取每节点
+     *  选中候选（树形分支设计稿 §三——路径仍线性，渲染/发送的线性语义不变）。
      */
     val currentMessages
         get(): List<UIMessage> {
-            return messageNodes.map { node -> node.messages[node.safeSelectIndex] }
+            return pathNodes().map { node -> node.messages[node.safeSelectIndex] }
         }
 
     fun getMessageNodeByMessage(message: UIMessage): MessageNode? {
@@ -170,59 +170,26 @@ data class Conversation(
         return messageNodes.firstOrNull { node -> node.messages.any { it.id == messageId } }
     }
 
-    /**
-     * 索引对齐回写（历史实现）。**P0 起生成链改用 [mergeGenerationMessages]（id 制）**；
-     * 本函数保留作等价性测试基准（ConversationMessageUpdatesTest / StreamCheckpointIndexTest），P1 移除。
-     */
-    fun updateCurrentMessages(messages: List<UIMessage>): Conversation {
-        // Streaming snapshots normally share every message except the active reply.
-        // Allocate candidate/node copies only where content actually changed.
-        var newNodes: MutableList<MessageNode>? = null
-        messages.forEachIndexed { index, message ->
-            val node = messageNodes.getOrNull(index)
-            val newNode = if (node == null) {
-                message.toMessageNode()
-            } else {
-                val candidateIndex = node.messages.indexOfFirst { it.id == message.id }
-                // Updating an existing candidate preserves the current selection.
-                if (candidateIndex >= 0 && node.messages[candidateIndex] == message) {
-                    return@forEachIndexed
-                }
-                val candidates = node.messages.toMutableList()
-                if (candidateIndex >= 0) candidates[candidateIndex] = message else candidates.add(message)
-                node.copy(
-                    messages = candidates,
-                    selectIndex = if (candidateIndex >= 0) node.selectIndex else candidates.lastIndex,
-                )
-            }
-            val updated = newNodes ?: messageNodes.toMutableList().also { newNodes = it }
-            if (index > updated.lastIndex) {
-                updated.add(newNode)
-            } else {
-                updated[index] = newNode
-            }
-        }
-        return newNodes?.let { copy(messageNodes = it) } ?: this
-    }
-
     // ---- 压缩检查点（设计见 docs/design/design-auto-compaction.md §4.1 三边界对齐）----
 
     /**
-     * 当前生效的压缩检查点（末行 = 最新边界 = active）。
+     * 当前生效的压缩检查点。
      *
-     * **失效判定**：boundaryNodeId 指向的节点不存在时（被 regenerate 截断 / 分支切换删除 /
-     * 会话重新加载后节点消失）检查点失效，返回 null 回退全量。boundaryNodeId 为空视为永不失效。
+     * **失效判定（树形分支 P1，§六.4）**：从最新往旧找第一条「边界节点在激活路径上且指纹匹配」的
+     * 检查点——切到别的分支后旧边界不在路径上，但切回来它应复活；取最新有效条而非恒取末行。
+     * boundaryNodeId 指向的节点不存在（被剪枝）时该条失效。boundaryNodeId 为空视为永不失效。
      */
     fun activeCompression(): CompressionSummary? {
-        val checkpoint = compressionSummaries.lastOrNull() ?: return null
-        val boundaryId = checkpoint.boundaryNodeId ?: return checkpoint
-        val boundaryIndex = pathNodes().indexOfFirst { it.id.toString() == boundaryId }
-        if (boundaryIndex < 0) return null
-        // 区域指纹校验：区域内节点或其选中消息被改动（编辑/删除/重新生成/切换分支）时，
-        // 摘要已过时 -> 失效回退全量发送（避免 AI 上下文与用户所见不一致）。
-        // 指纹为 null（旧数据/未记录）时退化为仅边界存在性校验。
-        val fingerprint = checkpoint.areaFingerprint ?: return checkpoint
-        return if (computeAreaFingerprint(boundaryIndex) == fingerprint) checkpoint else null
+        return compressionSummaries.lastOrNull { checkpoint ->
+            val boundaryId = checkpoint.boundaryNodeId ?: return@lastOrNull true
+            val boundaryIndex = pathNodes().indexOfFirst { it.id.toString() == boundaryId }
+            if (boundaryIndex < 0) return@lastOrNull false
+            // 区域指纹校验：区域内节点或其选中消息被改动（编辑/删除/重新生成/切换分支）时，
+            // 摘要已过时 -> 失效回退全量发送（避免 AI 上下文与用户所见不一致）。
+            // 指纹为 null（旧数据/未记录）时退化为仅边界存在性校验。
+            val fingerprint = checkpoint.areaFingerprint ?: return@lastOrNull true
+            computeAreaFingerprint(boundaryIndex) == fingerprint
+        }
     }
 
     /**
@@ -383,8 +350,8 @@ data class Conversation(
 data class MessageNode(
     val id: Uuid = Uuid.random(),
     /**
-     * 树形分支 P0：父节点 id（null = 根）。P0 由落库边界按列表序派生（[asLinearChain]）；
-     * P1 翻转为权威——分支 = 兄弟节点，各带独立子树。
+     * 树形分支：父节点 id（null = 根）。**P1 起权威**——分支 = 兄弟节点，各带独立子树；
+     * 历史行的 null 由 [healMissingParents] 按创建序补齐（P0 惰性回填未触达的行）。
      */
     val parentId: Uuid? = null,
     val messages: List<UIMessage>,

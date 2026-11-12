@@ -62,7 +62,12 @@ class WorkspaceNoticeInboxTest {
         val source = f.tool.copy(id = Uuid.random(), parts = listOf(UIMessagePart.Tool("second-call", "workspace_run_background", "{}",
             listOf(UIMessagePart.Text("""{"completionEventId":"${second.id}"}""")))))
         val current = f.session.state.value
-        f.session.state.value = current.copy(messageNodes = current.messageNodes + source.toMessageNode())
+        // P1：追加节点必须推进叶子（生产中经 mergeGenerationMessages，路径尾 = 新节点）
+        val sourceNode = source.toMessageNode()
+        f.session.state.value = current.copy(
+            messageNodes = current.messageNodes + sourceNode,
+            activeLeafNodeId = sourceNode.id,
+        )
         f.dao.insert(second); runCurrent()
         assertEquals(2, f.wakes)
         assertEquals("claimed", f.dao.get(second.id)!!.wakeState)

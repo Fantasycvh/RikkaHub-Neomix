@@ -532,8 +532,10 @@ class ConversationRepository(
                     nodeIndex = nodeIndex,
                     messages = JsonInstant.encodeToString(node.messages),
                     selectIndex = node.selectIndex,
-                    // P0：父 = 列表前驱（列表序 == 路径序）；P1 改读节点自身的 parentId
-                    parentId = conversation.messageNodes.getOrNull(position - 1)?.id?.toString(),
+                    // P1：父 = 节点自身的权威 parentId（merge/发送边界已显式带父）；
+                    // null（根/存量漏父）回退列表前驱（与 healMissingParents 同口径）
+                    parentId = node.parentId?.toString()
+                        ?: conversation.messageNodes.getOrNull(position - 1)?.id?.toString(),
                 )
             )
         }

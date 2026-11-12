@@ -6,6 +6,7 @@ import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.pathNodes
 import app.androidrik.rikkahub.service.ConversationSession
 import app.androidrik.rikkahub.utils.estimateTokenCount
 import kotlinx.coroutines.NonCancellable
@@ -124,10 +125,16 @@ suspend fun appendNoticeToSession(
         // notice 本文 + 下一轮输出 2K + 余量 2K。已在内存中的 notice 只补确认，不再占预算。
         if (unseen.isNotEmpty() && usedTokens.toLong() + tokens + 4096 >= contextLength)
             return@withRefSuspend AppendNoticeResult.CONTEXT_FULL
-        val updated = if (unseen.isEmpty()) original else original.copy(
-            messageNodes = original.messageNodes + MessageNode(messages = listOf(notice)),
-            chatSuggestions = emptyList(),
-        )
+        val updated = if (unseen.isEmpty()) original else {
+            // 树形分支 P1：notice 挂激活叶子之子并推进叶子（保持「追加到路径尾」的可见语义）
+            val parent = original.pathNodes().lastOrNull()?.id
+            val nodes = original.messageNodes + MessageNode(parentId = parent, messages = listOf(notice))
+            original.copy(
+                messageNodes = nodes,
+                activeLeafNodeId = nodes.last().id,
+                chatSuggestions = emptyList(),
+            )
+        }
         session.state.value = updated
         original to updated
     }

@@ -12,7 +12,7 @@ import app.androidrik.rikkahub.data.db.dao.MessageNodeDiffRow
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.ai.prompts.filterOutCheckpointMessages
 import app.androidrik.rikkahub.data.model.MessageNode
-import app.androidrik.rikkahub.data.model.asLinearChain
+import app.androidrik.rikkahub.data.model.healMissingParents
 import app.androidrik.rikkahub.data.model.repairCorruptedCandidates
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlin.uuid.Uuid
@@ -125,8 +125,9 @@ internal class ConversationNodeStore(
                 }
             }
             // 自愈早期压缩 bug 造成的跨节点候选副本（详见 repairCorruptedCandidates）；
-            // asLinearChain：P0 树元数据派生（列表序 == 路径序），旧行 parent_id 为 null 时补齐内存态
-            nodes.repairLegacyCheckpointCandidates().asLinearChain()
+            // healMissingParents：给 P0 惰性回填未触达的 null 父行按创建序补前驱
+            // （P1 起 parentId 权威，显式父一律保留不覆写——树形分支不能被掰回线性）
+            nodes.repairLegacyCheckpointCandidates().healMissingParents()
         }.also { loaded ->
             // 耗时埋点：打开会话、列表加载都经过这里。
             // 触发窗口化的阈值（2026-09-20 实测修正，design-auto-compaction 附录 A §5.2）：
@@ -147,9 +148,9 @@ internal class ConversationNodeStore(
      * 与列表顺序解耦，P1 分支乱序存储无需再改本算法。
      *
      * `node_index` 语义 = **全局创建序**（append-only、永不复用）：存活行保持原值，
-     * 新行取 max+1。P0 无分支 ⇒ 创建序 == 路径序，加载按它排序即正确。
-     * `parent_id` 由 [asLinearChain] 派生随变更行写入（惰性回填，未变更行保持 null，
-     * P0 读路径不依赖它）。
+     * 新行取 max+1。加载按它排序（列表序 = 创建序 ≠ 路径序，路径由 activeLeafNodeId 决定）。
+     * `parent_id` **P1 起权威**，随变更行原样写入；内存侧由 [healMissingParents] 兜底补 null
+     * （P0 惰性回填未触达的存量行）。
      *
      * 常见场景（尾部追加/修改最后一条）仍只写 1 行；签名计算量与前缀版同量级。
      */
@@ -157,7 +158,7 @@ internal class ConversationNodeStore(
         val plan = computeNodeDiff(
             conversationId = conversationId,
             existing = messageNodeDAO.getNodeDiffRows(conversationId),
-            chain = nodes.asLinearChain(),
+            chain = nodes.healMissingParents(),
         )
         if (plan.removedIds.isNotEmpty()) {
             messageNodeDAO.deleteByIds(conversationId, plan.removedIds)
@@ -178,8 +179,10 @@ internal data class NodeDiffPlan(
  * id 键 diff 的纯计算（JVM 单测钉住；[ConversationNodeStore.saveMessageNodes] 只做 IO）。
  *
  * 签名 = select_index + messages JSON（盖住「编辑后候选变但 id 不变」）。
- * **不比 parent_id**：P0 它是派生列，未变更行允许保持 null（惰性回填），
- * 避免升级后首次保存整会话重写。
+ * **不比 parent_id**：它由内存树原样落库，签名不变就不重写（避免无谓行写放大）；
+ * 语义变更（换父/建分支）必然伴随消息或新增节点变化，不会漏写。
+ * **removedIds 语义**：调用方传的 `chain` 是**全量节点集**（含 off-path 兄弟子树），
+ * 因此只有剪枝/删除真正缩小集合时才会产生删除——P1 激活路径切换不删任何节点。
  */
 internal fun computeNodeDiff(
     conversationId: String,

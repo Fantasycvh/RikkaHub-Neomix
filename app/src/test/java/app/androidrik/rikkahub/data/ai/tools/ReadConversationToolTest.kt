@@ -4,6 +4,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.mergeGenerationMessages
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -18,7 +19,7 @@ class ReadConversationToolTest {
 
     private fun conversation(vararg texts: String): Conversation {
         val messages = texts.map { UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text(it))) }
-        return Conversation.ofId(id = Uuid.random()).updateCurrentMessages(messages)
+        return Conversation.ofId(id = Uuid.random()).mergeGenerationMessages(messages)
     }
 
     @Test
@@ -65,7 +66,7 @@ class ReadConversationToolTest {
 
     @Test
     fun `tool calls and images render as placeholders`() {
-        val c = Conversation.ofId(id = Uuid.random()).updateCurrentMessages(listOf(
+        val c = Conversation.ofId(id = Uuid.random()).mergeGenerationMessages(listOf(
             UIMessage(role = MessageRole.ASSISTANT, parts = listOf(
                 UIMessagePart.Tool(toolCallId = "t1", toolName = "search", input = "{}"),
                 UIMessagePart.Image(url = "file:///x.png"),

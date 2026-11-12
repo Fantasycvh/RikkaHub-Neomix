@@ -103,8 +103,11 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.pathNodes
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.ui.components.message.ChatMessage
+import app.androidrik.rikkahub.ui.components.message.ChatBranchController
+import app.androidrik.rikkahub.ui.components.message.LocalChatBranchController
 import app.androidrik.rikkahub.ui.components.message.MAX_RENDER_TEXT_LENGTH
 import app.androidrik.rikkahub.ui.components.richtext.SharedSelectableContent
 import app.androidrik.rikkahub.ui.components.message.CompactionCheckpointRow
@@ -168,6 +171,8 @@ fun ChatList(
     onForkMessage: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
     onUpdateMessage: (MessageNode) -> Unit = {},
+    /** 分支切换（时间线）：切到某兄弟子树（服务端落到该子树最近更新叶子）；树形分支 P1 */
+    onSwitchBranch: (Uuid) -> Unit = {},
     onClickSuggestion: (String) -> Unit = {},
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
@@ -218,7 +223,15 @@ fun ChatList(
                     animatedVisibilityScope = this@AnimatedContent,
                 )
             } else {
-                ChatListNormal(
+                // 分支（时间线）切换上下文：全量节点集 + 切换回调，经 CompositionLocal 下发，
+                // ChatMessageBranchSelector 消费（避免给 ChatMessage 全链路加参数）
+                CompositionLocalProvider(
+                    LocalChatBranchController provides ChatBranchController(
+                        nodes = conversation.messageNodes,
+                        onSwitchBranch = onSwitchBranch,
+                    )
+                ) {
+                    ChatListNormal(
                     pendingPreviewJump = pendingPreviewJump,
                     onPreviewJumpConsumed = { pendingPreviewJump = null },
                     innerPadding = innerPadding,
@@ -254,6 +267,7 @@ fun ChatList(
                     onConversationGoalChange = onConversationGoalChange,
                     scrollController = scrollController ?: defaultScrollController,
                 )
+                }
             }
         }
     }
@@ -361,12 +375,13 @@ private fun ChatListNormal(
     // 压缩检查点（design §4.1 界面侧三边界对齐）：
     // 收起 = 检查点之后的窗口（= AI 实际看到的内容）；展开 = 完整轨迹。
     // 展开态直接复用同一渲染块 -> 历史消息的编辑/重新生成/删除/分支/收藏等操作全部可用。
+    // P1：渲染 = **激活路径**（树形分支后 messageNodes 是全量节点集，含 off-path 兄弟子树）
     val activeCheckpoint = conversation.displayCompression()
     var showCompressedHistory by remember(conversation.id) { mutableStateOf(false) }
     val visibleNodes = if (activeCheckpoint != null && !showCompressedHistory) {
         conversation.windowNodes()
     } else {
-        conversation.messageNodes
+        conversation.pathNodes()
     }
     val lastMessageIndex = visibleNodes.lastIndex
     val appearance = rememberChatAppearance(settings.displaySetting)
@@ -600,7 +615,7 @@ private fun ChatListNormal(
                             var showCheckpointBody by remember(node.currentMessage.id) { mutableStateOf(false) }
                             Column {
                                 CompactionCheckpointRow(
-                                    messageCount = conversation.messageNodes.takeWhile { it.id != node.id }
+                                    messageCount = conversation.pathNodes().takeWhile { it.id != node.id }
                                         .count { !it.currentMessage.isContextCheckpoint },
                                     summaryPreview = node.currentMessage.toText().lineSequence().firstOrNull().orEmpty(),
                                     expanded = showCheckpointBody,

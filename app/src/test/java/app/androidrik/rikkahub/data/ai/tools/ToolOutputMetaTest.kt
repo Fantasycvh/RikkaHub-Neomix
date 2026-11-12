@@ -5,6 +5,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.mergeGenerationMessages
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -38,7 +39,7 @@ class ToolOutputMetaTest {
 
     private fun conversation(vararg texts: String): Conversation {
         val messages = texts.map { UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text(it))) }
-        return Conversation.ofId(id = Uuid.random()).updateCurrentMessages(messages)
+        return Conversation.ofId(id = Uuid.random()).mergeGenerationMessages(messages)
     }
 
     // ---- 助手本身 ----

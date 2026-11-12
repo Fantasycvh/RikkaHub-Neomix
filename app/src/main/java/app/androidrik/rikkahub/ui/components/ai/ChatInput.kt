@@ -55,6 +55,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import app.androidrik.rikkahub.ui.components.ui.AppTextField as TextField
@@ -201,6 +202,13 @@ fun ChatInput(
     onShowContextSheet: () -> Unit = {},
     pendingQuote: UIMessageAnnotation.QuotedMessage? = null,
     onCancelQuote: () -> Unit = {},
+    /**
+     * 编辑「保留后续」开关（树形分支 P1 §四.4）：仅编辑**有下游**的消息时显示
+     * （[showEditKeepFollowing]）。开 = 候选追加（下游共享，默认）；关 = 纯分支（下游归旧版本）。
+     */
+    editKeepFollowing: Boolean = true,
+    onEditKeepFollowingChange: (Boolean) -> Unit = {},
+    showEditKeepFollowing: Boolean = false,
     /** Non-null for a frozen conversation; null retains the global model setting behavior. */
     onUpdateBuiltInSearch: ((Boolean) -> Unit)? = null,
     /**
@@ -408,7 +416,10 @@ fun ChatInput(
                     TextInputRow(
                         state = state,
                         completionProviders = completionProviders,
-                        onSendMessage = { sendMessage() }
+                        onSendMessage = { sendMessage() },
+                        showEditKeepFollowing = showEditKeepFollowing,
+                        editKeepFollowing = editKeepFollowing,
+                        onEditKeepFollowingChange = onEditKeepFollowingChange,
                     )
 
                     AnimatedVisibility(visible = (loading || hasPendingInteraction) && !state.isEditing() && !state.isEmpty() && !asrState.isRecording) {
@@ -691,6 +702,9 @@ private fun TextInputRow(
     state: ChatInputState,
     completionProviders: List<ChatCompletionProvider>,
     onSendMessage: () -> Unit,
+    showEditKeepFollowing: Boolean = false,
+    editKeepFollowing: Boolean = true,
+    onEditKeepFollowingChange: (Boolean) -> Unit = {},
 ) {
     val settings = LocalSettings.current
     val filesManager: FilesManager = koinInject()
@@ -715,6 +729,19 @@ private fun TextInputRow(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(text = stringResource(R.string.editing))
+                    if (showEditKeepFollowing) {
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = stringResource(R.string.chat_edit_keep_following),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Switch(
+                            checked = editKeepFollowing,
+                            onCheckedChange = onEditKeepFollowingChange,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
                     Spacer(Modifier.weight(1f))
                     Icon(
                         imageVector = HugeIcons.Cancel01,
