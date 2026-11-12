@@ -217,8 +217,11 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
             } else {
                 bitmap
             }
-            ByteArrayOutputStream().also { scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
+            if (scaled !== bitmap) bitmap.recycle()
+            val bytes = ByteArrayOutputStream().also { scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
                 .toByteArray()
+            scaled.recycle()
+            bytes
         }
     }
 
@@ -249,13 +252,21 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
     ): Bitmap = suspendCancellableCoroutine { continuation ->
         capture(object : TakeScreenshotCallback {
             override fun onSuccess(screenshot: ScreenshotResult) {
-                // 硬件位图不能缩放和压缩，转成普通位图
+                // 硬件位图不能缩放和压缩，转成普通位图；包裹位图必须显式 recycle——
+                // 底层 gralloc 分配（整屏 ARGB_8888 约 14MB）只能等 GC 兜底，
+                // 而连续截图时 Java 堆几乎无压力，触发不了 GC，native 堆会堆积成 OOM
                 val bitmap = screenshot.hardwareBuffer.use { buffer ->
-                    Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)
-                        ?.copy(Bitmap.Config.ARGB_8888, false)
+                    val wrapped = Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)
+                    val copy = wrapped?.copy(Bitmap.Config.ARGB_8888, false)
+                    wrapped?.recycle()
+                    copy
                 }
                 if (bitmap != null) {
-                    continuation.resume(bitmap)
+                    if (continuation.isActive) {
+                        continuation.resume(bitmap)
+                    } else {
+                        bitmap.recycle()
+                    }
                 } else {
                     continuation.resumeWithException(IllegalStateException("Screenshot failed."))
                 }
