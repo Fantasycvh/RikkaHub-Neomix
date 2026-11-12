@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -51,6 +52,7 @@ import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -205,11 +207,17 @@ private fun KnowledgeBaseSettingsCard(
             FormItem(
                 label = { Text(stringResource(R.string.setting_page_kb_name)) },
             ) {
+                // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条；范本 1808d418f）：
+                // 旧写法 `value = kb.name` 直连 Room Flow 投影，每键落库后旧值回灌活跃编辑框。
+                val nameState = rememberPersistedTextFieldState(
+                    externalValue = kb.name,
+                    resetKey = kb.id,
+                    onCommit = { text -> onUpdate(kb.copy(name = text)) },
+                )
                 OutlinedTextField(
-                    value = kb.name,
-                    onValueChange = { onUpdate(kb.copy(name = it)) },
+                    state = nameState,
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+                    lineLimits = TextFieldLineLimits.SingleLine,
                 )
             }
             FormItem(
@@ -234,13 +242,18 @@ private fun KnowledgeBaseSettingsCard(
                     label = { Text(stringResource(R.string.setting_page_kb_top_k)) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    OutlinedTextField(
-                        value = kb.topK.toString(),
-                        onValueChange = { text ->
+                    // 数值投影（D1）：本地 TextFieldState 权威，解析成功才写；绝不把 Int 投影回填。
+                    val topKState = rememberPersistedTextFieldState(
+                        externalValue = kb.topK.toString(),
+                        resetKey = kb.id,
+                        onCommit = { text ->
                             text.toIntOrNull()?.let { onUpdate(kb.copy(topK = it.coerceIn(1, 50))) }
                         },
+                    )
+                    OutlinedTextField(
+                        state = topKState,
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
+                        lineLimits = TextFieldLineLimits.SingleLine,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
                 }
@@ -248,14 +261,20 @@ private fun KnowledgeBaseSettingsCard(
                     label = { Text(stringResource(R.string.setting_page_kb_threshold)) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    OutlinedTextField(
-                        value = kb.similarityThreshold.toString(),
-                        onValueChange = { text ->
+                    // 数值投影（D1）：`0.` 这类中间态留在本地（旧写法解析失败不写、落库值回灌
+                    // 再把小数点截掉，导致小数无法输入），解析成功才落库。
+                    val thresholdState = rememberPersistedTextFieldState(
+                        externalValue = kb.similarityThreshold.toString(),
+                        resetKey = kb.id,
+                        onCommit = { text ->
                             text.toFloatOrNull()
                                 ?.let { onUpdate(kb.copy(similarityThreshold = it.coerceIn(0f, 1f))) }
                         },
+                    )
+                    OutlinedTextField(
+                        state = thresholdState,
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
+                        lineLimits = TextFieldLineLimits.SingleLine,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     )
                 }
@@ -264,13 +283,22 @@ private fun KnowledgeBaseSettingsCard(
                 label = { Text(stringResource(R.string.setting_page_kb_dimensions)) },
                 description = { Text(stringResource(R.string.setting_page_kb_dimensions_desc)) },
             ) {
-                OutlinedTextField(
-                    value = kb.dimensions?.toString().orEmpty(),
-                    onValueChange = { text ->
-                        onUpdate(kb.copy(dimensions = text.toIntOrNull()))
+                // 数值投影（D1，可空）：空白 = 不传维度（null）；非法中间态不落库。
+                val dimensionsState = rememberPersistedTextFieldState(
+                    externalValue = kb.dimensions?.toString().orEmpty(),
+                    resetKey = kb.id,
+                    onCommit = { text ->
+                        if (text.isBlank()) {
+                            onUpdate(kb.copy(dimensions = null))
+                        } else {
+                            text.toIntOrNull()?.let { onUpdate(kb.copy(dimensions = it)) }
+                        }
                     },
+                )
+                OutlinedTextField(
+                    state = dimensionsState,
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+                    lineLimits = TextFieldLineLimits.SingleLine,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
             }

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -52,8 +53,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
@@ -64,6 +63,8 @@ import app.androidrik.rikkahub.data.sync.BackupRunKind
 import app.androidrik.rikkahub.data.sync.webdav.WebDavBackupItem
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.hooks.HiddenTextTransformation
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.ui.pages.backup.BackupVM
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupProgressRow
 import app.androidrik.rikkahub.utils.UiState
@@ -175,29 +176,40 @@ fun WebDavTab(
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_webdav_server_address)) },
                     supportingContent = {
+                        // AGENTS「TextField Host Rules」第 4 条：本地权威编辑态 + 去抖单向
+                        // 写出。旧写法 value = webDavConfig.x 是 settingsFlow 异步投影：每键整份
+                        // Settings 落盘后旧值回灌活跃编辑框 ⇒ 逐字符抖动/吞字/光标跳。
+                        // resetKey = settings.init：首帧是 Settings.dummy() 占位（init = true），
+                        // 真实设置加载后翻一次 false，本地态按真实值重建，不把占位值钉死。
+                        val urlState = rememberPersistedTextFieldState(
+                            externalValue = webDavConfig.url,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateWebDavConfig(webDavConfig.copy(url = text.trim()))
+                            },
+                        )
                         OutlinedTextField(
+                            state = urlState,
                             modifier = Modifier.fillMaxWidth(),
-                            value = webDavConfig.url,
-                            onValueChange = { updateWebDavConfig(webDavConfig.copy(url = it.trim())) },
                             placeholder = { Text("https://example.com/dav") },
-                            singleLine = true
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_username)) },
                     supportingContent = {
-                        OutlinedTextField(
-                            modifier = Modifier.fillMaxWidth(),
-                            value = webDavConfig.username,
-                            onValueChange = {
-                                updateWebDavConfig(
-                                    webDavConfig.copy(
-                                        username = it.trim()
-                                    )
-                                )
+                        val usernameState = rememberPersistedTextFieldState(
+                            externalValue = webDavConfig.username,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateWebDavConfig(webDavConfig.copy(username = text.trim()))
                             },
-                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            state = usernameState,
+                            modifier = Modifier.fillMaxWidth(),
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )
@@ -205,11 +217,19 @@ fun WebDavTab(
                     headlineContent = { Text(stringResource(R.string.backup_page_password)) },
                     supportingContent = {
                         var passwordVisible by remember { mutableStateOf(false) }
+                        val passwordState = rememberPersistedTextFieldState(
+                            externalValue = webDavConfig.password,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateWebDavConfig(webDavConfig.copy(password = text.trim()))
+                            },
+                        )
                         OutlinedTextField(
+                            state = passwordState,
                             modifier = Modifier.fillMaxWidth(),
-                            value = webDavConfig.password,
-                            onValueChange = { updateWebDavConfig(webDavConfig.copy(password = it.trim())) },
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            // 状态版 OutlinedTextField 没有 visualTransformation：用等长掩码
+                            // 替代（长度不变 ⇒ 光标/选择映射不变）。
+                            outputTransformation = if (passwordVisible) null else HiddenTextTransformation,
                             trailingIcon = {
                                 val image = if (passwordVisible) {
                                     HugeIcons.ViewOff
@@ -220,18 +240,24 @@ fun WebDavTab(
                                     Icon(imageVector = image, contentDescription = null)
                                 }
                             },
-                            singleLine = true
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_path)) },
                     supportingContent = {
+                        val pathState = rememberPersistedTextFieldState(
+                            externalValue = webDavConfig.path,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateWebDavConfig(webDavConfig.copy(path = text.trim()))
+                            },
+                        )
                         OutlinedTextField(
+                            state = pathState,
                             modifier = Modifier.fillMaxWidth(),
-                            value = webDavConfig.path,
-                            onValueChange = { updateWebDavConfig(webDavConfig.copy(path = it.trim())) },
-                            singleLine = true
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )

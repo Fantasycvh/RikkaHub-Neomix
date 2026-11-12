@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -36,6 +38,7 @@ import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.ui.components.ai.ReasoningButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.utils.plus
 
 @Composable
@@ -50,8 +53,9 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 title = stringResource(R.string.setting_model_page_prompt_translation),
                 promptDescription = stringResource(R.string.setting_model_page_translate_prompt_vars),
                 promptValue = settings.translatePrompt,
-                onPromptChange = { vm.updateSettings(settings.copy(translatePrompt = it)) },
-                onResetPrompt = { vm.updateSettings(settings.copy(translatePrompt = DEFAULT_TRANSLATION_PROMPT)) },
+                defaultPrompt = DEFAULT_TRANSLATION_PROMPT,
+                onPromptChange = { text -> vm.updateSettings { s -> s.copy(translatePrompt = text) } },
+                onResetPrompt = { vm.updateSettings { s -> s.copy(translatePrompt = DEFAULT_TRANSLATION_PROMPT) } },
                 reasoningLevel = ReasoningLevel.fromBudgetTokens(settings.translateThinkingBudget),
                 onUpdateReasoningLevel = { vm.updateSettings(settings.copy(translateThinkingBudget = it.budgetTokens)) },
             )
@@ -61,8 +65,9 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 title = stringResource(R.string.setting_model_page_prompt_title),
                 promptDescription = stringResource(R.string.setting_model_page_suggestion_prompt_vars),
                 promptValue = settings.titlePrompt,
-                onPromptChange = { vm.updateSettings(settings.copy(titlePrompt = it)) },
-                onResetPrompt = { vm.updateSettings(settings.copy(titlePrompt = DEFAULT_TITLE_PROMPT)) },
+                defaultPrompt = DEFAULT_TITLE_PROMPT,
+                onPromptChange = { text -> vm.updateSettings { s -> s.copy(titlePrompt = text) } },
+                onResetPrompt = { vm.updateSettings { s -> s.copy(titlePrompt = DEFAULT_TITLE_PROMPT) } },
             )
         }
         item {
@@ -70,8 +75,9 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 title = stringResource(R.string.setting_model_page_prompt_suggestion),
                 promptDescription = stringResource(R.string.setting_model_page_suggestion_prompt_vars),
                 promptValue = settings.suggestionPrompt,
-                onPromptChange = { vm.updateSettings(settings.copy(suggestionPrompt = it)) },
-                onResetPrompt = { vm.updateSettings(settings.copy(suggestionPrompt = DEFAULT_SUGGESTION_PROMPT)) },
+                defaultPrompt = DEFAULT_SUGGESTION_PROMPT,
+                onPromptChange = { text -> vm.updateSettings { s -> s.copy(suggestionPrompt = text) } },
+                onResetPrompt = { vm.updateSettings { s -> s.copy(suggestionPrompt = DEFAULT_SUGGESTION_PROMPT) } },
             )
         }
         item {
@@ -79,8 +85,9 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 title = stringResource(R.string.setting_model_page_prompt_ocr),
                 promptDescription = stringResource(R.string.setting_model_page_ocr_prompt_vars),
                 promptValue = settings.ocrPrompt,
-                onPromptChange = { vm.updateSettings(settings.copy(ocrPrompt = it)) },
-                onResetPrompt = { vm.updateSettings(settings.copy(ocrPrompt = DEFAULT_OCR_PROMPT)) },
+                defaultPrompt = DEFAULT_OCR_PROMPT,
+                onPromptChange = { text -> vm.updateSettings { s -> s.copy(ocrPrompt = text) } },
+                onResetPrompt = { vm.updateSettings { s -> s.copy(ocrPrompt = DEFAULT_OCR_PROMPT) } },
             )
         }
         item {
@@ -88,9 +95,10 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 title = stringResource(R.string.setting_model_page_prompt_memory_consolidation),
                 promptDescription = stringResource(R.string.setting_model_page_prompt_memory_consolidation_desc),
                 promptValue = settings.memoryConsolidationPrompt,
-                onPromptChange = { vm.updateSettings(settings.copy(memoryConsolidationPrompt = it)) },
+                defaultPrompt = MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
+                onPromptChange = { text -> vm.updateSettings { s -> s.copy(memoryConsolidationPrompt = text) } },
                 onResetPrompt = {
-                    vm.updateSettings(settings.copy(memoryConsolidationPrompt = MEMORY_CONSOLIDATION_SYSTEM_PROMPT))
+                    vm.updateSettings { s -> s.copy(memoryConsolidationPrompt = MEMORY_CONSOLIDATION_SYSTEM_PROMPT) }
                 },
             )
         }
@@ -99,8 +107,9 @@ internal fun PromptSettingsPage(settings: Settings, vm: SettingVM, contentPaddin
                 title = stringResource(R.string.setting_model_page_prompt_compress),
                 promptDescription = stringResource(R.string.setting_model_page_compress_prompt_vars),
                 promptValue = settings.compressPrompt,
-                onPromptChange = { vm.updateSettings(settings.copy(compressPrompt = it)) },
-                onResetPrompt = { vm.updateSettings(settings.copy(compressPrompt = DEFAULT_COMPRESS_PROMPT)) },
+                defaultPrompt = DEFAULT_COMPRESS_PROMPT,
+                onPromptChange = { text -> vm.updateSettings { s -> s.copy(compressPrompt = text) } },
+                onResetPrompt = { vm.updateSettings { s -> s.copy(compressPrompt = DEFAULT_COMPRESS_PROMPT) } },
             )
         }
     }
@@ -111,6 +120,7 @@ private fun PromptSettingItem(
     title: String,
     promptDescription: String,
     promptValue: String,
+    defaultPrompt: String,
     onPromptChange: (String) -> Unit,
     onResetPrompt: () -> Unit,
     reasoningLevel: ReasoningLevel? = null,
@@ -147,6 +157,14 @@ private fun PromptSettingItem(
         ModalBottomSheet(
             onDismissRequest = { showEditor = false },
         ) {
+            // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条；范本 1808d418f）。
+            // 旧写法 `value = promptValue` 是 settingsFlow 异步投影：每键整份 Settings 落盘后旧值
+            // 回灌活跃编辑框（真机 120ms/字符注入会丢字/光标跳）。编辑态只在打开 sheet 时按当前
+            // prompt 初始化，切换 prompt（关闭再打开）即换值；持久态回声不回灌。
+            val promptState = rememberPersistedTextFieldState(
+                externalValue = promptValue,
+                onCommit = onPromptChange,
+            )
             Column(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
@@ -164,12 +182,18 @@ private fun PromptSettingItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 OutlinedTextField(
-                    value = promptValue,
-                    onValueChange = onPromptChange,
+                    state = promptState,
                     modifier = Modifier.fillMaxWidth(),
-                    maxLines = 15,
+                    lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 15),
                 )
-                TextButton(onClick = onResetPrompt) {
+                TextButton(onClick = {
+                    // 重置是用户显式动作：先同步本地权威态（去抖窗口里待提交的旧草稿随之作废），
+                    // 再写持久层；否则 250ms 内的旧草稿会在重置之后落盘把它覆盖回去。
+                    if (promptState.text.toString() != defaultPrompt) {
+                        promptState.setTextAndPlaceCursorAtEnd(defaultPrompt)
+                    }
+                    onResetPrompt()
+                }) {
                     Text(stringResource(R.string.setting_model_page_reset_to_default))
                 }
             }

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
@@ -52,6 +54,7 @@ import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.ui.hooks.rememberSharedPreferenceBoolean
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
@@ -414,14 +417,38 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
 
             item {
                 var retrySetting by remember(settings) { mutableStateOf(settings.retrySetting) }
+                // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条；范本 1808d418f）。
+                // 旧写法是 `remember(settings)` 文本缓冲：每次设置回声（含本框自己的落盘回声）都把
+                // 缓冲重置成「已提交值」，等于把活跃编辑框每 250ms 重置一次 ⇒ 逐字符抖动/丢字（P1）。
+                // resetKey = settings.init：首帧占位 Settings 加载完成后只重建一次本地态。
                 // 间隔序列以文本编辑；仅合法值才落盘
-                var delaysText by remember(settings) {
-                    mutableStateOf(retrySetting.delaysSeconds.joinToString(","))
-                }
+                val delaysState = rememberPersistedTextFieldState(
+                    externalValue = settings.retrySetting.delaysSeconds.joinToString(","),
+                    resetKey = settings.init,
+                    onCommit = { text ->
+                        RetrySetting.parseDelays(text)?.let { delays ->
+                            vm.updateSettings {
+                                it.copy(retrySetting = it.retrySetting.copy(delaysSeconds = delays))
+                            }
+                        }
+                    },
+                )
                 // #1812 半截字数阈值以文本编辑；仅合法值落盘
-                var partialCharsText by remember(settings) {
-                    mutableStateOf(retrySetting.partialOutputMinChars.toString())
-                }
+                val partialCharsState = rememberPersistedTextFieldState(
+                    externalValue = settings.retrySetting.partialOutputMinChars.toString(),
+                    resetKey = settings.init,
+                    onCommit = { text ->
+                        text.toIntOrNull()?.let { parsedChars ->
+                            vm.updateSettings {
+                                it.copy(
+                                    retrySetting = it.retrySetting.copy(
+                                        partialOutputMinChars = parsedChars.coerceAtLeast(1)
+                                    )
+                                )
+                            }
+                        }
+                    },
+                )
 
                 fun updateRetrySetting(setting: RetrySetting) {
                     retrySetting = setting
@@ -450,15 +477,9 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             supportingContent = {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(stringResource(R.string.setting_retry_delays_desc))
-                                    val parsed = RetrySetting.parseDelays(delaysText)
+                                    val parsed = RetrySetting.parseDelays(delaysState.text.toString())
                                     OutlinedTextField(
-                                        value = delaysText,
-                                        onValueChange = {
-                                            delaysText = it
-                                            RetrySetting.parseDelays(it)?.let { delays ->
-                                                updateRetrySetting(retrySetting.copy(delaysSeconds = delays))
-                                            }
-                                        },
+                                        state = delaysState,
                                         isError = parsed == null,
                                         supportingText = if (parsed == null) {
                                             { Text(stringResource(R.string.setting_retry_delays_invalid)) }
@@ -471,7 +492,7 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                                                 )
                                             }
                                         },
-                                        singleLine = true,
+                                        lineLimits = TextFieldLineLimits.SingleLine,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }
@@ -521,25 +542,26 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(stringResource(R.string.setting_retry_partial_chars_desc))
                                     OutlinedTextField(
-                                        value = partialCharsText,
-                                        onValueChange = { text ->
-                                            // 仅数字、最多 5 位（阈值上限 99999）
-                                            partialCharsText = text.filter(Char::isDigit).take(5)
-                                            partialCharsText.toIntOrNull()?.let { parsedChars ->
-                                                updateRetrySetting(
-                                                    retrySetting.copy(partialOutputMinChars = parsedChars.coerceAtLeast(1))
-                                                )
+                                        state = partialCharsState,
+                                        // 仅数字、最多 5 位（阈值上限 99999）：与旧 onValueChange
+                                        // 逐键过滤等价，在输入变换层拒绝，不写回、不改写用户原文。
+                                        inputTransformation = InputTransformation {
+                                            if (length > 5 || !asCharSequence().all(Char::isDigit)) {
+                                                revertAllChanges()
                                             }
                                         },
                                         supportingText = {
+                                            val applied = partialCharsState.text.toString()
+                                                .toIntOrNull()?.coerceAtLeast(1)
+                                                ?: retrySetting.partialOutputMinChars
                                             Text(
                                                 stringResource(
                                                     R.string.setting_retry_partial_chars_applied,
-                                                    retrySetting.partialOutputMinChars
+                                                    applied
                                                 )
                                             )
                                         },
-                                        singleLine = true,
+                                        lineLimits = TextFieldLineLimits.SingleLine,
                                         modifier = Modifier.fillMaxWidth(),
                                     )
                                 }

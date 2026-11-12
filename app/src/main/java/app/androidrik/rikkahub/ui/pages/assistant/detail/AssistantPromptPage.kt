@@ -28,7 +28,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.Card
@@ -106,6 +108,7 @@ import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TextArea
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.ui.theme.ChatFontProvider
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
@@ -149,7 +152,16 @@ fun AssistantPromptPage(id: String) {
             innerPadding = innerPadding,
             assistant = assistant,
             settings = settings,
-            onUpdate = { vm.update(it) }
+            onUpdate = { vm.update(it) },
+            // 文本域走字段级 transform（去抖提交 / 离页补写在 VM 的 AppScope 上，
+            // 不用 `vm.update(assistant.copy(...))` 这种整对象写）
+            onMessageTemplateChange = vm::updateMessageTemplate,
+            onSystemMessageTemplateChange = vm::updateSystemMessageTemplate,
+            onPresetMessageTextChange = vm::updatePresetMessageText,
+            onCardSlotTextChange = vm::updateCardSlotValue,
+            onRegexNameChange = vm::updateRegexName,
+            onRegexFindRegexChange = vm::updateRegexFindRegex,
+            onRegexReplaceStringChange = vm::updateRegexReplaceString,
         )
     }
 }
@@ -159,7 +171,14 @@ private fun AssistantPromptContent(
     innerPadding: PaddingValues,
     assistant: Assistant,
     settings: Settings,
-    onUpdate: (Assistant) -> Unit
+    onUpdate: (Assistant) -> Unit,
+    onMessageTemplateChange: (String) -> Unit,
+    onSystemMessageTemplateChange: (String) -> Unit,
+    onPresetMessageTextChange: (Uuid, String) -> Unit,
+    onCardSlotTextChange: (CardSlot, String) -> Unit,
+    onRegexNameChange: (Uuid, String) -> Unit,
+    onRegexFindRegexChange: (Uuid, String) -> Unit,
+    onRegexReplaceStringChange: (Uuid, String) -> Unit,
 ) {
     val context = LocalContext.current
     val templateTransformer = koinInject<TemplateTransformer>()
@@ -232,6 +251,7 @@ private fun AssistantPromptContent(
             CardPartsCard(
                 assistant = assistant,
                 onUpdate = onUpdate,
+                onCardSlotTextChange = onCardSlotTextChange,
             )
         }
 
@@ -290,6 +310,16 @@ private fun AssistantPromptContent(
         Card(
             colors = CustomColors.cardColorsOnSurfaceContainer
         ) {
+            // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条）：
+            // 旧写法 `value = assistant.messageTemplate` 是持久态投影，落盘后旧值回灌活跃
+            // 编辑框 ⇒ Compose 重置内部编辑态（中文 IME 组合被打断 / 光标回跳）。
+            val messageTemplateState = rememberPersistedTextFieldState(
+                externalValue = assistant.messageTemplate,
+                resetKey = assistant.id,
+                onCommit = onMessageTemplateChange,
+            )
+            val messageTemplateText = messageTemplateState.text
+            val missingMessage = "{{ message }}" !in messageTemplateText
             FormItem(
                 modifier = Modifier.padding(8.dp),
                 label = {
@@ -300,9 +330,11 @@ private fun AssistantPromptContent(
                         Spacer(Modifier.weight(1f))
                         IconButton(
                             onClick = {
-                                onUpdate(assistant.copy(messageTemplate = "{{ message }}"))
+                                // 程序化回填只发生在用户点「重置」时（不是持久态回灌）：
+                                // 直接改本地编辑态，写出仍交给 hook 的去抖/离页补写。
+                                messageTemplateState.setTextAndPlaceCursorAtEnd("{{ message }}")
                             },
-                            enabled = assistant.messageTemplate != "{{ message }}",
+                            enabled = messageTemplateText.toString() != "{{ message }}",
                         ) {
                             Icon(
                                 imageVector = HugeIcons.Refresh03,
@@ -312,19 +344,13 @@ private fun AssistantPromptContent(
                     }
                 },
                 content = {
-                    val missingMessage = "{{ message }}" !in assistant.messageTemplate
                     OutlinedTextField(
-                        value = assistant.messageTemplate,
-                        onValueChange = {
-                            onUpdate(
-                                assistant.copy(
-                                    messageTemplate = it
-                                )
-                            )
-                        },
+                        state = messageTemplateState,
                         modifier = Modifier.fillMaxWidth(),
-                        minLines = 5,
-                        maxLines = 15,
+                        lineLimits = TextFieldLineLimits.MultiLine(
+                            minHeightInLines = 5,
+                            maxHeightInLines = 15,
+                        ),
                         isError = missingMessage,
                         supportingText = if (missingMessage) {
                             { Text(stringResource(R.string.assistant_page_message_template_missing_message)) }
@@ -367,6 +393,15 @@ private fun AssistantPromptContent(
                     })
                 }
             )
+            // 同 messageTemplate：本地权威 + 去抖单向写出，重置按钮只改本地编辑态。
+            val systemMessageTemplateState = rememberPersistedTextFieldState(
+                externalValue = assistant.systemMessageTemplate,
+                resetKey = assistant.id,
+                onCommit = onSystemMessageTemplateChange,
+            )
+            val systemMessageTemplateText = systemMessageTemplateState.text
+            val systemMessageMissingMessage =
+                systemMessageTemplateText.isNotBlank() && "{{ message }}" !in systemMessageTemplateText
             FormItem(
                 modifier = Modifier.padding(8.dp),
                 label = {
@@ -377,9 +412,9 @@ private fun AssistantPromptContent(
                         Spacer(Modifier.weight(1f))
                         IconButton(
                             onClick = {
-                                onUpdate(assistant.copy(systemMessageTemplate = ""))
+                                systemMessageTemplateState.setTextAndPlaceCursorAtEnd("")
                             },
-                            enabled = assistant.systemMessageTemplate.isNotEmpty(),
+                            enabled = systemMessageTemplateText.isNotEmpty(),
                         ) {
                             Icon(
                                 imageVector = HugeIcons.Refresh03,
@@ -389,22 +424,15 @@ private fun AssistantPromptContent(
                     }
                 },
                 content = {
-                    val missingMessage = assistant.systemMessageTemplate.isNotBlank() &&
-                        "{{ message }}" !in assistant.systemMessageTemplate
                     OutlinedTextField(
-                        value = assistant.systemMessageTemplate,
-                        onValueChange = {
-                            onUpdate(
-                                assistant.copy(
-                                    systemMessageTemplate = it
-                                )
-                            )
-                        },
+                        state = systemMessageTemplateState,
                         modifier = Modifier.fillMaxWidth(),
-                        minLines = 3,
-                        maxLines = 10,
-                        isError = missingMessage,
-                        supportingText = if (missingMessage) {
+                        lineLimits = TextFieldLineLimits.MultiLine(
+                            minHeightInLines = 3,
+                            maxHeightInLines = 10,
+                        ),
+                        isError = systemMessageMissingMessage,
+                        supportingText = if (systemMessageMissingMessage) {
                             { Text(stringResource(R.string.assistant_page_system_message_template_missing_message)) }
                         } else null,
                         placeholder = {
@@ -546,23 +574,17 @@ private fun AssistantPromptContent(
                                 Icon(HugeIcons.Cancel01, null)
                             }
                         }
+                        // 预设消息正文同样是持久态投影（`presetMessage.toText()`）：本地权威 +
+                        // 去抖写出；resetKey 用消息 id（列表增删/换序时下标会漂移）。
+                        val presetMessageState = rememberPersistedTextFieldState(
+                            externalValue = presetMessage.toText(),
+                            resetKey = presetMessage.id,
+                            onCommit = { text -> onPresetMessageTextChange(presetMessage.id, text) },
+                        )
                         OutlinedTextField(
-                            value = presetMessage.toText(),
-                            onValueChange = { text ->
-                                onUpdate(
-                                    assistant.copy(
-                                        presetMessages = assistant.presetMessages.mapIndexed { i, msg ->
-                                            if (i == index) {
-                                                msg.copy(parts = listOf(UIMessagePart.Text(text)))
-                                            } else {
-                                                msg
-                                            }
-                                        }
-                                    )
-                                )
-                            },
+                            state = presetMessageState,
                             modifier = Modifier.fillMaxWidth(),
-                            maxLines = 6
+                            lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 6),
                         )
                     }
                 }
@@ -626,6 +648,9 @@ private fun AssistantPromptContent(
                                 onUpdate = onUpdate,
                                 assistant = assistant,
                                 index = index,
+                                onRegexNameChange = onRegexNameChange,
+                                onRegexFindRegexChange = onRegexFindRegexChange,
+                                onRegexReplaceStringChange = onRegexReplaceStringChange,
                                 modifier = Modifier.scale(if (isDragging) 0.95f else 1f),
                                 dragHandleModifier = Modifier
                                     .size(48.dp)
@@ -667,6 +692,7 @@ private fun AssistantPromptContent(
 private fun CardPartsCard(
     assistant: Assistant,
     onUpdate: (Assistant) -> Unit,
+    onCardSlotTextChange: (CardSlot, String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -731,6 +757,7 @@ private fun CardPartsCard(
                                     index = index,
                                     assistant = assistant,
                                     onUpdate = onUpdate,
+                                    onCardSlotTextChange = onCardSlotTextChange,
                                     modifier = Modifier.scale(if (isDragging) 0.95f else 1f),
                                     dragHandleModifier = Modifier
                                         .size(40.dp)
@@ -788,6 +815,7 @@ private fun CardSlotRow(
     index: Int,
     assistant: Assistant,
     onUpdate: (Assistant) -> Unit,
+    onCardSlotTextChange: (CardSlot, String) -> Unit,
     modifier: Modifier = Modifier,
     dragHandleModifier: Modifier = Modifier,
 ) {
@@ -835,7 +863,7 @@ private fun CardSlotRow(
             slot = slot,
             assistant = assistant,
             enabled = enabled,
-            onUpdate = onUpdate,
+            onCardSlotTextChange = onCardSlotTextChange,
         )
     }
 }
@@ -848,7 +876,7 @@ private fun CardSlotValueField(
     slot: CardSlot,
     assistant: Assistant,
     enabled: Boolean,
-    onUpdate: (Assistant) -> Unit,
+    onCardSlotTextChange: (CardSlot, String) -> Unit,
 ) {
     if (slot == CardSlot.GREETING) {
         Text(
@@ -867,47 +895,38 @@ private fun CardSlotValueField(
         CardSlot.EXAMPLE -> assistant.cardExampleDialogue
         CardSlot.GREETING -> null
     }
-    val onChange: (String) -> Unit = { text ->
-        onUpdate(
-            when (slot) {
-                CardSlot.SYSTEM_PROMPT -> assistant.copy(cardSystemPrompt = text)
-                CardSlot.DESCRIPTION -> assistant.copy(cardDescription = text)
-                CardSlot.PERSONALITY -> assistant.copy(cardPersonality = text)
-                CardSlot.SCENARIO -> assistant.copy(cardScenario = text)
-                CardSlot.EXAMPLE -> assistant.copy(cardExampleDialogue = text)
-                CardSlot.GREETING -> assistant
-            }
-        )
-    }
 
     // 关掉的槽位不要求编辑；但仍允许查看内容（灰显），避免「关了以后看不到原先写了什么」
     CardPartField(
+        slot = slot,
         label = slot.label(),
         value = value,
-        onChange = onChange,
+        onCommit = { text -> onCardSlotTextChange(slot, text) },
         enabled = enabled,
     )
 }
 
 @Composable
 private fun CardPartField(
+    slot: CardSlot,
     label: String,
     value: String?,
-    onChange: (String) -> Unit,
+    onCommit: (String) -> Unit,
     enabled: Boolean = true,
 ) {
-    var text by remember(value) { mutableStateOf(value.orEmpty()) }
+    // 旧写法 `var text by remember(value)` 把持久态当 key：每次落盘回灌就重建缓冲
+    // （打字中被重置）。改成本地权威 + 去抖写出；resetKey 用槽位本身（唯一且稳定）。
+    val state = rememberPersistedTextFieldState(
+        externalValue = value.orEmpty(),
+        resetKey = slot,
+        onCommit = onCommit,
+    )
 
     OutlinedTextField(
-        value = text,
-        onValueChange = {
-            text = it
-            onChange(it)
-        },
+        state = state,
         label = { Text(label) },
         enabled = enabled,
-        minLines = 2,
-        maxLines = 6,
+        lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 2, maxHeightInLines = 6),
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -918,6 +937,9 @@ private fun AssistantRegexCard(
     onUpdate: (Assistant) -> Unit,
     assistant: Assistant,
     index: Int,
+    onRegexNameChange: (Uuid, String) -> Unit,
+    onRegexFindRegexChange: (Uuid, String) -> Unit,
+    onRegexReplaceStringChange: (Uuid, String) -> Unit,
     modifier: Modifier = Modifier,
     dragHandleModifier: Modifier = Modifier,
 ) {
@@ -984,66 +1006,45 @@ private fun AssistantRegexCard(
 
             if (expanded) {
 
+                // 三个文本域同属持久态投影：本地权威 + 去抖单向写出，resetKey 用正则 id
+                // （拖拽排序 / 增删时下标会漂移，禁用值本身当 key）。
+                val nameState = rememberPersistedTextFieldState(
+                    externalValue = regex.name,
+                    resetKey = regex.id,
+                    onCommit = { name -> onRegexNameChange(regex.id, name) },
+                )
+                val findRegexState = rememberPersistedTextFieldState(
+                    externalValue = regex.findRegex,
+                    resetKey = regex.id,
+                    onCommit = { findRegex -> onRegexFindRegexChange(regex.id, findRegex) },
+                )
+                val replaceStringState = rememberPersistedTextFieldState(
+                    externalValue = regex.replaceString,
+                    resetKey = regex.id,
+                    onCommit = { replaceString -> onRegexReplaceStringChange(regex.id, replaceString) },
+                )
+
                 OutlinedTextField(
-                    value = regex.name,
-                    onValueChange = { name ->
-                        onUpdate(
-                            assistant.copy(
-                                regexes = assistant.regexes.mapIndexed { i, reg ->
-                                    if (i == index) {
-                                        reg.copy(name = name)
-                                    } else {
-                                        reg
-                                    }
-                                }
-                            )
-                        )
-                    },
+                    state = nameState,
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
+                    lineLimits = TextFieldLineLimits.SingleLine,
                     label = { Text(stringResource(R.string.assistant_page_regex_name)) }
                 )
 
                 OutlinedTextField(
-                    value = regex.findRegex,
-                    onValueChange = { findRegex ->
-                        onUpdate(
-                            assistant.copy(
-                                regexes = assistant.regexes.mapIndexed { i, reg ->
-                                    if (i == index) {
-                                        reg.copy(findRegex = findRegex.trim())
-                                    } else {
-                                        reg
-                                    }
-                                }
-                            )
-                        )
-                    },
+                    state = findRegexState,
                     modifier = Modifier.fillMaxWidth(),
+                    lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 8),
                     label = { Text(stringResource(R.string.assistant_page_regex_find_regex)) },
                     placeholder = { Text("e.g., \\b\\w+@\\w+\\.\\w+\\b") },
-                    maxLines = 8,
                 )
 
                 OutlinedTextField(
-                    value = regex.replaceString,
-                    onValueChange = { replaceString ->
-                        onUpdate(
-                            assistant.copy(
-                                regexes = assistant.regexes.mapIndexed { i, reg ->
-                                    if (i == index) {
-                                        reg.copy(replaceString = replaceString)
-                                    } else {
-                                        reg
-                                    }
-                                }
-                            )
-                        )
-                    },
+                    state = replaceStringState,
                     modifier = Modifier.fillMaxWidth(),
+                    lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 8),
                     label = { Text(stringResource(R.string.assistant_page_regex_replace_string)) },
                     placeholder = { Text("e.g., [EMAIL]") },
-                    maxLines = 8,
                 )
 
                 // 配置体检（只在编辑期提示，不改运行时行为）：这三类问题的共同点是

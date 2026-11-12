@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,6 +60,7 @@ import app.androidrik.rikkahub.ui.components.ai.ModelListSheet
 import app.androidrik.rikkahub.ui.components.ai.ReasoningButton
 import app.androidrik.rikkahub.ui.components.ai.rememberModelListState
 import app.androidrik.rikkahub.ui.components.ui.FormItem
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
@@ -632,29 +634,48 @@ private fun ContextLengthOverrideSetting(
     settings: Settings,
     vm: SettingVM,
 ) {
-    var input by remember(settings.contextLengthOverride) {
-        mutableStateOf(settings.contextLengthOverride?.let { formatContextLength(it) } ?: "")
-    }
+    // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条；范本 1808d418f）。
+    // 旧写法 `remember(settings.contextLengthOverride)`：每次设置回声（含本框自己的逐键提交）
+    // 都把缓冲重置成「格式化后的持久值」——既改写用户原文（"256k"/"1M" 被重新格式化），
+    // 也逐字符抖动（D2 最易触发）。现在输入过程中保留用户原文，只在去抖提交时解析一次；
+    // 解析失败不落库、保留用户输入让他继续改，用 isError 提示。
+    // resetKey = settings.init：首帧占位 Settings 加载完成后只重建一次本地态。
+    val inputState = rememberPersistedTextFieldState(
+        externalValue = settings.contextLengthOverride?.let(::formatContextLength) ?: "",
+        resetKey = settings.init,
+        onCommit = { text ->
+            val trimmed = text.trim()
+            if (trimmed.isEmpty()) {
+                // 空串 = 不覆盖（走内置 256K 兜底）
+                vm.updateSettings { it.copy(contextLengthOverride = null) }
+            } else {
+                // 非空且无法解析 = 输入中间态：不落库，保留用户原文让他继续改（isError 提示）
+                val parsed = parseContextLengthInput(trimmed)
+                if (parsed != null) {
+                    vm.updateSettings { it.copy(contextLengthOverride = parsed) }
+                }
+            }
+        },
+    )
+    // isError/supportingText 都从本地权威文本算：不读持久态，避免落盘回声让错误态闪烁。
+    val typedText = inputState.text.toString()
+    val isInvalid = typedText.isNotBlank() && parseContextLengthInput(typedText) == null
     CardGroup(title = { Text(stringResource(R.string.setting_model_page_context_length_override)) }) {
         item {
             OutlinedTextField(
-                value = input,
-                onValueChange = { newValue ->
-                    input = newValue
-                    val parsed = parseContextLengthInput(newValue)
-                    vm.updateSettings(settings.copy(contextLengthOverride = parsed))
-                },
+                state = inputState,
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = {
                     Text(stringResource(R.string.setting_model_page_context_length_override_placeholder))
                 },
+                isError = isInvalid,
                 supportingText = {
                     Text(
                         text = stringResource(R.string.setting_model_page_context_length_override_hint),
                         style = MaterialTheme.typography.labelSmall,
                     )
                 },
-                singleLine = true,
+                lineLimits = TextFieldLineLimits.SingleLine,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             )
         }

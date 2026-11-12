@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -54,8 +55,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
@@ -66,6 +65,8 @@ import app.androidrik.rikkahub.data.sync.BackupRunKind
 import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.hooks.HiddenTextTransformation
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.ui.pages.backup.BackupVM
 import app.androidrik.rikkahub.utils.UiState
 import app.androidrik.rikkahub.utils.fileSizeToString
@@ -176,23 +177,40 @@ fun S3Tab(
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_s3_endpoint)) },
                     supportingContent = {
+                        // AGENTS「TextField Host Rules」第 4 条：本地权威编辑态 + 去抖单向
+                        // 写出。旧写法 value = s3Config.x 是 settingsFlow 异步投影：每键整份
+                        // Settings 落盘后旧值回灌活跃编辑框 ⇒ 逐字符抖动/吞字/光标跳。
+                        // resetKey = settings.init：首帧是 Settings.dummy() 占位（init = true），
+                        // 真实设置加载后翻一次 false，本地态按真实值重建，不把占位值钉死。
+                        val endpointState = rememberPersistedTextFieldState(
+                            externalValue = s3Config.endpoint,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateS3Config(s3Config.copy(endpoint = text.trim()))
+                            },
+                        )
                         OutlinedTextField(
+                            state = endpointState,
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.endpoint,
-                            onValueChange = { updateS3Config(s3Config.copy(endpoint = it.trim())) },
                             placeholder = { Text("https://s3.amazonaws.com") },
-                            singleLine = true
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_s3_access_key_id)) },
                     supportingContent = {
+                        val accessKeyIdState = rememberPersistedTextFieldState(
+                            externalValue = s3Config.accessKeyId,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateS3Config(s3Config.copy(accessKeyId = text.trim()))
+                            },
+                        )
                         OutlinedTextField(
+                            state = accessKeyIdState,
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.accessKeyId,
-                            onValueChange = { updateS3Config(s3Config.copy(accessKeyId = it.trim())) },
-                            singleLine = true
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )
@@ -200,11 +218,19 @@ fun S3Tab(
                     headlineContent = { Text(stringResource(R.string.backup_page_s3_secret_access_key)) },
                     supportingContent = {
                         var passwordVisible by remember { mutableStateOf(false) }
+                        val secretAccessKeyState = rememberPersistedTextFieldState(
+                            externalValue = s3Config.secretAccessKey,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateS3Config(s3Config.copy(secretAccessKey = text.trim()))
+                            },
+                        )
                         OutlinedTextField(
+                            state = secretAccessKeyState,
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.secretAccessKey,
-                            onValueChange = { updateS3Config(s3Config.copy(secretAccessKey = it.trim())) },
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            // 状态版 OutlinedTextField 没有 visualTransformation：用等长掩码
+                            // 替代（长度不变 ⇒ 光标/选择映射不变）。
+                            outputTransformation = if (passwordVisible) null else HiddenTextTransformation,
                             trailingIcon = {
                                 val image = if (passwordVisible) {
                                     HugeIcons.ViewOff
@@ -215,19 +241,25 @@ fun S3Tab(
                                     Icon(imageVector = image, contentDescription = null)
                                 }
                             },
-                            singleLine = true
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_s3_bucket)) },
                     supportingContent = {
+                        val bucketState = rememberPersistedTextFieldState(
+                            externalValue = s3Config.bucket,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateS3Config(s3Config.copy(bucket = text.trim()))
+                            },
+                        )
                         OutlinedTextField(
+                            state = bucketState,
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.bucket,
-                            onValueChange = { updateS3Config(s3Config.copy(bucket = it.trim())) },
                             placeholder = { Text("my-bucket") },
-                            singleLine = true
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )
@@ -244,12 +276,18 @@ fun S3Tab(
                 item(
                     headlineContent = { Text(stringResource(R.string.backup_page_s3_region)) },
                     supportingContent = {
+                        val regionState = rememberPersistedTextFieldState(
+                            externalValue = s3Config.region,
+                            resetKey = settings.init,
+                            onCommit = { text ->
+                                updateS3Config(s3Config.copy(region = text.trim()))
+                            },
+                        )
                         OutlinedTextField(
+                            state = regionState,
                             modifier = Modifier.fillMaxWidth(),
-                            value = s3Config.region,
-                            onValueChange = { updateS3Config(s3Config.copy(region = it.trim())) },
                             placeholder = { Text("auto") },
-                            singleLine = true
+                            lineLimits = TextFieldLineLimits.SingleLine,
                         )
                     },
                 )

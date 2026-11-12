@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.hooks
 
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.foundation.text.input.TextFieldBuffer
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
@@ -101,4 +103,20 @@ private fun PersistedTextFieldState(
     }
 
     return state
+}
+
+/**
+ * 等长密码掩码：[TextFieldState] 版 `OutlinedTextField` 没有 `visualTransformation`
+ * （签名为 `inputTransformation` / `outputTransformation`），所以密码框用
+ * `outputTransformation` 兜底。这里把每个字符替换成一个 `•`，**长度保持不变**，
+ * 因此文本偏移 / 光标 / 选区映射与明文一致，不会出现"掩码后光标位置错乱"。
+ *
+ * 用法：`outputTransformation = if (visible) null else HiddenTextTransformation`。
+ */
+object HiddenTextTransformation : OutputTransformation {
+    override fun TextFieldBuffer.transformOutput() {
+        if (length > 0) {
+            replace(0, length, "•".repeat(length))
+        }
+    }
 }

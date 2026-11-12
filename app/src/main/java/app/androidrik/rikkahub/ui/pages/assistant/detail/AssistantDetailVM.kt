@@ -25,9 +25,12 @@ import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.files.SkillMetadata
+import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.AssistantRegex
 import app.androidrik.rikkahub.data.model.Avatar
+import app.androidrik.rikkahub.data.model.CardSlot
 import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.data.repository.MemoryFileRepository
 import app.androidrik.rikkahub.data.model.Tag
@@ -276,6 +279,70 @@ class AssistantDetailVM(
 
     /** 最大 token 数：空串 = 不限制（null）；非法中间态由 UI 侧拦住、不落库。 */
     fun updateMaxTokens(maxTokens: Int?) = updateAssistantField { it.copy(maxTokens = maxTokens) }
+
+    // ---------------------------------------------------------------------------------
+    // 提示词页 / 自定义请求头与请求体的文本域：与 [updateName] 同一条链路 —— UI 侧
+    // `rememberPersistedTextFieldState` 去抖提交 + 离开页面补写，这里做字段级 transform。
+    // 文本域是高频路径，旧的 `update(assistant)` 读 `settings.value` 再整对象替换，两次
+    // 并发读-改-写会互相覆盖（「整对象写丢更新」旧案）；transform 让 DataStore 的串行
+    // `edit` 承担原子性。
+    // ---------------------------------------------------------------------------------
+
+    fun updateMessageTemplate(messageTemplate: String) =
+        updateAssistantField { it.copy(messageTemplate = messageTemplate) }
+
+    fun updateSystemMessageTemplate(systemMessageTemplate: String) =
+        updateAssistantField { it.copy(systemMessageTemplate = systemMessageTemplate) }
+
+    /**
+     * 预设消息正文：按消息 id 定位，不用列表下标 —— 去抖窗口内列表可能被增删，
+     * 下标会漂移到别的条目上。
+     */
+    fun updatePresetMessageText(messageId: Uuid, text: String) = updateAssistantField { assistant ->
+        assistant.copy(
+            presetMessages = assistant.presetMessages.map { message ->
+                if (message.id == messageId) {
+                    message.copy(parts = listOf(UIMessagePart.Text(text)))
+                } else {
+                    message
+                }
+            }
+        )
+    }
+
+    /** 角色卡槽位正文：槽位本身即稳定身份（每个槽位最多一条内容）。 */
+    fun updateCardSlotValue(slot: CardSlot, text: String) = updateAssistantField { assistant ->
+        when (slot) {
+            CardSlot.SYSTEM_PROMPT -> assistant.copy(cardSystemPrompt = text)
+            CardSlot.DESCRIPTION -> assistant.copy(cardDescription = text)
+            CardSlot.PERSONALITY -> assistant.copy(cardPersonality = text)
+            CardSlot.SCENARIO -> assistant.copy(cardScenario = text)
+            CardSlot.EXAMPLE -> assistant.copy(cardExampleDialogue = text)
+            // 开场白内容由姓名插值，没有可编辑字段
+            CardSlot.GREETING -> assistant
+        }
+    }
+
+    /** 规则名：按正则 id 定位（拖拽排序 / 增删时下标会漂移）。 */
+    fun updateRegexName(regexId: Uuid, name: String) = updateRegex(regexId) { it.copy(name = name) }
+
+    /** 查找正则：`trim()` 只在提交时做 —— 逐键 trim 会让正则里打不出空格/尾随空白。 */
+    fun updateRegexFindRegex(regexId: Uuid, findRegex: String) =
+        updateRegex(regexId) { it.copy(findRegex = findRegex.trim()) }
+
+    fun updateRegexReplaceString(regexId: Uuid, replaceString: String) =
+        updateRegex(regexId) { it.copy(replaceString = replaceString) }
+
+    private fun updateRegex(
+        regexId: Uuid,
+        transform: (AssistantRegex) -> AssistantRegex,
+    ) = updateAssistantField { assistant ->
+        assistant.copy(
+            regexes = assistant.regexes.map { regex ->
+                if (regex.id == regexId) transform(regex) else regex
+            }
+        )
+    }
 
     fun updateMemorySettings(transform: (Assistant) -> Assistant) {
         viewModelScope.launch {

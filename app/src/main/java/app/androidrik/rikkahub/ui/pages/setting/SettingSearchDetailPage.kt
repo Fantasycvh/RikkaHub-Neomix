@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,6 +54,7 @@ import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.richtext.HighlightCodeVisualTransformation
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderApiKeysEditor
 import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -81,9 +84,16 @@ fun SettingSearchDetailPage(
 
     fun save(updated: SearchServiceOptions) {
         options = updated
-        val newServices = settings.searchServices.toMutableList()
-        newServices[serviceIndex] = updated
-        vm.updateSettings(settings.copy(searchServices = newServices))
+        // 读-改-写（transform）：文本域提交是高频路径。旧写法 `settings.copy(...)` 用组合期
+        // 的 Settings 快照整对象覆盖，文本域落盘后旧值会再经 settingsFlow 回灌活跃编辑框
+        // （AGENTS「TextField Host Rules」第 4 条）。transform 让 DataStore 的串行 edit 承担原子性。
+        vm.updateSettings { current ->
+            current.copy(
+                searchServices = current.searchServices.map {
+                    if (it.id == updated.id) updated else it
+                }
+            )
+        }
     }
 
     Scaffold(
@@ -465,11 +475,16 @@ internal fun SearXNGOptions(
             Text(stringResource(R.string.search_detail_api_url))
         }
     ) {
+        // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条；范本 1808d418f）。
+        // 旧写法 `value = options.url`（options 是 async 持久态投影的本地镜像）每键写回，
+        // 落盘后旧值回灌活跃编辑框 ⇒ 逐字符抖动/丢字。
+        val urlState = rememberPersistedTextFieldState(
+            externalValue = options.url,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(url = text)) },
+        )
         OutlinedTextField(
-            value = options.url,
-            onValueChange = {
-                onUpdateOptions(options.copy(url = it))
-            },
+            state = urlState,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -479,11 +494,13 @@ internal fun SearXNGOptions(
             Text(stringResource(R.string.search_detail_engines))
         }
     ) {
+        val enginesState = rememberPersistedTextFieldState(
+            externalValue = options.engines,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(engines = text)) },
+        )
         OutlinedTextField(
-            value = options.engines,
-            onValueChange = {
-                onUpdateOptions(options.copy(engines = it))
-            },
+            state = enginesState,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -493,11 +510,13 @@ internal fun SearXNGOptions(
             Text(stringResource(R.string.search_detail_language))
         }
     ) {
+        val languageState = rememberPersistedTextFieldState(
+            externalValue = options.language,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(language = text)) },
+        )
         OutlinedTextField(
-            value = options.language,
-            onValueChange = {
-                onUpdateOptions(options.copy(language = it))
-            },
+            state = languageState,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -507,11 +526,13 @@ internal fun SearXNGOptions(
             Text(stringResource(R.string.search_detail_username))
         }
     ) {
+        val usernameState = rememberPersistedTextFieldState(
+            externalValue = options.username,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(username = text)) },
+        )
         OutlinedTextField(
-            value = options.username,
-            onValueChange = {
-                onUpdateOptions(options.copy(username = it))
-            },
+            state = usernameState,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -521,11 +542,13 @@ internal fun SearXNGOptions(
             Text(stringResource(R.string.search_detail_password))
         }
     ) {
+        val passwordState = rememberPersistedTextFieldState(
+            externalValue = options.password,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(password = text)) },
+        )
         OutlinedTextField(
-            value = options.password,
-            onValueChange = {
-                onUpdateOptions(options.copy(password = it))
-            },
+            state = passwordState,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -630,11 +653,22 @@ internal fun PerplexityOptions(
             Text(stringResource(R.string.search_detail_max_tokens))
         }
     ) {
-        OutlinedTextField(
-            value = options.maxTokens?.takeIf { it > 0 }?.toString() ?: "",
-            onValueChange = { value ->
-                onUpdateOptions(options.copy(maxTokens = value.toIntOrNull()))
+        // 数值投影（D1）：本地 TextFieldState 权威；解析成功才写、失败不写，绝不把 Int 投影
+        // `.toString()` 回填输入框（旧写法每键回写，落盘后旧值会把 "4096" 截成 "4"）。
+        val maxTokensState = rememberPersistedTextFieldState(
+            externalValue = options.maxTokens?.takeIf { it > 0 }?.toString() ?: "",
+            resetKey = options.id,
+            onCommit = { text ->
+                if (text.isBlank()) {
+                    onUpdateOptions(options.copy(maxTokens = null))
+                } else {
+                    text.toIntOrNull()?.takeIf { it > 0 }
+                        ?.let { onUpdateOptions(options.copy(maxTokens = it)) }
+                }
             },
+        )
+        OutlinedTextField(
+            state = maxTokensState,
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
@@ -645,11 +679,20 @@ internal fun PerplexityOptions(
             Text(stringResource(R.string.search_detail_max_tokens_per_page))
         }
     ) {
-        OutlinedTextField(
-            value = options.maxTokensPerPage?.takeIf { it > 0 }?.toString() ?: "",
-            onValueChange = { value ->
-                onUpdateOptions(options.copy(maxTokensPerPage = value.toIntOrNull()))
+        val maxTokensPerPageState = rememberPersistedTextFieldState(
+            externalValue = options.maxTokensPerPage?.takeIf { it > 0 }?.toString() ?: "",
+            resetKey = options.id,
+            onCommit = { text ->
+                if (text.isBlank()) {
+                    onUpdateOptions(options.copy(maxTokensPerPage = null))
+                } else {
+                    text.toIntOrNull()?.takeIf { it > 0 }
+                        ?.let { onUpdateOptions(options.copy(maxTokensPerPage = it)) }
+                }
             },
+        )
+        OutlinedTextField(
+            state = maxTokensPerPageState,
             modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
         )
@@ -684,11 +727,14 @@ internal fun JinaOptions(
             Text(stringResource(R.string.search_detail_search_url))
         }
     ) {
+        // trim 只在提交时做：旧写法每键 trim 会改写输入框内容，再经持久态回灌。
+        val searchUrlState = rememberPersistedTextFieldState(
+            externalValue = options.searchUrl,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(searchUrl = text.trim())) },
+        )
         OutlinedTextField(
-            value = options.searchUrl,
-            onValueChange = {
-                onUpdateOptions(options.copy(searchUrl = it.trim()))
-            },
+            state = searchUrlState,
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
                 Text("https://s.jina.ai/")
@@ -701,11 +747,13 @@ internal fun JinaOptions(
             Text(stringResource(R.string.search_detail_scrape_url))
         }
     ) {
+        val scrapeUrlState = rememberPersistedTextFieldState(
+            externalValue = options.scrapeUrl,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(scrapeUrl = text.trim())) },
+        )
         OutlinedTextField(
-            value = options.scrapeUrl,
-            onValueChange = {
-                onUpdateOptions(options.copy(scrapeUrl = it.trim()))
-            },
+            state = scrapeUrlState,
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
                 Text("https://r.jina.ai/")
@@ -790,11 +838,13 @@ internal fun GrokOptions(
             Text(stringResource(R.string.search_detail_model))
         }
     ) {
+        val modelState = rememberPersistedTextFieldState(
+            externalValue = options.model,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(model = text)) },
+        )
         OutlinedTextField(
-            value = options.model,
-            onValueChange = {
-                onUpdateOptions(options.copy(model = it))
-            },
+            state = modelState,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -804,11 +854,13 @@ internal fun GrokOptions(
             Text(stringResource(R.string.search_detail_custom_url))
         }
     ) {
+        val customUrlState = rememberPersistedTextFieldState(
+            externalValue = options.customUrl,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(customUrl = text)) },
+        )
         OutlinedTextField(
-            value = options.customUrl,
-            onValueChange = {
-                onUpdateOptions(options.copy(customUrl = it))
-            },
+            state = customUrlState,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -818,12 +870,14 @@ internal fun GrokOptions(
             Text(stringResource(R.string.search_detail_system_prompt))
         }
     ) {
+        val systemPromptState = rememberPersistedTextFieldState(
+            externalValue = options.systemPrompt,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(systemPrompt = text)) },
+        )
         OutlinedTextField(
-            value = options.systemPrompt,
-            onValueChange = {
-                onUpdateOptions(options.copy(systemPrompt = it))
-            },
-            minLines = 3,
+            state = systemPromptState,
+            lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 3),
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -839,11 +893,13 @@ internal fun CustomJsOptions(
             Text(stringResource(R.string.search_detail_name))
         }
     ) {
+        val nameState = rememberPersistedTextFieldState(
+            externalValue = options.name,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(name = text)) },
+        )
         OutlinedTextField(
-            value = options.name,
-            onValueChange = {
-                onUpdateOptions(options.copy(name = it))
-            },
+            state = nameState,
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.search_detail_custom_search_placeholder)) }
         )
@@ -857,11 +913,17 @@ internal fun CustomJsOptions(
             Text(stringResource(R.string.search_detail_search_script))
         }
     ) {
+        // 语法高亮（VisualTransformation）目前只有 legacy `value:` 重载支持，故用本地权威
+        // TextFieldState 作唯一数据源桥接：value 来自**本地** state（不再是异步持久态投影），
+        // 写回仍走 hook 的去抖单向提交。
+        val searchScriptState = rememberPersistedTextFieldState(
+            externalValue = options.searchScript,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(searchScript = text)) },
+        )
         OutlinedTextField(
-            value = options.searchScript,
-            onValueChange = {
-                onUpdateOptions(options.copy(searchScript = it))
-            },
+            value = searchScriptState.text.toString(),
+            onValueChange = { searchScriptState.setTextAndPlaceCursorAtEnd(it) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 8,
             maxLines = 20,
@@ -882,11 +944,15 @@ internal fun CustomJsOptions(
             Text(stringResource(R.string.search_detail_scrape_script_desc))
         }
     ) {
+        // 同 searchScript：高亮需要 legacy `value:` 重载，本地 state 是唯一数据源。
+        val scrapeScriptState = rememberPersistedTextFieldState(
+            externalValue = options.scrapeScript,
+            resetKey = options.id,
+            onCommit = { text -> onUpdateOptions(options.copy(scrapeScript = text)) },
+        )
         OutlinedTextField(
-            value = options.scrapeScript,
-            onValueChange = {
-                onUpdateOptions(options.copy(scrapeScript = it))
-            },
+            value = scrapeScriptState.text.toString(),
+            onValueChange = { scrapeScriptState.setTextAndPlaceCursorAtEnd(it) },
             modifier = Modifier.fillMaxWidth(),
             minLines = 4,
             maxLines = 20,
