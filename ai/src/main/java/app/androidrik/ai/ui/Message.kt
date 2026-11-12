@@ -74,6 +74,8 @@ data class UIMessage(
     // 请求期间生成的内部消息；该标记仅在内存中使用
     @Transient
     val isSynthetic: Boolean = false,
+    /** App-owned memory library binding for tool replay and deferred approvals. */
+    val memoryContext: String? = null,
 ) {
     /**
      * 把一条**增量或完整**的 assistant 消息合并进当前消息。

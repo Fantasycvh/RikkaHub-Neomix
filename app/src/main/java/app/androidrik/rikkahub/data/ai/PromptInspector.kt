@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
+
 import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.androidrik.ai.core.MessageRole
@@ -291,6 +293,7 @@ suspend fun inspectPrompt(
     /** 首屏快速模式：长文本用字符启发式计数，随后由 [refineTokens] 覆盖成精确值。 */
     approximateTokens: Boolean = false,
     omittedTransformers: List<TransformerOmission> = emptyList(),
+    memoryFiles: List<MemoryFileEntity> = emptyList(),
 ): PromptInspection {
     val windowMessages = conversation.currentMessages
 
@@ -337,6 +340,7 @@ suspend fun inspectPrompt(
         frozenAnchorIds = conversation.frozenAnchorIds,
         timing = timing,
         precomputedMemoryEntryCosts = precomputedMemoryCosts,
+        memoryFiles = memoryFiles,
     )
 
     timing?.mark("assembly")

@@ -238,6 +238,7 @@ val appModule = module {
             // 直接在此 `get()` 会构成构造环。lambda 体在装配工具时才执行 ⇒ 环断在这里。
             // 依赖窄接口而非具体 Runner，见下方 single<SubagentDispatcher> 的绑定。
             subagentDispatcher = { get<SubagentDispatcher>() },
+            memoryFiles = get(),
         )
     }
 
@@ -265,6 +266,7 @@ val appModule = module {
             folderRepository = get(),
             usageRecorder = get(),
             taskHandoffs = get(),
+            memoryFiles = get(),
         )
     }
 

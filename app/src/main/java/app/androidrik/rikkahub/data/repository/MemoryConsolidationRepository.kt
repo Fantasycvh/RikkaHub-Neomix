@@ -128,7 +128,7 @@ class MemoryConsolidationRepository(
         } else {
             baselineOf(conversation, assistant)
         }
-        val turns = unconsolidatedTurns(conversation, baseline)
+        val turns = unconsolidatedTurns(conversation, baseline, assistant.memoryId())
         if (turns <= 0) return null
         // 「第 N 轮」（决议 #1）：会话累计用户轮数首次达到阈值才触发，命中过（fired=1）不再触发。
         // 命中标记与水位在同一行提交（见 markConsolidated），这里读不到半提交状态。

@@ -698,6 +698,6 @@ internal fun pickAutoCleanupTargets(
  */
 internal fun buildTaskPrompt(prompt: String, withGoal: Boolean, goal: String?, memoryAvailable: Boolean = false): String = buildList {
     if (withGoal && !goal.isNullOrBlank()) add("## 长期目标\n$goal")
-    if (memoryAvailable) add("## Memory\nThis is a preconfigured scheduled task, not a new user statement. Use memory_tool only for sourced stable facts, explicit user preferences, or verified task results. Do not store your guesses, greetings, invented user circumstances or raw logs as facts. Existing write approvals still apply; a generated message alone does not mean memory was saved. If you assessed the run and there is no appropriate memory candidate, explicitly call memory_tool with action=no_candidate. Do not infer no_candidate from the absence of a write.")
+    if (memoryAvailable) add("## Memory\nThis is a preconfigured scheduled task, not a new user statement. Use the active memory tool only for sourced stable facts, explicit user preferences, or verified task results. Do not store guesses, greetings, invented user circumstances or raw logs as facts. Existing write approvals still apply. If you assessed the run and there is no appropriate memory candidate, call the active memory tool with action=no_candidate.")
     add(prompt)
 }.joinToString("\n\n")

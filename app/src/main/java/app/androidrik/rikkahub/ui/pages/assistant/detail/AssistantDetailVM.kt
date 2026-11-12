@@ -27,6 +27,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.MemoryTaskStatus
+import app.androidrik.rikkahub.data.repository.MemoryFileRepository
 import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import app.androidrik.rikkahub.data.repository.MemoryRepository
@@ -53,6 +54,7 @@ class AssistantDetailVM(
      * 必须回到 ChatService 走一次「先同步内存、再批量落库」。
      */
     private val chatService: ChatService,
+    val memoryFiles: MemoryFileRepository,
 ) : ViewModel() {
     private val assistantId = Uuid.parse(id)
 
@@ -225,6 +227,16 @@ class AssistantDetailVM(
                         }
                     })
             )
+        }
+    }
+
+    fun updateMemorySettings(transform: (Assistant) -> Assistant) {
+        viewModelScope.launch {
+            settingsStore.update { current ->
+                current.copy(assistants = current.assistants.map {
+                    if (it.id == assistantId) transform(it) else it
+                })
+            }
         }
     }
 

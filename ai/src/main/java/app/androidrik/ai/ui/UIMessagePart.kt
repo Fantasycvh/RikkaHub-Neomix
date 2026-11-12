@@ -179,7 +179,8 @@ sealed class UIMessagePart {
         // 执行窗口（不含审批等待；denied/answered 路径不记）。旧消息 JSON 无此字段 ⇒ 可空缺省兼容
         val startedAt: LocalDateTime? = null,
         val finishedAt: LocalDateTime? = null,
-        override var metadata: JsonObject? = null
+        override var metadata: JsonObject? = null,
+        val memoryContext: String? = null,
     ) : UIMessagePart() {
         /** Whether the tool has been executed (has output) */
         val isExecuted: Boolean get() = output.isNotEmpty()
@@ -213,6 +214,7 @@ sealed class UIMessagePart {
                 input = input + other.input,
                 output = mergedOutput,
                 approvalState = approvalState,
+                memoryContext = memoryContext ?: other.memoryContext,
                 startedAt = other.startedAt ?: startedAt,
                 finishedAt = other.finishedAt ?: finishedAt,
                 metadata = if (other.metadata != null) other.metadata else metadata,

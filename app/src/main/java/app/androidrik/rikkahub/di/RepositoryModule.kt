@@ -15,6 +15,7 @@ import app.androidrik.rikkahub.data.repository.GenMediaRepository
 import app.androidrik.rikkahub.data.repository.MemoryConsolidationRepository
 import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
+import app.androidrik.rikkahub.data.repository.MemoryFileRepository
 import app.androidrik.rikkahub.data.repository.TranslationHistoryRepository
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
@@ -32,6 +33,7 @@ import org.koin.dsl.onClose
 import java.io.File
 
 val repositoryModule = module {
+    single { MemoryFileRepository(get()) }
     single {
         ConversationRepository(get(), get(), get(), get(), get(), get(), get())
     }

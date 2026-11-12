@@ -84,6 +84,8 @@ class DatabaseObjectRealSchemaInstrumentedTest {
             }
             // memory_consolidation 挂会话 CASCADE 外键：必须进快照，否则合并会留下孤儿行让 FK 校验失败。
             val db = source.openHelper.writableDatabase
+            db.execSQL("INSERT INTO MemoryEntity(id, assistant_id, content, public_id) VALUES (3, 'private', 'entry backup', '00000003')")
+            db.execSQL("INSERT INTO assistant_memory_file(store_id, path, content, revision, updated_at) VALUES ('private', '/profile.md', 'file backup', 'revision', 1)")
             db.execSQL(
                 "INSERT INTO memory_consolidation(conversation_id, consolidated_at) VALUES(?, ?)",
                 arrayOf<Any?>(conversationId, 42L),
@@ -105,6 +107,7 @@ class DatabaseObjectRealSchemaInstrumentedTest {
         assertFalse(objects.any { it.objectKey.startsWith("table:message_fts") })
         assertFalse(objects.any { it.objectKey.startsWith("table:sqlite_") })
         assertFalse(objects.any { it.objectKey == "table:room_master_table" })
+        assertTrue(objects.any { it.objectKey == "table:assistant_memory_file" })
         val consolidationObject = objects.firstOrNull { it.objectKey == "table:memory_consolidation" }
         assertNotNull("memory_consolidation must be captured (FK to ConversationEntity)", consolidationObject)
         assertEquals(1, readDbObjectPayload(consolidationObject!!.file).tables.getValue("memory_consolidation").rows.size)
@@ -137,6 +140,14 @@ class DatabaseObjectRealSchemaInstrumentedTest {
         val merged = DatabaseObjectMerge.merge(File(root, "base-copy.db"), objects.map { it.objectKey to it.file }, AppDatabase.SCHEMA_VERSION)
 
         SQLiteDatabase.openDatabase(merged.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { database ->
+            database.rawQuery("SELECT content FROM MemoryEntity WHERE assistant_id = 'private'", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("entry backup", cursor.getString(0))
+            }
+            database.rawQuery("SELECT content FROM assistant_memory_file WHERE store_id = 'private' AND path = '/profile.md'", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("file backup", cursor.getString(0))
+            }
             database.rawQuery("PRAGMA user_version", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals(AppDatabase.SCHEMA_VERSION, cursor.getInt(0))

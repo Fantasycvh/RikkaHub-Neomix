@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.data.task
 
+import app.androidrik.rikkahub.data.ai.isMemoryTool
+
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
@@ -28,4 +30,4 @@ internal suspend fun bridgeScheduledMemoryApprovals(
 
 internal fun pendingScheduledMemoryTools(messages: List<UIMessage>): List<UIMessagePart.Tool> = messages
     .flatMap { it.parts }.filterIsInstance<UIMessagePart.Tool>()
-    .filter { it.isPending && it.toolName == "memory_tool" }
+    .filter { it.isPending && isMemoryTool(it.toolName) }

@@ -97,6 +97,7 @@ val viewModelModule = module {
             workspaceRepository = get(),
             consolidationScheduler = get(),
             chatService = get(),
+            memoryFiles = get(),
         )
     }
     viewModelOf(::TranslatorVM)

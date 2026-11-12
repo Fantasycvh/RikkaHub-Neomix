@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.scheduled
 
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.*
+import app.androidrik.rikkahub.data.ai.isMemoryTool
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlinx.serialization.json.*
 
@@ -19,8 +20,8 @@ private fun json(text: String): JsonObject? = runCatching { JsonInstant.parseToJ
 /** Only real mutation receipts count. A proposal, tool absence, or text saying "saved" is not proof. */
 fun memorySyncStatus(messages: List<UIMessage>, available: Boolean, headless: Boolean = false, finished: Boolean = false): String {
     if (headless) return "unsupported"
-    val calls = messages.flatMap { it.parts }.filterIsInstance<UIMessagePart.Tool>().filter { it.toolName == "memory_tool" }
-        .filter { json(it.input)?.value("action") in setOf("create", "edit", "delete", "complete", "drop", "no_candidate") }
+    val calls = messages.flatMap { it.parts }.filterIsInstance<UIMessagePart.Tool>().filter { isMemoryTool(it.toolName) }
+        .filter { json(it.input)?.value("action") in setOf("create", "edit", "delete", "append", "replace", "complete", "drop", "no_candidate") }
     if (!available && calls.isEmpty()) return "disabled"
     if (calls.any { it.isPending }) return if (finished) "interrupted" else "pending_approval"
     if (calls.any { it.approvalState is ToolApprovalState.Denied }) return "denied"
@@ -37,16 +38,17 @@ fun memorySyncStatus(messages: List<UIMessage>, available: Boolean, headless: Bo
 
 fun captureRunEvidence(runId: String, messages: List<UIMessage>, available: Boolean, deliverables: String? = null, finished: Boolean = true): RunEvidence {
     val scoped = messagesOfScheduledRun(messages, runId)
-    val calls = scoped.flatMap { it.parts }.filterIsInstance<UIMessagePart.Tool>().filter { it.toolName == "memory_tool" }
+    val calls = scoped.flatMap { it.parts }.filterIsInstance<UIMessagePart.Tool>().filter { isMemoryTool(it.toolName) }
     val receipts = buildJsonArray {
         calls.takeLast(64).forEach { call -> add(buildJsonObject {
             put("tool_call_id", call.toolCallId)
+            call.memoryContext?.let { put("library", it) }
             put("action", json(call.input)?.value("action").orEmpty())
             put("pending", call.isPending)
             put("denied", call.approvalState is ToolApprovalState.Denied)
             // Persist identities/revisions rather than duplicating potentially private memory bodies.
             put("receipts", buildJsonArray { call.output.filterIsInstance<UIMessagePart.Text>().mapNotNull { json(it.text) }.forEach { value ->
-                add(buildJsonObject { listOf("id", "revision", "memory_sync", "success", "applied", "proposal", "stored").forEach { key -> value[key]?.let { put(key, it) } } })
+                add(buildJsonObject { listOf("id", "path", "revision", "memory_sync", "success", "applied", "proposal", "stored").forEach { key -> value[key]?.let { put(key, it) } } })
             } })
         }) }
     }.toString()

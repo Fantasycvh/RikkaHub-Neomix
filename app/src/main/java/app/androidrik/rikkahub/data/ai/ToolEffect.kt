@@ -94,15 +94,15 @@ internal fun classifyToolEffect(toolName: String, arguments: JsonElement?): Tool
             else -> ToolEffect.LANDING
         }
     }
-    if (toolName == "memory_tool") {
+    if (isMemoryTool(toolName)) {
         val action = (arguments as? JsonObject)
             ?.get("action")
             ?.let { it as? JsonPrimitive }
             ?.contentOrNull
             .orEmpty()
         return when (action) {
-            "create", "edit", "delete" -> ToolEffect.LANDING
-            "read" -> ToolEffect.EXPLORE
+            "create", "edit", "delete", "append", "replace" -> ToolEffect.LANDING
+            "read", "list" -> ToolEffect.EXPLORE
             else -> ToolEffect.NEUTRAL
         }
     }

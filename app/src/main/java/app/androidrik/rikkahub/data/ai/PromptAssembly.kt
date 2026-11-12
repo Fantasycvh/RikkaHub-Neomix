@@ -1,5 +1,9 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
+import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.ai.provider.ModelAbility
+
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.withoutUiNotices
@@ -161,10 +165,14 @@ internal fun buildSystemBlocks(
 
     // 记忆（会话级「不使用记忆」时整块不发）
     if (assistant.enableMemory && !memoryDisabled) {
-        val plan = memoryPlan ?: buildMemoryInjectionPlan(
-            memories, settings.memoryInjectBudgetTokens,
-            query = memoryQueryOf(messages), frozenAnchorIds = frozenAnchorIds,
-        )
+        val plan = memoryPlan ?: if (assistant.memoryMode == MemoryMode.FILES) {
+            buildFileMemoryPlan(emptyList(), settings.memoryInjectBudgetTokens, tools.any { it.name == FILE_MEMORY_TOOL })
+        } else {
+            buildMemoryInjectionPlan(
+                memories, settings.memoryInjectBudgetTokens,
+                query = memoryQueryOf(messages), frozenAnchorIds = frozenAnchorIds,
+            )
+        }
         // The component strings already contain their newlines; do not add unbudgeted separators.
         if (plan.anchorText.isNotBlank()) {
             blocks += SystemBlock(SystemBlockSource.ANCHOR, content = plan.anchorText, separatorAfter = "")
@@ -314,6 +322,7 @@ internal fun buildInternalMessagesWithPlan(
      * **不改发送内容**——P1 才把净化副本换成实发；null（无头 run / 预览）则完全不算。
      */
     purgeObserver: ((ContextPurifier.Result) -> Unit)? = null,
+    memoryFiles: List<MemoryFileEntity> = emptyList(),
 ): AssembledRequest {
     val windowRaw = buildSendWindowMessages(
         messages = messages,
@@ -325,17 +334,26 @@ internal fun buildInternalMessagesWithPlan(
         val report = ContextPurifier.purgeSendWindow(windowRaw)
         if (report.windowCount > 0) observer(report)
     }
-    val windowMessages = windowRaw.map { it.withoutUiNotices() }
+    val memoryBinding = assistant.memoryContext(memoryDisabled)
+    val windowMessages = windowRaw.mapNotNull { it.withoutUiNotices().withMemoryToolHistoryFor(memoryBinding) }
     timing?.mark("asm_window")
     // Capture query, time, tokenizer strategy, rendered texts and selection once for this request.
-    val memoryPlan = buildMemoryInjectionPlan(
-        memories = if (assistant.enableMemory && !memoryDisabled) memories else emptyList(),
-        budgetTokens = settings.memoryInjectBudgetTokens,
-        query = memoryQueryOf(windowMessages),
-        frozenAnchorIds = frozenAnchorIds,
-        timing = timing,
-        precomputedEntryCosts = precomputedMemoryEntryCosts,
-    )
+    val memoryPlan = if (assistant.enableMemory && !memoryDisabled && assistant.memoryMode == MemoryMode.FILES) {
+        buildFileMemoryPlan(
+            memoryFiles,
+            settings.memoryInjectBudgetTokens,
+            ModelAbility.TOOL in model.abilities && tools.any { it.name == FILE_MEMORY_TOOL },
+        )
+    } else {
+        buildMemoryInjectionPlan(
+            memories = if (assistant.enableMemory && !memoryDisabled) memories else emptyList(),
+            budgetTokens = settings.memoryInjectBudgetTokens,
+            query = memoryQueryOf(windowMessages),
+            frozenAnchorIds = frozenAnchorIds,
+            timing = timing,
+            precomputedEntryCosts = precomputedMemoryEntryCosts,
+        )
+    }
     timing?.mark("asm_memoryPlan")
     val baseSystem = buildSystemPromptText(
         assistant = assistant,

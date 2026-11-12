@@ -236,6 +236,7 @@ val dataSourceModule = module {
             providerManager = get(),
             json = get(),
             usageRecorder = get(),
+            memoryFiles = get(),
         )
     }
 

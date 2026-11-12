@@ -92,7 +92,7 @@ class AppSkinPanelsRenderingTest {
                     TopBar(settings, Conversation(assistantId = assistant.id, title = "Skin title", messageNodes = emptyList()), ContextUsage(32, 4096),
                         drawerOpen = false, onOpenDrawer = { drawerClicks++ }, bigScreen = false, previewMode = false,
                         hazeState = remember { HazeState() }, glassHazeState = remember { HazeState() }, showCapsuleBackground = true,
-                        onClickMenu = {}, onNewChat = { newChatClicks++ }, onExport = {}, onUpdateTitle = {})
+                        onClickMenu = {}, onNewChat = { newChatClicks++ }, onExport = {}, onUpdateTitle = {}, onShowTreeView = {})
                 }
             }
         }

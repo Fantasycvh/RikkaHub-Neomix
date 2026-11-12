@@ -1,5 +1,10 @@
 package app.androidrik.rikkahub.service
 
+import app.androidrik.rikkahub.data.ai.forMemoryResume
+import app.androidrik.rikkahub.data.ai.memoryId
+import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.rikkahub.data.repository.MemoryFileRepository
+
 // 拼装预览/预热控制器（批次 8 从 ChatService 拆出）：单飞、预热缓存与组装重活。
 // KDoc 中的线程契约（快照在调用方上下文读、重活经 withPromptInspectionDispatcher）逐字保留。
 
@@ -43,6 +48,7 @@ internal class PromptInspectionController(
     private val transformerRegistry: TransformerChainRegistry,
     private val chatToolFactory: ChatToolFactory,
     private val memoryRepository: MemoryRepository,
+    private val memoryFiles: MemoryFileRepository,
     /** 会话状态流访问器（ChatService.getConversationFlow；snapshot 读取须在调用方上下文/Main）。 */
     private val conversationFlow: (Uuid) -> StateFlow<Conversation>,
 ) {
@@ -246,14 +252,15 @@ internal class PromptInspectionController(
         try {
             val baseAssistant = settings.getAssistantById(conversation.assistantId)
                 ?: settings.getCurrentAssistant()
-            val assistant = conversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant
+            val assistant = (conversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant)
+                .forMemoryResume(conversation.currentMessages.lastOrNull(), conversation.memoryDisabled)
             // `return@withPromptInspectionDispatcher`：helper 的 block 不是 inline lambda，
             // 不能用裸 `return null`。
             val baseModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
                 ?: return@withPromptInspectionDispatcher null
             val model = conversation.upstreamConfig?.applyToModel(baseModel) ?: baseModel
 
-            val memories = if (conversation.memoryDisabled) {
+            val memories = if (conversation.memoryDisabled || assistant.memoryMode == MemoryMode.FILES) {
                 // 与实发一致：隐身对话不加载记忆（预览也要显示「没有记忆段」）
                 emptyList()
             } else if (assistant.useGlobalMemory) {
@@ -283,6 +290,11 @@ internal class PromptInspectionController(
                 model = model,
                 conversation = conversation,
                 memories = memories,
+                memoryFiles = if (assistant.enableMemory && !conversation.memoryDisabled && assistant.memoryMode == MemoryMode.FILES) {
+                    memoryFiles.list(assistant.memoryId())
+                } else {
+                    emptyList()
+                },
                 tools = tools,
                 inputTransformers = transformerChains.inputTransformers,
                 omittedTransformers = transformerChains.omittedInputs,

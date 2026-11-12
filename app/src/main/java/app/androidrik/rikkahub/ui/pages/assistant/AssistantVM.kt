@@ -16,12 +16,14 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.MemoryRepository
+import app.androidrik.rikkahub.data.repository.MemoryFileRepository
 
 class AssistantVM(
     private val settingsStore: SettingsStore,
     private val memoryRepository: MemoryRepository,
     private val conversationRepo: ConversationRepository,
     private val filesManager: FilesManager,
+    private val memoryFiles: MemoryFileRepository,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, Settings.dummy())
@@ -71,6 +73,7 @@ class AssistantVM(
                 )
             )
             memoryRepository.deleteMemoriesOfAssistant(assistant.id.toString())
+            memoryFiles.deleteStore(assistant.id.toString())
             conversationRepo.deleteConversationOfAssistant(assistant.id)
         }
     }

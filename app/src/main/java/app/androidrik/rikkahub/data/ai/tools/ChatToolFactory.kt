@@ -24,6 +24,8 @@ import app.androidrik.rikkahub.data.image.resolveImageGenerationModel
 import app.androidrik.rikkahub.data.files.SkillInstaller
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.rikkahub.data.repository.MemoryFileRepository
 import app.androidrik.rikkahub.data.model.MemoryReadSource
 import app.androidrik.rikkahub.data.model.MemoryTaskStatus
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -106,6 +108,7 @@ class ChatToolFactory(
      * 一调用就崩的工具）。
      */
     private val subagentDispatcher: () -> SubagentDispatcher? = { null },
+    private val memoryFiles: MemoryFileRepository? = null,
 ) {
     /**
      * 装配本次生成的完整工具集（[createToolSegments] 的扁平视图）。
@@ -206,7 +209,12 @@ class ChatToolFactory(
         // 记忆工具（原在 GenerationHandler 循环内叠加，现为装配点的一部分）
         // **会话级「不使用记忆」时不装配**（隐身对话，见 docs/design/design-memory-discipline.md §4.4）：
         // 开关要能拦住「这次对话碰我的记忆库」，否则模型仍可 memory_read 逐条读回来、开关等于装饰。
-        if (assistant.enableMemory && !memoryDisabled) {
+        if (assistant.enableMemory && !memoryDisabled && assistant.memoryMode == MemoryMode.FILES) {
+            memoryFiles?.let {
+                segments += ToolSegment(ToolSource.Memory, listOf(buildFileMemoryTool(it, assistant.memoryId(), assistant)))
+            }
+        }
+        if (assistant.enableMemory && !memoryDisabled && assistant.memoryMode == MemoryMode.ENTRIES) {
             val memoryAssistantId = assistant.memoryId()
             segments += ToolSegment(
                 ToolSource.Memory,

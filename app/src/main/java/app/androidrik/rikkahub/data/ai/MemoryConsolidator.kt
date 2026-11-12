@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.rikkahub.data.model.MemoryMode
+
 import android.util.Log
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findModelById
@@ -85,13 +87,16 @@ class MemoryConsolidator(
         fullReview: Boolean,
     ): MemoryConsolidationRun? {
         val settings = settings()
-        val participants = settings.assistants.filter { it.memoryId() == memoryId }
+        val participants = settings.assistants.filter { it.memoryMode == MemoryMode.ENTRIES && it.memoryId() == memoryId }
         if (participants.isEmpty()) return null
         if (!fullReview && conversationIds.isEmpty()) return null
 
+        val participantIds = participants.mapTo(hashSetOf()) { it.id }
         val conversations = conversationIds.mapNotNull { id -> repository.loadConversation(id) }
+            .filter { it.assistantId in participantIds && !it.memoryDisabled }
+        if (conversations.isEmpty() && !fullReview) return null
         val baselines = conversations.associate { it.id to repository.baselineOf(it, manual = fullReview) }
-        val transcript = buildConsolidationTranscript(conversations, baselines)
+        val transcript = buildConsolidationTranscript(conversations, baselines, storeId = memoryId)
 
         if (transcript.text.isBlank() && !fullReview) {
             // 有轮次但没有可整理的**正文**（例如整轮只有思考/工具结果）：把水位推过去。

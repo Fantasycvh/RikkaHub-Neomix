@@ -1,5 +1,10 @@
 package app.androidrik.rikkahub.service
 
+import app.androidrik.rikkahub.data.ai.forMemoryResume
+import app.androidrik.rikkahub.data.ai.memoryContext
+import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.rikkahub.data.repository.MemoryFileRepository
+
 import android.app.Application
 import androidx.room.withTransaction
 import app.androidrik.rikkahub.data.db.AppDatabase
@@ -202,6 +207,7 @@ class ChatService(
     /** 标题 / 建议 / 压缩这些不走 GenerationHandler 的请求，在这里包一层记用量流水 */
     private val usageRecorder: UsageRecorder,
     private val taskHandoffs: TaskHandoffRegistry = TaskHandoffRegistry(),
+    private val memoryFiles: MemoryFileRepository,
 ) {
     private val transformerRegistry = defaultTransformerChainRegistry(
         templateTransformer, WorkspaceReminderTransformer(workspaceRepository),
@@ -1414,6 +1420,7 @@ class ChatService(
         transformerRegistry = transformerRegistry,
         chatToolFactory = chatToolFactory,
         memoryRepository = memoryRepository,
+        memoryFiles = memoryFiles,
         conversationFlow = { getConversationFlow(it) },
     )
     fun prewarmPromptTokenCounts(conversationId: Uuid, labels: PromptInspectionLabels) =
@@ -1513,7 +1520,12 @@ class ChatService(
         val initialConversation = getConversationFlow(conversationId).value
         val baseAssistant = settings.getAssistantById(initialConversation.assistantId)
             ?: settings.getCurrentAssistant()
-        val assistant = initialConversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant
+        val configuredAssistant = initialConversation.upstreamConfig?.applyTo(baseAssistant) ?: baseAssistant
+        val assistant = if (messageRange == null) {
+            configuredAssistant.forMemoryResume(initialConversation.currentMessages.lastOrNull(), initialConversation.memoryDisabled)
+        } else {
+            configuredAssistant
+        }
         val baseModel = settings.findModelById(assistant.chatModelId ?: settings.chatModelId)
         if (baseModel == null) {
             // **不能静默 return**：这一轮的 job 会秒结、无错误、队列空，调用方（定时任务执行层）
@@ -1574,14 +1586,22 @@ class ChatService(
                 maybeAutoCompress(conversationId, settings, model)
             }
 
-            val conversation = getConversationFlow(conversationId).value
+            val liveConversation = getConversationFlow(conversationId).value
+            val newUserMessage = liveConversation.currentMessages.lastOrNull()
+                ?.takeIf { messageRange == null && it.role == MessageRole.USER && it.memoryContext == null }
+            val conversation = if (newUserMessage == null) {
+                liveConversation
+            } else {
+                val tagged = newUserMessage.copy(memoryContext = assistant.memoryContext(liveConversation.memoryDisabled))
+                liveConversation.mergeGenerationMessages(listOf(tagged)).also { updateConversation(conversationId, it) }
+            }
             val afterCompressAt = SystemClock.elapsedRealtime()
 
             // start generating
             val session = getOrCreateSession(conversationId)
             val memoriesAt = SystemClock.elapsedRealtime()
             // 提到局部变量只为一件事：**分段计时**（AppScope=Main，这一段全在主线程上）
-            val loadedMemories = if (conversation.memoryDisabled) {
+            val loadedMemories = if (conversation.memoryDisabled || assistant.memoryMode == MemoryMode.FILES) {
                 // 隐身对话：不加载记忆（注入侧另有 memoryDisabled 门控，这里省掉一次查询）
                 emptyList()
             } else {
@@ -1652,7 +1672,11 @@ class ChatService(
             // 此后本会话内锚点怎么改都不再漂移（手动刷新点 = 记忆页的「固化为锚点」，
             // 见 refreshFrozenAnchorsForAssistant）。为什么值得这么做：L1 在 system（位置 0），
             // 它一变其后整段前缀全部重算——真机实测命中率 98% → 0%（设计稿 §2）。
-            val frozenAnchorIds = ensureFrozenAnchors(conversationId, conversation, loadedMemories)
+            val frozenAnchorIds = if (assistant.memoryMode == MemoryMode.ENTRIES) {
+                ensureFrozenAnchors(conversationId, conversation, loadedMemories)
+            } else {
+                null
+            }
             // 回写基线：**全量**消息（id 制合并 mergeGenerationMessages 按消息 id 寻址节点）；
             // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
             // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。

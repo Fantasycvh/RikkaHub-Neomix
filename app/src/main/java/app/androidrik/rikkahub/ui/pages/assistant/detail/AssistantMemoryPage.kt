@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.assistant.detail
 
+import app.androidrik.rikkahub.data.model.MemoryMode
+
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -138,7 +140,7 @@ fun AssistantMemoryPage(id: String) {
             }
         }
     }
-    if (showRecovery) {
+    if (showRecovery && assistant.memoryMode == MemoryMode.ENTRIES) {
         key(storeId) {
             MemoryRecoveryDialog(storeId, memories, vm) { showRecovery = false }
         }
@@ -154,7 +156,9 @@ fun AssistantMemoryPage(id: String) {
                     BackButton()
                 },
                 actions = {
-                    TextButton(onClick = { showRecovery = true }) { Text(stringResource(R.string.backup_page_restore)) }
+                    if (assistant.memoryMode == MemoryMode.ENTRIES) {
+                        TextButton(onClick = { showRecovery = true }) { Text(stringResource(R.string.backup_page_restore)) }
+                    }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = CustomColors.topBarColors,
@@ -163,8 +167,18 @@ fun AssistantMemoryPage(id: String) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
+      Column(Modifier.fillMaxSize().padding(innerPadding)) {
+        MemoryModeSelector(assistant.memoryMode) { mode ->
+            showRecovery = false
+            vm.updateMemorySettings { it.copy(memoryMode = mode) }
+        }
+        if (assistant.memoryMode == MemoryMode.FILES) {
+            key(storeId) {
+                AssistantFileMemoryContent(assistant, storeId, vm)
+            }
+        } else {
         AssistantMemoryContent(
-            innerPadding = innerPadding,
+            innerPadding = PaddingValues(),
             assistant = assistant,
             memories = memories,
             onMoveMemory = { memoryId, beforeId -> vm.moveMemory(storeId, memoryId, beforeId) },
@@ -254,6 +268,8 @@ fun AssistantMemoryPage(id: String) {
                 }
             },
         )
+        }
+      }
     }
 }
 

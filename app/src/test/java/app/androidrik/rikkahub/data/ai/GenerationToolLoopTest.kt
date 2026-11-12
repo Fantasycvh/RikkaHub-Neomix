@@ -256,6 +256,7 @@ class GenerationToolLoopTest {
         provider: ScriptedProvider,
         tools: List<Tool>,
         messages: List<UIMessage> = listOf(UIMessage.user("hi")),
+        assistant: Assistant = Assistant(chatModelId = model.id),
     ): List<List<UIMessage>> {
         val sent = mutableListOf<List<UIMessage>>()
         runBlocking {
@@ -263,7 +264,7 @@ class GenerationToolLoopTest {
                 settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
                 model = model,
                 messages = messages,
-                assistant = Assistant(chatModelId = model.id),
+                assistant = assistant,
                 tools = tools,
             ).collect { chunk ->
                 if (chunk is GenerationChunk.Messages) sent += chunk.messages
@@ -271,6 +272,37 @@ class GenerationToolLoopTest {
         }
         assertTrue("生成过程应当至少回写过一次消息", sent.isNotEmpty())
         return sent
+    }
+
+    @Test
+    fun `streamed file memory calls keep their binding across approval and replay`() {
+        val assistant = Assistant(
+            chatModelId = model.id,
+            enableMemory = true,
+            memoryMode = app.androidrik.rikkahub.data.model.MemoryMode.FILES,
+        )
+        val writes = AtomicInteger(0)
+        val memory = tool(FILE_MEMORY_TOOL, needsApproval = true) {
+            writes.incrementAndGet()
+            listOf(UIMessagePart.Text("saved"))
+        }
+        val first = ScriptedProvider { _, _ ->
+            toolCallStep(toolCall("memory-1", FILE_MEMORY_TOOL, """{"action":"create"}"""))
+        }
+        val pending = runGeneration(first, listOf(memory), assistant = assistant).last()
+        val call = pending.last().getTools().single()
+        assertTrue(call.isPending)
+        assertEquals(assistant.memoryContext(false), call.memoryContext)
+        val approved = pending.dropLast(1) + pending.last().copy(
+            parts = listOf(call.copy(approvalState = ToolApprovalState.Approved)),
+        )
+        val second = ScriptedProvider { _, request ->
+            assertTrue(request.any { message -> message.getTools().any { it.toolCallId == call.toolCallId && it.isExecuted } })
+            textStep("done")
+        }
+        val switched = assistant.copy(memoryMode = app.androidrik.rikkahub.data.model.MemoryMode.ENTRIES)
+        runGeneration(second, listOf(memory), approved, switched.forMemoryResume(approved.last(), false))
+        assertEquals(1, writes.get())
     }
 
     // ---- Bug 4：空输出 ⇒ 之后每一步都被重新执行 ----

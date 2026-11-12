@@ -83,8 +83,10 @@ class MemoryAnchorWiringTest {
     @Test
     fun `conversation start freezes the anchors and passes the snapshot into generation`() {
         val service = source("app/androidrik/rikkahub/service/ChatService.kt")
-        val callIdx = service.indexOf("val frozenAnchorIds = ensureFrozenAnchors(")
+        val callIdx = service.indexOf("ensureFrozenAnchors(conversationId, conversation, loadedMemories)")
         assertTrue("会话开始必须冻结锚点快照（ensureFrozenAnchors）", callIdx >= 0)
+        val branch = service.substringBefore("ensureFrozenAnchors(conversationId, conversation, loadedMemories)")
+        assertTrue(branch.trimEnd().endsWith("if (assistant.memoryMode == MemoryMode.ENTRIES) {"))
 
         // 冻结必须发生在 generateText **之前**（否则首次请求用的是实时锚点，与库里的快照相差一轮）
         val generateIdx = service.indexOf("generationHandler.generateText(", callIdx)

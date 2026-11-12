@@ -24,6 +24,7 @@ object ToolSchemaCompactor {
     // 记忆纪律 / 子代理委派政策 / 计划规则 / 工作区读写与技能装的说明都远超普通工具。
     private val ESSENTIAL_TOOLS = setOf(
         "memory_tool",
+        FILE_MEMORY_TOOL,
         "dispatch_subagent",
         "todo_write",
         "workspace_shell",

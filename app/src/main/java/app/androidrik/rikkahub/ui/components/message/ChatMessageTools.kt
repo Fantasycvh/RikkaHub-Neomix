@@ -1,5 +1,10 @@
 package app.androidrik.rikkahub.ui.components.message
 
+import app.androidrik.rikkahub.data.ai.ENTRY_MEMORY_TOOL
+import app.androidrik.rikkahub.data.ai.FILE_MEMORY_TOOL
+import app.androidrik.rikkahub.data.ai.isMemoryTool
+import app.androidrik.rikkahub.data.repository.MemoryRepository
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -173,7 +178,12 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
             content = if (tool.isExecuted) outputJson ?: JsonObject(emptyMap()) else null,
             loading = loading,
             workspaceId = workspaceId,
-            memoryStoreId = memoryStoreId,
+            memoryStoreId = if (tool.toolName == ENTRY_MEMORY_TOOL) {
+                tool.memoryContext?.takeIf { it.startsWith("entries:") }?.substringAfter(':')
+                    ?.takeIf { it == memoryStoreId }
+            } else {
+                memoryStoreId
+            },
         )
     }
 
@@ -183,6 +193,22 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val isPending = tool.approvalState is ToolApprovalState.Pending
     val isDenied = tool.approvalState is ToolApprovalState.Denied
     val images = tool.output.filterIsInstance<UIMessagePart.Image>()
+    val memoryLabel = if (isMemoryTool(tool.toolName) && (isPending || tool.toolName == FILE_MEMORY_TOOL)) {
+        val scope = when (tool.memoryContext?.substringAfter(':', "").orEmpty()) {
+            MemoryRepository.GLOBAL_MEMORY_ID -> stringResource(R.string.chat_message_tool_memory_library_global)
+            "" -> stringResource(R.string.chat_message_tool_memory_library_unavailable)
+            else -> stringResource(R.string.chat_message_tool_memory_library_private)
+        }
+        if (tool.toolName == FILE_MEMORY_TOOL) {
+            val path = (context.arguments as? JsonObject)?.get("path") as? kotlinx.serialization.json.JsonPrimitive
+            listOf(stringResource(R.string.chat_message_tool_file_memory), scope, path?.content.orEmpty())
+                .filter { it.isNotEmpty() }.joinToString(" · ")
+        } else {
+            "${renderer.title(context)} · $scope"
+        }
+    } else {
+        null
+    }
 
     // 摘要由注册的渲染器决定; 图片输出与拒绝原因为所有工具通用
     val hasExtraContent = renderer.hasSummary(context) || isDenied || images.isNotEmpty()
@@ -206,7 +232,7 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
         },
         label = {
             Text(
-                text = renderer.title(context),
+                text = memoryLabel ?: renderer.title(context),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.shimmer(isLoading = loading),

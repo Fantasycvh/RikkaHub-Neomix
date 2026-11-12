@@ -65,6 +65,7 @@ data class Assistant(
     val contextMessageLimit: Int = 0,
     val streamOutput: Boolean = true,
     val enableMemory: Boolean = false,
+    val memoryMode: MemoryMode = MemoryMode.ENTRIES,
     val useGlobalMemory: Boolean = false, // 使用全局共享记忆而非助手隔离记忆
     /**
      * 记忆修改审批：为 true 时，AI 通过 memory_tool **修改/删除**记忆需用户确认；为 false 时自动执行。

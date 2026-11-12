@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.rikkahub.data.repository.MemoryFileRepository
+
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
@@ -318,6 +321,7 @@ class GenerationHandler(
     private val json: Json,
     /** 每次 provider 请求写一行用量流水（见 [UsageRecorder]） */
     private val usageRecorder: UsageRecorder,
+    private val memoryFiles: MemoryFileRepository? = null,
 ) {
     // 批次 10 拆出的翻译生成器（translateText 公开签名不变，委托过去；ChatService 调用面不动）
     private val translationGenerator = TranslationGenerator(context, providerManager, usageRecorder)
@@ -514,6 +518,7 @@ class GenerationHandler(
             targetProviderImpl: Provider<ProviderSetting>,
         ) {
             var messages: List<UIMessage> = committedNoticeMessages ?: messages
+            val memoryBinding = assistant.memoryContext(memoryDisabled)
 
             // 本轮的工具调用失控护栏：**由调用方传入**（挂在会话上），跨「审批续跑」累积。
             // 这里刻意不新建实例——真机实测每次批准都会重新进入 runLoop（step #0 重来），
@@ -616,7 +621,26 @@ class GenerationHandler(
                         debugKey = debugKey,
                         sessionId = sessionId,
                         onUpdateMessages = { updated, coalescible ->
-                            messages = updated.transforms(
+                            val last = updated.lastOrNull()
+                            val tagged = if (last?.role == MessageRole.ASSISTANT) {
+                                val previous = messages.lastOrNull()?.takeIf { it.id == last.id }
+                                    ?.getTools().orEmpty().associateBy { it.toolCallId }
+                                updated.dropLast(1) + last.copy(
+                                    memoryContext = memoryBinding,
+                                    parts = last.parts.map { part ->
+                                        if (part is UIMessagePart.Tool && isMemoryTool(part.toolName)) {
+                                            val old = previous[part.toolCallId]
+                                            val binding = if (old == null || !isMemoryTool(old.toolName)) memoryBinding else old.memoryContext
+                                            part.copy(memoryContext = binding)
+                                        } else {
+                                            part
+                                        }
+                                    },
+                                )
+                            } else {
+                                updated
+                            }
+                            messages = tagged.transforms(
                                 transformers = outputTransformers,
                                 context = context,
                                 model = targetModel,
@@ -1044,6 +1068,11 @@ class GenerationHandler(
             suspend fun runPreparedTool(prepared: PreparedTool) {
                 val tool = prepared.tool
                 runCatching {
+                    if (isMemoryTool(tool.toolName)) {
+                        check(memoryBinding != MEMORY_CONTEXT_OFF && tool.memoryContext == memoryBinding) {
+                            "This memory request has no matching library. Ask the assistant to retry."
+                        }
+                    }
                     val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
                         ?: error("Tool ${tool.toolName} not found")
                     val args = try {
@@ -1490,6 +1519,11 @@ class GenerationHandler(
             ruleReminder = ruleReminder,
             memoryDisabled = memoryDisabled,
             frozenAnchorIds = frozenAnchorIds,
+            memoryFiles = if (assistant.enableMemory && !memoryDisabled && assistant.memoryMode == MemoryMode.FILES) {
+                memoryFiles?.list(assistant.memoryId()).orEmpty()
+            } else {
+                emptyList()
+            },
             // 净化 P0 dry-run（design-context-purification §7/§11）：不改发送，只记报告 + 日志；
             // debugKey 为空的无头 run（SubagentRunner）天然跳过。
             purgeObserver = debugKey?.let { key ->

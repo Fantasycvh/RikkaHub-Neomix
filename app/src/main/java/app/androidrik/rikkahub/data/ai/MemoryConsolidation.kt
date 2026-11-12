@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.rikkahub.data.model.MemoryMode
+
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
@@ -31,7 +34,10 @@ internal fun Assistant.memoryId(): String =
  * （`pendingOf` 里那一道）。
  */
 internal fun Assistant.memoryConsolidationEnabled(): Boolean =
-    enabled && enableMemory && memoryConsolidationSince > 0L
+    enabled && enableMemory && memoryMode == MemoryMode.ENTRIES && memoryConsolidationSince > 0L
+
+internal fun UIMessage.belongsToEntryMemory(storeId: String?): Boolean =
+    storeId == null || memoryContext == null || memoryContext == "${MemoryMode.ENTRIES.key}:$storeId"
 
 /**
  * 整理基线：**只对这一刻之后的新内容负责**。
@@ -74,10 +80,10 @@ internal fun Assistant.memoryConsolidationCoversAllHistory(): Boolean =
  * 用 `any` 而不是 `currentMessage`：后者在候选损坏时会抛异常（见 `NodeCandidateRepairTest` 那套修复），
  * 而做梦是后台路径——不该因为一条脏数据把整轮整理打掉。
  */
-internal fun unconsolidatedTurns(conversation: Conversation, baseline: Long): Int {
+internal fun unconsolidatedTurns(conversation: Conversation, baseline: Long, storeId: String? = null): Int {
     val zone = TimeZone.currentSystemDefault()
     return conversation.messageNodes.count { node ->
-        node.messages.any { it.createdAt.toInstant(zone).toEpochMilliseconds() > baseline }
+        node.messages.any { it.belongsToEntryMemory(storeId) && it.createdAt.toInstant(zone).toEpochMilliseconds() > baseline }
     }
 }
 
