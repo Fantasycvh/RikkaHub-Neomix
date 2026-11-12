@@ -11,6 +11,7 @@ class MemoryFileRepository(private val database: AppDatabase) {
     fun observe(storeId: String) = dao.observe(storeId)
 
     suspend fun list(storeId: String) = dao.list(storeId)
+    suspend fun canCreate(storeId: String) = dao.count(storeId) < MAX_MEMORY_FILES
 
     suspend fun read(storeId: String, path: String) = dao.get(storeId, normalizeMemoryFilePath(path))
 
@@ -27,7 +28,7 @@ class MemoryFileRepository(private val database: AppDatabase) {
         if (content.toByteArray().size > MAX_MEMORY_FILE_BYTES) throw MemoryFileException(MemoryFileError.TOO_LARGE)
         val saved = MemoryFileEntity(storeId, key, content, Uuid.random().toString(), System.currentTimeMillis())
         if (current == null) {
-            if (dao.count(storeId) >= 200) throw MemoryFileException(MemoryFileError.LIBRARY_FULL)
+            if (!canCreate(storeId)) throw MemoryFileException(MemoryFileError.LIBRARY_FULL)
             dao.insert(saved)
         } else if (dao.update(storeId, key, current.revision, content, saved.revision, saved.updatedAt) != 1) {
             throw MemoryFileException(MemoryFileError.CHANGED)
@@ -41,10 +42,33 @@ class MemoryFileRepository(private val database: AppDatabase) {
         }
     }
 
+    suspend fun move(
+        storeId: String,
+        source: String,
+        destination: String,
+        expectedRevision: String,
+        content: String? = null,
+    ): MemoryFileEntity = database.withTransaction {
+        val from = normalizeMemoryFilePath(source)
+        val to = normalizeMemoryFilePath(destination)
+        val current = dao.get(storeId, from)
+        if (current?.revision != expectedRevision || (from != to && dao.get(storeId, to) != null)) {
+            throw MemoryFileException(MemoryFileError.CHANGED)
+        }
+        val body = content ?: current.content
+        if (body.toByteArray().size > MAX_MEMORY_FILE_BYTES) throw MemoryFileException(MemoryFileError.TOO_LARGE)
+        val saved = MemoryFileEntity(storeId, to, body, Uuid.random().toString(), System.currentTimeMillis())
+        if (dao.move(storeId, from, to, expectedRevision, body, saved.revision, saved.updatedAt) != 1) {
+            throw MemoryFileException(MemoryFileError.CHANGED)
+        }
+        saved
+    }
+
     suspend fun deleteStore(storeId: String) = dao.deleteStore(storeId)
 }
 
 internal const val MAX_MEMORY_FILE_BYTES = 48 * 1024
+private const val MAX_MEMORY_FILES = 200
 
 internal enum class MemoryFileError(val detail: String) {
     INVALID_PATH("Use a Markdown path such as /topics/example.md."),

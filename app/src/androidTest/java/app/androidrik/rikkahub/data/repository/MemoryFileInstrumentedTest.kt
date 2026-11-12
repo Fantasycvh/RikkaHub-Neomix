@@ -5,6 +5,7 @@ import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.rikkahub.data.ai.tools.buildFileMemoryTool
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryMode
@@ -78,6 +79,76 @@ class MemoryFileInstrumentedTest {
             assertNotEquals(original.revision, files.read("private", "/profile.md")?.revision)
             assertTrue(runCatching { files.read("private", "/../profile.md") }.isFailure)
         }
+    }
+
+    @Test
+    fun organizerReadsTheWholeRevisionBeforeStagingAnEdit() = runBlocking {
+        Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build().withClose { db ->
+            val files = MemoryFileRepository(db)
+            val source = files.write("private", "/topics/notes.md", null) { "a".repeat(4_010) }
+            val proposals = mutableListOf<MemoryConsolidationProposal>()
+            val tool = buildFileMemoryTool(files, "private", Assistant()) { proposals += it }
+            val edit = JsonInstant.parseToJsonElement(
+                """{"action":"edit","path":"/topics/notes.md","revision":"${source.revision}","content":"revised"}""",
+            )
+            assertTrue(runCatching { tool.execute(edit) }.isFailure)
+            tool.execute(JsonInstant.parseToJsonElement("""{"action":"read","path":"/topics/notes.md"}"""))
+            assertTrue(runCatching { tool.execute(edit) }.isFailure)
+            tool.execute(JsonInstant.parseToJsonElement("""{"action":"read","path":"/topics/notes.md","offset":4000}"""))
+            tool.execute(edit)
+            assertEquals(source.revision, proposals.single().expectedFileRevision)
+            assertEquals("revised", proposals.single().content)
+            assertEquals(source, files.read("private", source.path))
+        }
+    }
+
+    @Test
+    fun moveProposalIsScopedVersionedAndPreservesContent() = runBlocking {
+        Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build().withClose { db ->
+            val files = MemoryFileRepository(db)
+            val transactions = RoomMemoryTransactionRunner(db)
+            val entries = MemoryRepository(db.memoryDao(), transactions, db.memoryHistoryDao(), db.memoryTrashDao())
+            val proposals = MemoryProposalRepository(db.memoryProposalDao(), entries, transactions, memoryFiles = files)
+            val initial = files.write("private", "/topics/release.md", null) { "release decisions" }
+            val change = MemoryConsolidationProposal(
+                action = "move", targetId = initial.path, expectedFileRevision = initial.revision,
+                fileDestination = "/areas/release.md",
+            )
+            proposals.savePending("files:private", listOf(change))
+            val first = proposals.pending("files:private").single()
+            assertTrue(proposals.apply("private", setOf(first.id)).isEmpty)
+            files.write("private", initial.path, initial.revision) { "updated release decisions" }
+            assertEquals(1, proposals.apply("files:private", setOf(first.id)).stale)
+            assertNull(files.read("private", "/areas/release.md"))
+            val current = checkNotNull(files.read("private", initial.path))
+            proposals.savePending("files:private", listOf(change.copy(expectedFileRevision = current.revision)))
+            val second = proposals.pending("files:private").single()
+            assertEquals(1, proposals.apply("files:private", setOf(second.id)).applied)
+            assertNull(files.read("private", initial.path))
+            assertEquals(current.content, files.read("private", "/areas/release.md")?.content)
+        }
+    }
+
+    @Test
+    fun upgradeFrom67RetainsFileRevisions() = runBlocking {
+        val name = "file-memory-progress-${UUID.randomUUID()}.db"
+        try {
+            migrations.createDatabase(name, 67).use { db ->
+                db.execSQL(
+                    "INSERT INTO assistant_memory_file(store_id, path, content, revision, updated_at) " +
+                        "VALUES ('private', '/profile.md', 'original', 'stable-revision', 1)",
+                )
+            }
+            Room.databaseBuilder(context, AppDatabase::class.java, name).build().withClose { db ->
+                val file = MemoryFileRepository(db).read("private", "/profile.md")
+                assertEquals("original", file?.content)
+                assertEquals("stable-revision", file?.revision)
+                assertNull(db.memoryFileProgressDao().get("unknown", "private"))
+            }
+        } finally {
+            context.deleteDatabase(name)
+        }
+        Unit
     }
 
     private inline fun <T> AppDatabase.withClose(block: (AppDatabase) -> T): T =

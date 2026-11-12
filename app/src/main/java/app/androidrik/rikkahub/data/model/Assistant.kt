@@ -126,6 +126,7 @@ data class Assistant(
      * 本仓对这类功能一贯要求显式开启。
      */
     val memoryConsolidationSince: Long = 0L,
+    val fileMemoryConsolidationSince: Long = 0L,
     /**
      * **整理时可调整类型**：允许后台整理把已有记录在「画像 / 话题 / 事务」之间改类。
      *

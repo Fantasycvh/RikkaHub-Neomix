@@ -1,6 +1,9 @@
 package app.androidrik.rikkahub.data.ai
 
-import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.ai.provider.ModelAbility
+import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.repository.MemoryFileRepository
+import app.androidrik.rikkahub.data.repository.applyFileChange
 
 import android.util.Log
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -46,6 +49,8 @@ class MemoryConsolidator(
     private val proposals: MemoryProposalStore,
     private val transactions: MemoryTransactionRunner,
     private val now: () -> Long = System::currentTimeMillis,
+    private val memoryFiles: MemoryFileRepository? = null,
+    private val fileOrganizer: FileMemoryOrganizer? = null,
 ) : MemoryConsolidationWorker {
 
     companion object {
@@ -79,7 +84,8 @@ class MemoryConsolidator(
     override suspend fun rejectProposals(memoryId: String, ids: Set<Long>): Int =
         proposals.reject(memoryId, ids)
 
-    override suspend fun markConsolidated(conversation: Conversation) = repository.markConsolidated(conversation)
+    override suspend fun markConsolidated(conversation: Conversation) =
+        transactions.run { repository.markConsolidated(conversation) }
 
     override suspend fun consolidate(
         memoryId: String,
@@ -87,7 +93,11 @@ class MemoryConsolidator(
         fullReview: Boolean,
     ): MemoryConsolidationRun? {
         val settings = settings()
-        val participants = settings.assistants.filter { it.memoryMode == MemoryMode.ENTRIES && it.memoryId() == memoryId }
+        val fileStore = memoryId.fileConsolidationStoreId()
+        val participants = settings.assistants.filter { it.consolidationMemoryId() == memoryId }
+        if (fileStore != null) {
+            return consolidateFiles(settings, memoryId, fileStore, participants, conversationIds, fullReview)
+        }
         if (participants.isEmpty()) return null
         if (!fullReview && conversationIds.isEmpty()) return null
 
@@ -197,6 +207,80 @@ class MemoryConsolidator(
             libraryReviewed = page.to,
             libraryTotal = page.total,
             libraryPageDone = page.isLast,
+        )
+    }
+
+    private suspend fun consolidateFiles(
+        settings: Settings,
+        memoryId: String,
+        storeId: String,
+        participants: List<Assistant>,
+        conversationIds: Set<Uuid>,
+        fullReview: Boolean,
+    ): MemoryConsolidationRun? {
+        val active = participants.filter { assistant ->
+            assistant.inTriggerScope(settings.memoryTriggerConfig) &&
+                if (fullReview) assistant.enabled && assistant.enableMemory else assistant.memoryConsolidationEnabled()
+        }.associateBy { it.id }
+        if (active.isEmpty() || (!fullReview && conversationIds.isEmpty()) || proposals.pending(memoryId).isNotEmpty()) {
+            return null
+        }
+        val conversations = conversationIds.mapNotNull { repository.loadConversation(it) }
+            .filter { it.assistantId in active && !it.memoryDisabled }
+        val baselines = conversations.associate {
+            it.id to repository.baselineOf(it, active.getValue(it.assistantId), ignoreSince = fullReview)
+        }
+        val transcript = buildConsolidationTranscript(conversations, baselines, storeId = memoryId)
+        if (!fullReview && transcript.text.isBlank()) {
+            transactions.run {
+                transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark, memoryId) }
+            }
+            return null
+        }
+
+        val files = requireNotNull(memoryFiles)
+        val catalog = files.list(storeId).sortedBy { it.path }
+        if (catalog.isEmpty() && transcript.text.isBlank()) {
+            return MemoryConsolidationRun(memoryId, now(), emptySet(), fullReview, libraryPageDone = true)
+        }
+        val modelIds = listOf(settings.memoryConsolidationModelId, settings.fastModelId) +
+            active.values.map { it.chatModelId } + settings.chatModelId
+        val model = modelIds.asSequence().distinct().mapNotNull { settings.findModelById(it) }
+            .firstOrNull { ModelAbility.TOOL in it.abilities }
+            ?: error("No tool-capable model is available for file memory review.")
+        val cursor = if (fullReview) repository.fileReviewPath(memoryId) else null
+        val nextIndex = cursor?.let { path -> catalog.indexOfFirst { it.path > path } } ?: 0
+        val start = nextIndex.coerceAtLeast(0)
+        val page = catalog.drop(start).take(12)
+        val reviewed = start + page.size
+        val lastPage = reviewed == catalog.size
+        val changes = requireNotNull(fileOrganizer).propose(
+            settings, model, storeId, page, transcript.text, proposals.recentlyRejected(memoryId), fullReview,
+        )
+        val approvalRequired = participants.any { it.memoryModifyApproval || it.memoryCreateApproval }
+        val needsReview = approvalRequired || this@MemoryConsolidator.settings().assistants
+            .filter { it.consolidationMemoryId() == memoryId }
+            .any { it.memoryModifyApproval || it.memoryCreateApproval }
+        val pending = transactions.run {
+            if (needsReview) {
+                proposals.savePending(memoryId, changes)
+            } else {
+                changes.forEach { files.applyFileChange(storeId, it) }
+            }
+            transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark, memoryId) }
+            if (fullReview) repository.setFileReviewPath(memoryId, page.lastOrNull()?.path?.takeUnless { lastPage })
+            if (needsReview && changes.isNotEmpty()) proposals.pending(memoryId) else emptyList()
+        }
+        return MemoryConsolidationRun(
+            memoryId = memoryId,
+            finishedAt = now(),
+            conversationIds = transcript.consumed.mapTo(hashSetOf()) { it.conversationId },
+            fullReview = fullReview,
+            changedMemories = if (needsReview) 0 else changes.size,
+            proposals = pending,
+            libraryReviewed = if (fullReview) reviewed else 0,
+            libraryTotal = if (fullReview) catalog.size else 0,
+            libraryPageDone = fullReview && lastPage,
         )
     }
 }

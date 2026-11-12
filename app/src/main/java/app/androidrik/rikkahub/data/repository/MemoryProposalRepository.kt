@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.repository
 
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
+import app.androidrik.rikkahub.data.ai.fileConsolidationStoreId
 import app.androidrik.rikkahub.data.db.dao.MemoryProposalDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
 import app.androidrik.rikkahub.data.model.MemoryKind
@@ -35,6 +36,7 @@ class MemoryProposalRepository(
     private val proposalDAO: MemoryProposalDAO,
     private val memoryRepository: MemoryRepository,
     private val transactions: MemoryTransactionRunner,
+    private val memoryFiles: MemoryFileRepository? = null,
     private val now: () -> Long = System::currentTimeMillis,
 ) : MemoryProposalStore {
     companion object {
@@ -67,11 +69,17 @@ class MemoryProposalRepository(
                 contractVersion = proposal.contractVersion,
                 kind = proposal.kind.orEmpty(),
                 dueAt = proposal.dueAt?.let { if (it == 0L) -1L else it } ?: 0L,
+                expectedFileRevision = proposal.expectedFileRevision,
+                fileDestination = proposal.fileDestination,
             )
         }
         // Validate before replacing pending. Never read the target here to manufacture version evidence.
-        rows.groupBy { it.batchId }.values.forEach { batch ->
-            require(orderedBatch(batch) != null) { "Invalid versioned memory proposal dependency graph" }
+        if (memoryId.fileConsolidationStoreId() != null) {
+            require(rows.all { it.toProposal().validFileChange() }) { "Invalid file memory proposal" }
+        } else {
+            rows.groupBy { it.batchId }.values.forEach { batch ->
+                require(orderedBatch(batch) != null) { "Invalid versioned memory proposal dependency graph" }
+            }
         }
         proposalDAO.deletePending(memoryId)
         proposalDAO.insertAll(rows)
@@ -90,6 +98,9 @@ class MemoryProposalRepository(
         if (ids.isEmpty()) return@run MemoryProposalApplyResult()
         val rows = proposalDAO.getPending(memoryId).filter { it.id in ids }
         if (rows.isEmpty()) return@run MemoryProposalApplyResult()
+        memoryId.fileConsolidationStoreId()?.let { storeId ->
+            return@run applyFileProposals(storeId, rows)
+        }
         var applied = 0
         var stale = 0
         var blocked = 0
@@ -181,6 +192,31 @@ class MemoryProposalRepository(
         }) { "Memory dependency conflict: required replacement output changed during apply" }
         proposalDAO.pruneDecided(memoryId, DECIDED_AUDIT_KEEP)
         MemoryProposalApplyResult(applied, stale, blocked, blockedByDecision)
+    }
+
+    private suspend fun applyFileProposals(storeId: String, rows: List<MemoryProposalEntity>): MemoryProposalApplyResult {
+        val files = requireNotNull(memoryFiles)
+        var applied = 0
+        var stale = 0
+        var blocked = 0
+        for (row in rows) {
+            val proposal = row.toProposal()
+            if (row.dependencies()?.isEmpty() != true || !proposal.validFileChange() ||
+                files.read(storeId, requireNotNull(proposal.targetId))?.revision != proposal.expectedFileRevision ||
+                proposal.fileDestination?.let { files.read(storeId, it) != null } == true
+            ) {
+                proposalDAO.updateOne(row.id, MemoryProposalEntity.DECISION_STALE, now())
+                stale++
+            } else if (proposal.action == "create" && !files.canCreate(storeId)) {
+                blocked++
+            } else {
+                files.applyFileChange(storeId, proposal)
+                proposalDAO.updateOne(row.id, MemoryProposalEntity.DECISION_APPLIED, now())
+                applied++
+            }
+        }
+        proposalDAO.pruneDecided(rows.first().memoryId, DECIDED_AUDIT_KEEP)
+        return MemoryProposalApplyResult(applied = applied, stale = stale, blocked = blocked)
     }
 
     private suspend fun applyRow(memoryId: String, row: MemoryProposalEntity): MemoryProposalEntity {
@@ -301,6 +337,8 @@ private fun MemoryProposalEntity.toProposal() = MemoryConsolidationProposal(
     appliedRevision = appliedRevision,
     kind = kind.takeIf { it.isNotBlank() },
     dueAt = proposalDueAt(),
+    expectedFileRevision = expectedFileRevision,
+    fileDestination = fileDestination,
 )
 
 /** Keep legacy unspecified deadlines distinct from an explicit removal. */

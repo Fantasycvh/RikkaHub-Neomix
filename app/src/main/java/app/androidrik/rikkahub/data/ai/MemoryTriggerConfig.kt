@@ -162,5 +162,5 @@ internal fun resolveMemoryIds(config: MemoryTriggerConfig, assistants: List<Assi
     assistants.asSequence()
         .filter { it.memoryConsolidationEnabled() }
         .filter { it.inTriggerScope(config) }
-        .map { it.memoryId() }
+        .map { it.consolidationMemoryId() }
         .toSet()

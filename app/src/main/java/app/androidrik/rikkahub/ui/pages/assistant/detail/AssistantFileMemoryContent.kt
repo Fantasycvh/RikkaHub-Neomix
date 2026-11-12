@@ -14,11 +14,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
@@ -35,9 +37,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
+import app.androidrik.rikkahub.data.ai.consolidationMemoryId
 import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.rikkahub.data.model.MemoryFileCategory
 import app.androidrik.rikkahub.data.repository.MemoryFileError
 import app.androidrik.rikkahub.data.repository.MemoryFileException
 import kotlinx.coroutines.CancellationException
@@ -68,6 +73,10 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
     val repository = vm.memoryFiles
     val files by remember(repository, storeId) { repository.observe(storeId) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
+    val groups = remember(files) { files.groupBy { MemoryFileCategory.of(it.path) } }
+    val libraryId = assistant.consolidationMemoryId()
+    val status by remember(vm, libraryId) { vm.consolidationStatusOf(libraryId) }
+        .collectAsStateWithLifecycle(initialValue = MemoryConsolidationStatus())
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<MemoryFileEntity?>(null) }
@@ -112,6 +121,21 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
             FileMemorySwitch(stringResource(R.string.assistant_page_memory_modify_approval), assistant.memoryModifyApproval) { checked ->
                 vm.updateMemorySettings { it.copy(memoryModifyApproval = checked) }
             }
+            FileMemorySwitch(
+                label = stringResource(R.string.assistant_page_memory_file_auto),
+                checked = assistant.fileMemoryConsolidationSince > 0,
+                enabled = assistant.enabled && assistant.enableMemory,
+            ) { checked ->
+                vm.updateMemorySettings {
+                    it.copy(fileMemoryConsolidationSince = if (checked) System.currentTimeMillis() else 0)
+                }
+            }
+            FileMemoryReviewStatus(
+                status = status,
+                enabled = assistant.enabled && assistant.enableMemory,
+                libraryId = libraryId,
+                vm = vm,
+            )
             TextButton(onClick = { selected = null; error = null; editing = true }) {
                 Text(stringResource(R.string.assistant_page_memory_file_new))
             }
@@ -119,16 +143,26 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
                 Text(stringResource(R.string.assistant_page_memory_file_empty), Modifier.padding(horizontal = 16.dp))
             }
         }
-        items(files, key = { it.path }) { file ->
-            ListItem(
-                headlineContent = { Text(file.path) },
-                modifier = Modifier.clickable { selected = file; error = null; editing = true },
-                trailingContent = {
-                    TextButton(onClick = { error = null; pendingDelete = file }) {
-                        Text(stringResource(R.string.delete))
-                    }
-                },
-            )
+        for (category in MemoryFileCategory.entries) {
+            val categoryFiles = groups[category] ?: continue
+            item(key = category) {
+                Text(
+                    stringResource(category.labelRes()),
+                    Modifier.padding(start = 16.dp, top = 12.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            items(categoryFiles, key = { it.path }) { file ->
+                ListItem(
+                    headlineContent = { Text(file.path) },
+                    modifier = Modifier.clickable { selected = file; error = null; editing = true },
+                    trailingContent = {
+                        TextButton(onClick = { error = null; pendingDelete = file }) {
+                            Text(stringResource(R.string.delete))
+                        }
+                    },
+                )
+            }
         }
     }
     if (editing) {
@@ -138,9 +172,13 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
             busy = busy,
             onDismiss = { if (!busy) editing = false },
             onSave = { path, content ->
-                val revision = selected?.revision
+                val file = selected
                 runChange {
-                    repository.write(storeId, path, revision) { content }
+                    if (file == null) {
+                        repository.write(storeId, path, null) { content }
+                    } else {
+                        repository.move(storeId, file.path, path, file.revision, content)
+                    }
                     editing = false
                 }
             },
@@ -169,10 +207,10 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
 }
 
 @Composable
-private fun FileMemorySwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+private fun FileMemorySwitch(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     ListItem(
         headlineContent = { Text(label) },
-        trailingContent = { Switch(checked = checked, onCheckedChange = onChange) },
+        trailingContent = { Switch(checked = checked, onCheckedChange = onChange, enabled = enabled) },
     )
 }
 
@@ -192,10 +230,28 @@ private fun FileMemoryEditor(
             Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val value = path.text.toString()
+                val selectedCategory = value.takeIf { it.startsWith("/") }?.let(MemoryFileCategory::of)
+                for (category in MemoryFileCategory.entries) {
+                    FilterChip(
+                        selected = category == selectedCategory,
+                        enabled = !busy,
+                        onClick = {
+                            val name = value.substringAfterLast('/').takeIf { it.endsWith(".md") }
+                                ?: category.examplePath.substringAfterLast('/')
+                            val next = if (category.pathPrefix.endsWith(".md")) category.examplePath
+                                else category.pathPrefix + name
+                            if (next != value) path.setTextAndPlaceCursorAtEnd(next)
+                        },
+                        label = { Text(stringResource(category.labelRes())) },
+                    )
+                }
+            }
             OutlinedTextField(
                 state = path,
                 modifier = Modifier.fillMaxWidth(),
-                readOnly = file != null || busy,
+                readOnly = busy,
                 label = { Text(stringResource(R.string.assistant_page_memory_file_path)) },
                 placeholder = { Text("/topics/example.md") },
             )
@@ -216,4 +272,13 @@ private fun FileMemoryEditor(
             }
         }
     }
+}
+
+private fun MemoryFileCategory.labelRes(): Int = when (this) {
+    MemoryFileCategory.PROFILE -> R.string.assistant_page_memory_file_category_profile
+    MemoryFileCategory.PREFERENCES -> R.string.assistant_page_memory_file_category_preferences
+    MemoryFileCategory.TOPICS -> R.string.assistant_page_memory_file_category_topics
+    MemoryFileCategory.AREAS -> R.string.assistant_page_memory_file_category_areas
+    MemoryFileCategory.PEOPLE -> R.string.assistant_page_memory_file_category_people
+    MemoryFileCategory.OTHER -> R.string.assistant_page_memory_file_category_other
 }

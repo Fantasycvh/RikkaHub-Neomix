@@ -23,6 +23,17 @@ import kotlinx.datetime.toInstant
 internal fun Assistant.memoryId(): String =
     if (useGlobalMemory) MemoryRepository.GLOBAL_MEMORY_ID else id.toString()
 
+private const val FILE_CONSOLIDATION_PREFIX = "files:"
+
+internal fun Assistant.consolidationMemoryId(): String =
+    if (memoryMode == MemoryMode.FILES) FILE_CONSOLIDATION_PREFIX + memoryId() else memoryId()
+
+internal fun String.fileConsolidationStoreId(): String? =
+    if (startsWith(FILE_CONSOLIDATION_PREFIX)) removePrefix(FILE_CONSOLIDATION_PREFIX) else null
+
+internal fun Assistant.consolidationSince(): Long =
+    if (memoryMode == MemoryMode.FILES) fileMemoryConsolidationSince else memoryConsolidationSince
+
 /**
  * 自动整理是否开启。**三道闸缺一不可**：
  *
@@ -34,10 +45,14 @@ internal fun Assistant.memoryId(): String =
  * （`pendingOf` 里那一道）。
  */
 internal fun Assistant.memoryConsolidationEnabled(): Boolean =
-    enabled && enableMemory && memoryMode == MemoryMode.ENTRIES && memoryConsolidationSince > 0L
+    enabled && enableMemory && consolidationSince() > 0L
 
-internal fun UIMessage.belongsToEntryMemory(storeId: String?): Boolean =
-    storeId == null || memoryContext == null || memoryContext == "${MemoryMode.ENTRIES.key}:$storeId"
+internal fun UIMessage.belongsToConsolidationLibrary(memoryId: String?): Boolean =
+    when {
+        memoryId == null -> true
+        memoryId.fileConsolidationStoreId() != null -> memoryContext == memoryId
+        else -> memoryContext == null || memoryContext == "${MemoryMode.ENTRIES.key}:$memoryId"
+    }
 
 /**
  * 整理基线：**只对这一刻之后的新内容负责**。
@@ -83,7 +98,7 @@ internal fun Assistant.memoryConsolidationCoversAllHistory(): Boolean =
 internal fun unconsolidatedTurns(conversation: Conversation, baseline: Long, storeId: String? = null): Int {
     val zone = TimeZone.currentSystemDefault()
     return conversation.messageNodes.count { node ->
-        node.messages.any { it.belongsToEntryMemory(storeId) && it.createdAt.toInstant(zone).toEpochMilliseconds() > baseline }
+        node.messages.any { it.belongsToConsolidationLibrary(storeId) && it.createdAt.toInstant(zone).toEpochMilliseconds() > baseline }
     }
 }
 
@@ -94,7 +109,7 @@ internal fun unconsolidatedTurns(conversation: Conversation, baseline: Long, sto
  * 一个节点里有用户消息就计一轮。分叉会话带着原计数走——fork 已被 `markConsolidated` 盖掉
  * （水位 + fired 标记同一次提交），不会因复制过来的历史轮次提前命中。
  */
-internal fun totalUserTurns(conversation: Conversation): Int =
+internal fun totalUserTurns(conversation: Conversation, memoryId: String? = null): Int =
     conversation.messageNodes.count { node ->
-        node.messages.any { it.role == MessageRole.USER }
+        node.messages.any { it.role == MessageRole.USER && it.belongsToConsolidationLibrary(memoryId) }
     }

@@ -26,6 +26,12 @@ interface MemoryFileDAO {
     @Query("UPDATE assistant_memory_file SET content = :content, revision = :revision, updated_at = :updatedAt WHERE store_id = :storeId AND path = :path AND revision = :expected")
     suspend fun update(storeId: String, path: String, expected: String, content: String, revision: String, updatedAt: Long): Int
 
+    @Query(
+        "UPDATE assistant_memory_file SET path = :destination, content = :content, revision = :revision, updated_at = :updatedAt " +
+            "WHERE store_id = :storeId AND path = :source AND revision = :expected"
+    )
+    suspend fun move(storeId: String, source: String, destination: String, expected: String, content: String, revision: String, updatedAt: Long): Int
+
     @Query("DELETE FROM assistant_memory_file WHERE store_id = :storeId AND path = :path AND revision = :expected")
     suspend fun delete(storeId: String, path: String, expected: String): Int
 

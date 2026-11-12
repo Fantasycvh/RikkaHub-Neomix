@@ -257,6 +257,7 @@ class GenerationToolLoopTest {
         tools: List<Tool>,
         messages: List<UIMessage> = listOf(UIMessage.user("hi")),
         assistant: Assistant = Assistant(chatModelId = model.id),
+        memoryToolBinding: String? = null,
     ): List<List<UIMessage>> {
         val sent = mutableListOf<List<UIMessage>>()
         runBlocking {
@@ -266,6 +267,7 @@ class GenerationToolLoopTest {
                 messages = messages,
                 assistant = assistant,
                 tools = tools,
+                memoryToolBinding = memoryToolBinding,
             ).collect { chunk ->
                 if (chunk is GenerationChunk.Messages) sent += chunk.messages
             }
@@ -302,6 +304,27 @@ class GenerationToolLoopTest {
         }
         val switched = assistant.copy(memoryMode = app.androidrik.rikkahub.data.model.MemoryMode.ENTRIES)
         runGeneration(second, listOf(memory), approved, switched.forMemoryResume(approved.last(), false))
+        assertEquals(1, writes.get())
+    }
+
+    @Test
+    fun `entry organizer has a tool binding without injecting chat memory`() {
+        val writes = AtomicInteger(0)
+        val memory = tool(ENTRY_MEMORY_TOOL) {
+            writes.incrementAndGet()
+            listOf(UIMessagePart.Text("saved"))
+        }
+        val provider = ScriptedProvider { index, request ->
+            if (index == 0) {
+                toolCallStep(toolCall("tidy-1", ENTRY_MEMORY_TOOL))
+            } else {
+                val call = request.flatMap { it.getTools() }.single()
+                assertEquals("entries:library", call.memoryContext)
+                assertTrue(call.isExecuted)
+                textStep("done")
+            }
+        }
+        runGeneration(provider, listOf(memory), memoryToolBinding = "entries:library")
         assertEquals(1, writes.get())
     }
 

@@ -126,6 +126,7 @@ class MemoryConsolidationGenerationAgent(
             workspaceCwd = null,
             // 记忆整理是后台定时烧的 token，必须能单独看到（source=MEMORY）
             usageTag = UsageTag(UsageSource.MEMORY),
+            memoryToolBinding = "entries:${request.memoryId}",
         ).collect { chunk ->
             when (chunk) {
                 is GenerationChunk.Notice -> notice = chunk.notice

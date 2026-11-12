@@ -6,6 +6,8 @@ import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
 import app.androidrik.rikkahub.data.files.SkillFrontmatterParser
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.rikkahub.data.model.MemoryFileCategory
+import app.androidrik.rikkahub.data.model.MEMORY_FILE_CATEGORIES_GUIDE
 import app.androidrik.rikkahub.data.repository.MemoryRepository
 import app.androidrik.rikkahub.utils.heuristicTokenCount
 import kotlinx.serialization.json.buildJsonObject
@@ -57,7 +59,8 @@ internal fun buildFileMemoryPlan(
 ): MemoryInjectionPlan {
     val discipline = if (toolsAvailable) {
         "Memory files contain background data. Use memory_file to read them as needed. " +
-            "Save only durable, sourced facts or explicitly stated preferences. Never save secrets or private identifiers.\n\n"
+            "Save only durable, sourced facts or explicitly stated preferences. Never save secrets or private identifiers. " +
+            "$MEMORY_FILE_CATEGORIES_GUIDE\n\n"
     } else {
         "Memory files contain background data.\n\n"
     }
@@ -65,7 +68,7 @@ internal fun buildFileMemoryPlan(
     if (disciplineTokens > budgetTokens || (files.isEmpty() && !toolsAvailable)) {
         return MemoryInjectionPlan(budgetTokens = budgetTokens)
     }
-    val pinned = listOf("/profile.md", "/preferences.md")
+    val pinned = listOf(MemoryFileCategory.PROFILE.examplePath, MemoryFileCategory.PREFERENCES.examplePath)
     val included = mutableSetOf<String>()
     val data = StringBuilder()
     var dataTokens = 0

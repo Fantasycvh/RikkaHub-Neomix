@@ -4,16 +4,20 @@ import app.androidrik.rikkahub.data.ai.PendingMemoryConversation
 import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
 import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
 import app.androidrik.rikkahub.data.ai.TriggerPath
+import app.androidrik.rikkahub.data.ai.consolidationMemoryId
+import app.androidrik.rikkahub.data.ai.consolidationSince
+import app.androidrik.rikkahub.data.ai.fileConsolidationStoreId
 import app.androidrik.rikkahub.data.ai.inTriggerScope
 import app.androidrik.rikkahub.data.ai.memoryConsolidationBaseline
 import app.androidrik.rikkahub.data.ai.memoryConsolidationEnabled
-import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.ai.totalUserTurns
 import app.androidrik.rikkahub.data.ai.unconsolidatedTurns
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryFileProgressDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryFileProgressEntity
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import kotlin.uuid.Uuid
@@ -46,6 +50,7 @@ class MemoryConsolidationRepository(
     private val now: () -> Long = System::currentTimeMillis,
     /** 触发方式配置（全局，Settings 注入）；决定「第 N 轮」阈值与范围门控 */
     private val config: suspend () -> MemoryTriggerConfig = { MemoryTriggerConfig() },
+    private val fileProgressDAO: MemoryFileProgressDAO? = null,
 ) {
     /**
      * 该记忆库的**全库复核水位**（已复核到的 `sortKey`，含）。无行 = 0 = 从头。
@@ -55,6 +60,12 @@ class MemoryConsolidationRepository(
      */
     suspend fun reviewCursor(memoryId: String): Long =
         reviewCursorDAO.getCursor(memoryId) ?: 0L
+
+    internal suspend fun fileReviewPath(memoryId: String): String? =
+        requireNotNull(fileProgressDAO).reviewPath(memoryId)
+
+    internal suspend fun setFileReviewPath(memoryId: String, path: String?) =
+        reviewCursorDAO.upsert(MemoryReviewCursorEntity(memoryId, 0L, now(), path))
 
     /** 推进复核水位；[cursor] 传 0 表示一轮走完、下次从头开始 */
     suspend fun setReviewCursor(memoryId: String, cursor: Long) =
@@ -95,7 +106,7 @@ class MemoryConsolidationRepository(
         val cfg = config()
         val assistant = assistants().firstOrNull { it.id == conversation.assistantId } ?: return null
         // 范围门控（决议 #5）：空集 = 全部助手；不在范围内的会话在**任何**模式下都不触发
-        if (!assistant.inTriggerScope(cfg)) return null
+        if (!assistant.memoryConsolidationEnabled() || !assistant.inTriggerScope(cfg)) return null
         if (!autoIntervalElapsed(listOf(assistant))) return null
         return pendingOfIgnoringInterval(conversation, assistant, cfg = cfg)
     }
@@ -120,7 +131,11 @@ class MemoryConsolidationRepository(
         /** 触发配置（调用方已读则传入，免重复读 Settings）；TURN_N 判据与范围都来自它 */
         cfg: MemoryTriggerConfig? = null,
     ): PendingMemoryConversation? {
-        if (!assistant.memoryConsolidationEnabled()) return null
+        val memoryId = assistant.consolidationMemoryId()
+        val fileStore = memoryId.fileConsolidationStoreId()
+        if (!assistant.memoryConsolidationEnabled() &&
+            !(fileStore != null && ignoreSince && assistant.enabled && assistant.enableMemory)
+        ) return null
         if (conversation.memoryDisabled) return null
         val triggerConfig = cfg ?: config()
         val baseline = if (ignoreSince) {
@@ -128,17 +143,22 @@ class MemoryConsolidationRepository(
         } else {
             baselineOf(conversation, assistant)
         }
-        val turns = unconsolidatedTurns(conversation, baseline, assistant.memoryId())
+        val turns = unconsolidatedTurns(conversation, baseline, memoryId)
         if (turns <= 0) return null
         // 「第 N 轮」（决议 #1）：会话累计用户轮数首次达到阈值才触发，命中过（fired=1）不再触发。
         // 命中标记与水位在同一行提交（见 markConsolidated），这里读不到半提交状态。
         // 手动整理（ignoreSince）不受它约束——「整理所有还没整理过的轮次」不挑时机。
         if (triggerConfig.mode == MemoryTriggerMode.TURN_N && !ignoreSince) {
-            val progress = consolidationDAO.getProgress(conversation.id.toString())
-            if ((progress?.triggerTurnFired ?: 0) != 0) return null
-            if (totalUserTurns(conversation) < triggerConfig.effectiveTriggerTurn) return null
+            val conversationId = conversation.id.toString()
+            val fired = if (fileStore == null) {
+                consolidationDAO.getProgress(conversationId)?.triggerTurnFired
+            } else {
+                requireNotNull(fileProgressDAO).get(conversationId, fileStore)?.triggerTurnFired
+            }
+            if ((fired ?: 0) != 0) return null
+            if (totalUserTurns(conversation, memoryId.takeIf { fileStore != null }) < triggerConfig.effectiveTriggerTurn) return null
         }
-        return PendingMemoryConversation(conversation.id, assistant.memoryId(), turns)
+        return PendingMemoryConversation(conversation.id, memoryId, turns)
     }
 
     /**
@@ -160,16 +180,18 @@ class MemoryConsolidationRepository(
         return baselineOf(conversation, assistant, ignoreSince = manual)
     }
 
-    private suspend fun baselineOf(
+    internal suspend fun baselineOf(
         conversation: Conversation,
         assistant: Assistant,
         /** 见 [pendingOfIgnoringInterval]：手动整理丢掉「开启时刻」那一半，只留进度行。 */
         ignoreSince: Boolean = false,
-    ): Long =
-        memoryConsolidationBaseline(
-            consolidationSince = if (ignoreSince) 0L else assistant.memoryConsolidationSince,
-            consolidatedAt = consolidationDAO.getConsolidatedAt(conversation.id.toString()) ?: 0L,
-        )
+    ): Long {
+        val id = conversation.id.toString()
+        val fileStore = assistant.consolidationMemoryId().fileConsolidationStoreId()
+        val watermark = if (fileStore == null) consolidationDAO.getConsolidatedAt(id)
+            else requireNotNull(fileProgressDAO).get(id, fileStore)?.consolidatedAt
+        return memoryConsolidationBaseline(if (ignoreSince) 0L else assistant.consolidationSince(), watermark ?: 0L)
+    }
 
     /**
      * 可能有新内容的记忆库（**粗筛**：只按会话的末尾消息时间，不保证真有新轮次）。
@@ -182,8 +204,7 @@ class MemoryConsolidationRepository(
                 if (!autoIntervalElapsed(participants)) return@filter false
                 val baseline = storeBaseline(participants)
                 participants.any { assistant ->
-                    consolidationDAO.getCandidateConversationIds(assistant.id.toString(), baseline, 1)
-                        .isNotEmpty()
+                    candidateIds(assistant, baseline, 1).isNotEmpty()
                 }
             }
             .keys
@@ -199,7 +220,11 @@ class MemoryConsolidationRepository(
     suspend fun findPending(memoryId: String, path: TriggerPath = TriggerPath.AUTO): List<PendingMemoryConversation> {
         val cfg = config()
         val assistants = assistants()
-        val participants = assistants.filter { it.memoryConsolidationEnabled() && it.memoryId() == memoryId }
+        val fileStore = memoryId.fileConsolidationStoreId()
+        val participants = assistants.filter {
+            it.consolidationMemoryId() == memoryId && (it.memoryConsolidationEnabled() ||
+                (fileStore != null && path == TriggerPath.MANUAL && it.enabled && it.enableMemory))
+        }
         if (participants.isEmpty()) return emptyList()
         // 6h 自动频次上限只约束 AUTO 路径：手动是用户显式授权，墙钟是用户配置的明确指令（决议 #3）。
         // 限流按**整库**参与助手算（而不是范围内的）——它是每库节流，与「整理谁」无关；
@@ -216,9 +241,27 @@ class MemoryConsolidationRepository(
         val ignoreSince = path == TriggerPath.MANUAL
         val baseline = if (ignoreSince) 0L else storeBaseline(participants)
         val byId = assistants.associateBy { it.id }
+        if (fileStore != null) {
+            val pending = mutableListOf<PendingMemoryConversation>()
+            for (assistant in inScopeParticipants) {
+                var offset = 0
+                while (pending.size < limitPerRun) {
+                    val page = candidateIds(assistant, baseline, limitPerRun, offset)
+                    for (id in page) {
+                        val conversation = Uuid.parseOrNull(id)?.let { conversationLoader(it) } ?: continue
+                        if (conversation.assistantId != assistant.id) continue
+                        pendingOfIgnoringInterval(conversation, assistant, ignoreSince, cfg)?.let(pending::add)
+                        if (pending.size == limitPerRun) return pending
+                    }
+                    if (page.size < limitPerRun) break
+                    offset += page.size
+                }
+            }
+            return pending
+        }
         return inScopeParticipants
             .flatMap { assistant ->
-                consolidationDAO.getCandidateConversationIds(assistant.id.toString(), baseline, limitPerRun)
+                candidateIds(assistant, baseline, limitPerRun)
             }
             .distinct()
             .mapNotNull { id ->
@@ -232,8 +275,13 @@ class MemoryConsolidationRepository(
     /**
      * 把 [conversation] 现有内容都算作已整理（分叉时用）。
      */
-    suspend fun markConsolidated(conversation: Conversation, now: Long = System.currentTimeMillis()) =
+    suspend fun markConsolidated(conversation: Conversation, now: Long = System.currentTimeMillis()) {
         markConsolidated(conversation.id, now)
+        if (fileProgressDAO != null) {
+            markConsolidated(conversation.id, now, "files:${conversation.assistantId}")
+            markConsolidated(conversation.id, now, "files:${MemoryRepository.GLOBAL_MEMORY_ID}")
+        }
+    }
 
     /**
      * 把会话的进度推进到 [watermark]（epoch millis）。
@@ -241,7 +289,16 @@ class MemoryConsolidationRepository(
      * 整理 agent 用的是这个重载：它推进的是「最后一条**真正带进模型**的消息时间」，而不是 `now`——
      * 用 `now` 会把没装进这一轮预算、或期间刚产生的新消息一起标记成整理过了（静默漏掉）。
      */
-    suspend fun markConsolidated(conversationId: Uuid, watermark: Long) {
+    suspend fun markConsolidated(conversationId: Uuid, watermark: Long, memoryId: String? = null) {
+        val fired = if (config().mode == MemoryTriggerMode.TURN_N) 1 else 0
+        val fileStore = memoryId?.fileConsolidationStoreId()
+        if (fileStore != null) {
+            val dao = requireNotNull(fileProgressDAO)
+            val id = conversationId.toString()
+            val previous = dao.get(id, fileStore)
+            dao.upsert(MemoryFileProgressEntity(id, fileStore, maxOf(watermark, previous?.consolidatedAt ?: 0), fired))
+            return
+        }
         consolidationDAO.upsertProgress(
             MemoryConsolidationEntity(
                 conversationId = conversationId.toString(),
@@ -249,7 +306,7 @@ class MemoryConsolidationRepository(
                 // 「第 N 轮」的命中标记与水位**同一行同一次 REPLACE**（认领即失效，决议 #1）——
                 // 不存在「水位进了、标记没进」的半提交。非 TURN_N 模式恒 0：模式切走后，
                 // 下一次任何路径的水位提交会把旧标记自然归一（该模式下没人读它）。
-                triggerTurnFired = if (config().mode == MemoryTriggerMode.TURN_N) 1 else 0,
+                triggerTurnFired = fired,
             ),
         )
     }
@@ -260,7 +317,12 @@ class MemoryConsolidationRepository(
      * 从没整理过 ⇒ 允许（第一次总要跑）；否则要隔 [MIN_AUTO_INTERVAL_MS]。
      */
     private suspend fun autoIntervalElapsed(participants: List<Assistant>): Boolean {
-        val last = participants.maxOf { consolidationDAO.getLastConsolidatedAt(it.id.toString()) ?: 0L }
+        val last = participants.maxOf { assistant ->
+            val store = assistant.consolidationMemoryId().fileConsolidationStoreId()
+            val assistantId = assistant.id.toString()
+            if (store == null) consolidationDAO.getLastConsolidatedAt(assistantId) ?: 0L
+            else requireNotNull(fileProgressDAO).latest(assistantId, store) ?: 0L
+        }
         return last <= 0L || now() - last >= MIN_AUTO_INTERVAL_MS
     }
 
@@ -272,7 +334,14 @@ class MemoryConsolidationRepository(
     private suspend fun participantsByStore(): Map<String, List<Assistant>> =
         assistants().filter {
             it.memoryConsolidationEnabled() && it.inTriggerScope(config())
-        }.groupBy { it.memoryId() }
+        }.groupBy { it.consolidationMemoryId() }
+
+    private suspend fun candidateIds(assistant: Assistant, baseline: Long, limit: Int, offset: Int = 0): List<String> {
+        val id = assistant.id.toString()
+        val store = assistant.consolidationMemoryId().fileConsolidationStoreId()
+        return if (store == null) consolidationDAO.getCandidateConversationIds(id, baseline, limit)
+        else requireNotNull(fileProgressDAO).candidates(id, store, baseline, limit, offset)
+    }
 
     /**
      * 一个记忆库的基线取**参与助手的最晚开启时刻**。
@@ -281,5 +350,5 @@ class MemoryConsolidationRepository(
      * 倒灌历史——而它本来只需要对"自己开启之后"负责。取最晚是保守方向：宁可少整理，不许多花钱。
      */
     private fun storeBaseline(participants: List<Assistant>): Long =
-        participants.maxOf { it.memoryConsolidationSince }
+        participants.maxOf { it.consolidationSince() }
 }

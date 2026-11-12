@@ -19,6 +19,7 @@ import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
 import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationAgent
+import app.androidrik.rikkahub.data.ai.FileMemoryOrganizer
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationGenerationAgent
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationRuntime
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationScheduler
@@ -413,6 +414,7 @@ val dataSourceModule = module {
     // 只有真机（或 Koin 的 verify）能发现。已在 `MemoryProposalWiringTest` 补一条守卫钉住。
     // All memory DAOs and nested units of work join this same Room database transaction.
     single<MemoryTransactionRunner> { RoomMemoryTransactionRunner(get<AppDatabase>()) }
+    single { FileMemoryOrganizer(get(), get()) }
 
     single<MemoryProposalStore> {
         val database: AppDatabase = get()
@@ -420,6 +422,7 @@ val dataSourceModule = module {
             proposalDAO = database.memoryProposalDao(),
             memoryRepository = get(),
             transactions = get(),
+            memoryFiles = get(),
         )
     }
 
@@ -436,6 +439,8 @@ val dataSourceModule = module {
             settings = { settingsStore.settingsFlow.first() },
             proposals = get(),
             transactions = get(),
+            memoryFiles = get(),
+            fileOrganizer = get(),
         )
     }
 

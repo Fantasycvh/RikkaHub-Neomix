@@ -85,6 +85,10 @@ data class MemoryProposalEntity(
     /** 0 = unspecified, -1 = explicit clear, positive = epoch millis. */
     @ColumnInfo(name = "due_at", defaultValue = "0")
     val dueAt: Long = 0L,
+    @ColumnInfo(name = "expected_file_revision", defaultValue = "NULL")
+    val expectedFileRevision: String? = null,
+    @ColumnInfo(name = "file_destination", defaultValue = "NULL")
+    val fileDestination: String? = null,
 ) {
     companion object {
         const val DECISION_PENDING = "pending"

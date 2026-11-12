@@ -323,6 +323,7 @@ internal fun buildInternalMessagesWithPlan(
      */
     purgeObserver: ((ContextPurifier.Result) -> Unit)? = null,
     memoryFiles: List<MemoryFileEntity> = emptyList(),
+    memoryToolBinding: String? = null,
 ): AssembledRequest {
     val windowRaw = buildSendWindowMessages(
         messages = messages,
@@ -334,7 +335,7 @@ internal fun buildInternalMessagesWithPlan(
         val report = ContextPurifier.purgeSendWindow(windowRaw)
         if (report.windowCount > 0) observer(report)
     }
-    val memoryBinding = assistant.memoryContext(memoryDisabled)
+    val memoryBinding = memoryToolBinding ?: assistant.memoryContext(memoryDisabled)
     val windowMessages = windowRaw.mapNotNull { it.withoutUiNotices().withMemoryToolHistoryFor(memoryBinding) }
     timing?.mark("asm_window")
     // Capture query, time, tokenizer strategy, rendered texts and selection once for this request.

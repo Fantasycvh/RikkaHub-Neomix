@@ -87,6 +87,10 @@ class DatabaseObjectRealSchemaInstrumentedTest {
             db.execSQL("INSERT INTO MemoryEntity(id, assistant_id, content, public_id) VALUES (3, 'private', 'entry backup', '00000003')")
             db.execSQL("INSERT INTO assistant_memory_file(store_id, path, content, revision, updated_at) VALUES ('private', '/profile.md', 'file backup', 'revision', 1)")
             db.execSQL(
+                "INSERT INTO memory_file_progress(conversation_id, store_id, consolidated_at, trigger_turn_fired) VALUES (?, 'private', 43, 0)",
+                arrayOf(conversationId),
+            )
+            db.execSQL(
                 "INSERT INTO memory_consolidation(conversation_id, consolidated_at) VALUES(?, ?)",
                 arrayOf<Any?>(conversationId, 42L),
             )
@@ -147,6 +151,11 @@ class DatabaseObjectRealSchemaInstrumentedTest {
             database.rawQuery("SELECT content FROM assistant_memory_file WHERE store_id = 'private' AND path = '/profile.md'", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())
                 assertEquals("file backup", cursor.getString(0))
+            }
+            database.rawQuery("SELECT conversation_id, consolidated_at FROM memory_file_progress WHERE store_id = 'private'", null).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(conversationId, cursor.getString(0))
+                assertEquals(43L, cursor.getLong(1))
             }
             database.rawQuery("PRAGMA user_version", null).use { cursor ->
                 assertTrue(cursor.moveToFirst())

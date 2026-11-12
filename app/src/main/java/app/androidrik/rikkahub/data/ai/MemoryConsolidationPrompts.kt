@@ -355,7 +355,7 @@ internal fun buildConsolidationTranscript(
         val baseline = baselines[conversation.id] ?: 0L
         // 一轮 = 基线之后的那些消息（节点里只要有新消息，整轮就算这一轮的）
         val turns = conversation.messageNodes
-            .map { node -> node.messages.filter { it.belongsToEntryMemory(storeId) && it.createdAt.millis() > baseline } }
+            .map { node -> node.messages.filter { it.belongsToConsolidationLibrary(storeId) && it.createdAt.millis() > baseline } }
             .filter { it.isNotEmpty() }
         if (turns.isEmpty()) return@forEach
 

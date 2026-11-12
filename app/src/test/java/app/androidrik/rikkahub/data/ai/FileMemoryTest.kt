@@ -7,6 +7,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryMode
+import app.androidrik.rikkahub.data.model.MemoryFileCategory
 import app.androidrik.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -15,6 +16,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FileMemoryTest {
+    @Test
+    fun fileCategoriesAreDerivedFromTheExactCanonicalPath() {
+        val paths = mapOf(
+            "/profile.md" to MemoryFileCategory.PROFILE,
+            "/preferences.md" to MemoryFileCategory.PREFERENCES,
+            "/topics/android/compose.md" to MemoryFileCategory.TOPICS,
+            "/areas/release.md" to MemoryFileCategory.AREAS,
+            "/people/alex.md" to MemoryFileCategory.PEOPLE,
+            "/misc/profile.md" to MemoryFileCategory.OTHER,
+            "/topics-archive/old.md" to MemoryFileCategory.OTHER,
+        )
+        paths.forEach { (path, category) -> assertEquals(category, MemoryFileCategory.of(path)) }
+    }
+
+    @Test
+    fun fileAndEntryOrganizersResolveIndependentGlobalLibrariesAndSources() {
+        val entries = Assistant(enableMemory = true, useGlobalMemory = true, memoryConsolidationSince = 1L)
+        val files = Assistant(
+            enableMemory = true, useGlobalMemory = true, memoryMode = MemoryMode.FILES, fileMemoryConsolidationSince = 1L,
+        )
+        assertEquals(setOf("__global__", "files:__global__"), resolveMemoryIds(MemoryTriggerConfig(), listOf(entries, files)))
+        assertFalse(files.copy(fileMemoryConsolidationSince = 0L, memoryConsolidationSince = 1L).memoryConsolidationEnabled())
+        val source = UIMessage.user("one file memory turn").copy(memoryContext = files.memoryContext(false))
+        assertTrue(source.belongsToConsolidationLibrary(files.consolidationMemoryId()))
+        assertFalse(source.belongsToConsolidationLibrary(entries.consolidationMemoryId()))
+        assertFalse(source.belongsToConsolidationLibrary(files.copy(useGlobalMemory = false).consolidationMemoryId()))
+        assertFalse(source.copy(memoryContext = null).belongsToConsolidationLibrary(files.consolidationMemoryId()))
+    }
+
     @Test
     fun settingsDecodeOldAndUnknownModesAndRoundTripFiles() {
         assertEquals(MemoryMode.ENTRIES, JsonInstant.decodeFromString<Assistant>("{}").memoryMode)

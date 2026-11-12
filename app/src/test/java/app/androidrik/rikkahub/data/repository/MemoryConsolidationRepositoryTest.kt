@@ -7,12 +7,17 @@ import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_ALL_HISTORY
 import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
 import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
 import app.androidrik.rikkahub.data.ai.TriggerPath
+import app.androidrik.rikkahub.data.ai.consolidationMemoryId
+import app.androidrik.rikkahub.data.ai.memoryContext
 import app.androidrik.rikkahub.data.ai.memoryConsolidationEnabled
 import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryFileProgressDAO
 import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryFileProgressEntity
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.MemoryMode
 import app.androidrik.rikkahub.data.model.MessageNode
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.LocalDateTime
@@ -101,6 +106,7 @@ class MemoryConsolidationRepositoryTest {
         limitPerRun: Int = MemoryConsolidationRepository.DEFAULT_LIMIT_PER_RUN,
         now: Long = millis(23),
         config: MemoryTriggerConfig = MemoryTriggerConfig(),
+        fileProgressDAO: MemoryFileProgressDAO? = null,
     ) = MemoryConsolidationRepository(
         consolidationDAO = dao,
         reviewCursorDAO = FakeReviewCursorDAO(),
@@ -109,6 +115,7 @@ class MemoryConsolidationRepositoryTest {
         limitPerRun = limitPerRun,
         now = { now },
         config = { config },
+        fileProgressDAO = fileProgressDAO,
     )
 
     private fun assistant(
@@ -165,6 +172,40 @@ class MemoryConsolidationRepositoryTest {
 
         val conversation = conversation(on, 1)
         assertEquals(1, repository(listOf(on)).pendingOf(conversation)?.turns)
+    }
+
+    @Test
+    fun `file progress is scoped and candidate paging skips entry-only chats`() = runBlocking {
+        val assistant = assistant().copy(memoryMode = MemoryMode.FILES, fileMemoryConsolidationSince = millis(0))
+        val library = assistant.consolidationMemoryId()
+        val entriesOnly = conversation(assistant, 4)
+        val original = conversation(assistant, 2)
+        val fileChat = original.copy(messageNodes = original.messageNodes.map { node ->
+            node.copy(messages = node.messages.map { it.copy(memoryContext = assistant.memoryContext(false)) })
+        })
+        remember(assistant, entriesOnly, millis(4))
+        remember(assistant, fileChat, millis(2))
+        val fileDao = object : MemoryFileProgressDAO {
+            private val progress = mutableMapOf<Pair<String, String>, MemoryFileProgressEntity>()
+            override suspend fun reviewPath(memoryId: String): String? = null
+            override suspend fun get(conversationId: String, storeId: String) = progress[conversationId to storeId]
+            override suspend fun upsert(progress: MemoryFileProgressEntity) {
+                this.progress[progress.conversationId to progress.storeId] = progress
+            }
+            override suspend fun latest(assistantId: String, storeId: String): Long? =
+                progress.values.filter { it.storeId == storeId }.maxOfOrNull { it.consolidatedAt }
+            override suspend fun candidates(assistantId: String, storeId: String, baseline: Long, limit: Int, offset: Int) =
+                listOf(entriesOnly.id.toString() to millis(4), fileChat.id.toString() to millis(2))
+                    .filter { (id, at) -> at > maxOf(baseline, progress[id to storeId]?.consolidatedAt ?: 0) }
+                    .drop(offset).take(limit).map { it.first }
+        }
+        val repository = repository(listOf(assistant), limitPerRun = 1, fileProgressDAO = fileDao)
+        assertEquals(fileChat.id, repository.findPending(library, TriggerPath.MANUAL).single().conversationId)
+        repository.markConsolidated(fileChat.id, millis(2), library)
+        assertNull(dao.getConsolidatedAt(fileChat.id.toString()))
+        assertEquals(millis(2), fileDao.get(fileChat.id.toString(), assistant.memoryId())?.consolidatedAt)
+        assertNull(fileDao.get(fileChat.id.toString(), MemoryRepository.GLOBAL_MEMORY_ID))
+        assertTrue(repository.findPending(library, TriggerPath.MANUAL).isEmpty())
     }
 
     @Test

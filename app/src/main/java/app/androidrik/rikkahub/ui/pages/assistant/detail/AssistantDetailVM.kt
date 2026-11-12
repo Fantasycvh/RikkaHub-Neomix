@@ -19,6 +19,7 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationScheduler
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
+import app.androidrik.rikkahub.data.ai.consolidationMemoryId
 import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.SkillManager
@@ -104,16 +105,18 @@ class AssistantDetailVM(
      */
     val consolidationStatus: StateFlow<MemoryConsolidationStatus> = assistant
         .flatMapLatest { current ->
-            consolidationScheduler.statusOf(current.memoryId())
+            consolidationScheduler.statusOf(current.consolidationMemoryId())
         }
         .stateIn(
             scope = viewModelScope, started = SharingStarted.Eagerly, initialValue = MemoryConsolidationStatus()
         )
 
     /** 手动「整理一下」：不受自动频次上限约束（用户显式点击即授权），也顺带做一遍全库复核 */
-    fun organizeMemory() {
+    fun consolidationStatusOf(memoryId: String) = consolidationScheduler.statusOf(memoryId)
+
+    fun organizeMemory(memoryId: String = assistant.value.consolidationMemoryId()) {
         viewModelScope.launch {
-            consolidationScheduler.organize(assistant.value.memoryId())
+            consolidationScheduler.organize(memoryId)
         }
     }
 
@@ -123,12 +126,12 @@ class AssistantDetailVM(
      * 界面必须先走过二次确认再调它——本函数不做任何确认，它是那一步之后才允许到达的写口。
      * 返回条数供界面说明结果（应用了几条、几条因目标已变而作废）。
      */
-    suspend fun applyProposals(ids: Set<Long>): MemoryProposalApplyResult =
-        consolidationScheduler.applyProposals(assistant.value.memoryId(), ids)
+    suspend fun applyProposals(ids: Set<Long>, memoryId: String = assistant.value.consolidationMemoryId()): MemoryProposalApplyResult =
+        consolidationScheduler.applyProposals(memoryId, ids)
 
     /** 拒绝建议（不写记忆库，只是别再从界面上烦用户） */
-    suspend fun rejectProposals(ids: Set<Long>): Int =
-        consolidationScheduler.rejectProposals(assistant.value.memoryId(), ids)
+    suspend fun rejectProposals(ids: Set<Long>, memoryId: String = assistant.value.consolidationMemoryId()): Int =
+        consolidationScheduler.rejectProposals(memoryId, ids)
 
     val providers = settingsStore
         .settingsFlow

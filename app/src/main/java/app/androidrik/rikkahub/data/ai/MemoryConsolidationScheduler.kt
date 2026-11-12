@@ -112,6 +112,8 @@ data class MemoryConsolidationProposal(
     val kind: String? = null,
     /** Null preserves the deadline; zero explicitly clears it. */
     val dueAt: Long? = null,
+    val expectedFileRevision: String? = null,
+    val fileDestination: String? = null,
 )
 
 /**

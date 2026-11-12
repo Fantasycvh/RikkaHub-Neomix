@@ -163,6 +163,7 @@ val repositoryModule = module {
             assistants = { settingsStore.settingsFlow.first().assistants },
             conversationLoader = { id -> conversationRepository.getConversationById(id) },
             config = { settingsStore.settingsFlow.first().memoryTriggerConfig },
+            fileProgressDAO = database.memoryFileProgressDao(),
         )
     }
 }

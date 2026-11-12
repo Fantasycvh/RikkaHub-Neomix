@@ -35,4 +35,6 @@ data class MemoryReviewCursorEntity(
     val cursor: Long,
     @ColumnInfo("updated_at")
     val updatedAt: Long,
+    @ColumnInfo(name = "file_path", defaultValue = "NULL")
+    val filePath: String? = null,
 )

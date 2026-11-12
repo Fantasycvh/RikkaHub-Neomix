@@ -484,6 +484,7 @@ class GenerationHandler(
          * 聊天主流程用默认值；标题、翻译等由调用方传自己的 [UsageSource]。
          */
         usageTag: UsageTag = UsageTag(UsageSource.CHAT),
+        memoryToolBinding: String? = null,
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = usageRecorder.wrap(providerManager.getProviderByType(provider), usageTag)
@@ -518,7 +519,7 @@ class GenerationHandler(
             targetProviderImpl: Provider<ProviderSetting>,
         ) {
             var messages: List<UIMessage> = committedNoticeMessages ?: messages
-            val memoryBinding = assistant.memoryContext(memoryDisabled)
+            val memoryBinding = memoryToolBinding ?: assistant.memoryContext(memoryDisabled)
 
             // 本轮的工具调用失控护栏：**由调用方传入**（挂在会话上），跨「审批续跑」累积。
             // 这里刻意不新建实例——真机实测每次批准都会重新进入 runLoop（step #0 重来），
@@ -617,6 +618,7 @@ class GenerationHandler(
                         recoveryHint = pendingRecoveryHint,
                         ruleReminder = ruleReminder,
                         memoryDisabled = memoryDisabled,
+                        memoryToolBinding = memoryToolBinding,
                         frozenAnchorIds = frozenAnchorIds,
                         debugKey = debugKey,
                         sessionId = sessionId,
@@ -1484,6 +1486,7 @@ class GenerationHandler(
         ruleReminder: String? = null,
         /** 会话级「不使用记忆」：为真时不注入记忆块（工具侧已在装配点处理） */
         memoryDisabled: Boolean = false,
+        memoryToolBinding: String? = null,
         /** L1 冻结的锚点 id 集合：非 null 时只渲染这些锚点（见 [generateText] 同名参数）。 */
         frozenAnchorIds: Set<String>? = null,
         debugKey: String? = null,
@@ -1518,6 +1521,7 @@ class GenerationHandler(
             recoveryHint = recoveryHint,
             ruleReminder = ruleReminder,
             memoryDisabled = memoryDisabled,
+            memoryToolBinding = memoryToolBinding,
             frozenAnchorIds = frozenAnchorIds,
             memoryFiles = if (assistant.enableMemory && !memoryDisabled && assistant.memoryMode == MemoryMode.FILES) {
                 memoryFiles?.list(assistant.memoryId()).orEmpty()
