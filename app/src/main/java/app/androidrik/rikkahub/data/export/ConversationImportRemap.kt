@@ -4,6 +4,7 @@ import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.pathNodes
 import kotlin.uuid.Uuid
 
 /**
@@ -37,7 +38,10 @@ import kotlin.uuid.Uuid
  * @return 可直接落库的新会话。
  */
 fun Conversation.remapForImport(targetAssistantId: Uuid): Conversation {
+    // 两遍扫描：先建全量节点映射（树形分支 P3：parentId / activeLeafNodeId 引用「后面才出现」
+    // 的节点在树形下不可能——父恒先于子创建——但两遍制对畸形文件同样安全），再改写引用。
     val nodeIdMap = mutableMapOf<Uuid, Uuid>()
+    messageNodes.forEach { node -> nodeIdMap[node.id] = Uuid.random() }
     // #1906：引用指向 messageId，而这里**每个消息 id 都要换新** ⇒ 必须先建全量映射
     // 再改写引用。两遍扫描是必要的：引用可以指向「后面才出现」的消息（前向引用），
     // 单遍边生成边查表会漏掉这一类。映射覆盖**全部候选**消息（不只是 selectIndex 选中的），
@@ -49,10 +53,11 @@ fun Conversation.remapForImport(targetAssistantId: Uuid): Conversation {
         }
     }
     val newNodeNodes = messageNodes.map { node ->
-        val newId = Uuid.random()
-        nodeIdMap[node.id] = newId
         node.copy(
-            id = newId,
+            id = nodeIdMap.getValue(node.id),
+            // 树形分支 P3：父引用跟着换；文件畸形（父不在节点集）时置 null，
+            // 由加载侧 healMissingParents 按列表前驱补链（与迁移/旧 JSON 同兜底）
+            parentId = node.parentId?.let { nodeIdMap[it] },
             // 消息 id 也要换（FTS 存 message_id）；toolCallId 等批内引用保持原样即自洽
             messages = node.messages.map { message ->
                 message.copy(
@@ -66,6 +71,8 @@ fun Conversation.remapForImport(targetAssistantId: Uuid): Conversation {
         id = Uuid.random(),
         assistantId = targetAssistantId,
         messageNodes = newNodeNodes,
+        // 激活叶子跟着换；指向节点集之外（畸形/被剪）时置 null ⇒ pathNodes 线性回退
+        activeLeafNodeId = activeLeafNodeId?.let { nodeIdMap[it] },
         // 源环境的归属/路径不继承（见上：悬空的 folderId 会让会话在抽屉里消失）
         folderId = null,
         workspaceCwd = null,
@@ -118,10 +125,12 @@ private fun List<UIMessageAnnotation>.remapQuotes(messageIdMap: Map<Uuid, Uuid>)
  * 各字段处理（设计稿 §5.1 七点）：
  * 1. `conversationId` → 由**落库方**改为新会话 id（这里返回的 summary 仍带旧 id，落库时以新为准）；
  * 2. `boundaryNodeId` → 经 [nodeIdMap] 换成新节点 id（**漏了这步检查点会立即失效**）；
- * 3. `areaFingerprint` → 在**新节点序列**上重算（用 [Conversation.areaFingerprintFor]）；
+ * 3. `areaFingerprint` → 在**新激活路径序列**上重算（用 [Conversation.areaFingerprintFor]，
+ *    树形分支 P3：指纹坐标 = pathNodes 下标，与 [Conversation.activeCompression] 校验同源）；
  * 4. `messageCount` / `content` / `createdAt` → 原样（`messageCount` 仅供展示与下次压缩累计）。
  *
- * 边界节点缺失（导出文件与检查点不一致）时**丢弃该检查点**——留着会是无效行。
+ * 边界节点缺失或**不在激活路径上**（off-path 分支的检查点——导入后切回该分支时无路径下标
+ * 可算指纹，只能失效回退全量）时**丢弃该检查点**——留着会是无效行。
  */
 private fun remapCompressionSummaries(
     source: Conversation,
@@ -129,7 +138,8 @@ private fun remapCompressionSummaries(
     nodeIdMap: Map<Uuid, Uuid>,
 ): List<CompressionSummary> {
     if (source.compressionSummaries.isEmpty()) return emptyList()
-    val boundaryIndexByNewId = target.messageNodes.withIndex().associate { (index, node) -> node.id to index }
+    // 指纹按**激活路径**下标算（树形分支 P3）：列表序 = 创建序 ≠ 路径序
+    val boundaryIndexByNewId = target.pathNodes().withIndex().associate { (index, node) -> node.id to index }
 
     return source.compressionSummaries.mapNotNull { summary ->
         val oldBoundary = summary.boundaryNodeId ?: return@mapNotNull null

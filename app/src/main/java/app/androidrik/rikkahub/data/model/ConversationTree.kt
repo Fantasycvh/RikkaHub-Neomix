@@ -217,6 +217,27 @@ fun Conversation.markGeneratingNodeIncompleteById(nodeId: Uuid): Conversation {
 }
 
 /**
+ * 「包含全部版本」导出顺序（P3 §八）：树**前序遍历**（兄弟子树按创建序），节点内候选按
+ * 存储序展开。与旧实现的 `messageNodes.flatMap { it.messages }`（创建序平铺、分支叙事断裂）
+ * 不同，输出保持「主干 → 分支 1 整棵 → 分支 2 整棵」的可读结构。含环防御。
+ */
+fun Conversation.messagesOfAllVersionsInTreeOrder(): List<UIMessage> {
+    val nodes = messageNodes.healMissingParents()
+    val childrenOf = nodes.groupBy { it.parentId }
+    val out = ArrayList<UIMessage>()
+    val visited = HashSet<Uuid>()
+    fun dfs(parentId: Uuid?) {
+        childrenOf[parentId]?.forEach { node ->
+            if (!visited.add(node.id)) return@forEach
+            out.addAll(node.messages)
+            dfs(node.id)
+        }
+    }
+    dfs(null)
+    return out
+}
+
+/**
  * 树内分叉（P2 §7.3）：在 [messageId] 所在节点处**开新时间线**——新建兄弟节点承载消息副本
  * （id 重生成、内容/注解/模型归属原样），激活叶子切过去；旧节点与其下游原样保留。
  * 根角落：根无兄弟（heal 不变量），退化为候选追加（数据不丢，同 scope B 的根退化规则）。

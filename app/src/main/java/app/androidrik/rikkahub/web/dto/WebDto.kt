@@ -8,6 +8,7 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.pathNodes
 
 // ========== Request DTOs ==========
 
@@ -201,14 +202,18 @@ data class ConversationDto(
     val folderId: String? = null,
     val createAt: Long,
     val updateAt: Long,
-    val isGenerating: Boolean = false
+    val isGenerating: Boolean = false,
+    /** 激活叶子（树形分支 P3）；web-ui 首期仅展示激活路径（messages 已由服务端 flatten） */
+    val activeLeafNodeId: String? = null,
 )
 
 @Serializable
 data class MessageNodeDto(
     val id: String,
     val messages: List<MessageDto>,
-    val selectIndex: Int
+    val selectIndex: Int,
+    /** 父节点 id（树形分支 P3；null = 根）。首期 web-ui 不消费，仅随 flatten 透出 */
+    val parentId: String? = null,
 )
 
 @Serializable
@@ -336,7 +341,9 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
     id = id.toString(),
     assistantId = assistantId.toString(),
     title = title,
-    messages = messageNodes.map { it.toDto() },
+    // 树形分支 P3：web 首期仅展示**激活路径**（服务端 flatten；树管理后置）——
+    // 旧 web-ui 按列表序渲染，全量节点集会把 off-path 兄弟子树混进线性时间线
+    messages = pathNodes().map { it.toDto() },
     chatSuggestions = chatSuggestions,
     isPinned = isPinned,
     hidden = hidden,
@@ -348,13 +355,15 @@ fun Conversation.toDto(isGenerating: Boolean = false) = ConversationDto(
     folderId = folderId?.toString(),
     createAt = createAt.toEpochMilli(),
     updateAt = updateAt.toEpochMilli(),
-    isGenerating = isGenerating
+    isGenerating = isGenerating,
+    activeLeafNodeId = activeLeafNodeId?.toString(),
 )
 
 fun MessageNode.toDto() = MessageNodeDto(
     id = id.toString(),
     messages = messages.map { it.toDto() },
-    selectIndex = selectIndex
+    selectIndex = selectIndex,
+    parentId = parentId?.toString(),
 )
 
 fun UIMessage.toDto() = MessageDto(

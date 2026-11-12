@@ -7,6 +7,7 @@ import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.ImportSourceRecord
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.pathNodes
 import app.androidrik.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -443,5 +444,84 @@ class ConversationImportRemapTest {
         )
         val imported = source.remapForImport(targetAssistant)
         assertTrue("悬空键应被丢弃", imported.exportDisplayOverrides.isEmpty())
+    }
+
+    // ---- 树形分支（P3 §八：parentId / activeLeafNodeId 重映射） ----
+
+    /** 树形会话：root → a1 → tail（激活路径），root → b1（off-path 兄弟分支）。 */
+    private fun treeConversation(): Conversation {
+        val root = MessageNode.of(textMessage("u0"))
+        val a1 = MessageNode.of(textMessage("a1")).copy(parentId = root.id)
+        val b1 = MessageNode.of(textMessage("b1")).copy(parentId = root.id)
+        val tail = MessageNode.of(textMessage("u2")).copy(parentId = a1.id)
+        return Conversation(
+            id = Uuid.random(),
+            assistantId = oldAssistant,
+            title = "树会话",
+            messageNodes = listOf(root, a1, b1, tail),
+            activeLeafNodeId = tail.id,
+        )
+    }
+
+    private fun nodeText(node: MessageNode) =
+        node.currentMessage.parts.filterIsInstance<UIMessagePart.Text>().single().text
+
+    @Test
+    fun `tree parent references are remapped to the new node ids`() {
+        val result = treeConversation().remapForImport(targetAssistant)
+
+        val newRoot = result.messageNodes.first { nodeText(it) == "u0" }
+        val newA1 = result.messageNodes.first { nodeText(it) == "a1" }
+        val newB1 = result.messageNodes.first { nodeText(it) == "b1" }
+        val newTail = result.messageNodes.first { nodeText(it) == "u2" }
+        assertNull("根无父", newRoot.parentId)
+        assertEquals("分支父引用必须换到新 id", newRoot.id, newA1.parentId)
+        assertEquals(newRoot.id, newB1.parentId)
+        assertEquals(newA1.id, newTail.parentId)
+    }
+
+    @Test
+    fun `active leaf node is remapped to the new node id`() {
+        val source = treeConversation()
+        val result = source.remapForImport(targetAssistant)
+
+        val newTail = result.messageNodes.first { nodeText(it) == "u2" }
+        assertEquals(
+            "激活叶子必须指向新节点（否则路径回退线性）",
+            newTail.id,
+            result.activeLeafNodeId,
+        )
+        assertEquals(
+            "激活路径在导入后保持不变",
+            source.pathNodes().map { nodeText(it) },
+            result.pathNodes().map { nodeText(it) },
+        )
+    }
+
+    @Test
+    fun `checkpoint with off-path boundary is dropped on import`() {
+        // off-path 边界（b1）：导入叶子在 a1 子树，路径不含 b1 → 无路径下标可算指纹 → 丢弃
+        val source = treeConversation()
+        val b1 = source.messageNodes.first { nodeText(it) == "b1" }
+        val offPath = CompressionSummary(
+            conversationId = source.id,
+            content = "off-path",
+            messageCount = 1,
+            boundaryNodeId = b1.id.toString(),
+            areaFingerprint = "whatever",
+        )
+        val onPath = CompressionSummary(
+            conversationId = source.id,
+            content = "on-path",
+            messageCount = 2,
+            boundaryNodeId = source.messageNodes[1].id.toString(), // a1（在激活路径上）
+            areaFingerprint = source.areaFingerprintFor(1),
+        )
+        val result = source.copy(compressionSummaries = listOf(offPath, onPath))
+            .remapForImport(targetAssistant)
+
+        assertEquals("off-path 检查点应被丢弃", 1, result.compressionSummaries.size)
+        assertEquals("on-path 检查点应保留", "on-path", result.compressionSummaries.single().content)
+        assertNotNull(result.compressionSummaries.single().areaFingerprint)
     }
 }

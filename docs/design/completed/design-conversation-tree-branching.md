@@ -405,6 +405,55 @@ P0 独立有价值（消除索引制隐患，delta-emit 稿的前置），可随
 - **全量回归**：`:app:testDebugUnitTest` 3437 通过 / 0 失败 / 2 跳过（P1 基线 3434 +
   withBranchForkAt 3 例）。
 
+### 九.7 P3 实施笔记（2026-11-12，实施中敲定的细节）
+
+1. **Web = 服务端 flatten**（§八 首期口径）：`ConversationDto.messages` 改为
+   `pathNodes()`（旧 web-ui 按列表序渲染，全量节点集会把 off-path 兄弟子树混进线性时间线）；
+   DTO 增 `MessageNodeDto.parentId` / `ConversationDto.activeLeafNodeId` 透出（首期不消费，
+   为树管理后置留位）。SSE `singleNodeDiffOrNull` 位置差分对两端同口径 flatten 的列表依然成立；
+   换分支 = 整列表变化 → 全量事件，天然正确。候选切换（selectMessageNode）只对路径上节点可用，
+   与首期展示口径一致。
+2. **导出「包含全部版本」改树前序遍历**：`Conversation.messagesOfAllVersionsInTreeOrder()`
+   （ConversationTree.kt，含环防御）——兄弟子树按创建序、节点内候选按存储序展开，输出保持
+   「主干 → 分支 1 整棵 → 分支 2 整棵」叙事；旧 `messageNodes.flatMap` 创建序平铺退役。
+   Markdown/HTML/PNG 三导出器与覆盖计数共用同一入口。默认导出（激活路径）不变；
+   JSON 归档依旧整会话序列化（往返保真）。
+3. **导入 remap 补树字段**：`remapForImport` 改两遍扫描（先全量节点映射再改写引用），
+   `parentId` / `activeLeafNodeId` 经 nodeIdMap 换新；悬空引用置 null（heal 补链 / 线性回退）。
+   **压缩检查点指纹按激活路径下标重算**（`boundaryIndexByNewId` 从 messageNodes 列表序改为
+   pathNodes 序——与 activeCompression 校验同源）；边界不在激活路径上的检查点导入时丢弃
+   （切回该分支时无路径下标可算指纹，失效回退全量，属可接受降级）。
+4. **备份零改动**：DB 整文件备份（VACUUM INTO）随 v66 列自动携带树数据；旧备份→新 =
+   LegacyBackupConverter 跑 Room 迁移 + 加载 heal；新备份→旧 = DowngradeQuarantineStore
+   版本闸拒绝。SchemaVersionConsistencyTest / ConversationSchemaGuardsTest 在 P0 已随
+   66.json 全绿，无需变更。
+5. **FTS/token/统计验证**：FTS 索引按全节点×全候选遍历（树安全）；上下文 token 估算按
+   currentMessages（激活路径，语义正确）；用量统计随生成写入，与结构正交。
+
+### 九.8 P3 验证记录（2026-11-12）
+
+- **单测**：全量 `:app:testDebugUnitTest` **3441 通过 / 0 失败 / 2 跳过**（P2 基线 3437 +
+  4 例：messagesOfAllVersionsInTreeOrder 树前序钉子 1、remap 树形 parentId/leaf 映射与
+  off-path 检查点丢弃 3）。
+- **真机（6c841f95）**：
+  - **导出**：树会话（11 节点 / 3 时间线 / 根 2 候选）开「包含全部版本」导 Markdown →
+    拉留存区文件核对：全 12 条消息按树前序排列（root 双候选 → 分支 1 整棵含「2」子树 →
+    分支 2 → 分支 3 含 hi/Hello 轮）。
+  - **导入 roundtrip**：JSON 归档导出 → 拉包核对（conversation.json 含 parentId /
+    activeLeafNodeId，单根、11 节点）→ 备份页「对话（JSON）」导入成功（用户确认）。
+    插曲：导入选择器上一轮误触把 pendingFormat 留在 Cherry Studio（共享 launcher 按
+    pendingFormat 分发），报「Invalid Cherry Studio backup」——操作坐标问题，非代码缺陷。
+  - **Web flatten**：设备启动 Web 服务器，adb forward + Bearer JWT 拉会话详情：
+    `messages` = 4 节点（路径子集，全量 11）、单根、parent 链完整、`activeLeafNodeId`
+    正确、候选切换（root selectIndex=1/2）随 DTO 透出。
+  - **备份**：DB 整拷语义 + v66 列在 P0 真机已验（迁移生效 + 旧库加载 heal），P3 无代码
+    变更；恢复兼容矩阵依赖既有闸（DowngradeQuarantineStore / LegacyBackupConverter），
+    回归由 P0/P1 设备记录与既有单测覆盖。
+- **未真机覆盖**：旧版 App 读新版 JSON 导出（前向兼容不在承诺内）；WebDAV/S3 通道
+  （与本地 DB 整拷同一引擎）。
+
+
+
 ### 九.2 P0 验证记录（2026-11-12）
 
 - **单测**：`:app:testDebugUnitTest` 3437 通过 / 0 失败 / 2 跳过（基线）。新增

@@ -282,6 +282,27 @@ class ConversationTreeTest {
         assertSame(conversation, conversation.withBranchForkAt(Uuid.random()))
     }
 
+    @Test fun `all-versions export walks the tree pre-order keeping branch narrative`() {
+        // 前序遍历：分支 1 整棵子树（含候选）在分支 2 之前——与 flatMap 的创建序平铺不同
+        val root = msg("u0").toMessageNode()
+        val a1 = msg("a1-old", MessageRole.ASSISTANT).toMessageNode().copy(parentId = root.id)
+        val multi = a1.copy(
+            messages = listOf(a1.currentMessage, msg("a1-new", MessageRole.ASSISTANT)),
+            selectIndex = 1,
+        )
+        val tail = msg("u2").toMessageNode().copy(parentId = multi.id)
+        val b1 = msg("b1", MessageRole.ASSISTANT).toMessageNode().copy(parentId = root.id)
+        val conversation = Conversation.ofId(Uuid.random()).copy(
+            // 列表序 = 创建序：root, a1(multi), b1, tail——b1 在 tail 之前创建
+            messageNodes = listOf(root, multi, b1, tail),
+            activeLeafNodeId = tail.id,
+        )
+
+        val texts = conversation.messagesOfAllVersionsInTreeOrder()
+            .map { it.parts.filterIsInstance<UIMessagePart.Text>().single().text }
+        assertEquals(listOf("u0", "a1-old", "a1-new", "u2", "b1"), texts)
+    }
+
     @Test fun `merge chains consecutive new nodes under the active path tail`() {
         val root = msg("u0").toMessageNode()
         val conversation = Conversation.ofId(Uuid.random()).copy(

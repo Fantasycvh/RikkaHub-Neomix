@@ -52,6 +52,7 @@ import app.androidrik.rikkahub.data.export.effectiveExportDisplayConfig
 import app.androidrik.rikkahub.data.export.previewExportModelLabel
 import app.androidrik.rikkahub.data.export.AttachmentPlan
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.messagesOfAllVersionsInTreeOrder
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.pages.setting.components.ExportDisplaySchemeSheet
@@ -132,7 +133,7 @@ fun ChatExportSheet(
     }
     // 已覆盖的消息数：只数「当前会导出的消息」，悬空键（被删的分支）不算
     val overriddenMessageCount = remember(selectedMessages, includeAllVersions, conversation) {
-        val messages = if (includeAllVersions) conversation.messageNodes.flatMap { it.messages }
+        val messages = if (includeAllVersions) conversation.messagesOfAllVersionsInTreeOrder()
         else selectedMessages
         messages.count { conversation.exportDisplayOverrides.containsKey(it.id.toString()) }
     }
@@ -210,9 +211,10 @@ fun ChatExportSheet(
             onDismissRequest()
         }
     }
-    // 导出的消息：默认当前选中版本（多选流程传筛选后消息）；开启后含分支/编辑历史的全部版本
+    // 导出的消息：默认当前选中版本（多选流程传筛选后消息）；开启后含全部候选与分支
+    // （树前序遍历，见 ConversationTree.messagesOfAllVersionsInTreeOrder）
     val exportMessages = remember(includeAllVersions, conversation, selectedMessages) {
-        if (includeAllVersions) conversation.messageNodes.flatMap { it.messages }
+        if (includeAllVersions) conversation.messagesOfAllVersionsInTreeOrder()
         else selectedMessages
     }
 
