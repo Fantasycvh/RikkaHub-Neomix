@@ -291,6 +291,90 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 vm = vm,
             )
         }
+        item {
+            ModelCardScaleSetting(
+                settings = settings,
+                vm = vm,
+            )
+        }
+    }
+}
+
+/**
+ * 模型卡片大小（design-model-card-scale.md）：三处模型卡片独立连续缩放，
+ * 存储为 Float 比例，滑块用整数百分比换算（75%–150%）；拖动即时预览、松手落库。
+ */
+private val MODEL_CARD_SCALE_PERCENT_RANGE = 75..150
+
+@Composable
+private fun ModelCardScaleSetting(
+    settings: Settings,
+    vm: SettingVM,
+) {
+    CardGroup(title = { Text("模型卡片大小") }) {
+        item {
+            Column(
+                modifier = Modifier.padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SliderSettingField(
+                    label = "模型选择弹窗卡片",
+                    value = (settings.displaySetting.modelPickerCardScale * 100).roundToInt(),
+                    range = MODEL_CARD_SCALE_PERCENT_RANGE,
+                    onValueChange = {
+                        vm.updateSettings(
+                            settings.copy(
+                                displaySetting = settings.displaySetting.copy(
+                                    modelPickerCardScale = it / 100f
+                                )
+                            )
+                        )
+                    },
+                )
+                SliderSettingField(
+                    label = "模型管理页卡片",
+                    value = (settings.displaySetting.modelManageCardScale * 100).roundToInt(),
+                    range = MODEL_CARD_SCALE_PERCENT_RANGE,
+                    onValueChange = {
+                        vm.updateSettings(
+                            settings.copy(
+                                displaySetting = settings.displaySetting.copy(
+                                    modelManageCardScale = it / 100f
+                                )
+                            )
+                        )
+                    },
+                )
+                SliderSettingField(
+                    label = "添加模型弹窗卡片",
+                    value = (settings.displaySetting.modelAddCardScale * 100).roundToInt(),
+                    range = MODEL_CARD_SCALE_PERCENT_RANGE,
+                    onValueChange = {
+                        vm.updateSettings(
+                            settings.copy(
+                                displaySetting = settings.displaySetting.copy(
+                                    modelAddCardScale = it / 100f
+                                )
+                            )
+                        )
+                    },
+                )
+                SliderSettingField(
+                    label = "提供商列表卡片",
+                    value = (settings.displaySetting.providerCardScale * 100).roundToInt(),
+                    range = MODEL_CARD_SCALE_PERCENT_RANGE,
+                    onValueChange = {
+                        vm.updateSettings(
+                            settings.copy(
+                                displaySetting = settings.displaySetting.copy(
+                                    providerCardScale = it / 100f
+                                )
+                            )
+                        )
+                    },
+                )
+            }
+        }
     }
 }
 

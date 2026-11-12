@@ -57,6 +57,7 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,9 +72,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.Model
+import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.ai.catalog.ProviderModelCatalogRepository
 import app.androidrik.rikkahub.data.ai.catalog.catalogCandidateModels
 import app.androidrik.rikkahub.data.ai.catalog.isRefreshing
@@ -100,7 +103,9 @@ import org.koin.compose.koinInject
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 internal fun SettingProviderModelPage(
@@ -119,6 +124,9 @@ internal fun ModelList(
     onUpdateProvider: (ProviderSetting) -> Unit
 ) {
     val catalogRepository = koinInject<ProviderModelCatalogRepository>()
+    val settingsStore = koinInject<SettingsStore>()
+    val cardScale = settingsStore.settingsFlow.collectAsStateWithLifecycle()
+        .value.displaySetting.modelManageCardScale.coerceIn(0.75f, 1.5f)
     val catalogState = rememberCatalogState(providerSetting.id)
     val scope = rememberCoroutineScope()
     CatalogAutoRefreshEffect(listOf(providerSetting))
@@ -174,6 +182,7 @@ internal fun ModelList(
                         val haptic = LocalHapticFeedback.current
                         ModelCard(
                             model = item,
+                            cardScale = cardScale,
                             onDelete = {
                                 onUpdateProvider(providerSetting.delModel(item))
                             },
@@ -536,6 +545,9 @@ internal fun ModelPicker(
     var showModal by remember { mutableStateOf(false) }
     if (showModal) {
         CatalogAutoRefreshEffect(listOf(provider))
+        val settingsStore = koinInject<SettingsStore>()
+        val cardScale = settingsStore.settingsFlow.collectAsStateWithLifecycle()
+            .value.displaySetting.modelAddCardScale.coerceIn(0.75f, 1.5f)
         ModalBottomSheet(
             onDismissRequest = { showModal = false },
             sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden, enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)),
@@ -594,65 +606,71 @@ internal fun ModelPicker(
                     contentPadding = PaddingValues(8.dp),
                 ) {
                     items(filteredModels) {
+                        val baseDensity = LocalDensity.current
                         Card {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(
-                                    8.dp
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
+                            // 卡片内容整体按 cardScale 等比缩放（dp+sp），只乘 density 不叠加系统字号缩放
+                            CompositionLocalProvider(
+                                LocalDensity provides Density(baseDensity.density * cardScale, baseDensity.fontScale)
                             ) {
-                                AutoAIIcon(
-                                    it.modelId,
-                                    Modifier.size(32.dp)
-                                )
-                                Column(
-                                    verticalArrangement = Arrangement.spacedBy(
-                                        4.dp
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(
+                                        8.dp
                                     ),
-                                    modifier = Modifier.weight(1f),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
                                 ) {
-                                    Text(
-                                        text = it.modelId,
-                                        style = MaterialTheme.typography.titleSmall,
+                                    AutoAIIcon(
+                                        it.modelId,
+                                        Modifier.size(32.dp)
                                     )
-
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(
+                                            4.dp
+                                        ),
+                                        modifier = Modifier.weight(1f),
                                     ) {
-                                        val modelMeta = remember(it) {
-                                            it.copy(
-                                                inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(it.modelId),
-                                                outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(it.modelId),
-                                                abilities = ModelRegistry.MODEL_ABILITIES.getData(it.modelId),
+                                        Text(
+                                            text = it.modelId,
+                                            style = MaterialTheme.typography.titleSmall,
+                                        )
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                        ) {
+                                            val modelMeta = remember(it) {
+                                                it.copy(
+                                                    inputModalities = ModelRegistry.MODEL_INPUT_MODALITIES.getData(it.modelId),
+                                                    outputModalities = ModelRegistry.MODEL_OUTPUT_MODALITIES.getData(it.modelId),
+                                                    abilities = ModelRegistry.MODEL_ABILITIES.getData(it.modelId),
+                                                )
+                                            }
+                                            ModelModalityTag(
+                                                model = modelMeta,
+                                            )
+                                            ModelAbilityTag(
+                                                model = modelMeta,
                                             )
                                         }
-                                        ModelModalityTag(
-                                            model = modelMeta,
-                                        )
-                                        ModelAbilityTag(
-                                            model = modelMeta,
-                                        )
                                     }
-                                }
-                                IconButton(
-                                    onClick = {
-                                        if (selectedModels.any { model -> model.modelId == it.modelId }) {
-                                            // 从selectedModels中计算出要删除的model，因为删除需要id匹配，而不是ModelId
-                                            onModelDeselected(selectedModels.firstOrNull { model -> model.modelId == it.modelId }
-                                                ?: it)
-                                        } else {
-                                            onModelSelected(it)
+                                    IconButton(
+                                        onClick = {
+                                            if (selectedModels.any { model -> model.modelId == it.modelId }) {
+                                                // 从selectedModels中计算出要删除的model，因为删除需要id匹配，而不是ModelId
+                                                onModelDeselected(selectedModels.firstOrNull { model -> model.modelId == it.modelId }
+                                                    ?: it)
+                                            } else {
+                                                onModelSelected(it)
+                                            }
                                         }
-                                    }
-                                ) {
-                                    if (selectedModels.any { model -> model.modelId == it.modelId }) {
-                                        Icon(HugeIcons.Cancel01, null)
-                                    } else {
-                                        Icon(HugeIcons.Add01, null)
+                                    ) {
+                                        if (selectedModels.any { model -> model.modelId == it.modelId }) {
+                                            Icon(HugeIcons.Cancel01, null)
+                                        } else {
+                                            Icon(HugeIcons.Add01, null)
+                                        }
                                     }
                                 }
                             }
@@ -696,6 +714,7 @@ internal fun ModelPicker(
 internal fun ModelCard(
     model: Model,
     modifier: Modifier = Modifier,
+    cardScale: Float = 1.0f,
     onDelete: () -> Unit,
     onEdit: (Model) -> Unit,
     /** 停用/启用该模型（只影响它是否出现在模型选择器里，见 [Model.enabled]） */
@@ -844,82 +863,88 @@ internal fun ModelCard(
             // 多选态：点击卡片切换选中；平常态点击无动作（开关/编辑按钮照旧）
             onClick = { if (selecting) onToggleSelect?.invoke() },
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            // 卡片内容整体按 cardScale 等比缩放（dp+sp），只乘 density 不叠加系统字号缩放
+            val baseDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(baseDensity.density * cardScale, baseDensity.fontScale)
             ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = MaterialTheme.shapes.small,
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AutoAIIcon(
-                        name = model.modelId,
-                        modifier = Modifier.size(36.dp),
-                    )
-                }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = model.displayName,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    CatalogModelMarker(parentProvider, model)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        AutoAIIcon(
+                            name = model.modelId,
+                            modifier = Modifier.size(36.dp),
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        if (model.providerOverwrite != null) {
-                            Tag(type = TagType.INFO) {
-                                Text(
-                                    // 显示 API 格式名而非混淆类名（同上：release 下 simpleName = it9/ft9）
-                                    model.providerOverwrite?.providerTypeDisplayName
-                                        ?: model.providerOverwrite?.name
-                                        ?: "ProviderOverwrite"
-                                )
+                        Text(
+                            text = model.displayName,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        CatalogModelMarker(parentProvider, model)
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            if (model.providerOverwrite != null) {
+                                Tag(type = TagType.INFO) {
+                                    Text(
+                                        // 显示 API 格式名而非混淆类名（同上：release 下 simpleName = it9/ft9）
+                                        model.providerOverwrite?.providerTypeDisplayName
+                                            ?: model.providerOverwrite?.name
+                                            ?: "ProviderOverwrite"
+                                    )
+                                }
                             }
-                        }
-                        ModelTypeTag(model = model)
-                        ModelModalityTag(model = model)
-                        ModelAbilityTag(model = model)
-                        if (!model.enabled) {
-                            Tag(type = TagType.WARNING) {
-                                Text(stringResource(R.string.setting_provider_page_disabled))
+                            ModelTypeTag(model = model)
+                            ModelModalityTag(model = model)
+                            ModelAbilityTag(model = model)
+                            if (!model.enabled) {
+                                Tag(type = TagType.WARNING) {
+                                    Text(stringResource(R.string.setting_provider_page_disabled))
+                                }
                             }
                         }
                     }
-                }
 
-                // 启停开关：与「提供商启停」「预设条目启停」同款交互（行内 Switch）。
-                // 语义=仅从选择器收起，不改既有选中项（见 Model.enabled 的说明）。
-                // 多选态下隐藏操作件，行内勾选框替代
-                if (selecting) {
-                    Checkbox(
-                        checked = selected,
-                        onCheckedChange = { onToggleSelect?.invoke() },
-                    )
-                } else {
-                    Switch(
-                        checked = model.enabled,
-                        onCheckedChange = onToggleEnabled,
-                        modifier = Modifier.semantics {
-                            contentDescription = "${model.displayName}: $enabledLabel"
-                        },
-                    )
+                    // 启停开关：与「提供商启停」「预设条目启停」同款交互（行内 Switch）。
+                    // 语义=仅从选择器收起，不改既有选中项（见 Model.enabled 的说明）。
+                    // 多选态下隐藏操作件，行内勾选框替代
+                    if (selecting) {
+                        Checkbox(
+                            checked = selected,
+                            onCheckedChange = { onToggleSelect?.invoke() },
+                        )
+                    } else {
+                        Switch(
+                            checked = model.enabled,
+                            onCheckedChange = onToggleEnabled,
+                            modifier = Modifier.semantics {
+                                contentDescription = "${model.displayName}: $enabledLabel"
+                            },
+                        )
 
-                    // Edit button
-                    IconButton(
-                        onClick = {
-                            dialogState.open(model.copy())
+                        // Edit button
+                        IconButton(
+                            onClick = {
+                                dialogState.open(model.copy())
+                            }
+                        ) {
+                            Icon(HugeIcons.Tools, "Edit")
                         }
-                    ) {
-                        Icon(HugeIcons.Tools, "Edit")
                     }
                 }
             }

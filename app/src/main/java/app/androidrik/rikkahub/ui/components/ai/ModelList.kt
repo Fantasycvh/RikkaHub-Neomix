@@ -38,6 +38,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.BadgedBox
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,11 +52,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastAny
 import androidx.compose.ui.util.fastFilter
@@ -351,6 +354,7 @@ private fun ColumnScope.ModelList(
     val settingsStore = koinInject<SettingsStore>()
     val settings = settingsStore.settingsFlow
         .collectAsStateWithLifecycle()
+    val cardScale = settings.value.displaySetting.modelPickerCardScale.coerceIn(0.75f, 1.5f)
 
     // 拖动排序时先改这份本地顺序，松手再写回设置。设置是异步回到界面的，拖到边缘自动滚动时拖拽库每帧都会按
     // 旧布局再算一次移动，直接改设置会让顺序被反复改回去，看起来就是来回抽搐（上游 395a0ee0，#2229）
@@ -560,6 +564,7 @@ private fun ColumnScope.ModelList(
                         modifier = Modifier
                             .scale(if (isDragging) 0.95f else 1f)
                             .animateItem(),
+                        cardScale = cardScale,
                         providerSetting = provider,
                         select = model.id == currentModel,
                         onDismiss = {
@@ -664,6 +669,7 @@ private fun ColumnScope.ModelList(
                     model = model,
                     onSelect = onSelect,
                     modifier = Modifier.animateItem(),
+                    cardScale = cardScale,
                     providerSetting = providerSetting,
                     select = currentModel == model.id,
                     onDismiss = {
@@ -767,11 +773,13 @@ private fun ModelItem(
     onSelect: (Model) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    cardScale: Float = 1.0f,
     tail: @Composable RowScope.() -> Unit = {},
     dragHandle: @Composable (RowScope.() -> Unit)? = null
 ) {
     val navController = LocalNavController.current
     val interactionSource = remember { MutableInteractionSource() }
+    val baseDensity = LocalDensity.current
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
@@ -779,73 +787,78 @@ private fun ModelItem(
             contentColor = if (select) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
         )
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp, horizontal = 16.dp)
+        // 卡片内容整体按 cardScale 等比缩放（dp+sp），只乘 density 不叠加系统字号缩放
+        CompositionLocalProvider(
+            LocalDensity provides Density(baseDensity.density * cardScale, baseDensity.fontScale)
         ) {
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .combinedClickable(
-                        enabled = true,
-                        onLongClick = {
-                            onDismiss()
-                            navController.navigate(
-                                Screen.SettingProviderDetail(
-                                    providerSetting.id.toString()
-                                )
-                            )
-                        },
-                        onClick = { onSelect(model) },
-                        interactionSource = interactionSource,
-                        indication = LocalIndication.current
-                    ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 12.dp, horizontal = 16.dp)
             ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = MaterialTheme.shapes.small,
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .combinedClickable(
+                            enabled = true,
+                            onLongClick = {
+                                onDismiss()
+                                navController.navigate(
+                                    Screen.SettingProviderDetail(
+                                        providerSetting.id.toString()
+                                    )
+                                )
+                            },
+                            onClick = { onSelect(model) },
+                            interactionSource = interactionSource,
+                            indication = LocalIndication.current
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    AutoAIIcon(
-                        name = model.modelId,
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .size(32.dp)
-                    )
-                }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = model.displayName,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-
-                    CatalogModelMarker(providerSetting, model)
-
-                    FlowRow(
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        AutoAIIcon(
+                            name = model.modelId,
+                            modifier = Modifier
+                                .padding(4.dp)
+                                .size(32.dp)
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        ModelTypeTag(model = model)
+                        Text(
+                            text = model.displayName,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
 
-                        ModelModalityTag(model = model)
+                        CatalogModelMarker(providerSetting, model)
 
-                        ModelAbilityTag(model = model)
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            ModelTypeTag(model = model)
+
+                            ModelModalityTag(model = model)
+
+                            ModelAbilityTag(model = model)
+                        }
                     }
+                    tail()
                 }
-                tail()
+                dragHandle?.let { it() }
             }
-            dragHandle?.let { it() }
         }
     }
 }

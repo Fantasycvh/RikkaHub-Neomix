@@ -173,6 +173,15 @@ data class DisplaySetting(
     val wholeTurnFolding: Boolean = false,
     val showMessageJumper: Boolean = true,
     val messageJumperOnLeft: Boolean = false,
+    /**
+     * 模型卡片连续缩放（见 docs/design/design-model-card-scale.md）：1.0 = 现状。
+     * 渲染端在卡片子树覆写 LocalDensity 实现 dp+sp 等比缩放，三处卡片独立取值。
+     */
+    val modelPickerCardScale: Float = 1.0f,
+    val modelManageCardScale: Float = 1.0f,
+    val modelAddCardScale: Float = 1.0f,
+    /** 提供商列表卡片缩放（0.75–1.5），作用于 ProviderItem 整卡。 */
+    val providerCardScale: Float = 1.0f,
     val fontSizeRatio: Float = 1.0f,
     val enableMessageGenerationHapticEffect: Boolean = false,
     val skipCropImage: Boolean = true,

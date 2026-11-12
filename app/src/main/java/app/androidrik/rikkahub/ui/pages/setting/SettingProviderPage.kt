@@ -50,9 +50,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -80,6 +82,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 @Composable
 fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val providerCardScale = settings.displaySetting.providerCardScale.coerceIn(0.75f, 1.5f)
     CatalogAutoRefreshEffect(settings.providers)
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -201,6 +204,7 @@ fun SettingProviderPage(vm: SettingVM = koinViewModel()) {
                             modifier = Modifier
                                 .scale(if (isDragging) 0.95f else 1f)
                                 .fillMaxWidth(),
+                            cardScale = providerCardScale,
                             provider = provider,
                             dragHandle = {
                                 val haptic = LocalHapticFeedback.current
@@ -321,9 +325,11 @@ private fun AddButton(onAdd: (ProviderSetting) -> Unit) {
 private fun ProviderItem(
     provider: ProviderSetting,
     modifier: Modifier = Modifier,
+    cardScale: Float = 1.0f,
     dragHandle: @Composable () -> Unit,
     onClick: () -> Unit
 ) {
+    val baseDensity = LocalDensity.current
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
@@ -335,54 +341,59 @@ private fun ProviderItem(
             onClick()
         }
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // 卡片内容整体按 cardScale 等比缩放（dp+sp），只乘 density 不叠加系统字号缩放
+        CompositionLocalProvider(
+            LocalDensity provides Density(baseDensity.density * cardScale, baseDensity.fontScale)
         ) {
-            AutoAIIcon(
-                name = provider.name,
-                modifier = Modifier.size(40.dp)
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = provider.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                AutoAIIcon(
+                    name = provider.name,
+                    modifier = Modifier.size(40.dp)
                 )
-                ProvideTextStyle(MaterialTheme.typography.labelSmall) {
-                    CompositionLocalProvider(LocalContentColor provides LocalContentColor.current.copy(alpha = 0.7f)) {
-                        provider.shortDescription()
-                    }
-                }
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Tag(type = if (provider.enabled) TagType.SUCCESS else TagType.WARNING) {
-                        Text(stringResource(if (provider.enabled) R.string.setting_provider_page_enabled else R.string.setting_provider_page_disabled))
-                    }
-                    Tag(type = TagType.INFO) {
-                        Text(
-                            stringResource(
-                                R.string.setting_provider_page_model_count,
-                                provider.models.size
-                            )
-                        )
-                    }
-                    if (provider.name == "AiHubMix") {
-                        Tag(type = TagType.INFO) {
-                            Text(stringResource(R.string.setting_provider_page_aihubmix_discount))
+                    Text(
+                        text = provider.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    ProvideTextStyle(MaterialTheme.typography.labelSmall) {
+                        CompositionLocalProvider(LocalContentColor provides LocalContentColor.current.copy(alpha = 0.7f)) {
+                            provider.shortDescription()
                         }
                     }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Tag(type = if (provider.enabled) TagType.SUCCESS else TagType.WARNING) {
+                            Text(stringResource(if (provider.enabled) R.string.setting_provider_page_enabled else R.string.setting_provider_page_disabled))
+                        }
+                        Tag(type = TagType.INFO) {
+                            Text(
+                                stringResource(
+                                    R.string.setting_provider_page_model_count,
+                                    provider.models.size
+                                )
+                            )
+                        }
+                        if (provider.name == "AiHubMix") {
+                            Tag(type = TagType.INFO) {
+                                Text(stringResource(R.string.setting_provider_page_aihubmix_discount))
+                            }
+                        }
+                    }
+                    CatalogProviderStatus(provider, compact = true)
                 }
-                CatalogProviderStatus(provider, compact = true)
+                dragHandle()
             }
-            dragHandle()
         }
     }
 }
