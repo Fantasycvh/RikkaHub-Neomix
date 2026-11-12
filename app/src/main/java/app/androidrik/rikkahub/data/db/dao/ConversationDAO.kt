@@ -187,6 +187,18 @@ interface ConversationDAO {
     suspend fun updateMemoryDisabled(id: String, disabled: Boolean)
 
     /**
+     * 激活叶子的**单列**写入点（流式检查点推进专用）。
+     *
+     * 为什么不走 [updateMetadata] / 整对象保存：检查点随流式高频触发，而此刻内存态正是
+     * 权威来源（merge 已推进叶子）；但整对象写回会把节点列表一并落库——那是流收尾
+     * `saveConversation` 的职责，检查点只该补「节点行 + 叶子指向」两件事，让强杀后
+     * 重开的会话路径包含半截节点（树形分支：叶子不推进 ⇒ 半截节点 off-path 不可见，
+     * P0 时代渲染全量列表时该缺口被掩盖）。
+     */
+    @Query("UPDATE conversationentity SET active_leaf_node_id = :leaf WHERE id = :id")
+    suspend fun updateActiveLeafNode(id: String, leaf: String)
+
+    /**
      * 隐藏会话的唯一写入点（「移出隐藏 / 移入隐藏」手动切换；
      * design-proactive-task-management.md §二.3）。调用方算好新值并同步内存态。
      */

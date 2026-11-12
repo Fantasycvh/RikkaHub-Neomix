@@ -538,6 +538,12 @@ class ConversationRepository(
                         ?: conversation.messageNodes.getOrNull(position - 1)?.id?.toString(),
                 )
             )
+            // 叶子推进与节点行同一事务（强杀恢复，树形分支）：流式中叶子只在内存推进，
+            // 若检查点不落叶子，强杀后重开的会话路径停在发送基线 ⇒ 半截节点 off-path 不可见。
+            // 内存叶即权威值（新建节点已由 merge 推进；候选追加叶子不动、此处为幂等写）。
+            conversation.activeLeafNodeId?.let { leaf ->
+                conversationDAO.updateActiveLeafNode(conversation.id.toString(), leaf.toString())
+            }
         }
     }
 

@@ -354,8 +354,8 @@ P0 独立有价值（消除索引制隐患，delta-emit 稿的前置），可随
     leaf 收回父节点（a1）、scope B 兄弟分支不受影响。
   - 旧库（P0 写入的会话）加载渲染正常（heal 兜底生效）。
 - **未真机覆盖**：非根编辑纯分支 / THIS_ONLY 中间节点候选（P0 真机已验 + 单测钉住）/
-  强杀恢复（checkpointGeneratingNode 仅改父寻址）/ 压缩检查点路径判定（单测覆盖，
-  会话未触发压缩）。
+  压缩检查点路径判定（单测覆盖，会话未触发压缩）。强杀恢复原在此列，后于 P3 后追验
+  （见 §九.9，顺带修了检查点叶子推进缺口）。
 
 ### 九.5 P2 实施笔记（2026-11-12，实施中敲定的细节）
 
@@ -451,6 +451,28 @@ P0 独立有价值（消除索引制隐患，delta-emit 稿的前置），可随
     回归由 P0/P1 设备记录与既有单测覆盖。
 - **未真机覆盖**：旧版 App 读新版 JSON 导出（前向兼容不在承诺内）；WebDAV/S3 通道
   （与本地 DB 整拷同一引擎）。
+
+### 九.9 追验：强杀恢复 + 检查点叶子推进修复（2026-11-12）
+
+P1 收尾时遗留的「强杀恢复」真机项，构造场景后**暴露了一个真缺口**（不止父寻址）：
+
+- **缺口**：`checkpointGeneratingNode` 只 upsert 节点行，会话行的 `active_leaf_node_id`
+  仍停在发送基线（由 sendQueuedMessage 写入）——流式中叶子只在内存推进。树形分支后
+  激活路径由 leaf 派生 ⇒ 强杀重开时半截回复节点 off-path **不可见**（P0 时代渲染全量
+  列表，该缺口被掩盖；ChatList 改渲染 pathNodes 后才显形）。
+- **修复**（单列写 + 同事务）：
+  - `ConversationDAO.updateActiveLeafNode(id, leaf)`——叶子单列写入点，注释说明为何
+    不走整对象保存（与 updateTitle 同族理由：检查点只补「节点行 + 叶子指向」两件事，
+    节点列表落库是流收尾 saveConversation 的职责）。
+  - `checkpointGeneratingNode` 事务内、节点行写入后：`conversation.activeLeafNodeId?`
+    .let 写库。内存叶即权威值（新建节点已由 merge 推进叶子；候选追加叶子不动，此处
+    幂等写）。停止路径本就安全（persistStoppedGeneration → 整对象 saveConversation）。
+- **真机验证（6c841f95，全新会话）**：
+  - 发长文请求（800 词 essay），流式 ~20s（≥2s 检查点间隔 × 多次）后 `am force-stop`。
+  - 拉库：会话行 `active_leaf_node_id` = 半截 assistant 节点；该节点 `parent_id` =
+    用户消息节点（root）；消息 JSON 含 `finishIncomplete:true`。
+  - 重启重进：半截回复**可见**，顶部出现「不完整」横幅（IncompleteOutputBanner），
+    裸断流策略可自动续写。
 
 
 
