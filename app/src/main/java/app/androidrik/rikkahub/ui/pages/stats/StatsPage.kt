@@ -14,23 +14,34 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberDateRangePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +66,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.UsageSource
@@ -75,7 +88,9 @@ import org.koin.androidx.compose.koinViewModel
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.format.TextStyle
@@ -88,7 +103,8 @@ private const val RANKING_LIMIT = 8
 fun StatsPage(vm: StatsVM = koinViewModel()) {
     val stats by vm.stats.collectAsStateWithLifecycle()
     val usage by vm.usage.collectAsStateWithLifecycle()
-    val range by vm.range.collectAsStateWithLifecycle()
+    val filter by vm.filter.collectAsStateWithLifecycle()
+    var showRangePicker by rememberSaveable { mutableStateOf(false) }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
@@ -138,8 +154,14 @@ fun StatsPage(vm: StatsVM = koinViewModel()) {
                 }
                 item {
                     UsageHeader(
-                        range = range,
-                        onRangeChange = vm::setRange,
+                        filter = filter,
+                        usage = usage,
+                        onRangeChange = { option ->
+                            if (option == UsageRange.CUSTOM) showRangePicker = true else vm.setRange(option)
+                        },
+                        onPickCustomRange = { showRangePicker = true },
+                        onProviderChange = vm::setProviderFilter,
+                        onModelChange = vm::setModelFilter,
                         modifier = Modifier.padding(start = 8.dp, end = 8.dp, top = 16.dp),
                     )
                 }
@@ -180,7 +202,99 @@ fun StatsPage(vm: StatsVM = koinViewModel()) {
             }
         }
     }
+
+    if (showRangePicker) {
+        CustomRangePickerSheet(
+            initialStart = filter.customStart,
+            initialEnd = filter.customEnd,
+            onDismiss = { showRangePicker = false },
+            onConfirm = { start, end ->
+                vm.setCustomRange(start, end)
+                showRangePicker = false
+            },
+        )
+    }
 }
+
+/**
+ * 自定义时间区间：M3 DateRangePicker 用整页 Dialog 承载。不能用 ModalBottomSheet——
+ * 「查看上个月」的下滑手势会和 sheet 的下滑关闭冲突，月份一滚 sheet 就被关掉。
+ * 下滑/返回关闭 = 放弃修改，保持原筛选。
+ */
+@Composable
+private fun CustomRangePickerSheet(
+    initialStart: LocalDate?,
+    initialEnd: LocalDate?,
+    onDismiss: () -> Unit,
+    onConfirm: (LocalDate, LocalDate) -> Unit,
+) {
+    val pickerState = rememberDateRangePickerState(
+        initialSelectedStartDateMillis = initialStart?.toPickerUtcMillis(),
+        initialSelectedEndDateMillis = initialEnd?.toPickerUtcMillis(),
+    )
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(CustomColors.topBarColors.containerColor),
+            color = CustomColors.topBarColors.containerColor,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .navigationBarsPadding()
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.stats_page_filter_pick_range),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                DateRangePicker(
+                    state = pickerState,
+                    showModeToggle = false,
+                    title = null,
+                    headline = null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                    Button(
+                        enabled = pickerState.selectedStartDateMillis != null &&
+                            pickerState.selectedEndDateMillis != null,
+                        onClick = {
+                            val start = pickerState.selectedStartDateMillis?.toPickerLocalDate()
+                            val end = pickerState.selectedEndDateMillis?.toPickerLocalDate()
+                            if (start != null && end != null) onConfirm(start, end)
+                        },
+                    ) {
+                        Text(stringResource(R.string.confirm))
+                    }
+                }
+            }
+        }
+    }
+}
+
+// DateRangePicker 的 millis 以 UTC 当天零点为口径，与本地日期互转保持一致
+private fun Long.toPickerLocalDate(): LocalDate =
+    Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
+
+private fun LocalDate.toPickerUtcMillis(): Long =
+    atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
 
 @Composable
 private fun HeatmapCard(
@@ -423,11 +537,15 @@ private fun StatsGrid(stats: AppStats, modifier: Modifier = Modifier) {
     }
 }
 
-// 时间范围放在所有用量卡片上方，只有这一处筛选
+// 时段 + 提供商 + 模型三行筛选，三个维度叠加生效（AND）
 @Composable
 private fun UsageHeader(
-    range: UsageRange,
+    filter: StatsFilter,
+    usage: UsageStats?,
     onRangeChange: (UsageRange) -> Unit,
+    onPickCustomRange: () -> Unit,
+    onProviderChange: (ProviderKey?) -> Unit,
+    onModelChange: (ModelKey?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -439,23 +557,101 @@ private fun UsageHeader(
             style = MaterialTheme.typography.titleMediumEmphasized,
         )
         SegmentedPill(
-            // CUSTOM 档由 Phase 2 的日期区间选择器接入后再放进选项列表
-            options = listOf(UsageRange.WEEK, UsageRange.MONTH, UsageRange.QUARTER, UsageRange.ALL),
-            selectedOption = range,
+            options = UsageRange.entries,
+            selectedOption = filter.range,
             onOptionSelected = onRangeChange,
             optionToString = { option ->
-                stringResource(
-                    when (option) {
-                        UsageRange.WEEK -> R.string.stats_page_range_7d
-                        UsageRange.MONTH -> R.string.stats_page_range_30d
-                        UsageRange.QUARTER -> R.string.stats_page_range_90d
-                        // Phase 1 不展示 CUSTOM，占位映射保持 when 穷尽
-                        UsageRange.ALL, UsageRange.CUSTOM -> R.string.stats_page_range_all
-                    }
-                )
+                when (option) {
+                    UsageRange.WEEK -> stringResource(R.string.stats_page_range_7d)
+                    UsageRange.MONTH -> stringResource(R.string.stats_page_range_30d)
+                    UsageRange.QUARTER -> stringResource(R.string.stats_page_range_90d)
+                    UsageRange.ALL -> stringResource(R.string.stats_page_range_all)
+                    UsageRange.CUSTOM -> customRangeLabel(filter)
+                }
             },
             modifier = Modifier.fillMaxWidth(),
         )
+        // SegmentedPill 对已选中项不再回调：自定义档选中后需要一个常驻的再入口（改区间）
+        if (filter.range == UsageRange.CUSTOM) {
+            FilterChip(
+                selected = true,
+                onClick = onPickCustomRange,
+                label = { Text(customRangeLabel(filter)) },
+            )
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            FilterOptionChip(
+                selectedKey = filter.provider,
+                options = usage?.providerOptions.orEmpty(),
+                allLabel = stringResource(R.string.stats_page_filter_provider_all),
+                unknownLabel = stringResource(R.string.stats_page_filter_unknown_provider),
+                onKeyChange = onProviderChange,
+            )
+            FilterOptionChip(
+                selectedKey = filter.model,
+                options = usage?.modelOptions.orEmpty(),
+                allLabel = stringResource(R.string.stats_page_filter_model_all),
+                unknownLabel = stringResource(R.string.stats_page_unknown_model),
+                onKeyChange = onModelChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun customRangeLabel(filter: StatsFilter): String {
+    val start = filter.customStart
+    val end = filter.customEnd
+    if (start == null || end == null) return stringResource(R.string.stats_page_range_custom)
+    val format = DateTimeFormatter.ofPattern("MM/dd")
+    return "${start.format(format)}~${end.format(format)}"
+}
+
+/** 提供商/模型共用的筛选 chip：未选显示「全部」，点开下拉菜单（内部可滚动）选择。 */
+@Composable
+private fun <K> FilterOptionChip(
+    selectedKey: K?,
+    options: List<UsageFilterOption<K>>,
+    allLabel: String,
+    unknownLabel: String,
+    onKeyChange: (K?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = when (selectedKey) {
+        null -> allLabel
+        else -> options.firstOrNull { it.key == selectedKey }?.label ?: unknownLabel
+    }
+    Box {
+        FilterChip(
+            selected = selectedKey != null,
+            onClick = { expanded = true },
+            label = {
+                Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            },
+        )
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text(allLabel) },
+                onClick = {
+                    expanded = false
+                    onKeyChange(null)
+                },
+            )
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label ?: unknownLabel, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    onClick = {
+                        expanded = false
+                        onKeyChange(option.key)
+                    },
+                )
+            }
+        }
     }
 }
 

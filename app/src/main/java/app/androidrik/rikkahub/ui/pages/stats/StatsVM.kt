@@ -61,10 +61,17 @@ enum class UsageRange(val days: Int?) {
     CUSTOM(null),
 }
 
-/** 筛选键：`id` 优先匹配；回填行（id 为 NULL）按名称快照兜底。 */
-data class ProviderKey(val id: String?, val name: String?)
+/**
+ * 筛选键：与 DISTINCT 选项查询的 `COALESCE(id, 名称快照)` 分组一致；[groupKey] 即 DAO 过滤参数。
+ * 回填行（id 为 NULL、只有名称快照）自成一个组，按名称键命中。
+ */
+data class ProviderKey(val id: String?, val name: String?) {
+    val groupKey: String? get() = id ?: name
+}
 
-data class ModelKey(val id: String?, val name: String?)
+data class ModelKey(val id: String?, val name: String?) {
+    val groupKey: String? get() = id ?: name
+}
 
 /**
  * 「用量」区的筛选：时段 / 提供商 / 模型三个维度**叠加生效（AND）**，只作用于用量区
@@ -81,9 +88,20 @@ data class StatsFilter(
 )
 
 /** 筛选下拉的一项；[label] 为空表示名称快照也缺失，页面显示「未知」。 */
-data class ProviderFilterOption(val key: ProviderKey, val label: String?)
+interface UsageFilterOption<K> {
+    val key: K
+    val label: String?
+}
 
-data class ModelFilterOption(val key: ModelKey, val label: String?)
+data class ProviderFilterOption(
+    override val key: ProviderKey,
+    override val label: String?,
+) : UsageFilterOption<ProviderKey>
+
+data class ModelFilterOption(
+    override val key: ModelKey,
+    override val label: String?,
+) : UsageFilterOption<ModelKey>
 
 /** 趋势图的一个点：按天时是当天，按月时是当月 1 号。 */
 data class UsagePoint(
@@ -147,7 +165,10 @@ class StatsVM(
 
     init {
         viewModelScope.launch { loadStats() }
-        loadUsage(_filter.value)
+        // 筛选状态的唯一重查入口：collect 自身会先用当前值跑一次
+        viewModelScope.launch {
+            _filter.collect { loadUsage(it) }
+        }
     }
 
     fun setRange(range: UsageRange) {
@@ -245,28 +266,22 @@ class StatsVM(
                 else -> false
             }
 
-            val providerId = filter.provider?.id
-            val providerName = filter.provider?.name
-            val modelId = filter.model?.id
-            val modelName = filter.model?.name
+            val providerKey = filter.provider?.groupKey
+            val modelKey = filter.model?.groupKey
 
             // 流水独立于消息/会话存在：删掉的会话、被丢弃的分支仍然是真实花费
             val totals = usageRecordDAO.getTotals(
                 since = since,
                 until = until,
-                providerId = providerId,
-                providerName = providerName,
-                modelId = modelId,
-                modelName = modelName,
+                providerKey = providerKey,
+                modelKey = modelKey,
             )
             val buckets = usageRecordDAO.getTotalsByBucket(
                 format = if (byMonth) MONTH_BUCKET_FORMAT else DAY_BUCKET_FORMAT,
                 since = since,
                 until = until,
-                providerId = providerId,
-                providerName = providerName,
-                modelId = modelId,
-                modelName = modelName,
+                providerKey = providerKey,
+                modelKey = modelKey,
             )
             val points = if (byMonth) {
                 monthlyPoints(buckets, today)
@@ -279,10 +294,8 @@ class StatsVM(
             val models = usageRecordDAO.getTotalsByModel(
                 since = since,
                 until = until,
-                providerId = providerId,
-                providerName = providerName,
-                modelId = modelId,
-                modelName = modelName,
+                providerKey = providerKey,
+                modelKey = modelKey,
             )
                 .map { row ->
                     val model = row.modelId
@@ -300,10 +313,8 @@ class StatsVM(
             val sources = usageRecordDAO.getTotalsBySource(
                 since = since,
                 until = until,
-                providerId = providerId,
-                providerName = providerName,
-                modelId = modelId,
-                modelName = modelName,
+                providerKey = providerKey,
+                modelKey = modelKey,
             )
 
             // 筛选选项：区间内出现过的提供商/模型，展示名解析口径与排行一致

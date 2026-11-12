@@ -1,9 +1,8 @@
 # 用量统计筛选：时段（含自定义区间）+ 提供商 + 模型
 
-> 状态：**实现中**（Phase 1 数据层 + VM 已落地，本地单测全绿；Phase 2 UI 待实现）。2026-11-12。
-> 实现备注：`UsageRange.CUSTOM` 档在 Phase 1 已进枚举但不在时段选项列表里（保持可见行为不变），
-> Phase 2 接入日期区间选择器时再加入选项。
-> 前置：[design-usage-stats.md](../completed/design-usage-stats.md)（usage_record 流水表，DB v44）。
+> 状态：**已落地**（Phase 1 `4602c18b9` + Phase 2 本提交；真机验收矩阵全部通过，见文末实现记录）。
+> 2026-11-12。
+> 前置：[design-usage-stats.md](design-usage-stats.md)（usage_record 流水表，DB v44）。
 > 三个筛选维度**叠加生效（AND）**，只作用于「用量」区；热力图与总览卡片不受影响（沿用
 > 「热力图固定 52 周窗口、与时间范围无关」的现有边界）。
 
@@ -35,15 +34,17 @@ data class ModelKey(val id: String?, val name: String?)
 
 ### 兜底匹配（回填行）
 
-43→44 回填行 `provider_id`/`model_id` 为 NULL、只有名称快照，SQL 匹配用 id 优先 + 名称兜底：
+43→44 回填行 `provider_id`/`model_id` 为 NULL、只有名称快照。筛选键采用与 DISTINCT
+选项查询**完全一致的分组键** `COALESCE(id, 名称快照)`，SQL 形如：
 
 ```sql
-AND (:pid IS NULL OR provider_id = :pid
-     OR (provider_id IS NULL AND provider_name = :pname))
+AND (:providerKey IS NULL OR COALESCE(provider_id, provider_name) = :providerKey)
 ```
 
-模型同理（`model_id`/`model_name`）。名称兜底可能把「不同提供商下同名模型」误并入，
-可接受——回填数据本来就只有快照可依。
+回填行自成一个分组，按名称键命中；同名不同商（或同名同商不同分组）各自独立筛选，
+语义与下拉选项所见完全对应。
+（真机验收时发现过中间方案的 SQLite 三值逻辑漏洞：`id = :id OR (id IS NULL AND name = :name)`
+在「只有名称、id 为 NULL」的键上被 `:id IS NULL` 短路成不过滤——分组键单参数方案顺带消除了它。）
 
 ## 3. DAO 改动
 
@@ -53,9 +54,8 @@ AND (:pid IS NULL OR provider_id = :pid
 | 参数 | 类型 | 语义 |
 |---|---|---|
 | `since` | `Long`（保留，默认 0） | 下界（含） |
-| `until` | `Long?` | 上界（含），null = 不限 |
-| `providerId` / `providerName` | `String?` | null = 不筛选，见 §2 兜底匹配 |
-| `modelId` / `modelName` | `String?` | 同上 |
+| `until` | `Long?` | 上界（不含，半开），null = 不限 |
+| `providerKey` / `modelKey` | `String?` | 分组键 `COALESCE(id, 名称快照)`，null = 不筛选 |
 
 - 上界取 `customEnd + 1 day` 的 0 点（`created_at < until`）或直接 `created_at <= endOfDay`，
   实现时二选一并写明；推荐 `>= since AND < untilExclusive`，避免毫秒精度踩边。
@@ -125,10 +125,27 @@ Phase 1 不改任何用户可见行为（预设档行为不变），Phase 2 才�
 
 ## 10. 已知边界
 
-- 回填行的提供商筛选按名称快照兜底，同名不同商可能误并入（§2）。
+- 回填行的提供商/模型按名称快照自成一组筛选（分组键方案），同名不同商不会误并入，但同商「有 id 组 vs 回填组」是两个独立选项（下拉里同名出现两次属正常）。
 - 筛选不作用于热力图/总览/启动次数（有意的范围界定；若以后要联动，热力图需按筛选重查 52 周窗口，成本另议）。
-- 选项列表随区间变化：先选提供商再缩小区间可能导致该提供商在新区间无数据，totals 显示 0 属正常。
+- 选项列表随区间变化：先选提供商再缩小区间可能导致该分组在新区间无数据——筛选键保留、chip 标签回退为「未知提供商/模型」，totals 显示对应值（可能为 0）。
 - `until` 用半开区间实现，选择器里选同一天 = 单日数据（含当天全天）。
+
+## 实现记录
+
+- Phase 1 提交 `4602c18b9`；Phase 2 UI 已实现，真机验收中发现并修复两个问题：
+  1. VM 重构时丢失了「筛选变化 → 重查」的触发（原 `setRange` 内联调 `loadUsage`，改为
+     `StatsFilter` 状态机后未补订阅）——init 里以 `_filter.collect { loadUsage(it) }` 修复；
+  2. §2 所述的 SQL 短路漏洞，改为分组键方案。
+- UI 实现与 §6 的偏差：
+  1. 选项列表统一用 DropdownMenu（M3 内部可滚动），未做「>8 项换 sheet」的自适应；chip 不带
+     独立清除按钮，点开选项选「全部」取消筛选。
+  2. 日期选择器宿主从 ModalBottomSheet **改为整页 Dialog**：sheet 的下滑关闭手势与
+     DateRangePicker「查看上月」的滚动手势同向冲突，月份一滚 sheet 就被关掉（真机复现）；
+     整页 Dialog 无此问题，返回/下滑（Dialog 外）仍是放弃修改。
+- 真机验收（播种数据，2026-11-12）：预设档回归、提供商/模型过滤数值精确命中、三筛选叠加
+  AND 空态、自定义区间（11/10~11/12 → 180/17/30）、>90 天自动按月分桶（08/01~11/12 →
+  「每月用量」）、回填组选项与筛选（Legacy Provider → 999/0）、重开 picker 回填当前区间、
+  选项随区间联动——全部通过；`UsageRecordDAOTest` 仪器测试（9 例）真机通过。
 
 ## 关联
 

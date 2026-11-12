@@ -11,9 +11,9 @@ import app.androidrik.rikkahub.data.db.entity.UsageRecordEntity
  * 所有聚合都在 SQLite 侧完成（`SUM` + `GROUP BY` + `strftime` 分桶），只回传 ≤ 桶数/条目数的行，
  * 不把流水本身装进内存——表会随时间无限长，逐行读回再在 Kotlin 里求和是不可接受的。
  *
- * 区间聚合查询统一接受可选的筛选参数（`until` 上界半开、provider/model 三元组为 null 表示不筛选）；
- * provider/model 的兜底匹配照顾 43→44 回填行（id 为 NULL、只有名称快照）：
- * `id 命中 OR (id IS NULL AND 名称快照命中)`。
+ * 区间聚合查询统一接受可选的筛选参数（`until` 上界半开、provider/model 为 null 表示不筛选）。
+ * 筛选键是 `COALESCE(id, 名称快照)` 的**分组键**，与 DISTINCT 选项查询的分组完全一致；
+ * 这同时照顾 43→44 回填行（id 为 NULL、只有名称快照）——它们自成一个组，按名称键命中。
  */
 @Dao
 interface UsageRecordDAO {
@@ -26,18 +26,14 @@ interface UsageRecordDAO {
             "COALESCE(SUM(completion_tokens), 0) AS completionTokens, " +
             "COALESCE(SUM(cached_tokens), 0) AS cachedTokens " +
             "FROM usage_record WHERE created_at >= :since AND (:until IS NULL OR created_at < :until) " +
-            "AND (:providerId IS NULL OR provider_id = :providerId " +
-            "OR (provider_id IS NULL AND provider_name = :providerName)) " +
-            "AND (:modelId IS NULL OR model_id = :modelId " +
-            "OR (model_id IS NULL AND model_name = :modelName))"
+            "AND (:providerKey IS NULL OR COALESCE(provider_id, provider_name) = :providerKey) " +
+            "AND (:modelKey IS NULL OR COALESCE(model_id, model_name) = :modelKey)"
     )
     suspend fun getTotals(
         since: Long = 0,
         until: Long? = null,
-        providerId: String? = null,
-        providerName: String? = null,
-        modelId: String? = null,
-        modelName: String? = null,
+        providerKey: String? = null,
+        modelKey: String? = null,
     ): UsageTotals
 
     /**
@@ -52,20 +48,16 @@ interface UsageRecordDAO {
             "SUM(prompt_tokens) AS promptTokens, SUM(completion_tokens) AS completionTokens, " +
             "SUM(cached_tokens) AS cachedTokens " +
             "FROM usage_record WHERE created_at >= :since AND (:until IS NULL OR created_at < :until) " +
-            "AND (:providerId IS NULL OR provider_id = :providerId " +
-            "OR (provider_id IS NULL AND provider_name = :providerName)) " +
-            "AND (:modelId IS NULL OR model_id = :modelId " +
-            "OR (model_id IS NULL AND model_name = :modelName)) " +
+            "AND (:providerKey IS NULL OR COALESCE(provider_id, provider_name) = :providerKey) " +
+            "AND (:modelKey IS NULL OR COALESCE(model_id, model_name) = :modelKey) " +
             "GROUP BY bucket ORDER BY bucket"
     )
     suspend fun getTotalsByBucket(
         format: String,
         since: Long,
         until: Long? = null,
-        providerId: String? = null,
-        providerName: String? = null,
-        modelId: String? = null,
-        modelName: String? = null,
+        providerKey: String? = null,
+        modelKey: String? = null,
     ): List<UsageBucket>
 
     /**
@@ -92,20 +84,16 @@ interface UsageRecordDAO {
             "SUM(prompt_tokens) AS promptTokens, SUM(completion_tokens) AS completionTokens, " +
             "SUM(cached_tokens) AS cachedTokens " +
             "FROM usage_record WHERE created_at >= :since AND (:until IS NULL OR created_at < :until) " +
-            "AND (:providerId IS NULL OR provider_id = :providerId " +
-            "OR (provider_id IS NULL AND provider_name = :providerName)) " +
-            "AND (:modelId IS NULL OR model_id = :modelId " +
-            "OR (model_id IS NULL AND model_name = :modelName)) " +
+            "AND (:providerKey IS NULL OR COALESCE(provider_id, provider_name) = :providerKey) " +
+            "AND (:modelKey IS NULL OR COALESCE(model_id, model_name) = :modelKey) " +
             "GROUP BY COALESCE(model_id, model_name) " +
             "ORDER BY SUM(prompt_tokens + completion_tokens) DESC"
     )
     suspend fun getTotalsByModel(
         since: Long,
         until: Long? = null,
-        providerId: String? = null,
-        providerName: String? = null,
-        modelId: String? = null,
-        modelName: String? = null,
+        providerKey: String? = null,
+        modelKey: String? = null,
     ): List<ModelUsageRow>
 
     /** 按来源（对话/压缩/标题/建议/翻译/记忆整理/OCR/子代理）汇总 */
@@ -113,19 +101,15 @@ interface UsageRecordDAO {
         "SELECT source AS source, SUM(prompt_tokens) AS promptTokens, " +
             "SUM(completion_tokens) AS completionTokens, SUM(cached_tokens) AS cachedTokens " +
             "FROM usage_record WHERE created_at >= :since AND (:until IS NULL OR created_at < :until) " +
-            "AND (:providerId IS NULL OR provider_id = :providerId " +
-            "OR (provider_id IS NULL AND provider_name = :providerName)) " +
-            "AND (:modelId IS NULL OR model_id = :modelId " +
-            "OR (model_id IS NULL AND model_name = :modelName)) " +
+            "AND (:providerKey IS NULL OR COALESCE(provider_id, provider_name) = :providerKey) " +
+            "AND (:modelKey IS NULL OR COALESCE(model_id, model_name) = :modelKey) " +
             "GROUP BY source ORDER BY SUM(prompt_tokens + completion_tokens) DESC"
     )
     suspend fun getTotalsBySource(
         since: Long,
         until: Long? = null,
-        providerId: String? = null,
-        providerName: String? = null,
-        modelId: String? = null,
-        modelName: String? = null,
+        providerKey: String? = null,
+        modelKey: String? = null,
     ): List<SourceUsage>
 
     /**

@@ -201,34 +201,29 @@ class UsageRecordDAOTest {
     }
 
     @Test
-    fun getTotalsFiltersByProviderWithLegacyNameFallback() = runBlocking {
+    fun getTotalsFiltersByProviderGroupKey() = runBlocking {
         insert("2026-08-10T12:00:00", providerId = "p-1", providerName = "Provider One", prompt = 10)
         insert("2026-08-10T12:05:00", providerId = "p-2", providerName = "Provider Two", prompt = 20)
-        // 回填行：没有 id，只有名称快照
+        // 回填行：没有 id，只有名称快照——自成一个分组，按名称键命中
         insert("2026-08-10T12:10:00", providerId = null, providerName = "Provider One", prompt = 40)
         // 无 id 也无名称的行：任何提供商筛选都筛不到，只在「全部」里可见
         insert("2026-08-10T12:15:00", providerId = null, providerName = null, prompt = 80)
 
-        val p1 = dao.getTotals(providerId = "p-1", providerName = "Provider One")
-        assertEquals(50L, p1.promptTokens)
-
-        val p2 = dao.getTotals(providerId = "p-2", providerName = "Provider Two")
-        assertEquals(20L, p2.promptTokens)
-
+        assertEquals(10L, dao.getTotals(providerKey = "p-1").promptTokens)
+        assertEquals(20L, dao.getTotals(providerKey = "p-2").promptTokens)
+        assertEquals(40L, dao.getTotals(providerKey = "Provider One").promptTokens)
         assertEquals(150L, dao.getTotals().promptTokens)
     }
 
     @Test
-    fun getTotalsFiltersByModelWithLegacyNameFallback() = runBlocking {
+    fun getTotalsFiltersByModelGroupKey() = runBlocking {
         insert("2026-08-10T12:00:00", modelId = "model-a", modelName = "Model A", prompt = 10)
         insert("2026-08-10T12:05:00", modelId = "model-b", modelName = "Model B", prompt = 20)
         insert("2026-08-10T12:10:00", modelId = null, modelName = "Model A", prompt = 40)
 
-        val a = dao.getTotals(modelId = "model-a", modelName = "Model A")
-        assertEquals(50L, a.promptTokens)
-
-        val b = dao.getTotals(modelId = "model-b", modelName = "Model B")
-        assertEquals(20L, b.promptTokens)
+        assertEquals(10L, dao.getTotals(modelKey = "model-a").promptTokens)
+        assertEquals(20L, dao.getTotals(modelKey = "model-b").promptTokens)
+        assertEquals(40L, dao.getTotals(modelKey = "Model A").promptTokens)
     }
 
     @Test
@@ -240,18 +235,15 @@ class UsageRecordDAOTest {
 
         val combined = dao.getTotals(
             since = epochMillis("2026-08-11T00:00:00"),
-            providerId = "p-1",
-            providerName = "Provider One",
-            modelId = "model-a",
-            modelName = "Model A",
+            providerKey = "p-1",
+            modelKey = "model-a",
         )
         assertEquals(40L, combined.promptTokens)
 
         val buckets = dao.getTotalsByBucket(
             "%Y-%m-%d",
             since = epochMillis("2026-08-11T00:00:00"),
-            modelId = "model-a",
-            modelName = "Model A",
+            modelKey = "model-a",
         )
         // p-2 的 8-10 与 model-b 的 8-12 都被过滤掉
         assertEquals(listOf("2026-08-12"), buckets.map { it.bucket })

@@ -3124,7 +3124,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="memory_trigger_scope_selected">Selected assistants: %1$d</string>
   <string name="memory_trigger_scope_pick_desc">Only conversations of the selected assistants are consolidated. Leave all unchecked for every assistant.</string>
   <string name="memory_trigger_note_per_assistant">The on/off switch and the since-baseline stay on each assistant Memory page.</string>
-
   <!-- Phone Use -->
   <string name="phone_use_accessibility_label" translatable="false">Neomix Phone Use</string>
   <string name="phone_use_accessibility_description">Lets the AI assistant read the screen and perform taps, swipes and text input for you when you enable the Phone Use tool. Nothing is done unless the assistant is running a task you asked for.</string>
@@ -3173,4 +3172,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="chat_message_tool_phone_use_list_apps">List apps</string>
   <string name="chat_message_tool_phone_use_wait">Wait %1$s seconds</string>
   <string name="chat_message_tool_allow_turn">Allow this turn</string>
+  <string name="stats_page_range_custom">Custom</string>
+  <string name="stats_page_filter_pick_range">Select date range</string>
+  <string name="stats_page_filter_provider_all">All providers</string>
+  <string name="stats_page_filter_model_all">All models</string>
+  <string name="stats_page_filter_unknown_provider">Unknown provider</string>
 </resources>
+

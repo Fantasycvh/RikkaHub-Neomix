@@ -1606,6 +1606,11 @@
   <string name="stats_page_range_30d">30 天</string>
   <string name="stats_page_range_90d">90 天</string>
   <string name="stats_page_range_all">全部</string>
+  <string name="stats_page_range_custom">自訂</string>
+  <string name="stats_page_filter_pick_range">選擇時間區間</string>
+  <string name="stats_page_filter_provider_all">全部提供商</string>
+  <string name="stats_page_filter_model_all">全部模型</string>
+  <string name="stats_page_filter_unknown_provider">未知提供商</string>
   <string name="stats_page_source_chat">對話</string>
   <string name="stats_page_source_compression">上下文壓縮</string>
   <string name="stats_page_source_memory">記憶整理</string>

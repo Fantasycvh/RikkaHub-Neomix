@@ -258,20 +258,16 @@ class UsageRecorderTest {
         override suspend fun getTotals(
             since: Long,
             until: Long?,
-            providerId: String?,
-            providerName: String?,
-            modelId: String?,
-            modelName: String?,
+            providerKey: String?,
+            modelKey: String?,
         ): UsageTotals = UsageTotals()
 
         override suspend fun getTotalsByBucket(
             format: String,
             since: Long,
             until: Long?,
-            providerId: String?,
-            providerName: String?,
-            modelId: String?,
-            modelName: String?,
+            providerKey: String?,
+            modelKey: String?,
         ): List<UsageBucket> = emptyList()
 
         override suspend fun getRequestCountPerDay(source: String, since: Long): List<DayCount> = emptyList()
@@ -279,19 +275,15 @@ class UsageRecorderTest {
         override suspend fun getTotalsByModel(
             since: Long,
             until: Long?,
-            providerId: String?,
-            providerName: String?,
-            modelId: String?,
-            modelName: String?,
+            providerKey: String?,
+            modelKey: String?,
         ): List<ModelUsageRow> = emptyList()
 
         override suspend fun getTotalsBySource(
             since: Long,
             until: Long?,
-            providerId: String?,
-            providerName: String?,
-            modelId: String?,
-            modelName: String?,
+            providerKey: String?,
+            modelKey: String?,
         ): List<SourceUsage> = emptyList()
 
         override suspend fun getDistinctProviders(since: Long, until: Long?): List<UsageOptionRow> = emptyList()
