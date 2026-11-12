@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -50,6 +51,7 @@ import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.components.ui.TagsInput
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
 import app.androidrik.rikkahub.ui.hooks.heroAnimation
+import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.toFixed
 import org.koin.androidx.compose.koinViewModel
@@ -112,10 +114,14 @@ internal fun AssistantBasicContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // imePadding 必须落在 verticalScroll **之外/之前**（视口侧）：键盘弹起时先收缩
+            // 可滚动视口。反序（scroll → ime）会把 IME 高度当**滚动内容的底部 padding**，
+            // 视口不收缩、内容高度随键盘动画逐帧变化，"滚动到光标"落点每帧都在动 ⇒ 整页抖动。
+            // 范本与真机旧案：ScheduledTaskDetailPage / ScheduledTaskCreatePage。
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
-            .padding(innerPadding)
-            .imePadding(),
+            .padding(innerPadding),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Column(
@@ -151,16 +157,20 @@ internal fun AssistantBasicContent(
                 modifier = Modifier.padding(8.dp),
 
                 ) {
+                // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条）。
+                // 旧写法 `value = assistant.name` 是异步持久态投影：每键整份 Settings 落盘后
+                // 旧值才回灌，Compose 会重置内部编辑态（组合被打断 / 光标回跳）——真机表现为
+                // 「每敲一个字符抖一下、丢字」。2026-11-12 定案：120ms/字符注入 abcdefghij
+                // 得到 bcdefghija；同设备用 rememberTextFieldState 的提示词框则完整。
+                val nameState = rememberPersistedTextFieldState(
+                    externalValue = assistant.name,
+                    resetKey = assistant.id,
+                    onCommit = vm::updateName,
+                )
                 OutlinedTextField(
-                    value = assistant.name,
-                    onValueChange = {
-                        onUpdate(
-                            assistant.copy(
-                                name = it
-                            )
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                    state = nameState,
+                    modifier = Modifier.fillMaxWidth(),
+                    lineLimits = TextFieldLineLimits.SingleLine,
                 )
             }
 
@@ -494,27 +504,32 @@ internal fun AssistantBasicContent(
                     Text(stringResource(R.string.assistant_page_max_tokens_desc))
                 }
             ) {
-                OutlinedTextField(
-                    value = assistant.maxTokens?.toString() ?: "",
-                    onValueChange = { text ->
-                        val tokens = if (text.isBlank()) {
-                            null
+                // 数值投影同属「写穿回灌」家族（附录 D1）：每键把 Int? 投影回 value，旧值回灌
+                // 会把正在输入的 "4096" 截成 "4" 再逐位补回——同样表现为抖动/吞字。
+                val maxTokensState = rememberPersistedTextFieldState(
+                    externalValue = assistant.maxTokens?.toString() ?: "",
+                    resetKey = assistant.id,
+                    onCommit = { text ->
+                        // 空串 = 不限制；非数字 / 非正的中间态留在输入框里让用户继续改，不落库
+                        if (text.isBlank()) {
+                            vm.updateMaxTokens(null)
                         } else {
-                            text.toIntOrNull()?.takeIf { it > 0 }
+                            text.toIntOrNull()?.takeIf { it > 0 }?.let(vm::updateMaxTokens)
                         }
-                        onUpdate(
-                            assistant.copy(
-                                maxTokens = tokens
-                            )
-                        )
                     },
+                )
+                val typedTokens = maxTokensState.text.toString().toIntOrNull()?.takeIf { it > 0 }
+                OutlinedTextField(
+                    state = maxTokensState,
                     modifier = Modifier.fillMaxWidth(),
+                    lineLimits = TextFieldLineLimits.SingleLine,
                     placeholder = {
                         Text(stringResource(R.string.assistant_page_max_tokens_no_limit))
                     },
                     supportingText = {
-                        if (assistant.maxTokens != null) {
-                            Text(stringResource(R.string.assistant_page_max_tokens_limit, assistant.maxTokens))
+                        // 两分支都渲染 Text：高度恒定，避免逐键出现/消失引起的布局跳动
+                        if (typedTokens != null) {
+                            Text(stringResource(R.string.assistant_page_max_tokens_limit, typedTokens))
                         } else {
                             Text(stringResource(R.string.assistant_page_max_tokens_no_token_limit))
                         }

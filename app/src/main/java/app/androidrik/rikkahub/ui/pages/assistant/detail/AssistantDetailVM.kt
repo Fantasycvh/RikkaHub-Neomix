@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
@@ -56,6 +57,15 @@ class AssistantDetailVM(
      */
     private val chatService: ChatService,
     val memoryFiles: MemoryFileRepository,
+    /**
+     * 文本域去抖提交/离开页面补写的**取消安全**写入口。
+     *
+     * 为什么不能用 `viewModelScope`：助手名称框的去抖窗口（250ms）内按返回，补写发生在
+     * 组合销毁时，此刻 ViewModel 也可能正在 `onCleared()` ⇒ `viewModelScope` 的协程会被
+     * 取消，最后一个（或一串）字符静默丢失。`AppScope` 与进程同寿命，是仓内同类写入
+     * （`SettingWebPage` 的端口/口令去抖补写）已验证的做法。
+     */
+    private val appScope: AppScope,
 ) : ViewModel() {
     private val assistantId = Uuid.parse(id)
 
@@ -232,6 +242,40 @@ class AssistantDetailVM(
             )
         }
     }
+
+    /**
+     * 助手字段的**定点**写出：读-改-写（transform），不是拿组合期快照整对象覆盖。
+     *
+     * 为什么需要：文本域是逐键/去抖提交的高频路径。旧的 `update(assistant)` 先读
+     * `settings.value` 再把该助手整对象替换——两次并发读-改-写会互相覆盖（本仓
+     * 「整对象写丢更新」旧案）。transform 版让 DataStore 的串行 `edit` 承担原子性。
+     *
+     * 为什么走 [appScope]：去抖窗口内按返回时，补写发生在组合销毁、ViewModel 也可能
+     * `onCleared()` 的时刻；`viewModelScope` 会被取消 ⇒ 最后几个字符静默丢失。
+     */
+    private fun updateAssistantField(transform: (Assistant) -> Assistant) {
+        appScope.launch {
+            settingsStore.update { current ->
+                current.copy(
+                    assistants = current.assistants.map {
+                        if (it.id == assistantId) transform(it) else it
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * 助手名称：UI 侧用 `rememberPersistedTextFieldState` 去抖提交 + 离开页面补写。
+     *
+     * 历史（2026-11-12 真机定案）：名称框原先 `value = assistant.name` 直连异步持久态，
+     * 每键整份 Settings 落盘后旧值回灌活跃编辑框 ⇒ 「逐字符抖动 / 丢字」（120ms/字符注入
+     * `abcdefghij` 得到 `bcdefghija`）。本地权威态 + 本方法才是正确链路。
+     */
+    fun updateName(name: String) = updateAssistantField { it.copy(name = name) }
+
+    /** 最大 token 数：空串 = 不限制（null）；非法中间态由 UI 侧拦住、不落库。 */
+    fun updateMaxTokens(maxTokens: Int?) = updateAssistantField { it.copy(maxTokens = maxTokens) }
 
     fun updateMemorySettings(transform: (Assistant) -> Assistant) {
         viewModelScope.launch {

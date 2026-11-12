@@ -106,7 +106,23 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 >    同步出去；程序化回填必须**先比较、后 `setTextAndPlaceCursorAtEnd`（或等价 API）**，
 >    绝不向活跃 IME 会话回写。本仓历史坑「input text 丢字符」「整对象写丢更新」即同族病。
 >
-> 回归审计：`python scripts/audit_ime_trap.py`（A/A' 类命中即失败；C 类仅告警）。
+>    **2026-11-12 第五次定案（assistant 设置页输入框抖动的真身）**：设置类文本域若把
+>    `value =` 直接绑**异步持久态投影**（`SettingsStore.settingsFlow` / Room Flow / VM StateFlow
+>    的解码结果），又在 `onValueChange` 里每字符 `copy` 写回，就会「落盘后旧值再回灌」活跃
+>    编辑框——Compose 会重置内部编辑态（组合打断 / 光标回跳），中文 IME 尤其明显。真机 A/B
+>    （PJX110，120ms/字符注入 `a..j`）：写穿回灌的助手名称框得到 `bcdefghija`（25 字符整串
+>    注入只剩 `aabbxec`）；同设备改用 `rememberTextFieldState` 的提示词框、本地 `EditState` 的
+>    新建 sheet 均完整。规范做法 = **本地权威 + 单向去抖写出 + 离开页面补写**，统一用
+>    `ui/hooks/PersistedTextFieldState.kt` 的
+>    `rememberPersistedTextFieldState(value, onCommit, resetKey = 实体 id)`；`onCommit` 必须走
+>    取消安全的 scope（页面级 `AppScope`），数据层用字段级 `settingsStore.update { }` transform，
+>    禁止「读 `settings.value` → 改整对象 → 写回」的锁外快照写。残留清单见
+>    `.tmp/audit-ime/stateflow-audit.md` 附录 C（48 处高风险陆续迁移）。
+>
+> 回归审计：`python scripts/audit_ime_trap.py`（A/A' 类命中即失败；B/C/D/E 仅告警——E 是
+> 写穿回灌启发式，D 是 `imePadding` 必须在 `verticalScroll` 之前/视口侧）。A' 存量豁免在
+> `scripts/ime_trap_exceptions.json`，**新增违规禁止加豁免**。自测：
+> `python -B scripts/test_audit_ime_trap.py`。
 
 ### ListItem supportingContent Slot（条件内容静默丢失陷阱）
 

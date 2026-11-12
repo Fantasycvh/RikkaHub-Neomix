@@ -178,10 +178,12 @@ private fun AssistantLocalToolContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // imePadding 在 verticalScroll 之前（视口侧）：键盘弹起先收缩视口，
+            // 内容不再随 IME insets 逐帧改高度（否则"滚动到光标"每帧改落点 ⇒ 整页抖动）。
+            .imePadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
-            .padding(innerPadding)
-            .imePadding(),
+            .padding(innerPadding),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         CardGroup {
@@ -496,8 +498,8 @@ private fun PhoneUseBlockedAppsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
                 .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

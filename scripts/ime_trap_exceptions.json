@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "note": "audit_ime_trap.py 的 A' 类（TextField 直接内联在真 Lazy item 内）存量豁免。每条必须写明已复核理由与待办；超量命中仍会阻断。2026-11-12 全仓审计（.tmp/audit-ime/host-topology.md §P1）发现，属规则 2 存量债：需要产品决定改 sheet/整页，暂不动 LazyColumn 结构。",
+  "exceptions": [
+    {
+      "path": "app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/SettingPreferencesNetworkPage.kt",
+      "class": "A'",
+      "count": 1,
+      "reason": "LazyColumn 内一张代理配置卡（host/port/username/password 四字段）。键盘弹起收缩视口后若该 item 滚出即销毁重建成焦点丢失；真机未复发（卡片短、聚焦自动滚入视野）。",
+      "backlog": "规则 2 存量债：把代理配置改为 ModalBottomSheet 或整页表单"
+    },
+    {
+      "path": "app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/SettingPreferencesGeneralPage.kt",
+      "class": "A'",
+      "count": 1,
+      "reason": "Lazy item「重试设置」内嵌 CardGroup，含 delays/partialChars 两个文本域；CardGroup 本身是 Column 免疫 item DSL，但仍处在 Lazy item 内，键盘收缩后有销毁风险。",
+      "backlog": "规则 2 存量债：把重试设置改为独立子页或 sheet"
+    },
+    {
+      "path": "app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/SettingModelPage.kt",
+      "class": "A'",
+      "count": 1,
+      "reason": "Lazy item 内 CardGroup 的上下文窗口覆盖输入框（单字段，本地 remember 缓冲 + commit-only-valid，规则 4 已满足）；宿主仍有 Lazy item 销毁风险。",
+      "backlog": "规则 2 存量债：移到非 Lazy 的整页表单"
+    },
+    {
+      "path": "app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/SettingWebPage.kt",
+      "class": "A'",
+      "count": 1,
+      "reason": "Lazy item 内 CardGroup 的端口输入框（单字段，本地 portText + 400ms 去抖写盘，规则 4 已满足；服务运行中/未加载时禁用）。",
+      "backlog": "规则 2 存量债：把 Web 服务配置卡改为独立子页/sheet"
+    }
+  ]
+}

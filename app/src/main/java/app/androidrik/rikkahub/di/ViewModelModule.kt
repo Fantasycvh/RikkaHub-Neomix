@@ -98,6 +98,7 @@ val viewModelModule = module {
             consolidationScheduler = get(),
             chatService = get(),
             memoryFiles = get(),
+            appScope = get(),
         )
     }
     viewModelOf(::TranslatorVM)

@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -421,6 +423,11 @@ private fun AssistantCreationSheet(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    // AGENTS「TextField Host Rules」第 2/3 条：带输入框的 ModalBottomSheet 必须
+                    // 自备滚动 + IME insets 协调。此前这里是全仓 12 个 sheet 里唯一裸 Column
+                    // ——键盘弹起时内容不收缩、名称框换行长高会把 sheet 重新锚定（界面抖动）。
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
@@ -441,7 +448,8 @@ private fun AssistantCreationSheet(
                                         name = it
                                     )
                                 )
-                            }, modifier = Modifier.fillMaxWidth()
+                            }, modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
                         )
                     }
 
