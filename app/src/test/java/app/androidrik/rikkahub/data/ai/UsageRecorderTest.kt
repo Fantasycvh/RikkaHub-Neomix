@@ -13,6 +13,7 @@ import app.androidrik.rikkahub.data.db.dao.DayCount
 import app.androidrik.rikkahub.data.db.dao.ModelUsageRow
 import app.androidrik.rikkahub.data.db.dao.SourceUsage
 import app.androidrik.rikkahub.data.db.dao.UsageBucket
+import app.androidrik.rikkahub.data.db.dao.UsageOptionRow
 import app.androidrik.rikkahub.data.db.dao.UsageRecordDAO
 import app.androidrik.rikkahub.data.db.dao.UsageTotals
 import app.androidrik.rikkahub.data.db.entity.UsageRecordEntity
@@ -254,14 +255,47 @@ class UsageRecorderTest {
             records += record
         }
 
-        override suspend fun getTotals(since: Long): UsageTotals = UsageTotals()
+        override suspend fun getTotals(
+            since: Long,
+            until: Long?,
+            providerId: String?,
+            providerName: String?,
+            modelId: String?,
+            modelName: String?,
+        ): UsageTotals = UsageTotals()
 
-        override suspend fun getTotalsByBucket(format: String, since: Long): List<UsageBucket> = emptyList()
+        override suspend fun getTotalsByBucket(
+            format: String,
+            since: Long,
+            until: Long?,
+            providerId: String?,
+            providerName: String?,
+            modelId: String?,
+            modelName: String?,
+        ): List<UsageBucket> = emptyList()
 
         override suspend fun getRequestCountPerDay(source: String, since: Long): List<DayCount> = emptyList()
 
-        override suspend fun getTotalsByModel(since: Long): List<ModelUsageRow> = emptyList()
+        override suspend fun getTotalsByModel(
+            since: Long,
+            until: Long?,
+            providerId: String?,
+            providerName: String?,
+            modelId: String?,
+            modelName: String?,
+        ): List<ModelUsageRow> = emptyList()
 
-        override suspend fun getTotalsBySource(since: Long): List<SourceUsage> = emptyList()
+        override suspend fun getTotalsBySource(
+            since: Long,
+            until: Long?,
+            providerId: String?,
+            providerName: String?,
+            modelId: String?,
+            modelName: String?,
+        ): List<SourceUsage> = emptyList()
+
+        override suspend fun getDistinctProviders(since: Long, until: Long?): List<UsageOptionRow> = emptyList()
+
+        override suspend fun getDistinctModels(since: Long, until: Long?): List<UsageOptionRow> = emptyList()
     }
 }

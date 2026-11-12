@@ -183,6 +183,129 @@ class UsageRecordDAOTest {
         assertEquals(4, rows.size)
     }
 
+    @Test
+    fun getTotalsRespectsUntilUpperBound() = runBlocking {
+        insert("2026-08-10T12:00:00", prompt = 10, completion = 1)
+        insert("2026-08-12T12:00:00", prompt = 20, completion = 3)
+
+        val untilAug11 = dao.getTotals(until = epochMillis("2026-08-11T00:00:00"))
+        assertEquals(10L, untilAug11.promptTokens)
+        assertEquals(1L, untilAug11.completionTokens)
+
+        // 半开区间：until = 次日零点，完整含住当天
+        val onlyAug12 = dao.getTotals(
+            since = epochMillis("2026-08-12T00:00:00"),
+            until = epochMillis("2026-08-13T00:00:00"),
+        )
+        assertEquals(23L, onlyAug12.totalTokens)
+    }
+
+    @Test
+    fun getTotalsFiltersByProviderWithLegacyNameFallback() = runBlocking {
+        insert("2026-08-10T12:00:00", providerId = "p-1", providerName = "Provider One", prompt = 10)
+        insert("2026-08-10T12:05:00", providerId = "p-2", providerName = "Provider Two", prompt = 20)
+        // 回填行：没有 id，只有名称快照
+        insert("2026-08-10T12:10:00", providerId = null, providerName = "Provider One", prompt = 40)
+        // 无 id 也无名称的行：任何提供商筛选都筛不到，只在「全部」里可见
+        insert("2026-08-10T12:15:00", providerId = null, providerName = null, prompt = 80)
+
+        val p1 = dao.getTotals(providerId = "p-1", providerName = "Provider One")
+        assertEquals(50L, p1.promptTokens)
+
+        val p2 = dao.getTotals(providerId = "p-2", providerName = "Provider Two")
+        assertEquals(20L, p2.promptTokens)
+
+        assertEquals(150L, dao.getTotals().promptTokens)
+    }
+
+    @Test
+    fun getTotalsFiltersByModelWithLegacyNameFallback() = runBlocking {
+        insert("2026-08-10T12:00:00", modelId = "model-a", modelName = "Model A", prompt = 10)
+        insert("2026-08-10T12:05:00", modelId = "model-b", modelName = "Model B", prompt = 20)
+        insert("2026-08-10T12:10:00", modelId = null, modelName = "Model A", prompt = 40)
+
+        val a = dao.getTotals(modelId = "model-a", modelName = "Model A")
+        assertEquals(50L, a.promptTokens)
+
+        val b = dao.getTotals(modelId = "model-b", modelName = "Model B")
+        assertEquals(20L, b.promptTokens)
+    }
+
+    @Test
+    fun getTotalsAndBucketsStackProviderModelAndTimeFilters() = runBlocking {
+        insert("2026-08-10T12:00:00", providerId = "p-1", modelId = "model-a", prompt = 10)
+        insert("2026-08-10T12:05:00", providerId = "p-2", modelId = "model-a", prompt = 20)
+        insert("2026-08-12T12:00:00", providerId = "p-1", modelId = "model-a", prompt = 40)
+        insert("2026-08-12T12:05:00", providerId = "p-1", modelId = "model-b", prompt = 80)
+
+        val combined = dao.getTotals(
+            since = epochMillis("2026-08-11T00:00:00"),
+            providerId = "p-1",
+            providerName = "Provider One",
+            modelId = "model-a",
+            modelName = "Model A",
+        )
+        assertEquals(40L, combined.promptTokens)
+
+        val buckets = dao.getTotalsByBucket(
+            "%Y-%m-%d",
+            since = epochMillis("2026-08-11T00:00:00"),
+            modelId = "model-a",
+            modelName = "Model A",
+        )
+        // p-2 的 8-10 与 model-b 的 8-12 都被过滤掉
+        assertEquals(listOf("2026-08-12"), buckets.map { it.bucket })
+        assertEquals(40L, buckets.single().promptTokens)
+    }
+
+    @Test
+    fun getDistinctOptionsGroupByIdOrSnapshotAndFollowRange() = runBlocking {
+        insert(
+            "2026-08-10T12:00:00",
+            providerId = "p-1", providerName = "Provider One",
+            modelId = "model-a", modelName = "Model A",
+        )
+        // 同一提供商改名：仍是一个组，名称取任意非空快照
+        insert(
+            "2026-08-10T12:05:00",
+            providerId = "p-1", providerName = "Provider One Renamed",
+            modelId = "model-a", modelName = "Model A",
+        )
+        // 回填组：靠 COALESCE(id, name) 成组
+        insert(
+            "2026-08-10T12:10:00",
+            providerId = null, providerName = "Legacy Provider",
+            modelId = null, modelName = "Legacy Model",
+        )
+        // 完全无标识的行不进选项
+        insert("2026-08-10T12:15:00", providerId = null, providerName = null)
+        insert(
+            "2026-08-12T12:00:00",
+            providerId = "p-2", providerName = "Provider Two",
+            modelId = "model-b", modelName = "Model B",
+        )
+
+        val providers = dao.getDistinctProviders(0)
+        assertEquals(setOf("p-1", null, "p-2"), providers.map { it.id }.toSet())
+        assertEquals(3, providers.size)
+        assertTrue(
+            providers.single { it.id == "p-1" }.name.let { it == "Provider One" || it == "Provider One Renamed" },
+        )
+
+        val models = dao.getDistinctModels(0)
+        assertEquals(setOf("model-a", null, "model-b"), models.map { it.id }.toSet())
+        assertEquals("Legacy Model", models.single { it.id == null }.name)
+
+        // 选项随时间区间联动：只剩 8-12 的 p-2 / model-b
+        val sinceAug12 = epochMillis("2026-08-12T00:00:00")
+        assertEquals(listOf("p-2"), dao.getDistinctProviders(sinceAug12).map { it.id })
+        assertEquals(listOf("model-b"), dao.getDistinctModels(sinceAug12).map { it.id })
+
+        // until 上界同样生效
+        val untilAug11 = dao.getDistinctProviders(0, epochMillis("2026-08-11T00:00:00"))
+        assertEquals(setOf("p-1", null), untilAug11.map { it.id }.toSet())
+    }
+
     private suspend fun insert(
         localDateTime: String,
         source: String = "CHAT",

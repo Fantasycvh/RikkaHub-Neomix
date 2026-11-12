@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.data.ai.UsageSource
@@ -23,6 +26,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import kotlin.uuid.Uuid
 
@@ -48,13 +52,38 @@ data class AppStats(
     val tokensPerDay: Map<LocalDate, Long> = emptyMap(),
 )
 
-/** 用量统计的时间范围；[days] 为空表示全部，此时趋势按月分桶。 */
+/** 用量统计的时间范围；[days] 为空表示全部（自定义档用 [StatsFilter.customStart/customEnd]）。 */
 enum class UsageRange(val days: Int?) {
     WEEK(7),
     MONTH(30),
     QUARTER(90),
     ALL(null),
+    CUSTOM(null),
 }
+
+/** 筛选键：`id` 优先匹配；回填行（id 为 NULL）按名称快照兜底。 */
+data class ProviderKey(val id: String?, val name: String?)
+
+data class ModelKey(val id: String?, val name: String?)
+
+/**
+ * 「用量」区的筛选：时段 / 提供商 / 模型三个维度**叠加生效（AND）**，只作用于用量区
+ * （热力图与总览卡片沿用各自的固定口径，不参与筛选）。
+ *
+ * [customStart]/[customEnd] 是含端点的闭区间，仅 [UsageRange.CUSTOM] 档读取。
+ */
+data class StatsFilter(
+    val range: UsageRange = UsageRange.MONTH,
+    val customStart: LocalDate? = null,
+    val customEnd: LocalDate? = null,
+    val provider: ProviderKey? = null,
+    val model: ModelKey? = null,
+)
+
+/** 筛选下拉的一项；[label] 为空表示名称快照也缺失，页面显示「未知」。 */
+data class ProviderFilterOption(val key: ProviderKey, val label: String?)
+
+data class ModelFilterOption(val key: ModelKey, val label: String?)
 
 /** 趋势图的一个点：按天时是当天，按月时是当月 1 号。 */
 data class UsagePoint(
@@ -76,16 +105,20 @@ data class ModelUsageItem(
 /**
  * 「用量」区的全部数据。
  *
- * [range] 一起带出来（而不是只看 VM 的 range flow）：切换范围时旧数据会保留到新查询返回，
- * 页面必须能区分「这份数据属于哪个范围」，否则图表标题/点选状态会错位。
+ * [filter] 一起带出来（而不是只看 VM 的筛选状态）：切换筛选时旧数据会保留到新查询返回，
+ * 页面必须能区分「这份数据属于哪组筛选」，否则图表标题/点选状态会错位。
+ * 选项列表随时间区间联动（只列区间内出现过的提供商/模型），保证选了必有数据。
  */
 data class UsageStats(
     val range: UsageRange,
+    val filter: StatsFilter,
     val totals: UsageTotals,
     val points: List<UsagePoint>,
     val byMonth: Boolean,
     val models: List<ModelUsageItem>,
     val sources: List<SourceUsage>,
+    val providerOptions: List<ProviderFilterOption>,
+    val modelOptions: List<ModelFilterOption>,
 )
 
 class StatsVM(
@@ -98,24 +131,43 @@ class StatsVM(
     private val _stats = MutableStateFlow(AppStats())
     val stats: StateFlow<AppStats> = _stats.asStateFlow()
 
-    // 切换范围时先保留旧数据，查完再整体替换，避免用量区闪成加载态
+    // 切换筛选时先保留旧数据，查完再整体替换，避免用量区闪成加载态
     private val _usage = MutableStateFlow<UsageStats?>(null)
     val usage: StateFlow<UsageStats?> = _usage.asStateFlow()
 
-    private val _range = MutableStateFlow(UsageRange.MONTH)
-    val range: StateFlow<UsageRange> = _range.asStateFlow()
+    private val _filter = MutableStateFlow(StatsFilter())
+    val filter: StateFlow<StatsFilter> = _filter.asStateFlow()
+
+    // 时段是筛选的一个投影：页面现有的 SegmentedPill 只订阅这一维
+    val range: StateFlow<UsageRange> = _filter
+        .map { it.range }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, UsageRange.MONTH)
 
     private var usageJob: Job? = null
 
     init {
         viewModelScope.launch { loadStats() }
-        loadUsage(_range.value)
+        loadUsage(_filter.value)
     }
 
     fun setRange(range: UsageRange) {
-        if (range == _range.value) return
-        _range.value = range
-        loadUsage(range)
+        if (range == _filter.value.range) return
+        _filter.update { it.copy(range = range) }
+    }
+
+    fun setProviderFilter(provider: ProviderKey?) {
+        if (provider == _filter.value.provider) return
+        _filter.update { it.copy(provider = provider) }
+    }
+
+    fun setModelFilter(model: ModelKey?) {
+        if (model == _filter.value.model) return
+        _filter.update { it.copy(model = model) }
+    }
+
+    /** 自定义档确认入口：区间不完整（缺起止）则不接受。 */
+    fun setCustomRange(start: LocalDate, end: LocalDate) {
+        _filter.update { it.copy(range = UsageRange.CUSTOM, customStart = start, customEnd = end) }
     }
 
     fun setHeatmapMetric(metric: HeatmapMetric) {
@@ -165,20 +217,56 @@ class StatsVM(
         }
     }
 
-    private fun loadUsage(range: UsageRange) {
+    private fun loadUsage(filter: StatsFilter) {
         usageJob?.cancel()
         usageJob = viewModelScope.launch {
             val today = LocalDate.now()
             val zone = ZoneId.systemDefault()
-            val startDate = range.days?.let { today.minusDays(it - 1L) }
+
+            // 时间窗口：预设档只有下界（没有未来流水，不需要上界）；
+            // 自定义档闭区间 [start, end] 转半开 [since, until)，end+1 天零点，避开毫秒精度踩边
+            val startDate = when (filter.range) {
+                UsageRange.CUSTOM -> filter.customStart
+                else -> filter.range.days?.let { today.minusDays(it - 1L) }
+            }
             val since = startDate?.atStartOfDay(zone)?.toInstant()?.toEpochMilli() ?: 0L
+            val until = if (filter.range == UsageRange.CUSTOM) {
+                filter.customEnd?.plusDays(1)?.atStartOfDay(zone)?.toInstant()?.toEpochMilli()
+            } else {
+                null
+            }
+
+            // 分桶：全部按月；自定义跨度超过阈值按月（与 QUARTER 档对齐）；其余按天
+            val byMonth = when (filter.range) {
+                UsageRange.ALL -> true
+                UsageRange.CUSTOM -> filter.customStart != null && filter.customEnd != null &&
+                    ChronoUnit.DAYS.between(filter.customStart, filter.customEnd) + 1 >
+                    MONTHLY_BUCKET_THRESHOLD_DAYS
+                else -> false
+            }
+
+            val providerId = filter.provider?.id
+            val providerName = filter.provider?.name
+            val modelId = filter.model?.id
+            val modelName = filter.model?.name
 
             // 流水独立于消息/会话存在：删掉的会话、被丢弃的分支仍然是真实花费
-            val totals = usageRecordDAO.getTotals(since)
-            val byMonth = range.days == null
+            val totals = usageRecordDAO.getTotals(
+                since = since,
+                until = until,
+                providerId = providerId,
+                providerName = providerName,
+                modelId = modelId,
+                modelName = modelName,
+            )
             val buckets = usageRecordDAO.getTotalsByBucket(
                 format = if (byMonth) MONTH_BUCKET_FORMAT else DAY_BUCKET_FORMAT,
                 since = since,
+                until = until,
+                providerId = providerId,
+                providerName = providerName,
+                modelId = modelId,
+                modelName = modelName,
             )
             val points = if (byMonth) {
                 monthlyPoints(buckets, today)
@@ -188,7 +276,14 @@ class StatsVM(
 
             // 模型展示名优先按 id 查当前设置，查不到再用流水里的名称快照（模型可能已被删除）
             val settings = settingsStore.settingsFlow.first { !it.init }
-            val models = usageRecordDAO.getTotalsByModel(since)
+            val models = usageRecordDAO.getTotalsByModel(
+                since = since,
+                until = until,
+                providerId = providerId,
+                providerName = providerName,
+                modelId = modelId,
+                modelName = modelName,
+            )
                 .map { row ->
                     val model = row.modelId
                         ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
@@ -202,15 +297,46 @@ class StatsVM(
                 }
                 .sortedByDescending { it.totalTokens }
 
-            val sources = usageRecordDAO.getTotalsBySource(since)
+            val sources = usageRecordDAO.getTotalsBySource(
+                since = since,
+                until = until,
+                providerId = providerId,
+                providerName = providerName,
+                modelId = modelId,
+                modelName = modelName,
+            )
+
+            // 筛选选项：区间内出现过的提供商/模型，展示名解析口径与排行一致
+            // （模型按当前设置解析最新名、快照兜底；提供商直接用名称快照，排行同款）
+            val providerOptions = usageRecordDAO.getDistinctProviders(since, until)
+                .map { row ->
+                    ProviderFilterOption(
+                        key = ProviderKey(row.id, row.name),
+                        label = row.name?.takeIf { it.isNotBlank() },
+                    )
+                }
+            val modelOptions = usageRecordDAO.getDistinctModels(since, until)
+                .map { row ->
+                    val model = row.id
+                        ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+                        ?.let { settings.findModelById(it) }
+                    ModelFilterOption(
+                        key = ModelKey(row.id, row.name),
+                        label = model?.displayName?.takeIf { it.isNotBlank() }
+                            ?: row.name?.takeIf { it.isNotBlank() },
+                    )
+                }
 
             _usage.value = UsageStats(
-                range = range,
+                range = filter.range,
+                filter = filter,
                 totals = totals,
                 points = points,
                 byMonth = byMonth,
                 models = models,
                 sources = sources,
+                providerOptions = providerOptions,
+                modelOptions = modelOptions,
             )
         }
     }
@@ -253,5 +379,8 @@ class StatsVM(
     private companion object {
         const val DAY_BUCKET_FORMAT = "%Y-%m-%d"
         const val MONTH_BUCKET_FORMAT = "%Y-%m"
+
+        /** 自定义区间趋势图按月分桶的天数阈值，与 QUARTER 档对齐 */
+        const val MONTHLY_BUCKET_THRESHOLD_DAYS = 90L
     }
 }

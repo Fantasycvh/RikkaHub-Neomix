@@ -439,7 +439,8 @@ private fun UsageHeader(
             style = MaterialTheme.typography.titleMediumEmphasized,
         )
         SegmentedPill(
-            options = UsageRange.entries,
+            // CUSTOM 档由 Phase 2 的日期区间选择器接入后再放进选项列表
+            options = listOf(UsageRange.WEEK, UsageRange.MONTH, UsageRange.QUARTER, UsageRange.ALL),
             selectedOption = range,
             onOptionSelected = onRangeChange,
             optionToString = { option ->
@@ -448,7 +449,8 @@ private fun UsageHeader(
                         UsageRange.WEEK -> R.string.stats_page_range_7d
                         UsageRange.MONTH -> R.string.stats_page_range_30d
                         UsageRange.QUARTER -> R.string.stats_page_range_90d
-                        UsageRange.ALL -> R.string.stats_page_range_all
+                        // Phase 1 不展示 CUSTOM，占位映射保持 when 穷尽
+                        UsageRange.ALL, UsageRange.CUSTOM -> R.string.stats_page_range_all
                     }
                 )
             },
