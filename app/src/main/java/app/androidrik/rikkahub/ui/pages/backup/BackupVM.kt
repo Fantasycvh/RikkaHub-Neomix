@@ -15,9 +15,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.WebDavConfig
+import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.sync.importer.ChatboxImporter
 import app.androidrik.rikkahub.data.sync.importer.CherryStudioProviderImporter
@@ -68,6 +70,15 @@ class BackupVM(
     private val filesManager: FilesManager,
     private val incrementalBackup: IncrementalBackupService,
     private val backupRun: BackupRunCoordinator,
+    /**
+     * 设置写入的**取消安全** scope（与进程同寿命）。
+     *
+     * 备份页文本域用「本地权威 + 去抖单向写出 + 离页补写」（`rememberPersistedTextFieldState`，
+     * AGENTS「TextField Host Rules」第 4 条）。去抖窗口内按返回时补写发生在组合销毁、
+     * ViewModel 也可能 `onCleared()` 的时刻；`viewModelScope` 会被取消 ⇒ 最后几个字符
+     * 静默丢失。AppScope 保证仍能落盘（同 `AssistantDetailVM` 的先例）。
+     */
+    private val appScope: AppScope,
 ) : ViewModel() {
     internal val snapshotDestination = MutableStateFlow(BackupDestination.LOCAL)
     internal val localBackupTarget = MutableStateFlow<LocalBackupTarget?>(null)
@@ -307,8 +318,39 @@ class BackupVM(
     }
 
     fun updateSettings(settings: Settings) {
-        viewModelScope.launch {
+        appScope.launch {
             settingsStore.update(settings)
+        }
+    }
+
+    /**
+     * 读-改-写：由 `SettingsStore.updateMutex` 串行化并用**最新**快照，避免组合期快照
+     * 覆盖并发字段。
+     */
+    fun updateSettings(transform: (Settings) -> Settings) {
+        appScope.launch {
+            settingsStore.update(transform)
+        }
+    }
+
+    /**
+     * S3 配置字段级写：不读 `settings` 快照再 copy 整份 Settings（AGENTS 规则 4 禁的锁外
+     * 快照写），而是在 `settingsStore.update { }` 内部基于最新值做字段替换。
+     */
+    fun updateS3Config(transform: (S3Config) -> S3Config) {
+        appScope.launch {
+            settingsStore.update { current ->
+                current.copy(s3Config = transform(current.s3Config))
+            }
+        }
+    }
+
+    /** WebDAV 配置字段级写，语义同 [updateS3Config]。 */
+    fun updateWebDavConfig(transform: (WebDavConfig) -> WebDavConfig) {
+        appScope.launch {
+            settingsStore.update { current ->
+                current.copy(webDavConfig = transform(current.webDavConfig))
+            }
         }
     }
 

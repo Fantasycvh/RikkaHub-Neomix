@@ -70,6 +70,7 @@ val viewModelModule = module {
             kbId = params.get(),
             ragRepository = get(),
             settingsStore = get(),
+            appScope = get(),
         )
     }
     viewModelOf(::DebugVM)

@@ -49,9 +49,10 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var proxy by remember(settings) { mutableStateOf(settings.globalProxy) }
 
-    fun update(updated: GlobalProxySetting) {
-        proxy = updated
-        vm.updateSettings(settings.copy(globalProxy = updated))
+    // 非文本控件：本地镜像先反馈，落盘走字段级 transform（不读 settings 快照）。
+    fun update(transform: (GlobalProxySetting) -> GlobalProxySetting) {
+        proxy = transform(proxy)
+        vm.updateSettings { it.copy(globalProxy = transform(it.globalProxy)) }
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -103,7 +104,7 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                                     shape = SegmentedButtonDefaults.itemShape(index, types.size),
                                     label = { Text(proxyTypeLabel(type)) },
                                     selected = proxy.type == type,
-                                    onClick = { update(proxy.copy(type = type)) },
+                                    onClick = { update { it.copy(type = type) } },
                                 )
                             }
                         }
@@ -127,15 +128,20 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                                 label = { Text(stringResource(R.string.setting_provider_page_proxy_host)) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            // 端口已有本地权威缓冲 portText（value 从不绑持久态投影，已免疫回灌），
-                            // 本批保持原样；其逐键整份设置写盘/加载完成前不重置属已知存量，后续单独迁移。
-                            var portText by remember { mutableStateOf(proxy.port.takeIf { it > 0 }?.toString() ?: "") }
-                            OutlinedTextField(
-                                value = portText,
-                                onValueChange = {
-                                    portText = it
-                                    update(proxy.copy(port = it.toIntOrNull() ?: 0))
+                            // 端口：本地权威 + 250ms 去抖写 + 离页补写（同 host/username/password）。
+                            // 解析只发生在 onCommit，不把 Int 投影回填活跃编辑框；落盘走字段级
+                            // transform（旧写法逐键 `settings.copy(globalProxy = ...)` 整份快照写）。
+                            val portState = rememberPersistedTextFieldState(
+                                externalValue = proxy.port.takeIf { it > 0 }?.toString() ?: "",
+                                resetKey = settings.init,
+                                onCommit = { text ->
+                                    val port = text.trim().toIntOrNull() ?: 0
+                                    proxy = proxy.copy(port = port)
+                                    vm.updateSettings { it.copy(globalProxy = it.globalProxy.copy(port = port)) }
                                 },
+                            )
+                            OutlinedTextField(
+                                state = portState,
                                 label = { Text(stringResource(R.string.setting_provider_page_proxy_port)) },
                                 modifier = Modifier.fillMaxWidth(),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),

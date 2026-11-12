@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
@@ -49,14 +48,12 @@ import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -155,6 +152,7 @@ fun AssistantPromptPage(id: String) {
             onUpdate = { vm.update(it) },
             // 文本域走字段级 transform（去抖提交 / 离页补写在 VM 的 AppScope 上，
             // 不用 `vm.update(assistant.copy(...))` 这种整对象写）
+            onSystemPromptChange = vm::updateSystemPrompt,
             onMessageTemplateChange = vm::updateMessageTemplate,
             onSystemMessageTemplateChange = vm::updateSystemMessageTemplate,
             onPresetMessageTextChange = vm::updatePresetMessageText,
@@ -172,6 +170,7 @@ private fun AssistantPromptContent(
     assistant: Assistant,
     settings: Settings,
     onUpdate: (Assistant) -> Unit,
+    onSystemPromptChange: (String) -> Unit,
     onMessageTemplateChange: (String) -> Unit,
     onSystemMessageTemplateChange: (String) -> Unit,
     onPresetMessageTextChange: (Uuid, String) -> Unit,
@@ -182,6 +181,16 @@ private fun AssistantPromptContent(
 ) {
     val context = LocalContext.current
     val templateTransformer = koinInject<TemplateTransformer>()
+
+    // 系统提示词：本地权威编辑态 + 去抖单向写出（字段级 transform）。旧写法用
+    // `snapshotFlow` 逐键 `onUpdate(assistant.copy(systemPrompt = ...))` —— 每键重写整份
+    // Settings，且带「整对象写丢更新」的读-改-写竞态。提到最外层是为了让下面角色卡的
+    // 「回到卡片原文」按钮能同步本地编辑态（程序化回填只发生在用户点击时，允许）。
+    val systemPromptValue = rememberPersistedTextFieldState(
+        externalValue = assistant.systemPrompt,
+        resetKey = assistant.id,
+        onCommit = onSystemPromptChange,
+    )
 
     Column(
         modifier = Modifier
@@ -201,19 +210,6 @@ private fun AssistantPromptContent(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val systemPromptValue = rememberTextFieldState(
-                    initialText = assistant.systemPrompt,
-                )
-                LaunchedEffect(Unit) {
-                    snapshotFlow { systemPromptValue.text }.collect {
-                        onUpdate(
-                            assistant.copy(
-                                systemPrompt = it.toString()
-                            )
-                        )
-                    }
-                }
-
                 TextArea(
                     state = systemPromptValue,
                     label = stringResource(R.string.assistant_page_system_prompt),
@@ -252,6 +248,16 @@ private fun AssistantPromptContent(
                 assistant = assistant,
                 onUpdate = onUpdate,
                 onCardSlotTextChange = onCardSlotTextChange,
+                onRebuildPrompt = {
+                    // 显式用户动作，允许回填活跃编辑框（AGENTS 第 4 条：先比较再回填）。
+                    // rebuild 只改 systemPrompt（见 Assistant.rebuildSystemPromptFromCardParts），
+                    // 所以不再整对象 onUpdate 写，走字段级 transform。
+                    val rebuilt = assistant.rebuildSystemPromptFromCardParts()
+                    if (rebuilt.systemPrompt != systemPromptValue.text.toString()) {
+                        systemPromptValue.setTextAndPlaceCursorAtEnd(rebuilt.systemPrompt)
+                    }
+                    onSystemPromptChange(rebuilt.systemPrompt)
+                },
             )
         }
 
@@ -693,6 +699,7 @@ private fun CardPartsCard(
     assistant: Assistant,
     onUpdate: (Assistant) -> Unit,
     onCardSlotTextChange: (CardSlot, String) -> Unit,
+    onRebuildPrompt: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -780,7 +787,7 @@ private fun CardPartsCard(
                     // 零件 → 发送文本的单向重建：零件是源，systemPrompt 是产物。
                     // 用户手改 systemPrompt 后想要「回到卡片原文」时用。
                     Button(
-                        onClick = { onUpdate(assistant.rebuildSystemPromptFromCardParts()) },
+                        onClick = onRebuildPrompt,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(HugeIcons.Refresh03, null, modifier = Modifier.size(16.dp))

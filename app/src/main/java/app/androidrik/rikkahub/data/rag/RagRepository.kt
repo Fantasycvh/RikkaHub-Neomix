@@ -20,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -48,6 +50,18 @@ class RagRepository(
     private val json: Json,
 ) {
     // ---- 知识库 ----
+
+    /**
+     * 知识库字段写的进程内串行锁（同 `SettingsStore.updateMutex` 思路）。
+     *
+     * DAO 的 UPDATE 会**写全部 5 个字段**，两个并发的「读-改-写」（典型：离页时多个输入框
+     * 同时补写）会各自读到旧快照，后写者把先写者的字段覆盖回旧值。Mutex 把「读最新 →
+     * 应用 transform → 写」串行化，消除这类丢更新。
+     *
+     * 为什么不用 Room 事务：`db.withTransaction` 需要把 `AppDatabase` 注入本仓储（DI/DAO 不在
+     * 本次改动范围）；本仓储是知识库行的唯一字段写入口，进程内串行已足够。
+     */
+    private val updateMutex = Mutex()
 
     fun getAllKnowledgeBasesFlow() = dao.getAllKnowledgeBasesFlow()
 
@@ -79,15 +93,28 @@ class RagRepository(
         return kb
     }
 
-    suspend fun updateKnowledgeBase(kb: KnowledgeBaseEntity) {
-        dao.updateKnowledgeBase(
-            id = kb.id,
-            name = kb.name,
-            embeddingModelId = kb.embeddingModelId,
-            topK = kb.topK,
-            similarityThreshold = kb.similarityThreshold,
-            dimensions = kb.dimensions,
-        )
+    /**
+     * 知识库字段级读-改-写：在锁内读盘上**最新**实体后应用 [transform] 再落盘。
+     *
+     * 页面侧不再传组合期实体快照（`onUpdate(kb.copy(...))` 会用旧实体覆盖并发字段），
+     * 改为传 `{ it.copy(field = ...) }`。
+     */
+    suspend fun updateKnowledgeBase(
+        id: String,
+        transform: (KnowledgeBaseEntity) -> KnowledgeBaseEntity,
+    ) {
+        updateMutex.withLock {
+            val current = dao.getKnowledgeBase(id) ?: return
+            val updated = transform(current)
+            dao.updateKnowledgeBase(
+                id = updated.id,
+                name = updated.name,
+                embeddingModelId = updated.embeddingModelId,
+                topK = updated.topK,
+                similarityThreshold = updated.similarityThreshold,
+                dimensions = updated.dimensions,
+            )
+        }
     }
 
     suspend fun deleteKnowledgeBase(id: String) {

@@ -116,7 +116,9 @@ Built with Jetpack Compose, Kotlin, and follows Material Design 3 principles.
 >    `ui/hooks/PersistedTextFieldState.kt` 的
 >    `rememberPersistedTextFieldState(value, onCommit, resetKey = 实体 id)`；`onCommit` 必须走
 >    取消安全的 scope（页面级 `AppScope`），数据层用字段级 `settingsStore.update { }` transform，
->    禁止「读 `settings.value` → 改整对象 → 写回」的锁外快照写。残留清单与迁移记录：
+>    禁止「读 `settings.value` → 改整对象 → 写回」的锁外快照写。VM 侧提交通道也要用与进程同寿命的
+>    `AppScope`（`AssistantDetailVM`/`SettingVM`/`BackupVM`/`KnowledgeBaseDetailVM` 均已注入），
+>    否则离页补写会被 `viewModelScope.onCleared` 取消，最后几个字符静默丢失。残留清单与迁移记录：
 >    `.tmp/audit-ime/stateflow-audit.md` 附录 C 的 48 处高风险已于 2026-11-12/13 分两批全部迁移，
 >    未清的存量项见 `docs/design/verification/ime-stateflow-migration-2026-11-13.md`。
 >

@@ -62,7 +62,6 @@ import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.sync.S3BackupItem
 import app.androidrik.rikkahub.data.sync.BackupRunKind
-import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.HiddenTextTransformation
@@ -101,10 +100,6 @@ fun S3Tab(
     LaunchedEffect(task) {
         if (hadTask && task == null) vm.loadS3BackupFileItems()
         hadTask = task != null
-    }
-
-    fun updateS3Config(newConfig: S3Config) {
-        vm.updateSettings(settings.copy(s3Config = newConfig))
     }
 
     /** 实际执行恢复（经确认后调用） */
@@ -186,7 +181,7 @@ fun S3Tab(
                             externalValue = s3Config.endpoint,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateS3Config(s3Config.copy(endpoint = text.trim()))
+                                vm.updateS3Config { it.copy(endpoint = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -204,7 +199,7 @@ fun S3Tab(
                             externalValue = s3Config.accessKeyId,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateS3Config(s3Config.copy(accessKeyId = text.trim()))
+                                vm.updateS3Config { it.copy(accessKeyId = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -222,7 +217,7 @@ fun S3Tab(
                             externalValue = s3Config.secretAccessKey,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateS3Config(s3Config.copy(secretAccessKey = text.trim()))
+                                vm.updateS3Config { it.copy(secretAccessKey = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -252,7 +247,7 @@ fun S3Tab(
                             externalValue = s3Config.bucket,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateS3Config(s3Config.copy(bucket = text.trim()))
+                                vm.updateS3Config { it.copy(bucket = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -269,7 +264,9 @@ fun S3Tab(
                     trailingContent = {
                         Switch(
                             checked = s3Config.pathStyle,
-                            onCheckedChange = { updateS3Config(s3Config.copy(pathStyle = it)) },
+                            onCheckedChange = { checked ->
+                                vm.updateS3Config { it.copy(pathStyle = checked) }
+                            },
                         )
                     },
                 )
@@ -280,7 +277,7 @@ fun S3Tab(
                             externalValue = s3Config.region,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateS3Config(s3Config.copy(region = text.trim()))
+                                vm.updateS3Config { it.copy(region = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -299,7 +296,9 @@ fun S3Tab(
                     supportingContent = {
                         BackupItemsSelector(
                             items = settings.backupItems,
-                            onItemsChange = { vm.updateSettings(settings.copy(backupItems = it)) },
+                            onItemsChange = { items ->
+                                vm.updateSettings { it.copy(backupItems = items) }
+                            },
                         )
                     },
                 )

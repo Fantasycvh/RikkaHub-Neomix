@@ -58,7 +58,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.data.datastore.WebDavConfig
 import app.androidrik.rikkahub.data.sync.BackupRunKind
 import app.androidrik.rikkahub.data.sync.webdav.WebDavBackupItem
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
@@ -100,10 +99,6 @@ fun WebDavTab(
     LaunchedEffect(task) {
         if (hadTask && task == null) vm.loadBackupFileItems()
         hadTask = task != null
-    }
-
-    fun updateWebDavConfig(newConfig: WebDavConfig) {
-        vm.updateSettings(settings.copy(webDavConfig = newConfig))
     }
 
     /** 实际执行恢复（经确认后调用） */
@@ -185,7 +180,7 @@ fun WebDavTab(
                             externalValue = webDavConfig.url,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateWebDavConfig(webDavConfig.copy(url = text.trim()))
+                                vm.updateWebDavConfig { it.copy(url = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -203,7 +198,7 @@ fun WebDavTab(
                             externalValue = webDavConfig.username,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateWebDavConfig(webDavConfig.copy(username = text.trim()))
+                                vm.updateWebDavConfig { it.copy(username = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -221,7 +216,7 @@ fun WebDavTab(
                             externalValue = webDavConfig.password,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateWebDavConfig(webDavConfig.copy(password = text.trim()))
+                                vm.updateWebDavConfig { it.copy(password = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -251,7 +246,7 @@ fun WebDavTab(
                             externalValue = webDavConfig.path,
                             resetKey = settings.init,
                             onCommit = { text ->
-                                updateWebDavConfig(webDavConfig.copy(path = text.trim()))
+                                vm.updateWebDavConfig { it.copy(path = text.trim()) }
                             },
                         )
                         OutlinedTextField(
@@ -269,7 +264,9 @@ fun WebDavTab(
                     supportingContent = {
                         BackupItemsSelector(
                             items = settings.backupItems,
-                            onItemsChange = { vm.updateSettings(settings.copy(backupItems = it)) },
+                            onItemsChange = { items ->
+                                vm.updateSettings { it.copy(backupItems = items) }
+                            },
                         )
                     },
                 )

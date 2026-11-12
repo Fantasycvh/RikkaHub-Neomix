@@ -288,6 +288,14 @@ class AssistantDetailVM(
     // `edit` 承担原子性。
     // ---------------------------------------------------------------------------------
 
+    /**
+     * 系统提示词大文本域：与 [updateName] 同链路 —— 本地权威 + 去抖提交 / 离页补写。
+     * 旧实现是 UI 里 `snapshotFlow` 逐键 `onUpdate(assistant.copy(systemPrompt = ...))`，
+     * 每键重写整份 Settings 且带整对象读-改-写竞态；这里改成字段级 transform。
+     */
+    fun updateSystemPrompt(systemPrompt: String) =
+        updateAssistantField { it.copy(systemPrompt = systemPrompt) }
+
     fun updateMessageTemplate(messageTemplate: String) =
         updateAssistantField { it.copy(messageTemplate = messageTemplate) }
 

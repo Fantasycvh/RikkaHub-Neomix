@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.entity.KnowledgeBaseDocumentEntity
@@ -78,7 +79,6 @@ fun SettingKnowledgeBaseDetailPage(
     val modelsByProvider by vm.embeddingModels.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var showModelPicker by remember { mutableStateOf(false) }
-    var editingKb by remember(kb) { mutableStateOf(kb) }
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -109,12 +109,12 @@ fun SettingKnowledgeBaseDetailPage(
             contentPadding = it + PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (editingKb != null) {
+            kb?.let { current ->
                 item("settings") {
                     KnowledgeBaseSettingsCard(
-                        kb = editingKb!!,
-                        modelName = vm.modelDisplayName(editingKb!!.embeddingModelId),
-                        onUpdate = { vm.update(it) },
+                        kb = current,
+                        modelName = vm.modelDisplayName(current.embeddingModelId),
+                        onTransform = { transform -> vm.update(transform) },
                         onPickModel = { showModelPicker = true },
                     )
                 }
@@ -172,11 +172,12 @@ fun SettingKnowledgeBaseDetailPage(
     if (showModelPicker) {
         EmbeddingModelPickerDialog(
             modelsByProvider = modelsByProvider,
-            selectedModelId = editingKb?.embeddingModelId.orEmpty(),
+            selectedModelId = kb?.embeddingModelId.orEmpty(),
             onDismissRequest = { showModelPicker = false },
             onConfirm = { modelId ->
                 showModelPicker = false
-                editingKb?.let { vm.update(it.copy(embeddingModelId = modelId)) }
+                // 字段级 transform：不把组合期整实体快照写回（旧写法会用旧实体覆盖并发字段）。
+                vm.update { it.copy(embeddingModelId = modelId) }
             },
         )
     }
@@ -186,7 +187,11 @@ fun SettingKnowledgeBaseDetailPage(
 private fun KnowledgeBaseSettingsCard(
     kb: KnowledgeBaseEntity,
     modelName: String,
-    onUpdate: (KnowledgeBaseEntity) -> Unit,
+    /**
+     * 字段级写回调：只把「当前实体 → 新实体」的**变换**交给 VM，由数据层读最新实体后应用。
+     * 不再传组合期实体快照（`onUpdate(kb.copy(...))`），否则多字段并发提交会互相覆盖。
+     */
+    onTransform: (transform: (KnowledgeBaseEntity) -> KnowledgeBaseEntity) -> Unit,
     onPickModel: () -> Unit,
 ) {
     Card(
@@ -212,7 +217,7 @@ private fun KnowledgeBaseSettingsCard(
                 val nameState = rememberPersistedTextFieldState(
                     externalValue = kb.name,
                     resetKey = kb.id,
-                    onCommit = { text -> onUpdate(kb.copy(name = text)) },
+                    onCommit = { text -> onTransform { it.copy(name = text) } },
                 )
                 OutlinedTextField(
                     state = nameState,
@@ -247,7 +252,9 @@ private fun KnowledgeBaseSettingsCard(
                         externalValue = kb.topK.toString(),
                         resetKey = kb.id,
                         onCommit = { text ->
-                            text.toIntOrNull()?.let { onUpdate(kb.copy(topK = it.coerceIn(1, 50))) }
+                            text.toIntOrNull()?.let { value ->
+                                onTransform { it.copy(topK = value.coerceIn(1, 50)) }
+                            }
                         },
                     )
                     OutlinedTextField(
@@ -267,8 +274,9 @@ private fun KnowledgeBaseSettingsCard(
                         externalValue = kb.similarityThreshold.toString(),
                         resetKey = kb.id,
                         onCommit = { text ->
-                            text.toFloatOrNull()
-                                ?.let { onUpdate(kb.copy(similarityThreshold = it.coerceIn(0f, 1f))) }
+                            text.toFloatOrNull()?.let { value ->
+                                onTransform { it.copy(similarityThreshold = value.coerceIn(0f, 1f)) }
+                            }
                         },
                     )
                     OutlinedTextField(
@@ -289,9 +297,11 @@ private fun KnowledgeBaseSettingsCard(
                     resetKey = kb.id,
                     onCommit = { text ->
                         if (text.isBlank()) {
-                            onUpdate(kb.copy(dimensions = null))
+                            onTransform { it.copy(dimensions = null) }
                         } else {
-                            text.toIntOrNull()?.let { onUpdate(kb.copy(dimensions = it)) }
+                            text.toIntOrNull()?.let { value ->
+                                onTransform { it.copy(dimensions = value) }
+                            }
                         }
                     },
                 )
@@ -464,6 +474,11 @@ class KnowledgeBaseDetailVM(
     private val kbId: String,
     private val ragRepository: RagRepository,
     private val settingsStore: SettingsStore,
+    /**
+     * KB 字段写入的**取消安全** scope：名称/数值框在离页时补写，`viewModelScope` 会随页面
+     * 销毁被取消（AGENTS「TextField Host Rules」第 4 条要求 onCommit 走页面级 AppScope）。
+     */
+    private val appScope: AppScope,
 ) : ViewModel() {
     private val reloadTrigger = MutableStateFlow(0)
 
@@ -500,9 +515,13 @@ class KnowledgeBaseDetailVM(
             .orEmpty()
     }
 
-    fun update(kb: KnowledgeBaseEntity) {
-        viewModelScope.launch {
-            ragRepository.updateKnowledgeBase(kb)
+    /**
+     * 字段级读-改-写：页面只传 `{ it.copy(field = ...) }`，由仓储在锁内读**盘上最新**实体后
+     * 应用并落盘，避免组合期 `kb` 快照把并发字段覆盖回旧值。
+     */
+    fun update(transform: (KnowledgeBaseEntity) -> KnowledgeBaseEntity) {
+        appScope.launch {
+            ragRepository.updateKnowledgeBase(kbId, transform)
             reloadTrigger.value += 1
         }
     }
