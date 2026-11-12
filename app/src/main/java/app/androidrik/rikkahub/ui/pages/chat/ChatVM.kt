@@ -456,6 +456,20 @@ class ChatVM(
         }
     }
 
+    /** 树内分叉（§7.3）：在 [message] 所在节点处开新时间线（兄弟节点 + 叶切换，零文件拷贝）。 */
+    fun forkBranchAtMessage(message: UIMessage) {
+        viewModelScope.launch {
+            chatService.forkBranchAtMessage(_conversationId, message.id)
+        }
+    }
+
+    /** 剪枝整节点子树（树视图入口，§7.3；UI 层负责确认）。 */
+    fun pruneNodeSubtree(node: MessageNode) {
+        viewModelScope.launch {
+            chatService.deleteNodeSubtree(_conversationId, node.id)
+        }
+    }
+
     fun handleToolApproval(
         toolCallId: String,
         approved: Boolean,

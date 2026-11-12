@@ -151,6 +151,7 @@ import app.androidrik.rikkahub.data.model.nodeIndexOfMessage
 import app.androidrik.rikkahub.data.model.regenerateBaselineRange
 import app.androidrik.rikkahub.data.model.regenerateReplyNodeIndex
 import app.androidrik.rikkahub.data.model.pruneSubtree
+import app.androidrik.rikkahub.data.model.withBranchForkAt
 import app.androidrik.rikkahub.data.model.latestLeafIdOfSubtree
 import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.data.model.toMessageNode
@@ -3265,6 +3266,36 @@ class ChatService(
 
         saveConversation(conversationId, currentConversation.copy(activeLeafNodeId = leafId))
         workspaceNoticeInbox.request()
+    }
+
+    /**
+     * 树内分叉（树形分支 P2，设计稿 §7.3/§四.2）：在 [messageId] 所在节点处**开新时间线**。
+     * 变换见 [Conversation.withBranchForkAt]（可单测）；零文件拷贝，区别于
+     * [forkConversationAtMessage] 的整会话复制。
+     */
+    suspend fun forkBranchAtMessage(
+        conversationId: Uuid,
+        messageId: Uuid,
+    ) {
+        val currentConversation = getConversationFlow(conversationId).value
+        val updated = currentConversation.withBranchForkAt(messageId)
+        if (updated !== currentConversation) {
+            saveConversation(conversationId, updated)
+            workspaceNoticeInbox.request()
+        }
+    }
+
+    /**
+     * 剪枝指定节点及整个子树（树形分支 P2，设计稿 §7.3 树视图入口）：节点内全部候选一并移除，
+     * 激活叶子在子树内时由 [pruneSubtree] 收回。破坏性——UI 层负责确认弹窗。
+     */
+    suspend fun deleteNodeSubtree(
+        conversationId: Uuid,
+        nodeId: Uuid,
+    ) {
+        val currentConversation = getConversationFlow(conversationId).value
+        val updated = currentConversation.pruneSubtree(nodeId) ?: return
+        saveConversation(conversationId, updated)
     }
 
     suspend fun deleteMessage(

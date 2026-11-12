@@ -62,6 +62,7 @@ import me.rerere.hugeicons.stroke.Refresh03
 import me.rerere.hugeicons.stroke.Share04
 import me.rerere.hugeicons.stroke.StopCircle
 import me.rerere.hugeicons.stroke.TextSelection
+import me.rerere.hugeicons.stroke.Time02
 import me.rerere.hugeicons.stroke.Translate
 import me.rerere.hugeicons.stroke.VolumeHigh
 import me.rerere.hugeicons.stroke.WebDesign01
@@ -249,6 +250,8 @@ fun ChatMessageActionsSheet(
     onEditSegment: ((UIMessage, Int) -> Unit)? = null,
     onShare: () -> Unit,
     onFork: () -> Unit,
+    /** 树内分叉（§7.3）：在该消息处开新时间线（兄弟节点，本会话内）；与 [onFork]（复制整会话）区分 */
+    onForkBranch: () -> Unit = {},
     onSelectAndCopy: () -> Unit,
     onQuote: () -> Unit = {},
     isFavorite: Boolean = false,
@@ -483,6 +486,33 @@ fun ChatMessageActionsSheet(
                         )
                         Text(
                             text = stringResource(R.string.create_fork),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                }
+
+                // 开新时间线（树形分支 P2 §7.3）：本会话内该消息处建兄弟分支
+                Card(
+                    onClick = {
+                        onDismissRequest()
+                        onForkBranch()
+                    },
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Time02,
+                            contentDescription = null,
+                            modifier = Modifier.padding(4.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.chat_tree_fork_here),
                             style = MaterialTheme.typography.titleMedium,
                         )
                     }

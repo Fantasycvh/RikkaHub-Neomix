@@ -215,3 +215,40 @@ fun Conversation.markGeneratingNodeIncompleteById(nodeId: Uuid): Conversation {
     if (index < 0) return this
     return markGeneratingNodeIncomplete(index)
 }
+
+/**
+ * 树内分叉（P2 §7.3）：在 [messageId] 所在节点处**开新时间线**——新建兄弟节点承载消息副本
+ * （id 重生成、内容/注解/模型归属原样），激活叶子切过去；旧节点与其下游原样保留。
+ * 根角落：根无兄弟（heal 不变量），退化为候选追加（数据不丢，同 scope B 的根退化规则）。
+ * 目标消息不存在时原样返回。
+ */
+fun Conversation.withBranchForkAt(messageId: Uuid): Conversation {
+    val targetNode = messageNodes.firstOrNull { node ->
+        node.messages.any { it.id == messageId }
+    } ?: return this
+    val source = targetNode.messages.find { it.id == messageId } ?: targetNode.currentMessage
+    val copied = source.copy(id = Uuid.random())
+
+    if (targetNode.parentId == null) {
+        return copy(
+            messageNodes = messageNodes.map { node ->
+                if (node.id == targetNode.id) {
+                    node.copy(messages = node.messages + copied, selectIndex = node.messages.size)
+                } else {
+                    node
+                }
+            },
+        )
+    }
+
+    val branchNode = MessageNode(
+        id = Uuid.random(),
+        parentId = targetNode.parentId,
+        messages = listOf(copied),
+        selectIndex = 0,
+    )
+    return copy(
+        messageNodes = messageNodes + branchNode,
+        activeLeafNodeId = branchNode.id,
+    )
+}

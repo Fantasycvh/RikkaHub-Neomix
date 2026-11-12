@@ -3167,4 +3167,8 @@
   <string name="chat_branch_timeline_index">時間線 %1$d/%2$d</string>
   <string name="chat_branch_prev_timeline">上一條時間線</string>
   <string name="chat_branch_next_timeline">下一條時間線</string>
+  <string name="chat_page_tree_view">會話樹</string>
+  <string name="chat_tree_fork_here">在此開新時間線</string>
+  <string name="chat_tree_candidates_count">%1$d 個候選</string>
+  <string name="chat_tree_subtree_count">下方 %1$d 條</string>
 </resources>

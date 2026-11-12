@@ -3180,5 +3180,9 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="chat_branch_timeline_index">Timeline %1$d/%2$d</string>
   <string name="chat_branch_prev_timeline">Previous timeline</string>
   <string name="chat_branch_next_timeline">Next timeline</string>
+  <string name="chat_page_tree_view">Conversation Tree</string>
+  <string name="chat_tree_fork_here">New Timeline Here</string>
+  <string name="chat_tree_candidates_count">%1$d versions</string>
+  <string name="chat_tree_subtree_count">%1$d below</string>
 </resources>
 

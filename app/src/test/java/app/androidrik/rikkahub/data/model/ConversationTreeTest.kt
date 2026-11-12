@@ -237,6 +237,51 @@ class ConversationTreeTest {
         assertSame(conversation.messageNodes[2], updated.messageNodes[2])
     }
 
+    @Test fun `branch fork appends a sibling with regenerated id and moves the leaf`() {
+        val root = msg("u0").toMessageNode()
+        val a1 = msg("a1", MessageRole.ASSISTANT).toMessageNode().copy(parentId = root.id)
+        val tail = msg("u2").toMessageNode().copy(parentId = a1.id)
+        val conversation = Conversation.ofId(Uuid.random()).copy(
+            messageNodes = listOf(root, a1, tail),
+            activeLeafNodeId = tail.id,
+        )
+        val forked = conversation.withBranchForkAt(a1.currentMessage.id)
+
+        assertEquals("新兄弟节点 + 旧子树保留", 4, forked.messageNodes.size)
+        val sibling = forked.messageNodes.last()
+        assertEquals("a1", textOf(sibling))
+        assertEquals("与 a1 同父", root.id, sibling.parentId)
+        assertEquals("副本 id 重生成", true, sibling.currentMessage.id != a1.currentMessage.id)
+        assertEquals("内容/归属原样", a1.currentMessage.copy(id = sibling.currentMessage.id), sibling.currentMessage)
+        assertEquals("叶子切到新分支", sibling.id, forked.activeLeafNodeId)
+        assertEquals("新时间线 = [root, sibling]", listOf(root.id, sibling.id), forked.pathNodes().map { it.id })
+        // 旧子树原样
+        assertSame(conversation.messageNodes[1], forked.messageNodes[1])
+        assertSame(conversation.messageNodes[2], forked.messageNodes[2])
+    }
+
+    @Test fun `branch fork at root degrades to candidate append`() {
+        val root = msg("u0").toMessageNode()
+        val conversation = Conversation.ofId(Uuid.random()).copy(
+            messageNodes = listOf(root),
+            activeLeafNodeId = root.id,
+        )
+        val forked = conversation.withBranchForkAt(root.currentMessage.id)
+
+        assertEquals("根无兄弟：同节点候选追加", 1, forked.messageNodes.size)
+        assertEquals(2, forked.messageNodes[0].messages.size)
+        assertEquals("候选追加不推进叶子", root.id, forked.activeLeafNodeId)
+    }
+
+    @Test fun `branch fork of unknown message is a no-op`() {
+        val root = msg("u0").toMessageNode()
+        val conversation = Conversation.ofId(Uuid.random()).copy(
+            messageNodes = listOf(root),
+            activeLeafNodeId = root.id,
+        )
+        assertSame(conversation, conversation.withBranchForkAt(Uuid.random()))
+    }
+
     @Test fun `merge chains consecutive new nodes under the active path tail`() {
         val root = msg("u0").toMessageNode()
         val conversation = Conversation.ofId(Uuid.random()).copy(

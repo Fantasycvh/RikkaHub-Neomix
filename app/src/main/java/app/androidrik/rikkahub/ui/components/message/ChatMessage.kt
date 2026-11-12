@@ -138,6 +138,7 @@ fun ChatMessage(
     onContinue: () -> Unit = {},
     onShare: () -> Unit,
     onDelete: () -> Unit,
+    onForkBranch: () -> Unit = {},
     onQuote: () -> Unit = {},
     onQuoteClick: ((Uuid) -> Unit)? = null,
     onUpdate: (MessageNode) -> Unit,
@@ -362,6 +363,7 @@ fun ChatMessage(
             onDelete = onDelete,
             onShare = onShare,
             onFork = onFork,
+            onForkBranch = onForkBranch,
             onQuote = onQuote,
             model = model,
             onSelectAndCopy = {

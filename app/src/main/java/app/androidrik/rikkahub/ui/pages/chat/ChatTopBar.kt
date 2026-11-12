@@ -128,6 +128,7 @@ internal fun TopBar(
     glassHazeState: HazeState,
     showCapsuleBackground: Boolean,
     onClickMenu: () -> Unit,
+    onShowTreeView: () -> Unit,
     onNewChat: () -> Unit,
     onExport: () -> Unit,
     onUpdateTitle: (String) -> Unit
@@ -162,6 +163,16 @@ internal fun TopBar(
                 // 顶栏菜单项少、文本短，比 ExpressivePopup 默认的 280dp 再收窄一档
                 modifier = Modifier.widthIn(max = 220.dp),
             ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.chat_page_tree_view)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onShowTreeView()
+                    },
+                    leadingIcon = {
+                        Icon(Lucide.ListTree, null)
+                    }
+                )
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.chat_page_more_menu_options)) },
                     onClick = {

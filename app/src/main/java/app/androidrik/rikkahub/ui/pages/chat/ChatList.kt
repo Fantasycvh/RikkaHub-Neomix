@@ -169,6 +169,8 @@ fun ChatList(
     onEditSegment: ((UIMessage, Int) -> Unit)? = null,
     onQuoteMessage: (UIMessage) -> Unit = {},
     onForkMessage: (UIMessage) -> Unit = {},
+    /** 树内分叉（§7.3）：在该消息处开新时间线（本会话内兄弟节点） */
+    onForkBranch: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit = {},
     onUpdateMessage: (MessageNode) -> Unit = {},
     /** 分支切换（时间线）：切到某兄弟子树（服务端落到该子树最近更新叶子）；树形分支 P1 */
@@ -251,6 +253,7 @@ fun ChatList(
                     onEditSegment = onEditSegment,
                     onQuoteMessage = onQuoteMessage,
                     onForkMessage = onForkMessage,
+                    onForkBranch = onForkBranch,
                     onDelete = onDelete,
                     onUpdateMessage = onUpdateMessage,
                     onClickSuggestion = onClickSuggestion,
@@ -295,6 +298,7 @@ private fun ChatListNormal(
     onEditSegment: ((UIMessage, Int) -> Unit)? = null,
     onQuoteMessage: (UIMessage) -> Unit,
     onForkMessage: (UIMessage) -> Unit,
+    onForkBranch: (UIMessage) -> Unit = {},
     onDelete: (UIMessage) -> Unit,
     onUpdateMessage: (MessageNode) -> Unit,
     onClickSuggestion: (String) -> Unit,
@@ -454,13 +458,24 @@ private fun ChatListNormal(
     //
     // 不能直接复用 onJumpToMessage(index)：那个 index 是**完整节点列表**下标，而这里渲染的
     // 可能是压缩折叠后的 `windowNodes()`（只有边界之后的尾巴），两者下标空间不一致；折叠时
-    // 列表顶部还多一个检查点行。所以按 **messageId** 定位，并处理两种边界：
+    // 列表顶部还多一个检查点行。所以按 **messageId** 定位，并处理三种边界：
     //  1. 目标在折叠的历史里（很常见——引用往往指向更早的消息）⇒ 先展开完整轨迹，
     //     由 visibleNodes 变化触发本 effect 重跑，再滚动；
-    //  2. 目标在**未选中的候选分支**里 ⇒ 只滚动到所在节点（显示的是当前选中分支）。
-    //     不自动切换 selectIndex：那会静默改变会话展示分支并影响后续发送，代价远大于收益。
-    // 完全找不到（消息已被删除）时放弃，不报错。
+    //  2. 目标在**off-path 分支**里 ⇒ 先切到目标所在子树（跨分支定位，P2 §7.2），再滚动；
+    //  3. 完全找不到（消息已被删除）或生成中（切分支被守卫拒绝）时放弃，不报错。
     var pendingQuoteJump by remember(conversation.id) { mutableStateOf<Uuid?>(null) }
+
+    // 分支切换滚动锚点（树形分支 P2 §7.2）：时间线切换后滚到目标节点——pendingQuoteJump
+    // 以节点 id 表达（ChatRenderIndex.target 节点 id/消息 id 双寻址）。切换落库前 renderIndex
+    // 仍走旧路径，quoteJump 跨分支逻辑会保留待办并随 renderIndex 重算重试。
+    val outerBranchController = LocalChatBranchController.current
+    fun requestBranchSwitch(nodeId: Uuid) {
+        if (!loadingState) pendingQuoteJump = nodeId
+        outerBranchController?.onSwitchBranch(nodeId)
+    }
+    val anchoredBranchController = outerBranchController?.let {
+        ChatBranchController(nodes = it.nodes, onSwitchBranch = ::requestBranchSwitch)
+    }
     LaunchedEffect(initialAnchor, renderIndex, staticDocuments.pending) {
         if (initialAnchorConsumed || staticDocuments.pending.isNotEmpty()) return@LaunchedEffect
         if (initialAnchor != null && scrollController?.request == null && pendingPreviewJump == null && pendingQuoteJump == null) {
@@ -497,6 +512,16 @@ private fun ChatListNormal(
                 showCompressedHistory = true
                 return@LaunchedEffect
             }
+            // 跨分支（P2 §7.2）：目标存在于节点集但不在激活路径 ⇒ 先切到目标所在子树
+            // （服务端落到该子树最近更新叶子），保留待办，待 renderIndex（新路径）重算重试。
+            // 目标已删除、或生成中（切分支被守卫拒绝）时放弃。
+            val targetNode = conversation.messageNodes.firstOrNull {
+                it.id == targetId || it.messages.any { message -> message.id == targetId }
+            }
+            if (targetNode != null && !loadingState) {
+                outerBranchController?.onSwitchBranch(targetNode.id)
+                return@LaunchedEffect
+            }
             pendingQuoteJump = null
             return@LaunchedEffect
         }
@@ -504,6 +529,8 @@ private fun ChatListNormal(
         pendingQuoteJump = null
     }
 
+    // 内容整体包一层：把「带滚动锚点」的分支切换器下发给消息组件（覆盖 ChatList 的外层提供）
+    CompositionLocalProvider(LocalChatBranchController provides anchoredBranchController) {
     Box(
         modifier = Modifier
             .fillMaxSize(),
@@ -653,6 +680,9 @@ private fun ChatListNormal(
                             },
                             onFork = {
                                 onForkMessage(node.currentMessage)
+                            },
+                            onForkBranch = {
+                                onForkBranch(node.currentMessage)
                             },
                             onDelete = {
                                 onDelete(node.currentMessage)
@@ -863,6 +893,7 @@ private fun ChatListNormal(
             }
             }
         }
+    }
     }
 
 /**

@@ -3181,4 +3181,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="chat_branch_timeline_index">时间线 %1$d/%2$d</string>
   <string name="chat_branch_prev_timeline">上一条时间线</string>
   <string name="chat_branch_next_timeline">下一条时间线</string>
+  <string name="chat_page_tree_view">会话树</string>
+  <string name="chat_tree_fork_here">在此开新时间线</string>
+  <string name="chat_tree_candidates_count">%1$d 个候选</string>
+  <string name="chat_tree_subtree_count">下方 %1$d 条</string>
 </resources>

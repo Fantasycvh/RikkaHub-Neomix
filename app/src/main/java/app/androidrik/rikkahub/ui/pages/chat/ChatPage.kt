@@ -110,6 +110,8 @@ import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.subtreeIdsOf
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.MessageQueueState
@@ -484,6 +486,9 @@ private fun ChatPageContent(
     }
     var showFilesSheet by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
+    // 会话树视图（树形分支 P2 §7.3）：顶栏菜单入口；剪枝确认待办挂在页面级
+    var showTreeSheet by remember { mutableStateOf(false) }
+    var treePruneConfirmFor by remember { mutableStateOf<MessageNode?>(null) }
     // 上下文容量面板 + 压缩参数对话框（压缩入口在面板里，参数界面与 + 菜单共用同一个）
     var showContextSheet by remember { mutableStateOf(false) }
     var showCompressDialog by remember { mutableStateOf(false) }
@@ -545,6 +550,9 @@ private fun ChatPageContent(
                     },
                     onClickMenu = {
                         previewMode = !previewMode
+                    },
+                    onShowTreeView = {
+                        showTreeSheet = true
                     },
                     onExport = {
                         showExportSheet = true
@@ -751,6 +759,17 @@ private fun ChatPageContent(
                         val fork = vm.forkMessage(message = it)
                         navigateToChatPage(navController, chatId = fork.id)
                     }
+                },
+                onForkBranch = {
+                    // 树内分叉（§7.3）：改写 messageNodes，与编辑同款生成中守卫
+                    if (rejectMessageEditWhileGenerating(
+                            loadingJob = loadingJob,
+                            onReject = vm::showEditBlockedWhileGeneratingError,
+                        )
+                    ) {
+                        return@ChatList
+                    }
+                    vm.forkBranchAtMessage(it)
                 },
                 onDelete = {
                     if (loadingJob != null) {
@@ -975,6 +994,64 @@ private fun ChatPageContent(
                 },
                 dismissButton = {
                     TextButton(onClick = { deleteConfirmFor = null }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                },
+            )
+        }
+
+        // 会话树视图（树形分支 P2 §7.3）：缩进树形列表，切换/分叉/剪枝
+        if (showTreeSheet) {
+            ConversationTreeSheet(
+                conversation = conversation,
+                onDismissRequest = { showTreeSheet = false },
+                onSwitchToNode = { nodeId ->
+                    showTreeSheet = false
+                    if (loadingJob != null) {
+                        vm.showEditBlockedWhileGeneratingError()
+                    } else {
+                        vm.switchMessageBranch(nodeId)
+                        // 锚点：滚到该子树根节点（quoteJump 管线兼容节点 id 寻址）
+                        chatListScrollController.scrollToMessage(nodeId)
+                    }
+                },
+                onForkBranchAt = { message ->
+                    showTreeSheet = false
+                    if (loadingJob == null) {
+                        vm.forkBranchAtMessage(message)
+                    } else {
+                        vm.showEditBlockedWhileGeneratingError()
+                    }
+                },
+                onDeleteBranch = { node ->
+                    // 剪枝是破坏性操作：关树视图、页面级确认弹窗（计数 = 子树内全部消息）
+                    showTreeSheet = false
+                    treePruneConfirmFor = node
+                },
+            )
+        }
+
+        // 树视图剪枝确认：节点 + 全部后代（含候选）一并移除且不可恢复
+        treePruneConfirmFor?.let { node ->
+            val pruneCount = conversation.messageNodes
+                .subtreeIdsOf(node.id)
+                .sumOf { id -> conversation.messageNodes.first { it.id == id }.messages.size }
+            AlertDialog(
+                onDismissRequest = { treePruneConfirmFor = null },
+                title = { Text(stringResource(R.string.chat_page_delete)) },
+                text = {
+                    Text(stringResource(R.string.chat_delete_branch_confirm, pruneCount))
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        treePruneConfirmFor = null
+                        vm.pruneNodeSubtree(node)
+                    }) {
+                        Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { treePruneConfirmFor = null }) {
                         Text(stringResource(R.string.cancel))
                     }
                 },
