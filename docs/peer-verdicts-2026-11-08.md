@@ -272,7 +272,7 @@ arm64 debug）走查通知权限卡与世界书编辑对话框，logcat 无新�
 
 | # | 来源 | 项 | 判决 | 依据（一行） | 落点 | 量级 |
 |---|---|---|---|---|---|---|
-| D1 | 上游 `c1c3c4d12` | **message_node 复合索引** `(conversation_id, node_index)` | **P1（本轮唯一上游候选）** | 本仓 `MessageNodeEntity.kt:19` 仍单列索引，`MessageNodeDAO.kt:31/36` 全量 ORDER BY + 分页，长会话平方级；纯索引迁移 DB 68→69 | Migration_68_69 + schema json + 护栏测试 | ~0.5 天 |
+| D1 | 上游 `c1c3c4d12` | **message_node 复合索引** `(conversation_id, node_index)` | **✅ 已落地（2026-11-14，DB 68→69：实体复合索引 + 手写 Migration_68_69 + androidTest 两用例[含重复 node_index 容忍]，3449 单测全绿；androidTest 需真机跑）** | 本仓 `MessageNodeEntity.kt:19` 仍单列索引，`MessageNodeDAO.kt:31/36` 全量 ORDER BY + 分页，长会话平方级；纯索引迁移 DB 68→69 | Migration_68_69 + schema json + 护栏测试 | ~0.5 天 |
 | D2 | NMoi D324–D327 | **压缩分界线可撤回**（删线即还原） | **P2** | 本仓 compression_checkpoint 追加式、UI 有 CompactionCheckpointRow 但无删除/还原入口——真实缺口；顺带可对齐「只认绝对线、只在轮末、armed 一次只压一次、percent 按窗口算」防反复触发判据 | CompactionCheckpointRow + ChatService | ~1 天 |
 | D3 | NMoi D294–D296 | **会话私有 /tmp + 跨会话只读 Session-Files + 摘要带文件清单** | **P2** | 本仓 workspace 共享根、无会话私有暂存；NMoi 容器 `-b` 绑定同一份、目录先建否则静默失效、Session-Files 默认关不声明 | workspace 模块 | ~1–2 天 |
 | D4 | NMoi D329 | **命令执行前内容级询问**（拆子命令→归一化剥 sudo/xargs/timeout→argv 匹配 -rf） | **P2** | 本仓审批是工具/子代理级，无命令内容级判定；79 条十组规则库是纯数据可整套移植 | shell 工具审批层 | ~1 天 |
