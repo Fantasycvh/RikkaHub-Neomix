@@ -144,3 +144,14 @@ BiliPai 用 AGP `AsmClassVisitorFactory` 给 Compose 库内 `AndroidClipboardMan
 - 发版与合并：`55a0dc795`、`0b9ab7a77`、`6fff91ff8` 及 8 条 merge（`049283f6e`、`d9cf8d101`、`03b087f93`、`b0906af4d`、`5b005207e`、`e7894a27d`、`2854e4431`、`1c8f38de4`）。
 
 > 本节判决按「提交数」计（35 = 候选 5 + 已有等价 1 + 记账 5 + 不适用 24）；候选汇总见上文「候选」小节。
+
+## 2026-11-08 → 11-14 增量评估（2026-11-14，`f87566b86..bb8b97369`，57 提交，beta.6 → 0.8.0）
+
+约 40 条播放器/弹幕/评论/番剧/动态/直播/插件规则域（不适用）。**门控层 `core/ui/blur/` 仍零改动**（仅 app 模块新增 25 行 `ProgressiveBlurRendererPreference.kt` 渲染方案分发）。总评：**吸收 0 / 候选 1 / 判据记账 6 / 不适用其余**。
+
+- **候选：玻璃剪贴板崩溃守卫（`371166ba2`）**——Android 13+「允许粘贴」被拒后 `AndroidClipboardManager.hasText()`（无障碍粘贴可用性查询路径）读剪贴板抛异常，崩在 Compose Foundation 内部、App 层无法 try/catch，BiliPai 用 ASM 插桩（`ComposeClipboardReadGuard.java`）改字节码让 `hasText()` 被拒时返回 false。**本仓聊天输入栏同样中招面**——先真机复现确认（拒绝粘贴权限 + 输入栏触发 hasText 路径），复现则抄同款插桩（build-logic ASM ~100 行）或等 Compose 升级修复。~0.5 天（复现前提下）。
+- **撤自研一镜到底（`19d51d19d`）——归档判据验证**：整删 `AppVideoActivity.kt`（471 行自研形变+RenderEffect 窗口模糊+物理弹簧），设置改为「系统一镜到底，不可用回退普通转场」。撤改原因 = 自研与系统转场双轨维护成本过高。**验证我们上一轮「不投自研位图/形变转场、只押系统预测返回」的方向判据正确**——转场位图坑族判据降级为「仅当走系统转场路线遇到问题时备查」。
+- **判据记账**：① **LiquidLensEffectCache**（`082b4fb76`）——缓存 **RenderEffect 对象（参数化效果+合成链）不缓存像素**，按降采样档位 6 槽（1/2/4/8/16，其余共用末槽），参数 FloatArray 全 NaN 才重建，ThreadLocal+WeakHashMap 按 scope 持有；本仓三处玻璃消费点若各自构造 RenderEffect 可复用该形状。② 多玻璃组件订阅同一设置项收敛为**单一 CompositionLocal** 分发（ProgressiveBlurRendererPreference.kt）。③ 门控新增两轴：`respectComponentMotion=false`（用户触发的有限反馈无视组件级动效开关但仍守系统减弱动效）+ **骨架屏源头断供**（gate 关时无限动画 Flow 根本不启动，非冻结 modifier）——本仓 VisualWorkPolicy 三维齐全，这两轴是真增量。④ 玻璃弹窗预测返回：Dialog 无自己的返回分发，`findViewTreeNavigationEventDispatcherOwner()` 优先取**窗口级 dispatcher**，进度只预览 25% 退出、取消从当前画面续接（AppDialogPredictiveBack.kt）。⑤ **WebView 绝不入玻璃采样集**（`52f0a87ef`）——从「仅玻璃开时排除」改为**无条件** `contentBackdropEnabled=false`（回归测试断言三风格×玻璃开关 captureRequests==0）；采样停止后 `backdrop` 必须置 null 不持陈旧引用——对本仓 web 模块（内置浏览器页）是直接适用的坑判据。⑥ 侧滑返回：系统取消触摸表现为「已消费的抬起」，`forceCancel = change.isConsumed` 不得提交返回（NavSwipeDismiss.kt:306）。
+- **不适用**：横竖屏网格列数记忆、合作视频作者合并、章节进度填充、播放地址过期重取、评论区对话恢复、键鼠快捷键（仅记「次键=右键返回上级」）等域内件。
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §五 2026-11-14 轮。

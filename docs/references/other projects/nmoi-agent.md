@@ -178,3 +178,24 @@ signing 指纹钉死（D170）、tar.gz 自研解包（D164）、容器覆盖安
 - **「多 Key 线本仓领先」维持，补一条本仓自身现状**：`LruKeyRoulette` 只在搜索线接线、聊天 provider 全用 `KeyRoulette.default()`（S：`KeyRoulette.kt:16` vs `OpenAIProvider.kt:135` / `ClaudeProvider.kt:90` / `GoogleProvider.kt:97`），NMoi D302 的「按请求轮询」对本仓是**可选策略**而非缺口（顺序 = 优先级更贴本仓前缀缓存策略）。
 - **§13.3 候选「零字流退回非流式」（`ddd2860`）** 不在本区间，维持待核。
 - **§13.4 记账「世界书命中说明 UI」** 仍未接线（D307 只加了「命中了哪个关键词」的判据函数），维持记账。
+
+## 13.5、2026-11-08 → 11-14 增量评估（2026-11-14，`d7fe1b0..a30d0cd`，69 提交，D290–D329 + 0.16b–0.17b）
+
+69 条中约 12 条为唱歌/TTS/ASR 语音域（0.17b，域内不适用）；其余按 7 簇评估。总评：**吸收 0 / 候选 3 / 已有等价 4 / 不适用其余**。背景：§13.4 候选 ①②③④ 已于 11-08 后在本仓落地推送（图片上下文/车道并行/任务锚点/迁移快照），发图压缩判已有等价；本仓另已同源落地世界书触发时序四字段（`d2db4b0f7`，注明 D307-D308）与轮中压缩。注：本地克隆检出分支已从 `toolchain/agp9-neomix` 换到 `master`。
+
+### 候选（3）
+
+1. **压缩分界线可撤回（D324–D327，`26ba288`/`32efd8b`/`cfdd73e`）**——归档+摘要+分界线进 `commit_compression` 单事务；`nmoi_storage_delete_divider_json` 实现「删线即还原」；自动压缩默认关、只认绝对线、只在轮末、进会话不压、armed 过线一次只压一次、percent 按窗口算防反复触发。本仓压缩为 `compression_checkpoint` 追加式、UI 有 `CompactionCheckpointRow` 但 **grep 无删除/还原入口——分界线对象化+撤回是真实缺口**。注意差异：本仓有 mid-turn 压缩（NMoi 明确不做轮中压，两哲学并列，不改）。~1 天。
+2. **会话私有 /tmp + 跨会话只读 Session-Files + 压缩摘要带文件清单（D294–D296，`6622d38`/`c80adee`/`1dfda3c`）**——会话私有 `sessions/<id>/tmp`、文件工具与容器 `/tmp` 绑定同一份（目录先建否则静默失效）、系统 shell 不映射；Session-Files 跨会话只读默认关不声明（gate CrossSessionRead→Local）；摘要只认 /tmp 与 /chat 前缀列路径+用过它的工具。本仓 workspace 为共享根、无会话私有暂存——**差异真实**，对本仓 workspace 模块是结构性增强。~1–2 天。
+3. **命令执行前内容级询问（D329，`ad5485d`）**——三段式：拆子命令→归一化剥 sudo/xargs/timeout→argv 结构化匹配（`-rf`/`-R`/`--recursive`），79 条十组规则库；询问进 turn_busy.asks 异步作答。本仓审批是**工具/子代理级**（`SubagentApprovalQueue` 按 callId），无命令内容级判定——对本仓 shell 审批是精细化方向，规则库可整套移植（纯数据）。~1 天。
+
+### 已有等价（4）
+
+- **世界书反超件 D307–D309**（`22fc123`）：次级关键词/整词/粘性冷却延迟/ST 导入——**本仓 `d2db4b0f7` 已同源落地**（Assistant.kt:651-694 时序判定语义一致），且本仓 ST 导入（ExportSerializer.kt:380-410）更细：`/pattern/flags` 正则识别、selective=false 次键整体作废、ST 六个 match* 并成 matchAssistantPrompt、未知 logic 回退 AND_ANY；NMoi 认不出点名报错+丢弃 probability/vectorized。细节判据一条可记：NMoi 冷却判「最近一次提到」非「上次生效」，避免跨轮状态与归档打架；次级关键词只在正常窗口判、粘性带入的旧命中不被次级再拦。世界书线彻底收官：两家互超的部分都已互相吸收。
+- 多 Key 池（D302/D315）：本仓 `ProviderSetting.apiKeys` 列表 + `GenerationErrorPolicy` 401/403/429 换 key + 请求内 rotateProviderKeys 轮换，偏强；NMoi 独有判据 = `markError` 只标一把 + 401/403 **持久标错预跳过**（本仓是轮换重试、无持久 ERROR 标记），小件可补。
+- 视觉覆盖转录（D291/D298）：本仓 OcrTransformer 整链替换等价；触发条件「模型能力」vs「角色指定」不同，机制等价。
+- 断流残文入库可续写（D327 `cfdd73e`）：本仓已有等价收尾路径。
+
+> 记账：D329 询问进 `turn_busy.asks` + `nmoi_tool_answer_json`（JNI 58）异步作答、D318 三层系统提示词拼接、D322 索引摘要批量补写——壳/FFI 形态，不适用。
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §五 2026-11-14 轮。

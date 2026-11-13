@@ -1894,6 +1894,27 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - **未做**：`#2311` 待真机核验。Mistral 真机验证需自建 `api.mistral.ai` 的 OpenAI 兼容 provider 并做「带历史思考的多轮」对话。
 - **附带修复（非上游批次）**：真机验证时复现 `MemoryTriggerBootReceiver` 在「startKoin 推迟到换库之后」窗口内解析 Koin → `NoDefinitionFoundException` 崩溃（安装后 ROM 重投 BOOT_COMPLETED 触发）；改为独立 scope + `RikkaHubApp.awaitBootReady(8s)`，等不到即放弃（下次启动 reconcile）。真机两轮 BOOT 重投无 FATAL。详见 `docs/changelog/2026-11.md` 同日条目。
 
+## 2026-11-14 同步评估（`90269e39d`..`64452581d`，5 提交，上游 3.2.0 收口批）
+
+> fetch 后 `upstream/master` = `64452581d`（tag `3.2.0`）。前 22 条（`fe5a28f9a..90269e39d`）已在 11-10/11-11 两节评过并多数实施，本节只覆盖剩余 5 条。**勘误 11-11 节**：「仍未动 `bcc649abc` 轮中压缩、`0cd90ef12` 残件」已过时——本仓源码 grep 实核：轮中压缩已落地（`GenerationHandler.kt:342`、`:1377-1419`，明引 bcc649abc），自动压缩开关在 `Settings.kt:219`（**有意默认 false**，上游 `66149047e` 默认 true 不跟）。
+
+### 总评
+
+**5 提交：吸收候选 1（P1）/ 已有等价 1 / 不适用 3**。另两项闭环确认：#2271 本仓独立修复（`ChatCompletionsContent.kt` 等）与上游 `d3ef8174b` 语义一致，**挂账正式关闭**；Phone Use 上游已迭代三件（见 11-10 节观察，本仓不跟）。
+
+| 上游提交 | 内容 | 判决 | 依据 / 本仓落点 |
+|---|---|---|---|
+| `c1c3c4d12` | `message_node` 加 `(conversation_id, node_index)` 复合索引（上游 DB 32→33，纯索引迁移 33 行） | **吸收候选 P1（本轮唯一）** | 本仓 `MessageNodeEntity.kt:19` 仍只有单列 `Index("conversation_id")`，读路径同构命中（`MessageNodeDAO.kt:31` 全量 ORDER BY、`:36` LIMIT/OFFSET 分页，长会话平方级）。落点：加复合索引、删旧单列索引，version 68→69 写 `Migration_68_69` + schema json，低风险高价值，~0.5 天含护栏测试 |
+| `66149047e` | 自动压缩上下文默认开启 | **不跟（有意保守）** | 本仓自动压缩默认关是净化观察期口径（见 [[context-purification-design-state]] 记忆），上游默认 true 的行为差异是有意为之 |
+| `3adeba476` | 请求体日志只在调试构建打印 | **已有等价（更严）** | 本仓 `ChatCompletionsAPI.kt:120` 打 `summarizeRequestBody` 摘要、`:334` 仅打长度，release 泄漏面更小 |
+| `64452581d` / `b10c16857` | Phone Use：截图位图即用即收 / 微信入禁操作名单 | **不适用** | Phone Use 是上游 github 渠道专属线（`app/src/github/` source set），本仓无此功能；无障碍高权限功能的克制边界（黑名单+前台不操作+悬浮窗可停）已记观察 |
+| — | 通知权限提示（`62d6acd31`，11-10 节 P3 候选）仍未动 | 挂账 | 纯 UX 小件，与定时任务通知开关一起做 |
+
+### 后续
+
+- `c1c3c4d12` 待用户拍板后实施（DB 68→69）。
+- Phone Use 整线（`25b70392a` 无障碍操作手机，工具面 8 类 action、0-1000 网格坐标）记为**大特性观察**：安全边界设计克制（支付/银行/微信黑名单 + 本应用前台不操作 + 悬浮窗可见可停），若本仓将来做同域功能可参考其黑名单与渠道隔离（github source set 剔除 Play 构建）写法。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)

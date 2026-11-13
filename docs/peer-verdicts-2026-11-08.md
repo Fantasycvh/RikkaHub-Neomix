@@ -124,10 +124,10 @@
 | BiliPai | 硬件位图坑族（判据见 §F，已转正）；敢全 App 铺玻璃是因为**先有门控层和测试才铺的，顺序不能反** |
 | upstream | cherry-pick 硬阻塞族：宿主不同构不可移植（db4982283 TTS/eb530b0ff 公式走上游新 MarkdownParser；c9a159a5c DB 迁移撞号+回归存量）；本仓常已有更强修复（9cb72482f 双防线 vs 4af510624）——判定前先搜本仓历史 |
 
-## 四、当前挂账快照（2026-11-08）
+## 四、当前挂账快照（2026-11-14 更新）
 
-- upstream 同步点 `fe5a28f9a`（3.1.2）；本地提交普遍未推送（upstream 侧 ≈1419+）；**推送/发版等授权**。
-- upstream 挂账：任务完成主动通知模型（Notice/收件箱协议，唯一实质缺口）· #2271 Mistral 422 同构风险 · #2304 SSH workspace 待复现 · `ae599e8d7` 磁盘编码缓存增强。
+- upstream 同步点 `64452581d`（**3.2.0**，11-10/11-11/11-14 三轮评毕）；**#2271 Mistral 422 挂账正式关闭**（本仓独立修复与上游 d3ef8174b 语义一致）；上游侧未推送差 ≈1419+；**推送/发版等授权**。
+- upstream 挂账：任务完成主动通知模型（Notice/收件箱协议，唯一实质缺口）· ~~#2271 Mistral 422~~（**2026-11-14 关闭**：本仓独立修复与上游 d3ef8174b 语义一致，见 §七）· #2304 SSH workspace 待复现 · `ae599e8d7` 磁盘编码缓存增强。
 - peer 候选池见 §五；C1–C6 已在后续本地提交落地，C7 与备份自校验本轮（2026-11-08）已实现；内容级脱敏仍待语义边界拍板。
 - BiliPai 门控层零改动；nmoi/BiliPai 本轮全部细节见 [nmoi-agent.md §13.4](references/other%20projects/nmoi-agent.md) / [bilipai.md](references/other%20projects/bilipai.md)。
 - **2026-11-10 同步**：upstream 同步点 `8a837b27e`（issue 扫描到 #2310）；peer 侧 NMoi 到 `92585e8`、BiliPai 到 `05c4e2ac5`、PurrCat 到 `7cd7134`、Miffan 远端 `11b8fb55b`、billion-context `4dea18ea`、dsh-Go `8f31b2e`；仍然只评不施。**新增两个本仓实证项**：CI 零测试门禁（purrcat F1）、3 个 .so 未 16 KB 页对齐（dsh-Go 引出的静态核验）。候选池见 §六。
@@ -263,3 +263,39 @@
 验证：`pnpm typecheck`/`build`、`:web:buildWebUi`、`:app:compileDebugKotlin` 通过；
 `:app:testDebugUnitTest` 全绿（守卫测试随迁后）；两条 audit 脚本 exit 0；真机（6c841f95，
 arm64 debug）走查通知权限卡与世界书编辑对话框，logcat 无新增崩溃。
+
+## 七、2026-11-14 同步轮判决（上游 5 提交 + NMoi 69 + BiliPai 57）
+
+> 范围：上游 `90269e39d..64452581d`（5，3.2.0 收口批——前 22 条已在 11-10/11-11 两轮评毕）；NMoi `d7fe1b0..a30d0cd`（69，D290–D329 + 0.17b 语音域）；BiliPai `f87566b86..bb8b97369`（57，beta.6→0.8.0）；bigeye 1（侧栏任务分类，域内不适用）；Yuihub/senera/rikkahub-agent/solab/SillyTavern 零新增。本轮**只评不施**。明细：[upstream-analysis.md 2026-11-14 节](upstream-analysis.md)、[nmoi-agent.md §13.5](references/other%20projects/nmoi-agent.md)、[bilipai.md 2026-11-14 节](references/other%20projects/bilipai.md)。
+
+### 7.1 候选池（按建议优先级）
+
+| # | 来源 | 项 | 判决 | 依据（一行） | 落点 | 量级 |
+|---|---|---|---|---|---|---|
+| D1 | 上游 `c1c3c4d12` | **message_node 复合索引** `(conversation_id, node_index)` | **P1（本轮唯一上游候选）** | 本仓 `MessageNodeEntity.kt:19` 仍单列索引，`MessageNodeDAO.kt:31/36` 全量 ORDER BY + 分页，长会话平方级；纯索引迁移 DB 68→69 | Migration_68_69 + schema json + 护栏测试 | ~0.5 天 |
+| D2 | NMoi D324–D327 | **压缩分界线可撤回**（删线即还原） | **P2** | 本仓 compression_checkpoint 追加式、UI 有 CompactionCheckpointRow 但无删除/还原入口——真实缺口；顺带可对齐「只认绝对线、只在轮末、armed 一次只压一次、percent 按窗口算」防反复触发判据 | CompactionCheckpointRow + ChatService | ~1 天 |
+| D3 | NMoi D294–D296 | **会话私有 /tmp + 跨会话只读 Session-Files + 摘要带文件清单** | **P2** | 本仓 workspace 共享根、无会话私有暂存；NMoi 容器 `-b` 绑定同一份、目录先建否则静默失效、Session-Files 默认关不声明 | workspace 模块 | ~1–2 天 |
+| D4 | NMoi D329 | **命令执行前内容级询问**（拆子命令→归一化剥 sudo/xargs/timeout→argv 匹配 -rf） | **P2** | 本仓审批是工具/子代理级，无命令内容级判定；79 条十组规则库是纯数据可整套移植 | shell 工具审批层 | ~1 天 |
+| D5 | BiliPai `371166ba2` | **剪贴板 hasText 崩溃守卫**（Android 13+ 拒绝粘贴路径，崩在 Foundation 内部无法 try/catch） | **P2（先复现）** | 本仓聊天输入栏同样中招面；BiliPai 用 ASM 插桩让 hasText 被拒返回 false | 真机复现 → build-logic ASM ~100 行 | ~0.5 天 |
+| D6 | NMoi D315 | Key 池 401/403 **持久标错预跳过** | **P3** | 本仓是请求内轮换重试，无持久 ERROR 标记；`markError` 只标一把 + `errorStatus()` 取 HTTP 状态 | GenerationErrorPolicy / KeyPool 形状 | ~0.5 天 |
+
+### 7.2 已有等价（勿立项）
+
+- **世界书线彻底收官**：NMoi D307–D309 的次级关键词/整词/粘性冷却延迟/ST 导入，本仓 `d2db4b0f7` 已同源落地（delay/sticky/cooldown 时序判定语义一致），且本仓 ST 导入更细（`/pattern/flags` 正则识别、selective=false 次键整体作废、六 match* 并列）；NMoi 独有判据两条已记 §二：冷却判「最近一次提到」非「上次生效」（零状态不与归档打架）、次级键只在正常窗口判。
+- 多 Key 池轮换（本仓 rotateProviderKeys 偏强，仅缺 D6 的持久标错）、视觉覆盖转录（OcrTransformer 整链替换等价）、断流残文入库可续写、请求体日志门控（本仓摘要化更严）、自动压缩默认开（**有意不跟**：本仓默认关是净化观察期口径）。
+
+### 7.3 判据记账（2026-11-14 新）
+
+- **BiliPai `19d51d19d` 撤自研一镜到底**：471 行自研形变+窗口模糊+物理弹簧整删，收敛为「系统转场 + 普通转场兜底」——**验证 11-08 轮「不投自研位图/形变转场」方向判据正确**；转场位图坑族降级为备查。
+- **LiquidLensEffectCache**（`082b4fb76`）：缓存 **RenderEffect 对象（参数化效果+合成链）不缓存像素**、按降采样档 6 槽、参数 FloatArray 全 NaN 才重建；多玻璃组件订阅同一设置项收敛为单一 CompositionLocal。
+- **WebView 无条件不入玻璃采样集**（`52f0a87ef`）：含回归测试断言三风格×玻璃开关 captureRequests==0；**采样停止后 backdrop 必须置 null** 不持陈旧引用——对本仓 web 模块直接适用。
+- 门控两新轴：`respectComponentMotion=false`（用户触发反馈无视组件级开关但仍守系统减弱动效）+ **骨架屏源头断供**（gate 关时动画 Flow 不启动，非冻结 modifier）。
+- 玻璃弹窗预测返回：窗口级 `findViewTreeNavigationEventDispatcherOwner` + 只预览 25% 退出、取消从当前画面续接。
+- 侧滑返回：系统取消触摸 =「已消费的抬起」，`forceCancel = change.isConsumed` 不得提交返回。
+- NMoi D318 三层系统提示词拼接、D322 索引摘要批量补写——FFI/壳形态记账。
+
+### 7.4 本轮修正的既有结论
+
+- **11-11 节「仍未动 bcc649abc 轮中压缩」勘误**：已随第三轮落地（`GenerationHandler.kt:342/1377-1419`），§6.1 #2 行已过时，以 6.7 表为准。
+- **NMoi 本地克隆检出分支已从 `toolchain/agp9-neomix` 换到 `master`**（用户操作），后续增量评估直接基于 master。
+- **Phone Use 大特性观察定稿**：上游 github 渠道专属（source set 剔除 Play 构建），无障碍操作手机的安全边界克制（支付/银行/微信黑名单 + 本应用前台不操作 + 悬浮窗可见可停）——本仓不跟，做同域功能时参考其边界写法。
