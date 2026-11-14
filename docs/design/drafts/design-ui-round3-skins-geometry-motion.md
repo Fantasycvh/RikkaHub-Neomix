@@ -1,6 +1,6 @@
 # UI 第三轮改造设计稿：皮肤档位 / 气泡几何 v2 / IA 三件 / motion tokens
 
-> 状态：**M1 契约层已实施（2026-11-14，工作区未提交）**：§2.1/§2.2/§2.4/§2.5 落地 + §2.3 核实为已存在（ChatFontFamily.SERIF 全链路在仓，零代码）。全量单测绿、audit A=0/A'=0、真机冒烟（主页/聊天/设置五页）0 FATAL。渲染接线挂账：maxWidthFraction（M2 皮肤档一起）、advancedGroup 页面消费（M3）、motion 散值收编（M4）。
+> 状态：**M1+M2 已实施并本地提交（2026-11-15，dee8c09ce + eb2a675e0，未推送）**：M1 契约层（气泡几何 v2 / motion TOKENS 档 / SmoothCornerShape / CardGroup trailingValue+高级折叠段）；M2 两档皮肤（builtin.squircle 现代旗舰 + builtin.paper 纸质感）+ 内置聊天外观方案（builtin.chat:glass/paper，ChatAppearanceRegistry.installBuiltins）+ 皮肤→聊天方案联动（builtinSkinChatLink，onSelect 写入）+ 皮肤编辑器 motion Select 三档文案。**抽屉对角斜切 bug 已修**：SmoothCornerShape 旧实现 first 标记在首角 r=0 时残留，第二次 moveTo 拆轮廓、close() 把左下顶点连到右上切点成对角线（抽屉 sheet 形状恰为 topStart=0 必触发）；paper 复现是皮肤编辑器覆写残留 continuous=true 跨档生效。修复=重写循环（先 lineTo(p0) 再判 r==0 + RTL 角映射），附 androidTest SmoothCornerShapeTest。真机验证：两档应用/联动/玻璃气泡/纸质感平铺/抽屉渲染全过。挂账：maxWidthFraction 渲染接线、设备颜色模式恢复深色（验证时误触改浅色）、advancedGroup 页面消费（M3）、motion 散值收编（M4）。
 > 上游：[design-ui-overhaul-research.md](design-ui-overhaul-research.md)（第一轮调研 + §10 dsh-go 补析）
 > 视觉对比稿：`原型/RikkaHub-UI第三轮-视觉对比稿.html`（用户已按稿拍板）
 > 硬约束沿用调研稿 §6：IME 宿主规范、supportingContent 单子节点坑、皮肤契约、长文本性能、布局稳定性。
