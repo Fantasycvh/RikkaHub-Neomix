@@ -224,6 +224,19 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         }
                     }
+                    // 方向 B：输入栏浮动 pill 形态（胶囊 + 键盘上方浮动 + 低频动作收进 FAB 菜单）
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_chat_input_pill_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_chat_input_pill_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.chatInputFloatingPill,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(chatInputFloatingPill = it))
+                                }
+                            )
+                        },
+                    )
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_desc)) },

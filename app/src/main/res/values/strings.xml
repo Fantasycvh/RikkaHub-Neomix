@@ -3252,5 +3252,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_model_page_ocr_deepseek_max_pages_desc">Local pre-check before upload to avoid paying for oversized PDFs. Server limit is 1000 pages.</string>
   <string name="setting_display_page_enable_page_glass_theme_title">Glass top bars beyond chat</string>
   <string name="setting_display_page_enable_page_glass_theme_desc">Extend frosted top bars to settings and other pages; disabled automatically on AMOLED black</string>
+  <string name="setting_display_page_chat_input_pill_title">Floating input bar</string>
+  <string name="setting_display_page_chat_input_pill_desc">Capsule input bar floating above the keyboard; low-frequency actions fold into an expandable menu</string>
 </resources>
 

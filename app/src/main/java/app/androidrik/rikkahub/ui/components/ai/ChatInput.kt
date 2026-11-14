@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,12 +47,17 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FloatingActionButtonMenu
+import androidx.compose.material3.FloatingActionButtonMenuItem
+import androidx.compose.material3.ToggleFloatingActionButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +83,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -118,6 +126,7 @@ import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowUp02
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.FullScreen
+import me.rerere.hugeicons.stroke.Setting07
 import me.rerere.hugeicons.stroke.Zap
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.openai.SubscriptionProviderLock
@@ -246,15 +255,17 @@ fun ChatInput(
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
 
-    // 键盘弹出时让底部两角变直角，贴合 IME
+    // 键盘弹出时让底部两角变直角，贴合 IME（经典形态）；
+    // 浮动 pill 形态（方向 B）保持胶囊 + 键盘上方浮动间距，不再贴底
+    val pill = settings.displaySetting.chatInputFloatingPill
     val imeVisible = WindowInsets.isImeVisible
-    val containerShape = if (imeVisible) {
-        MaterialTheme.shapes.largeIncreased.copy(
+    val containerShape = when {
+        pill -> RoundedCornerShape(28.dp)
+        imeVisible -> MaterialTheme.shapes.largeIncreased.copy(
             bottomStart = CornerSize(0.dp),
             bottomEnd = CornerSize(0.dp),
         )
-    } else {
-        MaterialTheme.shapes.largeIncreased
+        else -> MaterialTheme.shapes.largeIncreased
     }
 
     /**
@@ -324,15 +335,100 @@ fun ChatInput(
         }
     }
 
+    // 方向 B：低频动作控件清单，同时供经典行与 FAB 菜单消费；
+    // stringResource 不能在非组合回调里调用，文案先取好（原图标行同款处理）
+    var inputFabMenuExpanded by remember { mutableStateOf(false) }
+    val enableSearchMsg = stringResource(R.string.web_search_enabled)
+    val disableSearchMsg = stringResource(R.string.web_search_disabled)
+    val memoryOffMsg = stringResource(R.string.chat_memory_disabled_toast_on)
+    val memoryOnMsg = stringResource(R.string.chat_memory_disabled_toast_off)
+    val inputMenuItems: List<Pair<String, @Composable () -> Unit>> = buildList {
+        add("模型" to { ModelSelector(
+            modelId = assistant.chatModelId ?: settings.chatModelId,
+            providers = modelPickerProviders,
+            notice = lockNotice,
+            onSelect = { model ->
+                if (modelProviderLock != null && !modelProviderLock.allows(model, settings.providers)) {
+                    lockNotice?.let { toaster.show(message = it, duration = 3.seconds) }
+                } else {
+                    onUpdateChatModel(model)
+                }
+            },
+            type = ModelType.CHAT,
+            onlyIcon = true,
+        ) })
+        add("搜索" to { SearchPickerButton(
+            enableSearch = enableSearch,
+            settings = settings,
+            onToggleSearch = { enabled ->
+                onToggleSearch(enabled)
+                toaster.show(
+                    message = if (enabled) enableSearchMsg else disableSearchMsg,
+                    duration = 1.seconds,
+                    type = if (enabled) ToastType.Success else ToastType.Normal,
+                )
+            },
+            onUpdateSearchService = onUpdateSearchService,
+            model = settings.getCurrentChatModel(),
+            onUpdateBuiltInSearch = onUpdateBuiltInSearch,
+        ) })
+        val menuChatModel = settings.getCurrentChatModel()
+        if (menuChatModel?.abilities?.contains(ModelAbility.REASONING) == true) {
+            add("思考强度" to { ReasoningButton(
+                reasoningLevel = assistant.reasoningLevel,
+                presets = reasoningPresets(menuChatModel, menuChatModel.findProvider(settings.providers)),
+                selectedPresetId = assistant.reasoningPresetId,
+                onSelectPreset = { preset ->
+                    onUpdateAssistant(assistant.copy(
+                        reasoningLevel = preset?.level ?: assistant.reasoningLevel,
+                        reasoningPresetId = preset?.id,
+                    ))
+                },
+                onUpdateReasoningLevel = { onUpdateAssistant(assistant.copy(reasoningLevel = it, reasoningPresetId = null)) },
+                onlyIcon = true,
+                overrideKeys = (assistant.customBodies + menuChatModel.customBodies).reasoningOverrideKeys(),
+            ) })
+        }
+        contextUsage?.let { usage ->
+            add("上下文" to { ContextUsageRingButton(
+                usedTokens = usage.usedTokens,
+                windowTokens = usage.windowTokens,
+                onClick = onShowContextSheet,
+            ) })
+        }
+        if (assistant.enableMemory) {
+            add("记忆" to { MemoryButton(
+                memoryDisabled = memoryDisabled,
+                onToggleMemoryDisabled = { disabled ->
+                    onToggleMemoryDisabled(disabled)
+                    toaster.show(
+                        message = if (disabled) memoryOffMsg else memoryOnMsg,
+                        duration = 1.seconds,
+                    )
+                },
+                onFreezeMemory = onFreezeMemory,
+            ) })
+        }
+    }
+
     Surface(
         color = Color.Transparent,
     ) {
-        Column(
+        Box(
             modifier = modifier
                 .imePadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 8.dp)
-                .padding(bottom = if (imeVisible) 0.dp else 8.dp),
+                .padding(horizontal = if (pill) 12.dp else 8.dp)
+                .padding(
+                    bottom = when {
+                        pill && imeVisible -> 12.dp
+                        pill -> 8.dp
+                        imeVisible -> 0.dp
+                        else -> 8.dp
+                    }
+                )
+        ) {
+        Column(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // 输入栏背景图（轻量个性化，design-light-personalization.md 决策 4/5）：
@@ -444,7 +540,10 @@ fun ChatInput(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
-                        Row(
+                        // pill 形态下左簇收进 FAB 菜单（overlay 盖在输入容器上），这里留触发器占位
+                        if (pill) {
+                            Spacer(Modifier.width(40.dp))
+                        } else Row(
                             modifier = Modifier
                                 .weight(1f)
                                 .horizontalScroll(rememberScrollState()),
@@ -683,7 +782,52 @@ fun ChatInput(
                 }
                     }
             }
-
+        }
+        if (pill) {
+            // FAB menu（方向 B）：低频动作（模型/搜索/思考/上下文/记忆）渐进披露，
+            // 展开时向上覆盖输入框/消息区；菜单项内嵌原控件，展开期间保持组合。
+            // M3E FAB menu 无内置外部点击关闭——展开期间铺一层透明 scrim，
+            // 点输入区任意处即收起（菜单溢出到聊天区的部分不拦截，点齿轮也可收起）
+            if (inputFabMenuExpanded) {
+                Box(
+                    Modifier
+                        .matchParentSize()
+                        .zIndex(1f)
+                        .pointerInput(Unit) {
+                            detectTapGestures { inputFabMenuExpanded = false }
+                        }
+                )
+            }
+            FloatingActionButtonMenu(
+                expanded = inputFabMenuExpanded,
+                button = {
+                    ToggleFloatingActionButton(
+                        checked = inputFabMenuExpanded,
+                        onCheckedChange = { inputFabMenuExpanded = it },
+                        // containerSize 固定 40dp：默认 56dp 与图标行邻居不齐（视觉大一圈且偏上）
+                        containerSize = { 40.dp },
+                        containerCornerRadius = { 20.dp },
+                    ) {
+                        Icon(
+                            imageVector = HugeIcons.Setting07,
+                            contentDescription = stringResource(R.string.more_options),
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .zIndex(2f)
+                    .align(Alignment.BottomStart)
+                    .padding(start = 4.dp, bottom = 4.dp),
+            ) {
+                inputMenuItems.forEach { (label, control) ->
+                    FloatingActionButtonMenuItem(
+                        onClick = {},
+                        text = { Text(label) },
+                        icon = control,
+                    )
+                }
+            }
+        }
         }
     }
 }
