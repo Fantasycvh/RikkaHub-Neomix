@@ -203,12 +203,29 @@ internal fun FilesPicker(
             )
         }
 
-        if (settings.mcpServers.isNotEmpty()) {
-            McpPickerListItem(
-                assistant = assistant,
-                servers = settings.mcpServers,
-                mcpManager = mcpManager,
-                onUpdateAssistant = onUpdateAssistant,
+        // 会话级动作行：MCP 与「为此会话创建定时任务」并排一行（窄行省高度）；
+        // 定时任务与压缩/提示词预览一样是「对这条会话发起的动作」，不是聊天内容的一部分
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (settings.mcpServers.isNotEmpty()) {
+                McpPickerListItem(
+                    assistant = assistant,
+                    servers = settings.mcpServers,
+                    mcpManager = mcpManager,
+                    modifier = Modifier.weight(1f),
+                    onUpdateAssistant = onUpdateAssistant,
+                )
+            }
+            CompactPickerListItem(
+                icon = HugeIcons.Time02,
+                text = stringResource(R.string.scheduled_task_create_for_conversation),
+                onClick = {
+                    onDismiss()
+                    onCreateScheduledTask()
+                },
+                modifier = if (settings.mcpServers.isNotEmpty()) Modifier.weight(1.5f) else Modifier,
             )
         }
 
@@ -262,17 +279,6 @@ internal fun FilesPicker(
             onClick = {
                 navController.navigate(Screen.PromptInspect(conversation.id.toString()))
                 onDismiss()
-            },
-        )
-
-        // 为本会话创建定时任务（定时任务 P2）：入口从消息列表挪进「+」面板——它和
-        // 压缩/提示词预览一样是「对这条会话发起的动作」，不是聊天内容的一部分
-        CompactPickerListItem(
-            icon = HugeIcons.Time02,
-            text = stringResource(R.string.scheduled_task_create_for_conversation),
-            onClick = {
-                onDismiss()
-                onCreateScheduledTask()
             },
         )
 
