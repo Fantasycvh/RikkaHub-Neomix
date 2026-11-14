@@ -5,6 +5,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import app.androidrik.plugin.api.RikkaPlugin
+import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -74,4 +75,25 @@ val builtInAppSkins = listOf(
         typography = AppSkinTypography(sizeRatio = 1.1f),
         shapes = AppSkinShapes(cardGroupOuterDp = 28f, cardGroupInnerDp = 8f, buttonDp = 24f, inputDp = 16f),
         spacing = AppSkinSpacing(pageDp = 12f, sectionDp = 20f, groupItemDp = 4f, formVerticalDp = 16f, formGapDp = 16f))),
+    // 第三轮档位：气质档 = 完整 token 组合（palette + typography + shapes + spacing + motion）
+    AppSkinPreset("builtin.squircle", "现代旗舰", AppSkin(
+        typography = AppSkinTypography(expressive = true),
+        shapes = AppSkinShapes(extraSmallDp = 8f, smallDp = 12f, mediumDp = 18f, largeDp = 24f, extraLargeDp = 32f,
+            cardGroupOuterDp = 28f, cardGroupInnerDp = 6f, buttonDp = 28f, inputDp = 18f, continuous = true),
+        spacing = AppSkinSpacing(pageDp = 12f, sectionDp = 18f),
+        motion = AppSkinMotion.EXPRESSIVE)),
+    AppSkinPreset("builtin.paper", "纸质感", AppSkin(
+        typography = AppSkinTypography(family = ChatFontFamily.SERIF, sizeRatio = 1.05f),
+        shapes = AppSkinShapes(extraSmallDp = 4f, smallDp = 6f, mediumDp = 10f, largeDp = 14f, extraLargeDp = 20f,
+            cardGroupOuterDp = 18f, cardGroupInnerDp = 4f, buttonDp = 12f, inputDp = 10f),
+        spacing = AppSkinSpacing(pageDp = 12f, sectionDp = 20f, groupItemDp = 4f, formVerticalDp = 14f, formGapDp = 16f),
+        motion = AppSkinMotion.STANDARD,
+        palette = CustomTheme(id = "builtin.paper.palette", name = "纸质感",
+            primaryColorArgb = 0xFFA0522D, paletteStyle = ThemePaletteStyle.NEUTRAL))),
+)
+
+/** 皮肤档位 → 推荐聊天域方案（应用皮肤时联动写入；用户可随时改回）。 */
+val builtinSkinChatLink: Map<String, String> = mapOf(
+    "builtin.squircle" to "builtin.chat:glass",
+    "builtin.paper" to "builtin.chat:paper",
 )

@@ -107,6 +107,43 @@ class AppSkinTest {
         assertEquals(skin.motionTokens, untouched.motionTokens); assertEquals(10f, untouched.shapes?.inputDp)
     }
 
+    @Test fun `third round presets carry complete token combos and link chat appearance`() {
+        val squircle = builtInAppSkins.first { it.id == "builtin.squircle" }
+        val paper = builtInAppSkins.first { it.id == "builtin.paper" }
+        assertTrue(squircle.skin.shapes.continuous)
+        assertTrue(squircle.skin.typography.expressive)
+        assertEquals(AppSkinMotion.EXPRESSIVE, squircle.skin.motion)
+        assertNull(squircle.skin.palette) // 继承动态色
+        assertEquals(ChatFontFamily.SERIF, paper.skin.typography.family)
+        assertEquals(AppSkinMotion.STANDARD, paper.skin.motion)
+        assertEquals(ThemePaletteStyle.NEUTRAL, paper.skin.palette?.paletteStyle)
+        // resolve 归一化后与预设等价（registered skins 不走 normalized，resolve 兜底）
+        assertEquals(squircle.skin, resolveAppSkin(DisplaySetting(appSkinId = squircle.id), builtInAppSkins, emptyList()).skin)
+        // 联动表覆盖两档且指向注册的聊天方案 id
+        assertEquals(setOf("builtin.squircle", "builtin.paper"), builtinSkinChatLink.keys)
+    }
+
+    @Test fun `builtin chat appearance presets register and resolve by link`() {
+        val registry = ChatAppearanceRegistry()
+        registry.register("builtin.chat", builtinChatAppearancePresets).use {
+            val presets = registry.presets.value
+            val glass = presets.first { it.id == "builtin.chat:glass" }
+            val paper = presets.first { it.id == "builtin.chat:paper" }
+            assertEquals(BubbleMaterial.GLASS, glass.appearance.userBubble.material)
+            assertEquals(5f, glass.appearance.userBubble.geometry.tailCornerDp)
+            assertFalse(paper.appearance.assistantBubble.visible)
+            assertEquals("#EBDFC9", paper.appearance.userBubble.colorHex)
+            // 皮肤联动：选纸质感皮肤 → chat preset 指向纸质感方案，resolve 生效
+            val display = DisplaySetting(appSkinId = "builtin.paper", chatAppearancePresetId = "builtin.chat:paper")
+            val resolved = resolveAppSkin(display, builtInAppSkins, presets)
+            assertFalse(resolved.chat.assistantBubble.visible)
+            assertEquals(14f, resolved.chat.userBubble.geometry.radiusDp)
+        }
+        // 注册撤销后 link id 解析不到 → 回落 legacy 显示设置
+        val fallback = resolveAppSkin(DisplaySetting(chatAppearancePresetId = "builtin.chat:paper"), builtInAppSkins, emptyList())
+        assertEquals(DisplaySetting().toChatAppearance(), fallback.chat)
+    }
+
     @Test fun `motion tokens survive serialization and old json reads stay on presets`() {
         val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
         val skin = AppSkin(motion = AppSkinMotion.TOKENS, motionTokens = AppSkinMotionTokens(quickMs = 180, flingBounce = 0.2f))

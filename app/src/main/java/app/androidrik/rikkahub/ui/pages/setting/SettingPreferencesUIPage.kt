@@ -65,6 +65,7 @@ import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.data.model.ChatAppearance
 import app.androidrik.rikkahub.data.model.withChatAppearance
+import app.androidrik.rikkahub.ui.theme.builtinSkinChatLink
 import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
 import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.theme.resolveChatAppearance
@@ -220,7 +221,13 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
         ) {
             item(key = "app_skin") {
                 AppSkinSettings(displaySetting,
-                    onSelect = { id -> updateDisplaySetting { it.copy(appSkinId = id) } },
+                    onSelect = { id -> updateDisplaySetting { current ->
+                        // 第三轮气质档联动聊天域方案（builtinSkinChatLink），用户可随时在聊天外观改回；
+                        // 「跟随默认」或未命中档位不碰聊天域
+                        val link = id?.let { builtinSkinChatLink[it] }
+                        if (link != null) current.copy(appSkinId = id, chatAppearancePresetId = link)
+                        else current.copy(appSkinId = id)
+                    } },
                     onEdit = { before, after -> updateDisplaySetting { current ->
                         current.copy(appSkinOverrides = current.appSkinOverrides.withEdits(before, after))
                     } },

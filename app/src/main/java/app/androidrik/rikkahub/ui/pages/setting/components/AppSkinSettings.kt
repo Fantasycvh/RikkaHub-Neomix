@@ -130,7 +130,11 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
             SkinSlider("表单水平留白", draft.spacing.formHorizontalDp, 8f..32f) { value -> draft = draft.copy(spacing = draft.spacing.copy(formHorizontalDp = value)) }
             SkinSlider("表单垂直留白", draft.spacing.formVerticalDp, 4f..24f) { value -> draft = draft.copy(spacing = draft.spacing.copy(formVerticalDp = value, formGapDp = value)) }
             Select(options = AppSkinMotion.entries, selectedOption = draft.motion,
-                onOptionSelected = { draft = draft.copy(motion = it) }, optionToString = { if (it == AppSkinMotion.EXPRESSIVE) "灵动动效" else "标准动效" })
+                onOptionSelected = { draft = draft.copy(motion = it) }, optionToString = { when (it) {
+                    AppSkinMotion.EXPRESSIVE -> "灵动动效"
+                    AppSkinMotion.STANDARD -> "标准动效"
+                    AppSkinMotion.TOKENS -> "数值动效（仅方案预设携带）"
+                } })
             SkinPanelsControls(draft) { draft = it }
             EmbeddedSkinControls(draft) { draft = it }
             SkinResourceControls(draft, { draft = it }, { importing = it }, enabled = !importing)

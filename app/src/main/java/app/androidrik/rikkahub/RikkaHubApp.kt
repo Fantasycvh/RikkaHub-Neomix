@@ -61,6 +61,7 @@ import app.androidrik.rikkahub.data.storage.StorageUsageManager
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.remote.ModelsDevUpdater
 import app.androidrik.rikkahub.data.plugin.installBuiltInPlugins
+import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
 import app.androidrik.rikkahub.ui.theme.BuiltinChatAppearancePlugin
 import app.androidrik.rikkahub.ui.theme.installPluginChatAppearanceBridge
 import app.androidrik.rikkahub.ui.components.message.tools.installPluginToolUIBridge
@@ -134,6 +135,8 @@ class RikkaHubApp : Application() {
         // JobScheduler 为 null 直接崩溃），Koin/DB/WorkManager 与编译无关
         if (isIsolatedProcess()) return
         Thread { runCatching { app.androidrik.rikkahub.data.files.SkinPackageStore(this).reload() } }.start()
+        // 内置聊天外观方案（第三轮皮肤档位的聊天域配套）：内存注册，随进程生命周期
+        ChatAppearanceRegistry.installBuiltins()
 
         // 本次进程启动时刻（P0.5 启动对账的判据）：必须早于任何 run 创建；
         // 放在通知渠道/DB 之前，重试 boot 也不会把它改晚。

@@ -8,7 +8,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import kotlin.math.min
@@ -48,37 +47,37 @@ class SmoothCornerShape : CornerBasedShape {
         layoutDirection: LayoutDirection,
     ): Outline {
         if (size.width <= 0f || size.height <= 0f) return Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
-        val radii = floatArrayOf(topStart, topEnd, bottomEnd, bottomStart)
-        if (radii.all { it <= 0f }) return Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
+        if (topStart <= 0f && topEnd <= 0f && bottomEnd <= 0f && bottomStart <= 0f) {
+            return Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
+        }
         val s = smoothing.coerceIn(0f, 1f)
         // 切点外扩 (1+s) 倍，四角不重叠的前提
         val maxR = min(size.width, size.height) / 2f / (1f + s)
         val path = Path()
-        var first = true
+        val ltr = layoutDirection == LayoutDirection.Ltr
+        val topLeft = if (ltr) topStart else topEnd
+        val topRight = if (ltr) topEnd else topStart
+        val bottomRight = if (ltr) bottomEnd else bottomStart
+        val bottomLeft = if (ltr) bottomStart else bottomEnd
         // 顺时针四角；from/to = 从顶点出发的两条边方向
         val corners = listOf(
-            CornerDef(Offset(0f, 0f), from = Offset(0f, 1f), to = Offset(1f, 0f), radius = radii[0]), // 左上
-            CornerDef(Offset(size.width, 0f), from = Offset(-1f, 0f), to = Offset(0f, 1f), radius = radii[1]), // 右上
-            CornerDef(Offset(size.width, size.height), from = Offset(0f, -1f), to = Offset(-1f, 0f), radius = radii[2]), // 右下
-            CornerDef(Offset(0f, size.height), from = Offset(1f, 0f), to = Offset(0f, -1f), radius = radii[3]), // 左下
+            CornerDef(Offset(0f, 0f), from = Offset(0f, 1f), to = Offset(1f, 0f), radius = topLeft),
+            CornerDef(Offset(size.width, 0f), from = Offset(-1f, 0f), to = Offset(0f, 1f), radius = topRight),
+            CornerDef(Offset(size.width, size.height), from = Offset(0f, -1f), to = Offset(-1f, 0f), radius = bottomRight),
+            CornerDef(Offset(0f, size.height), from = Offset(1f, 0f), to = Offset(0f, -1f), radius = bottomLeft),
         )
         corners.forEachIndexed { index, def ->
             val r = def.radius.coerceIn(0f, maxR)
-            if (r <= 0f) {
-                // 直角：落在顶点上，沿边走到下一角
-                if (first) path.moveTo(def.vertex.x, def.vertex.y) else path.lineTo(def.vertex.x, def.vertex.y)
-                path.lineTo(def.vertex.x, def.vertex.y)
-                return@forEachIndexed
-            }
             val a = r * (1f + s)
-            val c = r * 0.4477f * (1f - 0.55f * s)
             val p0 = def.vertex + def.from * a
+            if (index == 0) path.moveTo(p0.x, p0.y) else path.lineTo(p0.x, p0.y)
+            if (r == 0f) return@forEachIndexed
+
+            val c = r * 0.4477f * (1f - 0.55f * s)
             val c1 = def.vertex + def.from * c
             val c2 = def.vertex + def.to * c
             val p3 = def.vertex + def.to * a
-            if (first) path.moveTo(p0.x, p0.y) else path.lineTo(p0.x, p0.y)
             path.cubicTo(c1.x, c1.y, c2.x, c2.y, p3.x, p3.y)
-            first = false
         }
         path.close()
         return Outline.Generic(path)
