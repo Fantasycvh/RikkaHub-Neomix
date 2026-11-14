@@ -87,7 +87,8 @@ fun ReasoningButton(
         modifier = modifier,
     ) {
         Row(
-            modifier = Modifier.padding(vertical = 8.dp, horizontal = 8.dp),
+            // 水平内边距 4dp：与相邻 picker 图标保持 ~8dp 视觉间距（历史 8dp 偏松）
+            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {

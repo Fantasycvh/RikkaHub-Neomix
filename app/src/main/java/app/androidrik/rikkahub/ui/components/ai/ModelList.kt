@@ -250,6 +250,8 @@ fun ModelSelector(
             onClick = {
                 state.open()
             },
+            // 40dp：与相邻 picker（ToggleSurface 40dp，含内边距）同高同宽，避免混排时偏大
+            modifier = Modifier.size(40.dp),
         ) {
             if (model != null) {
                 BadgedBox(badge = { if (owner != null) CatalogModelMarker(owner, model, iconOnly = true) }) {
