@@ -10,6 +10,8 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
@@ -25,6 +27,8 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.CardGroupValueChip
+import app.androidrik.rikkahub.ui.theme.AppSkinRegistry
 import app.androidrik.rikkahub.ui.pages.setting.search.SettingSearchBar
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -37,6 +41,9 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 fun SettingPreferencesPage() {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
+    val settings = LocalSettings.current
+    val skins by AppSkinRegistry.shared.skins.collectAsState()
+    val skinName = skins.firstOrNull { it.id == settings.displaySetting.appSkinId }?.name ?: "默认"
 
     GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
@@ -75,24 +82,35 @@ fun SettingPreferencesPage() {
                         leadingContent = { Icon(HugeIcons.Sun01, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_theme)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_theme_desc)) },
+                        trailingValue = { CardGroupValueChip(if (settings.dynamicColor) "动态色" else "固定主题") },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesNotification) },
                         leadingContent = { Icon(HugeIcons.Notification01, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_notification)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_notification_desc)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                if (settings.displaySetting.enableNotificationOnMessageGeneration) "已开启" else "已关闭",
+                                emphasized = settings.displaySetting.enableNotificationOnMessageGeneration,
+                            )
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesGeneral) },
                         leadingContent = { Icon(HugeIcons.Settings03, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_general)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_general_desc)) },
+                        trailingValue = {
+                            CardGroupValueChip(if (settings.displaySetting.sendOnEnter) "回车发送" else "回车换行")
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesUI) },
                         leadingContent = { Icon(HugeIcons.PaintBoard, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_ui)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_ui_desc)) },
+                        trailingValue = { CardGroupValueChip(skinName) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesAppIdentity) },
@@ -105,6 +123,12 @@ fun SettingPreferencesPage() {
                         leadingContent = { Icon(HugeIcons.GlobalSearch, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_network)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_network_desc)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                if (settings.globalProxy.isConfigured) "已配置" else "直连",
+                                emphasized = settings.globalProxy.isConfigured,
+                            )
+                        },
                     )
                 }
             }

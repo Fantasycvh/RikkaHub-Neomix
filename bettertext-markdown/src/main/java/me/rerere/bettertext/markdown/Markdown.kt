@@ -42,6 +42,7 @@ fun Markdown(
     softBreakAsLineBreak: Boolean = true,
     streaming: Boolean = false,
     blockFadeIn: Boolean = false,
+    blockFadeInDurationMillis: Int = DEFAULT_BLOCK_FADE_IN_MS,
     onLinkClick: ((url: String) -> Unit)? = null,
 ) {
     Markdown(
@@ -51,6 +52,7 @@ fun Markdown(
         theme = theme,
         components = components,
         blockFadeIn = blockFadeIn,
+        blockFadeInDurationMillis = blockFadeInDurationMillis,
         onLinkClick = onLinkClick,
     )
 }
@@ -64,10 +66,16 @@ fun Markdown(
     theme: MarkdownTheme = MarkdownDefaults.theme,
     components: MarkdownComponents = MarkdownDefaults.components,
     blockFadeIn: Boolean = false,
+    blockFadeInDurationMillis: Int = DEFAULT_BLOCK_FADE_IN_MS,
     onLinkClick: ((url: String) -> Unit)? = null,
 ) {
     ProvideMarkdownContext(style, theme, components, onLinkClick) {
-        MarkdownBlocks(blocks = document.blocks, modifier = modifier, blockFadeIn = blockFadeIn)
+        MarkdownBlocks(
+            blocks = document.blocks,
+            modifier = modifier,
+            blockFadeIn = blockFadeIn,
+            blockFadeInDurationMillis = blockFadeInDurationMillis,
+        )
     }
 }
 
@@ -83,6 +91,7 @@ fun Markdown(
     theme: MarkdownTheme = MarkdownDefaults.theme,
     components: MarkdownComponents = MarkdownDefaults.components,
     blockFadeIn: Boolean = false,
+    blockFadeInDurationMillis: Int = DEFAULT_BLOCK_FADE_IN_MS,
     onLinkClick: ((url: String) -> Unit)? = null,
 ) {
     ProvideMarkdownContext(style, theme, components, onLinkClick) {
@@ -91,6 +100,7 @@ fun Markdown(
             modifier = modifier,
             firstBlockIndex = unit.firstBlockIndex,
             blockFadeIn = blockFadeIn,
+            blockFadeInDurationMillis = blockFadeInDurationMillis,
         )
     }
 }

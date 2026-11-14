@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -676,24 +677,34 @@ private fun ContextLengthOverrideSetting(
     // isError/supportingText 都从本地权威文本算：不读持久态，避免落盘回声让错误态闪烁。
     val typedText = inputState.text.toString()
     val isInvalid = typedText.isNotBlank() && parseContextLengthInput(typedText) == null
-    CardGroup(title = { Text(stringResource(R.string.setting_model_page_context_length_override)) }) {
-        item {
-            OutlinedTextField(
-                state = inputState,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = {
-                    Text(stringResource(R.string.setting_model_page_context_length_override_placeholder))
-                },
-                isError = isInvalid,
-                supportingText = {
-                    Text(
-                        text = stringResource(R.string.setting_model_page_context_length_override_hint),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                },
-                lineLimits = TextFieldLineLimits.SingleLine,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-            )
+    var overrideExpanded by rememberSaveable { mutableStateOf(false) }
+    val overrideTitle = stringResource(R.string.setting_model_page_context_length_override)
+    CardGroup {
+        // 低频项收「高级」折叠段（默认收起；CardGroup 是 Column 实现，无 Lazy IME 坑）
+        advancedGroup(
+            title = overrideTitle,
+            hint = if (settings.contextLengthOverride == null) "跟随模型默认" else "已覆盖",
+            expanded = overrideExpanded,
+            onToggle = { overrideExpanded = it },
+        ) {
+            item {
+                OutlinedTextField(
+                    state = inputState,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = {
+                        Text(stringResource(R.string.setting_model_page_context_length_override_placeholder))
+                    },
+                    isError = isInvalid,
+                    supportingText = {
+                        Text(
+                            text = stringResource(R.string.setting_model_page_context_length_override_hint),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                    lineLimits = TextFieldLineLimits.SingleLine,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                )
+            }
         }
     }
 }
@@ -844,24 +855,38 @@ private fun ModelSettingItem(
 @Composable
 private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
     Column {
-        CardGroup(title = { Text(stringResource(R.string.setting_model_page_ocr_backend)) }) {
-            item(
-                headlineContent = {
-                    SegmentedPill(
-                        options = listOf(OcrBackend.MODEL, OcrBackend.DEEPSEEK),
-                        selectedOption = settings.ocrBackend,
-                        onOptionSelected = { backend ->
-                            vm.updateSettings { it.copy(ocrBackend = backend) }
-                        },
-                        optionToString = { backend ->
-                            when (backend) {
-                                OcrBackend.MODEL -> stringResource(R.string.setting_model_page_ocr_backend_model)
-                                OcrBackend.DEEPSEEK -> stringResource(R.string.setting_model_page_ocr_backend_deepseek)
-                            }
-                        },
-                    )
-                },
-            )
+        var ocrExpanded by rememberSaveable { mutableStateOf(false) }
+        val ocrTitle = stringResource(R.string.setting_model_page_ocr_backend)
+        val ocrHint = when (settings.ocrBackend) {
+            OcrBackend.MODEL -> stringResource(R.string.setting_model_page_ocr_backend_model)
+            OcrBackend.DEEPSEEK -> stringResource(R.string.setting_model_page_ocr_backend_deepseek)
+        }
+        CardGroup {
+            // 低频项收「高级」折叠段；收起时用 hint 显示当前后端
+            advancedGroup(
+                title = ocrTitle,
+                hint = ocrHint,
+                expanded = ocrExpanded,
+                onToggle = { ocrExpanded = it },
+            ) {
+                item(
+                    headlineContent = {
+                        SegmentedPill(
+                            options = listOf(OcrBackend.MODEL, OcrBackend.DEEPSEEK),
+                            selectedOption = settings.ocrBackend,
+                            onOptionSelected = { backend ->
+                                vm.updateSettings { it.copy(ocrBackend = backend) }
+                            },
+                            optionToString = { backend ->
+                                when (backend) {
+                                    OcrBackend.MODEL -> stringResource(R.string.setting_model_page_ocr_backend_model)
+                                    OcrBackend.DEEPSEEK -> stringResource(R.string.setting_model_page_ocr_backend_deepseek)
+                                }
+                            },
+                        )
+                    },
+                )
+        }
         }
         Text(
             text = stringResource(R.string.setting_model_page_ocr_backend_desc),
@@ -870,7 +895,7 @@ private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         )
 
-        if (settings.ocrBackend == OcrBackend.DEEPSEEK) {
+        if (ocrExpanded && settings.ocrBackend == OcrBackend.DEEPSEEK) {
             val selectedProvider = settings.ocrDeepSeekProviderId?.let { id ->
                 settings.providers.find { it.id == id }
             }

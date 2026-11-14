@@ -104,6 +104,9 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                     "create_new_conversation_on_start",
                     true
                 )
+                var glassAdvancedExpanded by androidx.compose.runtime.saveable.rememberSaveable {
+                    mutableStateOf(false)
+                }
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
                 ) {
@@ -224,149 +227,157 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         }
                     }
-                    // 方向 B：输入栏浮动 pill 形态（胶囊 + 键盘上方浮动）
-                    item(
-                        headlineContent = { Text(stringResource(R.string.setting_display_page_chat_input_pill_title)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_chat_input_pill_desc)) },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.chatInputFloatingPill,
-                                onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(chatInputFloatingPill = it))
-                                }
-                            )
-                        },
-                    )
-                    // 低频图标组淡入淡出，仅 pill 形态有意义——随母开关折叠显示
-                    if (displaySetting.chatInputFloatingPill) {
+                    // 低频外观项收「高级」折叠段（默认收起；CardGroup 是 Column 实现，无 Lazy IME 坑）
+                    advancedGroup(
+                        title = "输入栏与玻璃效果",
+                        hint = "低频外观项，默认收起",
+                        expanded = glassAdvancedExpanded,
+                        onToggle = { glassAdvancedExpanded = it },
+                    ) {
+                        // 方向 B：输入栏浮动 pill 形态（胶囊 + 键盘上方浮动）
                         item(
-                            headlineContent = { Text(stringResource(R.string.setting_display_page_chat_input_icon_fade_title)) },
-                            supportingContent = { Text(stringResource(R.string.setting_display_page_chat_input_icon_fade_desc)) },
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_chat_input_pill_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_chat_input_pill_desc)) },
                             trailingContent = {
                                 Switch(
-                                    checked = displaySetting.chatInputIconFade,
+                                    checked = displaySetting.chatInputFloatingPill,
                                     onCheckedChange = {
-                                        updateDisplaySetting(displaySetting.copy(chatInputIconFade = it))
+                                        updateDisplaySetting(displaySetting.copy(chatInputFloatingPill = it))
                                     }
                                 )
                             },
                         )
-                    }
-                    item(
-                        headlineContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_title)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_desc)) },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.enableGlassTheme,
-                                onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(enableGlassTheme = it))
-                                }
-                            )
-                        },
-                    )
-                    // 列表玻璃层的方案二选一，开关打开时露出
-                    if (displaySetting.enableGlassTheme) {
-                        item {
-                            EffectTypePill(
-                                selected = displaySetting.listGlassEffectType,
-                                onSelect = { updateDisplaySetting(displaySetting.copy(listGlassEffectType = it)) },
-                            )
-                        }
-                    }
-                    item(
-                        headlineContent = { Text(stringResource(R.string.setting_display_page_enable_top_bar_blur_title)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_enable_top_bar_blur_desc)) },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.enableTopBarBlur,
-                                onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(enableTopBarBlur = it))
-                                }
-                            )
-                        },
-                    )
-                    // 顶栏的方案二选一，开关打开时露出
-                    if (displaySetting.enableTopBarBlur) {
-                        item {
-                            EffectTypePill(
-                                selected = displaySetting.topBarEffectType,
-                                onSelect = { updateDisplaySetting(displaySetting.copy(topBarEffectType = it)) },
-                            )
-                        }
-                    }
-                    // 方向 C：聊天域之外的页面顶栏玻璃（设置页等）；AMOLED 纯黑下消费点自动禁用
-                    item(
-                        headlineContent = { Text(stringResource(R.string.setting_display_page_enable_page_glass_theme_title)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_enable_page_glass_theme_desc)) },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.enablePageGlassTheme,
-                                onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(enablePageGlassTheme = it))
-                                }
-                            )
-                        },
-                    )
-                    if (displaySetting.enablePageGlassTheme) {
-                        item {
-                            EffectTypePill(
-                                selected = displaySetting.pageGlassEffectType,
-                                onSelect = { updateDisplaySetting(displaySetting.copy(pageGlassEffectType = it)) },
-                            )
-                        }
-                    }
-                    // 顶栏样式二选一（上游 b40d7a273 两套共存）：整条模糊=现状；浮动胶囊=
-                    // 按钮各自带胶囊背景（效果跟随输入栏开关），开启后整条穿底让位
-                    if (displaySetting.enableTopBarBlur) {
-                        item {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(
-                                    text = stringResource(R.string.setting_display_page_top_bar_style_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                SegmentedPill(
-                                    options = TopBarChromeStyle.entries,
-                                    selectedOption = skin.topBarMode(displaySetting),
-                                    onOptionSelected = { mode ->
-                                        displaySetting = displaySetting.withTopBarMode(mode)
-                                        vm.updateSettings { current -> current.copy(displaySetting = current.displaySetting.withTopBarMode(mode)) }
-                                    },
-                                    optionToString = { style ->
-                                        when (style) {
-                                            TopBarChromeStyle.FULL_BAR -> stringResource(R.string.setting_display_page_top_bar_style_full_bar)
-                                            TopBarChromeStyle.CAPSULES -> stringResource(R.string.setting_display_page_top_bar_style_capsules)
+                        // 低频图标组淡入淡出，仅 pill 形态有意义——随母开关折叠显示
+                        if (displaySetting.chatInputFloatingPill) {
+                            item(
+                                headlineContent = { Text(stringResource(R.string.setting_display_page_chat_input_icon_fade_title)) },
+                                supportingContent = { Text(stringResource(R.string.setting_display_page_chat_input_icon_fade_desc)) },
+                                trailingContent = {
+                                    Switch(
+                                        checked = displaySetting.chatInputIconFade,
+                                        onCheckedChange = {
+                                            updateDisplaySetting(displaySetting.copy(chatInputIconFade = it))
                                         }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    )
+                                },
+                            )
+                        }
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = displaySetting.enableGlassTheme,
+                                    onCheckedChange = {
+                                        updateDisplaySetting(displaySetting.copy(enableGlassTheme = it))
+                                    }
+                                )
+                            },
+                        )
+                        // 列表玻璃层的方案二选一，开关打开时露出
+                        if (displaySetting.enableGlassTheme) {
+                            item {
+                                EffectTypePill(
+                                    selected = displaySetting.listGlassEffectType,
+                                    onSelect = { updateDisplaySetting(displaySetting.copy(listGlassEffectType = it)) },
                                 )
                             }
                         }
-                    }
-                    // 玻璃上文字可读性（对照 BiliPai LiquidGlassReadabilityMode）：任一效果开启时露出
-                    if (displaySetting.enableBlurEffect || displaySetting.enableGlassTheme || displaySetting.enableTopBarBlur) {
-                        item {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(stringResource(R.string.setting_display_page_liquid_glass_readability_title))
-                                Text(
-                                    text = stringResource(R.string.setting_display_page_liquid_glass_readability_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_enable_top_bar_blur_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_enable_top_bar_blur_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = displaySetting.enableTopBarBlur,
+                                    onCheckedChange = {
+                                        updateDisplaySetting(displaySetting.copy(enableTopBarBlur = it))
+                                    }
                                 )
-                                SegmentedPill(
-                                    options = LiquidGlassReadabilityMode.entries,
-                                    selectedOption = displaySetting.liquidGlassReadabilityMode,
-                                    onOptionSelected = {
-                                        updateDisplaySetting(displaySetting.copy(liquidGlassReadabilityMode = it))
-                                    },
-                                    optionToString = { mode ->
-                                        when (mode) {
-                                            LiquidGlassReadabilityMode.AUTO -> stringResource(R.string.setting_display_page_liquid_glass_readability_auto)
-                                            LiquidGlassReadabilityMode.STABLE_CONTENT -> stringResource(R.string.setting_display_page_liquid_glass_readability_stable)
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
+                            },
+                        )
+                        // 顶栏的方案二选一，开关打开时露出
+                        if (displaySetting.enableTopBarBlur) {
+                            item {
+                                EffectTypePill(
+                                    selected = displaySetting.topBarEffectType,
+                                    onSelect = { updateDisplaySetting(displaySetting.copy(topBarEffectType = it)) },
                                 )
+                            }
+                        }
+                        // 方向 C：聊天域之外的页面顶栏玻璃（设置页等）；AMOLED 纯黑下消费点自动禁用
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_enable_page_glass_theme_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_enable_page_glass_theme_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = displaySetting.enablePageGlassTheme,
+                                    onCheckedChange = {
+                                        updateDisplaySetting(displaySetting.copy(enablePageGlassTheme = it))
+                                    }
+                                )
+                            },
+                        )
+                        if (displaySetting.enablePageGlassTheme) {
+                            item {
+                                EffectTypePill(
+                                    selected = displaySetting.pageGlassEffectType,
+                                    onSelect = { updateDisplaySetting(displaySetting.copy(pageGlassEffectType = it)) },
+                                )
+                            }
+                        }
+                        // 顶栏样式二选一（上游 b40d7a273 两套共存）：整条模糊=现状；浮动胶囊=
+                        // 按钮各自带胶囊背景（效果跟随输入栏开关），开启后整条穿底让位
+                        if (displaySetting.enableTopBarBlur) {
+                            item {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.setting_display_page_top_bar_style_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    SegmentedPill(
+                                        options = TopBarChromeStyle.entries,
+                                        selectedOption = skin.topBarMode(displaySetting),
+                                        onOptionSelected = { mode ->
+                                            displaySetting = displaySetting.withTopBarMode(mode)
+                                            vm.updateSettings { current -> current.copy(displaySetting = current.displaySetting.withTopBarMode(mode)) }
+                                        },
+                                        optionToString = { style ->
+                                            when (style) {
+                                                TopBarChromeStyle.FULL_BAR -> stringResource(R.string.setting_display_page_top_bar_style_full_bar)
+                                                TopBarChromeStyle.CAPSULES -> stringResource(R.string.setting_display_page_top_bar_style_capsules)
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                            }
+                        }
+                        // 玻璃上文字可读性（对照 BiliPai LiquidGlassReadabilityMode）：任一效果开启时露出
+                        if (displaySetting.enableBlurEffect || displaySetting.enableGlassTheme || displaySetting.enableTopBarBlur) {
+                            item {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(stringResource(R.string.setting_display_page_liquid_glass_readability_title))
+                                    Text(
+                                        text = stringResource(R.string.setting_display_page_liquid_glass_readability_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    SegmentedPill(
+                                        options = LiquidGlassReadabilityMode.entries,
+                                        selectedOption = displaySetting.liquidGlassReadabilityMode,
+                                        onOptionSelected = {
+                                            updateDisplaySetting(displaySetting.copy(liquidGlassReadabilityMode = it))
+                                        },
+                                        optionToString = { mode ->
+                                            when (mode) {
+                                                LiquidGlassReadabilityMode.AUTO -> stringResource(R.string.setting_display_page_liquid_glass_readability_auto)
+                                                LiquidGlassReadabilityMode.STABLE_CONTENT -> stringResource(R.string.setting_display_page_liquid_glass_readability_stable)
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
                             }
                         }
                     }

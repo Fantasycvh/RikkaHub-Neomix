@@ -65,18 +65,22 @@ internal fun MarkdownBlocks(
     spacing: Dp = LocalMarkdownContext.current.theme.blockSpacing,
     firstBlockIndex: Int = 0,
     blockFadeIn: Boolean = false,
+    blockFadeInDurationMillis: Int = DEFAULT_BLOCK_FADE_IN_MS,
 ) {
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing),
     ) {
         blocks.fastForEachIndexed { index, block ->
-            FadeInOnFirstAppearance(enabled = blockFadeIn) {
+            FadeInOnFirstAppearance(enabled = blockFadeIn, durationMillis = blockFadeInDurationMillis) {
                 MarkdownBlockNode(block = block, first = firstBlockIndex + index == 0)
             }
         }
     }
 }
+
+/** 默认块淡入时长；宿主可传自己的 motion token（本模块不依赖 app 令牌）。 */
+const val DEFAULT_BLOCK_FADE_IN_MS = 240
 
 /**
  * Typewriter-style streaming polish: a block fades in (alpha 0→1) the first time it
@@ -88,8 +92,12 @@ internal fun MarkdownBlocks(
  * Positions drive the saveable keys: appended blocks are new positions, so only they fade.
  */
 @Composable
-private fun FadeInOnFirstAppearance(enabled: Boolean, content: @Composable () -> Unit) {
-    if (!enabled) {
+private fun FadeInOnFirstAppearance(
+    enabled: Boolean,
+    durationMillis: Int = DEFAULT_BLOCK_FADE_IN_MS,
+    content: @Composable () -> Unit,
+) {
+    if (!enabled || durationMillis <= 0) {
         content()
         return
     }
@@ -97,7 +105,7 @@ private fun FadeInOnFirstAppearance(enabled: Boolean, content: @Composable () ->
     val alpha = remember { Animatable(if (appeared) 1f else 0f) }
     LaunchedEffect(appeared) {
         if (!appeared) {
-            alpha.animateTo(1f, tween(durationMillis = 240, easing = LinearEasing))
+            alpha.animateTo(1f, tween(durationMillis = durationMillis, easing = LinearEasing))
             appeared = true
         }
     }

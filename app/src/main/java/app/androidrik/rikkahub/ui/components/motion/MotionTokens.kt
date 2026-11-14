@@ -8,9 +8,11 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 
 /**
- * 中央动效令牌（借鉴 BiliPai `AppMotionTokens.kt` 形状——object + 命名时长/缓动/弹簧，
- * 台账 `docs/references/other projects/bilipai.md` §2026-11-08 增量候选 1；本仓无 MIUIX
- * 双风格分支，不抄 resolveXxxSpec）。
+ * 旧动效令牌（**已降级为库外兜底，不再是权威源**）。
+ *
+ * 权威源是皮肤 token：[app.androidrik.rikkahub.ui.theme.LocalMotionTokens]（随皮肤档位与系统
+ * 「移除动画」统一解析）。Compose 内**禁止新增引用本 object**，一律读 `LocalMotionTokens`；
+ * 此处仅保留给非 Composable 或跨模块（不能引 app token）的兜底常量，数值与语义冻结。
  *
  * 收口原则：**令牌值 = 既有散点的 1:1 映射**（150/200/300/450/600/1000/120 都是仓内
  * 已有实测值），收口不改任何现有观感——先有单源，将来调手感只动这里。

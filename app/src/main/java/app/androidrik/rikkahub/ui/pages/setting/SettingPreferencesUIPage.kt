@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,7 @@ import app.androidrik.rikkahub.data.files.FileUtils
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.CardGroupValueChip
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.data.model.ChatAppearance
@@ -428,6 +430,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                     )
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_chat_font_family_title)) },
+                        trailingValue = { CardGroupValueChip(appearance.typography.family.labelUI()) },
                         supportingContent = {
                             Select(
                                 options = ChatFontFamily.entries,
@@ -537,6 +540,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                     // 头像框：作用于聊天页双侧头像（用户+助手），预设绘制零资源
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_avatar_frame_title)) },
+                        trailingValue = { CardGroupValueChip(avatarFrameLabel(displaySetting.avatarFrameStyle)) },
                         supportingContent = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -620,6 +624,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                     // 思维链容器样式
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_cot_style_title)) },
+                        trailingValue = { CardGroupValueChip(cotStyleLabel(displaySetting.chainOfThoughtStyle)) },
                         supportingContent = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 SegmentedPill(
@@ -698,46 +703,55 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
             }
 
             item {
+                var codeAdvancedExpanded by rememberSaveable { mutableStateOf(false) }
+                val codeTitle = stringResource(R.string.setting_page_code_display_settings)
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
-                    title = { Text(stringResource(R.string.setting_page_code_display_settings)) },
                 ) {
-                    item(
-                        headlineContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_wrap_title)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_wrap_desc)) },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.codeBlockAutoWrap,
-                                onCheckedChange = {
-                                    updateDisplaySetting { current -> current.copy(codeBlockAutoWrap = it) }
-                                }
-                            )
-                        },
-                    )
-                    item(
-                        headlineContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_collapse_title)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_collapse_desc)) },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.codeBlockAutoCollapse,
-                                onCheckedChange = {
-                                    updateDisplaySetting { current -> current.copy(codeBlockAutoCollapse = it) }
-                                }
-                            )
-                        },
-                    )
-                    item(
-                        headlineContent = { Text(stringResource(R.string.setting_display_page_show_line_numbers_title)) },
-                        supportingContent = { Text(stringResource(R.string.setting_display_page_show_line_numbers_desc)) },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.showLineNumbers,
-                                onCheckedChange = {
-                                    updateDisplaySetting { current -> current.copy(showLineNumbers = it) }
-                                }
-                            )
-                        },
-                    )
+                    // 低频代码显示项收「高级」折叠段（默认收起）
+                    advancedGroup(
+                        title = codeTitle,
+                        hint = "低频代码显示项，默认收起",
+                        expanded = codeAdvancedExpanded,
+                        onToggle = { codeAdvancedExpanded = it },
+                    ) {
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_wrap_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_wrap_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = displaySetting.codeBlockAutoWrap,
+                                    onCheckedChange = {
+                                        updateDisplaySetting { current -> current.copy(codeBlockAutoWrap = it) }
+                                    }
+                                )
+                            },
+                        )
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_collapse_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_collapse_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = displaySetting.codeBlockAutoCollapse,
+                                    onCheckedChange = {
+                                        updateDisplaySetting { current -> current.copy(codeBlockAutoCollapse = it) }
+                                    }
+                                )
+                            },
+                        )
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_show_line_numbers_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_show_line_numbers_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = displaySetting.showLineNumbers,
+                                    onCheckedChange = {
+                                        updateDisplaySetting { current -> current.copy(showLineNumbers = it) }
+                                    }
+                                )
+                            },
+                        )
+                    }
                 }
             }
 
@@ -748,6 +762,14 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                 ) {
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_usage_mode_title)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                when (settings.usageDisplayMode) {
+                                    UsageDisplayMode.USED -> stringResource(R.string.setting_provider_page_usage_used)
+                                    UsageDisplayMode.REMAINING -> stringResource(R.string.setting_provider_page_usage_remaining)
+                                }
+                            )
+                        },
                         supportingContent = {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(stringResource(R.string.setting_display_page_usage_mode_desc))

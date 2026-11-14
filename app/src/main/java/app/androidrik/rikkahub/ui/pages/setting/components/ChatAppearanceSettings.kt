@@ -124,6 +124,39 @@ fun ChatAppearanceSettings(
                     change { it.copy(geometry = it.geometry.copy(paddingHorizontalDp = value, paddingVerticalDp = value)) }
                 }
             })
+            item(headlineContent = { Text("${name}气泡尾角") }, supportingContent = {
+                Column {
+                    val tail = bubble.geometry.tailCornerDp
+                    Text(
+                        if (tail == null) "对称四角"
+                        else "${tail.toInt()} dp（收紧对齐侧下角）"
+                    )
+                    Slider(
+                        value = tail ?: bubble.geometry.radiusDp,
+                        valueRange = 0f..bubble.geometry.radiusDp.coerceAtLeast(1f),
+                        onValueChange = { value ->
+                            change {
+                                it.copy(geometry = it.geometry.copy(
+                                    // 收到与圆角同值即视为对称，避免残留无视觉差异的尾角值
+                                    tailCornerDp = value.takeIf { v -> v < bubble.geometry.radiusDp - 0.5f },
+                                ))
+                            }
+                        },
+                    )
+                }
+            })
+            item(headlineContent = { Text("${name}气泡最大宽度") }, supportingContent = {
+                Column {
+                    Text("${(bubble.geometry.maxWidthFraction * 100).toInt()}%")
+                    Slider(
+                        value = bubble.geometry.maxWidthFraction,
+                        valueRange = 0.5f..1f,
+                        onValueChange = { value ->
+                            change { it.copy(geometry = it.geometry.copy(maxWidthFraction = value)) }
+                        },
+                    )
+                }
+            })
         }
         item(headlineContent = { Text("助手气泡不透明度") }, supportingContent = {
             Column {

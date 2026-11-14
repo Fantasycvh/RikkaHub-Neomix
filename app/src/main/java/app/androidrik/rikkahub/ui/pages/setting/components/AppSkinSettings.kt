@@ -102,6 +102,8 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
                     }
                 }
             }
+            // 一项一家：全局字体族在这里，聊天正文的字体族在「显示设置 · 聊天字体族」，同名区分
+            Text("全局字体族")
             Select(options = ChatFontFamily.entries.filter { it != ChatFontFamily.CUSTOM || draft.typography.customFontPath.isNotBlank() },
                 selectedOption = draft.typography.family, onOptionSelected = { draft = draft.copy(typography = draft.typography.copy(family = it)) },
                 optionToString = { when (it) { ChatFontFamily.DEFAULT -> "系统字体"; ChatFontFamily.SERIF -> "衬线字体";

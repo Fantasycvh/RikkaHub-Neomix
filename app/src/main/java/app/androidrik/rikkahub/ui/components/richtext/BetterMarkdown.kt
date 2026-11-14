@@ -72,6 +72,7 @@ import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.modifier.onClick
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
 import app.androidrik.rikkahub.ui.theme.LocalChatTextGradient
+import app.androidrik.rikkahub.ui.theme.LocalMotionTokens
 import app.androidrik.rikkahub.ui.theme.toBrush
 import app.androidrik.rikkahub.data.model.AppearanceGradient
 import kotlinx.coroutines.launch
@@ -197,6 +198,8 @@ fun MarkdownBlock(
         normalizeMarkdownForDisplay(content)
     }
     // 插槽里的组件（代码块、表格工具栏等）用 Material 的 Text，让它们也拿到正文样式
+    // 块淡入时长跟随皮肤 motion token（库内不引 app token，由这里传标准档）
+    val blockFadeInDurationMs = LocalMotionTokens.current.standardMs
     ProvideTextStyle(resolved) {
         key(documentKey) {
             if (renderUnit != null) BetterMarkdown(unit = renderUnit, modifier = modifier.padding(horizontal = 4.dp),
@@ -204,7 +207,8 @@ fun MarkdownBlock(
             else {
                 val document = renderDocument ?: rememberMarkdownRenderDocument(normalizedContent, streaming = streaming)
                 BetterMarkdown(document = document.document, modifier = modifier.padding(horizontal = 4.dp),
-                    style = resolved, theme = theme, components = components, blockFadeIn = blockFadeIn)
+                    style = resolved, theme = theme, components = components, blockFadeIn = blockFadeIn,
+                    blockFadeInDurationMillis = blockFadeInDurationMs)
             }
         }
     }

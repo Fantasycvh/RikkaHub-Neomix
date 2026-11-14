@@ -11,8 +11,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import kotlin.math.roundToInt
 import app.androidrik.rikkahub.data.model.ChatBubble
 import app.androidrik.rikkahub.data.model.BubbleMaterial
 import app.androidrik.rikkahub.data.model.BubbleLayerKind
@@ -79,9 +81,13 @@ fun ChatBubbleSurface(
         bubbleGlassBackend(Build.VERSION.SDK_INT, recoverableBlurEnabled(backdrop)) != BubbleGlassBackend.STATIC
     val glass = if (liveGlass) Modifier.bubbleGlassEffect(requireNotNull(backdrop), override ?: defaultColor, bubble.opacity, shape) else Modifier
     val (coordinateModifier, coordinates) = rememberBubbleCoordinates(segment.takeIf { stack != null })
-    val background = if (stack == null) modifier.clip(shape).then(glass)
+    // 气泡级限宽：只在测量时收紧最大约束（不改增量渲染管线），与全局正文宽度相乘生效
+    val maxWidth = if (bubble.geometry.maxWidthFraction < 1f) {
+        Modifier.bubbleMaxWidthFraction(bubble.geometry.maxWidthFraction)
+    } else Modifier
+    val background = if (stack == null) maxWidth.then(modifier).clip(shape).then(glass)
         .bubbleMaterialBackground(bubble, override ?: defaultColor, contentColor, liveGlass)
-    else modifier.then(coordinateModifier).clip(shape).then(glass)
+    else maxWidth.then(modifier).then(coordinateModifier).clip(shape).then(glass)
         .bubbleLayerBackground(bubble, override ?: defaultColor, contentColor, liveGlass, coordinates)
     val body: @Composable () -> Unit = {
         val shown = bubble.visible || padWhenHidden
@@ -101,4 +107,15 @@ fun ChatBubbleSurface(
         Surface(onClick = onClick, modifier = background, shape = shape,
             color = Color.Transparent, contentColor = contentColor, content = body)
     }
+}
+
+/** 气泡内容宽度上限：按比例收紧测量约束，气泡仍保持 wrap-content 宽度。 */
+private fun Modifier.bubbleMaxWidthFraction(fraction: Float): Modifier = layout { measurable, constraints ->
+    val capped = if (constraints.hasBoundedWidth) {
+        constraints.copy(maxWidth = (constraints.maxWidth * fraction).roundToInt().coerceAtLeast(0))
+    } else {
+        constraints
+    }
+    val placeable = measurable.measure(capped)
+    layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
 }

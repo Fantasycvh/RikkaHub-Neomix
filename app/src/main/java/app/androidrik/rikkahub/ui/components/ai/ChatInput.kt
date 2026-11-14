@@ -147,6 +147,7 @@ import app.androidrik.rikkahub.ui.components.ui.permission.rememberPermissionSta
 import app.androidrik.rikkahub.ui.context.LocalASRState
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.theme.LocalMotionTokens
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import app.androidrik.rikkahub.service.MessageQueueState
 import app.androidrik.rikkahub.ui.pages.chat.VoicePhase
@@ -257,9 +258,10 @@ fun ChatInput(
     // 低频图标组淡入淡出开关（仅浮动 pill 形态生效）：非输入态淡出隐藏而非折叠布局
     val iconFade = pill && settings.displaySetting.chatInputIconFade
     val iconFadeHidden = iconFade && !imeVisible
+    val motion = LocalMotionTokens.current
     val iconFadeAlpha by animateFloatAsState(
         targetValue = if (iconFadeHidden) 0f else 1f,
-        animationSpec = tween(durationMillis = 200),
+        animationSpec = tween(durationMillis = motion.quickMs),
         label = "chat_input_icon_fade",
     )
     val containerShape = when {
