@@ -1,6 +1,6 @@
 # UI 第三轮改造设计稿：皮肤档位 / 气泡几何 v2 / IA 三件 / motion tokens
 
-> 状态：**M1+M2 已实施并本地提交（2026-11-15，dee8c09ce + eb2a675e0，未推送）**：M1 契约层（气泡几何 v2 / motion TOKENS 档 / SmoothCornerShape / CardGroup trailingValue+高级折叠段）；M2 两档皮肤（builtin.squircle 现代旗舰 + builtin.paper 纸质感）+ 内置聊天外观方案（builtin.chat:glass/paper，ChatAppearanceRegistry.installBuiltins）+ 皮肤→聊天方案联动（builtinSkinChatLink，onSelect 写入）+ 皮肤编辑器 motion Select 三档文案。**抽屉对角斜切 bug 已修**：SmoothCornerShape 旧实现 first 标记在首角 r=0 时残留，第二次 moveTo 拆轮廓、close() 把左下顶点连到右上切点成对角线（抽屉 sheet 形状恰为 topStart=0 必触发）；paper 复现是皮肤编辑器覆写残留 continuous=true 跨档生效。修复=重写循环（先 lineTo(p0) 再判 r==0 + RTL 角映射），附 androidTest SmoothCornerShapeTest。真机验证：两档应用/联动/玻璃气泡/纸质感平铺/抽屉渲染全过。挂账：maxWidthFraction 渲染接线、设备颜色模式恢复深色（验证时误触改浅色）、advancedGroup 页面消费（M3）、motion 散值收编（M4）。
+> 状态：**M1+M2 已实施并本地提交（2026-11-15，dee8c09ce + eb2a675e0，未推送）**：M1 契约层（气泡几何 v2 / motion TOKENS 档 / SmoothCornerShape / CardGroup trailingValue+高级折叠段）；M2 两档皮肤（builtin.squircle 现代旗舰 + builtin.paper 纸质感）+ 内置聊天外观方案（builtin.chat:glass/paper，ChatAppearanceRegistry.installBuiltins）+ 皮肤→聊天方案联动（builtinSkinChatLink，onSelect 写入）+ 皮肤编辑器 motion Select 三档文案。**抽屉对角斜切 bug 已修**：SmoothCornerShape 旧实现 first 标记在首角 r=0 时残留，第二次 moveTo 拆轮廓、close() 把左下顶点连到右上切点成对角线（抽屉 sheet 形状恰为 topStart=0 必触发）；paper 复现是皮肤编辑器覆写残留 continuous=true 跨档生效。修复=重写循环（先 lineTo(p0) 再判 r==0 + RTL 角映射），附 androidTest SmoothCornerShapeTest。真机验证：两档应用/联动/玻璃气泡/纸质感平铺/抽屉渲染全过。挂账：maxWidthFraction 渲染接线、advancedGroup 页面消费、motion 散值收编**已随 M3/M4 于 2026-11-15 实施清偿（未提交，实施记录见 §9，盘点表见 `docs/design/verification/ia-inventory-round3.md`）**；设备颜色模式恢复深色仍为真机验证项。2026-11-15 实施前核对与三项补充拍板见 §8。
 > 上游：[design-ui-overhaul-research.md](design-ui-overhaul-research.md)（第一轮调研 + §10 dsh-go 补析）
 > 视觉对比稿：`原型/RikkaHub-UI第三轮-视觉对比稿.html`（用户已按稿拍板）
 > 硬约束沿用调研稿 §6：IME 宿主规范、supportingContent 单子节点坑、皮肤契约、长文本性能、布局稳定性。
@@ -146,4 +146,92 @@ data class AppSkinMotionTokens(
 - 工程感 / iOS 风皮肤档（描边卡 token、inset 分隔线形态随批）
 - tail path、逐字打字机、正文扫光（dsh-go 反对 + 第一轮已划界）
 - 设置页全面 Bento（维持 E 收窄版结论）
-- IA 全仓铺开（首批三页验证后再扩）
+- IA 全仓铺开（首批四页验证后再扩，见 §8.2）
+
+---
+
+## 8. M3/M4 实施准备（2026-11-15 实施前核对，未动代码）
+
+### 8.1 现状核对（与 M1/M2 交付口径的差异）
+
+| 项 | 实际状态 | 影响 |
+|----|----------|------|
+| `CardGroup.trailingValue` / `advancedGroup` / `CardGroupValueChip` | API 与渲染齐备（`CardGroup.kt` 内 `item` 参数、折叠段 L181-205、值 chip L382-402、MergedTrailing L316-322），但**全仓零消费** | M3 全部工作量在调用方，组件不需改 |
+| `LocalMotionTokens` | 已在 `AppSkinTheme` 的 `CompositionLocalProvider` 提供（含 `ANIMATOR_DURATION_SCALE == 0` 归零），**消费方为零** | M4 只做接线 |
+| `maxWidthFraction` | 仅模型定义 + `normalized()` 夹取，无渲染、无编辑器；宽度现由 `ChatLayout.contentWidthFraction` 在 `ChatLayoutRegistry` 的 BODY/FOOTER/容器三处 `fillMaxWidth(fraction)` 决定 | 挂账确认成立，需新增测量约束而非改布局管线 |
+| `tailCornerDp` | 渲染有（`ChatBubbleSurface` 逐角圆角），`ChatAppearanceSettings` 只有圆角与内边距滑杆 | 尾角/限宽缺编辑入口 |
+| motion 双源 | 旧 `ui/components/motion/MotionTokens.kt`（object 常量 120/150/200/300/450/600/1000）与新 `ui/theme/MotionTokens.kt` 并存 | 见 §8.2 拍板，否则「收编」会变三源 |
+| `blockFadeIn` 240ms | 实现在独立模块 `bettertext-markdown` 的 `MarkdownBlocks.kt#FadeInOnFirstAppearance` | **跨模块不能引用 app token**，只能库内常量或加时长参数 |
+| 设置页搜索 | 搜索是独立全局搜索页（`SettingGlobalSearchPage`），页内无搜索框 | §2.5「命中折叠项自动展开」缺前提 → 挂账 |
+| 工作区 | 干净，HEAD `89588dbe2`，仅未跟踪 `gradlew-wsl` | 可在干净基线上分批提交 |
+
+### 8.2 补充拍板（2026-11-15）
+
+| # | 点 | 决定 |
+|---|----|------|
+| 7 | M3 首批「偏好设置」口径 | **索引页 + 通用设置页都做**：`SettingPreferencesPage` 只加分组值摘要（6 条跳转行给当前方案/开关摘要），`SettingPreferencesGeneralPage`（49 项 / 33 开关）做完整值 chip + 低频收高级 |
+| 8 | motion 双源关系 | **皮肤 token（`LocalMotionTokens`）为唯一权威**；旧 object 降级为「非 Composable / 库外兜底」并加注释，Compose 内不再新增引用 |
+| 9 | 本准备稿去向 | 写回本稿 §8，不另建文档 |
+
+首批页面顺延为四页：偏好设置索引 / 通用设置 / 显示 / 模型设置。
+
+### 8.3 M3 执行顺序
+
+1. **盘点表**：四页逐行过（索引页 6 行、通用 49 行、显示 29 行、模型 11 行），列 = 设置项 / 文件行号 / 控件形态（Switch·枚举·Slider·跳转）/ 使用频率 / 结论（留原位·加 chip·收高级·改跳转）。产出并入 §8.1 表格或 `docs/design/verification/`。
+2. **值 chip 规则**：带 `Switch` 的行**不加 chip**（开关本身即值，避免双读屏重复播报）；只给枚举/跳转型加短词——显示页：聊天字体族、思维链样式、头像框、用量模式；通用页：玻璃/顶栏方案二选一、重试策略；模型页：模型卡片大小、OCR 后端、上下文覆盖。
+3. **一项一家**：`Expressive 排版` 唯一家 = 皮肤编辑器（现已是）；显示页 L430-530 的「聊天字体族 / 字号」与皮肤 `typography.family / sizeRatio` 是否算双家由盘点表定，若算则显示页改**同名跳转入口**（入口可多、名字必须相同）。
+4. **低频收高级**：通用页玻璃/顶栏/图标淡入（L240-350）、模型页上下文覆盖与 OCR（L679-847）、显示页代码块与用量模式（L700-760）。状态 `rememberSaveable`；CardGroup 是 Column 实现，天然免疫 Lazy IME 坑；首页不放放宽保护/删数据。
+5. **maxWidthFraction 接线**（清偿挂账）：建议在 `ChatBubbleSurface` 外层加 `widthIn(max = 可用宽度 × maxWidthFraction)`（与 `contentWidthFraction` 相乘而非取代），并在 `ChatAppearanceSettings` 补尾角/限宽两条滑杆。红线：不动增量渲染与 longtext 约束。
+
+### 8.4 M4 分批
+
+| 批 | 内容 | 要点 |
+|----|------|------|
+| M4a | 双源定案 | 旧 `components/motion/MotionTokens.kt` 注释降级为库外兜底；Compose 内统一读 `LocalMotionTokens` |
+| M4b | `chatInputIconFade` `tween(200)` | 改 `LocalMotionTokens.quickMs`（160），设置项不变 |
+| M4c | `blockFadeIn` 240ms | 库内暴露 `durationMillis` 参数，由 `BetterMarkdown` 传标准档；不跨模块引 token |
+| M4d | 其余硬编码时长 | 全仓仅 7 文件有 `tween(数字)` 字面量；逐处映射 press/quick/standard/slow，`animateFloatAsState` 默认规格按需补 |
+| M4e | 循环动画 | `breath` 等循环在消费点判 reduced（scale == 0）停静止帧；弹簧只喂位移/缩放，透明度不越界 |
+
+### 8.5 新增挂账
+
+- 「搜索命中折叠项自动展开」：页内无搜索，等页内搜索机制存在再做（不阻塞 M3）。
+- 尾角 / 限宽编辑入口随 maxWidthFraction 接线一并补。
+- 设备颜色模式恢复深色（真机验证副作用，非代码项）。
+
+---
+
+## 9. M3/M4 实施记录（2026-11-15，未提交）
+
+### 9.1 M4 散值收编
+
+| 批 | 落地 |
+|----|------|
+| M4a | `ui/components/motion/MotionTokens.kt` 头注释降级为「旧令牌 / 库外兜底」，明确权威源是 `LocalMotionTokens`；存量 object 引用保持冻结（改值会改观感，不在首批） |
+| M4b | `ChatInput` 图标淡入 `tween(200)` → `LocalMotionTokens.current.quickMs`（160） |
+| M4c | `bettertext-markdown` 的 `MarkdownBlocks` / `Markdown` 三处重载新增 `blockFadeInDurationMillis`，公开常量 `DEFAULT_BLOCK_FADE_IN_MS = 240`；`BetterMarkdown` 传 `LocalMotionTokens.current.standardMs`。跨模块不引 app token |
+| M4d | 复查后剩余 `tween(数字)` 字面量仅环境型慢循环（Shimmer / DotLoading / 头像旋转），按设计不强收；Switch / ChainOfThought 等走旧 object 常量，属冻结兜底 |
+
+### 9.2 maxWidthFraction / 尾角接线
+
+- `ChatBubbleSurface` 新增 `Modifier.bubbleMaxWidthFraction`：在**测量约束**层按比例收紧 maxWidth（无界约束跳过），气泡仍 wrap-content；放在调用方 modifier 之前，与 `ChatLayout.contentWidthFraction` 相乘生效。未引入每气泡 `BoxWithConstraints`，未动增量渲染 / longtext 约束。
+- `ChatAppearanceSettings` 每个气泡新增两条滑杆：
+  - **尾角**：值 = `tailCornerDp ?: radiusDp`，范围 0..圆角；收到与圆角同值即写回 `null`（对称四角），避免残留无视觉差异值。
+  - **最大宽度**：0.5–1.0，百分比显示。
+
+### 9.3 M3 IA
+
+- 盘点表：`docs/design/verification/ia-inventory-round3.md`（四页逐行）。
+- 索引页 5 条跳转加值摘要（应用标识为纯操作页跳过）。
+- 通用页：「输入栏与玻璃效果」7 项收高级折叠段（`rememberSaveable` 受控）；其余枚举行均已有内联 Pill/Select，**未加 chip**（避免读屏重复播报）。
+- 显示页：聊天字体族 / 头像框 / 思维链样式 / 用量模式 四行加 `CardGroupValueChip`；代码块 3 项收高级。
+- 模型页：上下文长度覆盖、OCR 后端收高级；折叠态用 hint 显示「跟随模型默认 / 已覆盖」「当前后端名」；OCR 的 DeepSeek 参数随折叠隐藏。
+- 一项一家：皮肤编辑器字体族标签改为「全局字体族」，与显示页「聊天字体族」同名区分。
+- 高级段标题字符串在 Composable 作用域提前求值（`CardGroupScope` 内容 lambda 非 `@Composable`，不能内联 `stringResource`）。
+
+### 9.4 验证
+
+- `:app:compileDebugKotlin` 通过。
+- `:app:testDebugUnitTest` 通过。
+- `python scripts/audit_ime_trap.py`：A=0 / A'=0（豁免 4），B/C/D/E 仅告警；`python -B scripts/test_audit_ime_trap.py` 11 项通过。
+- 真机项（皮肤试穿、值 chip 读屏、高级段展开、限宽视觉、IME 注入）留待 PJX110 验证。
