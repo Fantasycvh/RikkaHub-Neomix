@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-zcode-design>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RikkaHub UI 第三轮风格改进 · 视觉对比稿</title>
+<style>
+/* ── 可调 token ───────────────────────────── */
+:root {
+  --paper: #F6F4F0;
+  --card: #FFFFFF;
+  --ink: #26231F;
+  --ink-2: #6E6A62;
+  --ink-3: #9B968C;
+  --line: #E4E0D8;
+  --accent: #2E6C5D;
+  --accent-soft: #E3EFEA;
+  --code-bg: #F1EEE8;
+  --radius-card: 14px;
+  --radius-phone: 34px;
+  --page-w: 1240px;
+  --mono: "Cascadia Mono", Consolas, "Sarasa Mono SC", monospace;
+  --sans: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  --serif: Georgia, "Noto Serif SC", "Source Han Serif SC", "SimSun", serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.65;
+  font-size: 15px;
+}
+.wrap { max-width: var(--page-w); margin: 0 auto; padding: 48px 24px 96px; }
+
+/* ── 文档骨架 ───────────────────────────── */
+header.doc { border-bottom: 1px solid var(--line); padding-bottom: 28px; margin-bottom: 40px; }
+.doc h1 { font-size: 26px; font-weight: 700; letter-spacing: .01em; }
+.doc .sub { color: var(--ink-2); margin-top: 8px; max-width: 68ch; }
+.doc .meta { margin-top: 14px; font-size: 13px; color: var(--ink-3); }
+.doc nav { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+.doc nav a {
+  color: var(--accent); text-decoration: none; font-size: 13.5px;
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; background: var(--card);
+}
+.doc nav a:hover { border-color: var(--accent); }
+
+section { margin-bottom: 72px; }
+.sec-head { margin-bottom: 8px; }
+.sec-head h2 { font-size: 20px; font-weight: 700; }
+.sec-head .why { color: var(--ink-2); margin-top: 6px; max-width: 76ch; font-size: 14.5px; }
+.sec-head .facts { margin-top: 10px; font-size: 13px; color: var(--ink-2); background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.sec-head .facts b { color: var(--ink); font-weight: 600; }
+.note { font-size: 12.5px; color: var(--ink-3); margin-top: 10px; }
+
+/* ── 手机 mockup 通用 ───────────────────────────── */
+.row { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; margin-top: 24px; }
+.variant { flex: 1 1 300px; min-width: 280px; }
+.variant > .v-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.variant > .v-desc { font-size: 13px; color: var(--ink-2); margin-bottom: 14px; min-height: 2.6em; }
+.phone {
+  width: 100%; max-width: 300px; border-radius: var(--radius-phone);
+  border: 1px solid var(--line); overflow: hidden; background: #fff;
+  box-shadow: 0 1px 2px rgba(38,35,31,.06), 0 8px 24px rgba(38,35,31,.08);
+}
+.screen { padding: 14px 14px 18px; min-height: 470px; display: flex; flex-direction: column; gap: 12px; }
+.topbar {
+  border-radius: 999px; padding: 9px 16px; font-weight: 600; font-size: 13.5px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.topbar .tb-sub { font-size: 11px; font-weight: 400; opacity: .7; }
+.chat { display: flex; flex-direction: column; gap: 10px; flex: 1; }
+.msg { max-width: 88%; font-size: 12.5px; line-height: 1.6; }
+.msg .who { font-size: 10px; opacity: .55; margin-bottom: 3px; letter-spacing: .04em; }
+.msg code { font-family: var(--mono); font-size: 11px; padding: 1px 4px; border-radius: 4px; }
+.toolcard { font-size: 11px; border-radius: 10px; padding: 8px 10px; font-family: var(--sans); }
+.toolcard .t-title { font-weight: 600; font-size: 11.5px; display: flex; justify-content: space-between; }
+.toolcard .t-time { font-weight: 400; opacity: .6; font-family: var(--mono); font-size: 10px; }
+.toolcard .t-kv { opacity: .75; margin-top: 3px; font-family: var(--mono); font-size: 10.5px; }
+.inputbar {
+  border-radius: 999px; padding: 9px 14px; font-size: 12px; display: flex; align-items: center; gap: 8px;
+}
+.inputbar .send {
+  width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex: none;
+}
+.inputbar .send svg { display: block; }
+
+/* 设置页 mockup 片段 */
+.setgroup { border-radius: 16px; overflow: hidden; }
+.setgroup .sg-title { font-size: 11px; font-weight: 700; letter-spacing: .05em; padding: 12px 14px 6px; opacity: .6; }
+.setrow { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.setrow .sr-main { min-width: 0; }
+.setrow .sr-title { font-size: 13px; font-weight: 500; }
+.setrow .sr-desc { font-size: 11px; opacity: .62; margin-top: 2px; line-height: 1.5; }
+.setrow .sr-val {
+  font-size: 11.5px; flex: none; max-width: 42%; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 3px 9px; border-radius: 999px;
+}
+.setrow .chev { flex: none; opacity: .45; }
+.divider { height: 1px; margin-left: 14px; }
+.adv-head { padding: 11px 14px; display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; font-weight: 600; }
+.adv-hint { font-size: 10.5px; opacity: .55; font-weight: 400; }
+
+/* token 表 */
+table.tok { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+table.tok th, table.tok td { padding: 7px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.tok th { font-size: 11.5px; color: var(--ink-2); font-weight: 600; background: var(--paper); }
+table.tok tr:last-child td { border-bottom: none; }
+table.tok td:first-child { color: var(--ink-2); white-space: nowrap; }
+table.tok code, .chip-code { font-family: var(--mono); font-size: 11.5px; background: var(--code-bg); border-radius: 4px; padding: 1px 5px; overflow-wrap: anywhere; }
+table.tok th, table.tok td { overflow-wrap: anywhere; }
+
+/* ── 皮肤变体 ───────────────────────────── */
+/* 纸质感 */
+.skin-paper .screen { background: #F7F2E9; }
+.skin-paper .topbar { background: #FBF8F1; color: #3A342B; border: 1px solid #E7DFD0; }
+.skin-paper .topbar, .skin-paper .inputbar { font-family: var(--serif); }
+.skin-paper .msg.user { margin-left: auto; background: #EBDFC9; color: #33302A; border-radius: 16px 16px 5px 16px; padding: 9px 13px; max-width: 76%; }
+.skin-paper .msg.assistant { background: transparent; color: #3A342B; max-width: 100%; font-family: var(--serif); }
+.skin-paper .msg.assistant h4 { font-size: 13.5px; font-weight: 700; margin-bottom: 4px; }
+.skin-paper .who { color: #8A7F6C; }
+.skin-paper .toolcard { background: #FBF8F1; border: 1px solid #E7DFD0; color: #5C5344; border-radius: 12px; }
+.skin-paper .inputbar { background: #FBF8F1; border: 1px solid #E7DFD0; color: #8A7F6C; }
+.skin-paper .send { background: #A0522D; color: #FBF8F1; }
+.skin-paper .setgroup { background: #FBF8F1; border: 1px solid #E7DFD0; }
+.skin-paper .divider { background: #EFE8D9; }
+
+/* 工程感 */
+.skin-raw .screen { background: #14161A; }
+.skin-raw .topbar { background: #1B1E23; color: #D6DBE0; border: 1px solid #2A2F36; border-radius: 4px; }
+.skin-raw .msg.user { margin-left: auto; background: #1F242B; color: #D6DBE0; border: 1px solid #2E3540; border-radius: 4px; padding: 9px 12px; max-width: 80%; }
+.skin-raw .msg.assistant { background: transparent; color: #C3C9D1; max-width: 100%; }
+.skin-raw .msg code { background: #1F242B; color: #7FC79B; border: 1px solid #2A2F36; }
+.skin-raw .who { color: #6B7480; font-family: var(--mono); }
+.skin-raw .toolcard { background: #1B1E23; border: 1px solid #2A2F36; color: #9AA3AD; border-radius: 4px; }
+.skin-raw .toolcard .t-time, .skin-raw .toolcard .t-kv { color: #7FC79B; }
+.skin-raw .inputbar { background: #1B1E23; border: 1px solid #2A2F36; color: #6B7480; border-radius: 6px; }
+.skin-raw .send { background: #2E3540; color: #7FC79B; }
+.skin-raw .setgroup { background: #1B1E23; border: 1px solid #2A2F36; border-radius: 6px; }
+.skin-raw .sg-title { color: #6B7480; font-family: var(--mono); }
+.skin-raw .sr-title, .skin-raw .adv-head { color: #C3C9D1; }
+.skin-raw .sr-desc { color: #6B7480; }
+.skin-raw .sr-val { color: #7FC79B; background: #1F242B; border: 1px solid #2A2F36; border-radius: 3px; font-family: var(--mono); }
+.skin-raw .divider { background: #2A2F36; }
+
+/* HyperOS squircle */
+.skin-squircle .screen { background: #EDF1F7; }
+.skin-squircle .topbar { background: rgba(255,255,255,.72); color: #1B2530; backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,.65); border-radius: 22px; }
+.skin-squircle .msg.user { margin-left: auto; background: #3E6BD6; color: #fff; border-radius: 26px 26px 7px 26px; padding: 10px 15px; max-width: 78%; box-shadow: 0 2px 6px rgba(62,107,214,.25); }
+.skin-squircle .msg.assistant { background: #FFFFFF; color: #2A3440; border-radius: 26px; padding: 11px 15px; box-shadow: 0 1px 3px rgba(27,37,48,.07); }
+.skin-squircle .who { color: #7C8798; }
+.skin-squircle .toolcard { background: #F4F7FC; color: #5A6B80; border-radius: 18px; }
+.skin-squircle .inputbar { background: rgba(255,255,255,.85); color: #7C8798; border-radius: 26px; border: 1px solid rgba(255,255,255,.8); }
+.skin-squircle .send { background: #3E6BD6; color: #fff; border-radius: 14px; }
+.skin-squircle .setgroup { background: #FFFFFF; border-radius: 24px; box-shadow: 0 1px 3px rgba(27,37,48,.06); }
+.skin-squircle .divider { background: #F0F3F8; }
+.skin-squircle .sr-val { background: #EDF1F7; color: #3E6BD6; }
+
+/* iOS 风 */
+.skin-ios .screen { background: #F2F2F7; }
+.skin-ios .topbar { background: rgba(242,242,247,.85); color: #1C1C1E; border-radius: 20px; border: 1px solid rgba(60,60,67,.12); }
+.skin-ios .msg.user { margin-left: auto; background: #0A7AFF; color: #fff; border-radius: 18px 18px 5px 18px; padding: 9px 13px; max-width: 78%; }
+.skin-ios .msg.assistant { background: #FFFFFF; color: #1C1C1E; border-radius: 18px; padding: 10px 14px; }
+.skin-ios .who { color: #8E8E93; }
+.skin-ios .toolcard { background: #FFFFFF; color: #3C3C43; border-radius: 14px; }
+.skin-ios .inputbar { background: rgba(255,255,255,.9); color: #8E8E93; border-radius: 20px; border: 1px solid rgba(60,60,67,.12); }
+.skin-ios .send { background: #0A7AFF; color: #fff; }
+.skin-ios .setgroup { background: #FFFFFF; border-radius: 12px; }
+.skin-ios .divider { background: rgba(60,60,67,.18); }
+.skin-ios .sr-val { color: #8E8E93; }
+
+/* ── 气泡几何对比 ───────────────────────────── */
+.geo-row { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 24px; }
+.geo-panel { flex: 1 1 280px; min-width: 260px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); overflow: hidden; }
+.geo-panel .gp-head { padding: 12px 16px 4px; font-weight: 700; font-size: 14.5px; }
+.geo-panel .gp-desc { padding: 0 16px; font-size: 12.5px; color: var(--ink-2); }
+.geo-screen { margin: 12px 16px 14px; border-radius: 14px; padding: 14px 12px; background: #EEF1F5; display: flex; flex-direction: column; gap: 8px; }
+.geo-screen .gmsg { font-size: 12px; line-height: 1.55; padding: 8px 12px; }
+.geo-screen .g-user { background: #3E6BD6; color: #fff; margin-left: auto; }
+.geo-screen .g-asst { background: #fff; color: #2A3440; }
+.geo-chips { padding: 0 16px 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.geo-chips .chip { font-family: var(--mono); font-size: 11px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; color: var(--ink-2); }
+
+/* ── motion 演示 ───────────────────────────── */
+.demo-row { display: flex; flex-wrap: wrap; gap: 20px; margin-top: 24px; }
+.demo-tile { flex: 1 1 220px; min-width: 210px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 16px; }
+.demo-tile .d-name { font-weight: 700; font-size: 14px; }
+.demo-tile .d-spec { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); margin: 2px 0 12px; }
+.demo-tile .d-stage { min-height: 64px; display: flex; align-items: center; gap: 12px; }
+.demo-btn {
+  border: none; cursor: pointer; font-family: var(--sans); font-size: 13px; font-weight: 600;
+  background: var(--accent); color: #fff; border-radius: 10px; padding: 9px 18px;
+  transition: transform 90ms ease;
+}
+.demo-btn:active { transform: scale(0.96); }
+.collapse-card { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; flex: 1; }
+.collapse-head { padding: 9px 12px; font-size: 13px; font-weight: 600; display: flex; justify-content: space-between; cursor: pointer; background: var(--paper); }
+.collapse-head svg { transition: transform 280ms cubic-bezier(.65,0,.35,1); }
+.collapse-card.open .collapse-head svg { transform: rotate(180deg); }
+.collapse-body { max-height: 0; overflow: hidden; transition: max-height 280ms cubic-bezier(.65,0,.35,1), opacity 280ms ease; opacity: 0; }
+.collapse-card.open .collapse-body { max-height: 120px; opacity: 1; }
+.collapse-body .cb-in { padding: 8px 12px 10px; font-size: 12px; color: var(--ink-2); }
+.fade-wrap { display: flex; align-items: center; gap: 10px; }
+.fade-ic {
+  width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper);
+  display: inline-flex; align-items: center; justify-content: center; color: var(--ink-2); cursor: pointer;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.fade-ic.hidden-ic { opacity: 0; transform: scale(.85); pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .demo-btn, .collapse-head svg, .collapse-body, .fade-ic { transition: none; }
+}
+
+/* ── 拍板点 ───────────────────────────── */
+.decide { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px 28px; }
+.decide h2 { font-size: 18px; margin-bottom: 12px; }
+.decide ol { padding-left: 22px; }
+.decide li { margin-bottom: 10px; font-size: 14px; }
+.decide li b { color: var(--accent); }
+.decide .opt { color: var(--ink-2); font-size: 13px; }
+
+/* ── 响应式 ───────────────────────────── */
+@media (max-width: 720px) {
+  .wrap { padding: 32px 16px 64px; }
+  table.tok td:first-child { white-space: normal; }
+  .variant { min-width: 100%; }
+  .phone { max-width: none; }
+  .doc h1 { font-size: 21px; }
+  section { margin-bottom: 56px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>RikkaHub UI 第三轮风格改进 · 视觉对比稿</h1>
+  <p class="sub">第一轮九方向已落七个（排版 / rc01 / 浮动输入栏 / 玻璃出聊天域 / Expressive 组件 / Agentic 卡片化 / 流式淡入）。本稿覆盖第三轮聚焦的三件事：<b>新皮肤档位</b>、<b>气泡几何自由度</b>、<b>设置页 IA 三件 + motion token 表对照</b>。所有 mockup 参数取自仓库真实 token（AppSkin.kt / ChatAppearance.kt），拍板后再写正式设计稿。</p>
+  <p class="meta">2026-11-14 · 决策用对比稿 · 手机 mockup 为 390dp 屏宽等比缩略，颜色与几何即 token 提案值</p>
+  <nav>
+    <a href="#s1">一 · 新皮肤档位</a>
+    <a href="#s2">二 · 气泡几何自由度</a>
+    <a href="#s3">三 · 设置页 IA 三件</a>
+    <a href="#s4">四 · motion token 表</a>
+    <a href="#s5">拍板点</a>
+  </nav>
+</header>
+
+<!-- ══════════ Section 1 皮肤档位 ══════════ -->
+<section id="s1">
+  <div class="sec-head">
+    <h2>一 · 新皮肤档位：给 AppSkin 加「气质」，而不是只加圆角</h2>
+    <p class="why">现有三个内置皮肤（默认/紧凑/舒展阅读）全是 shapes + spacing 的数值变体，气质同源。第三轮的核心主张：<b>每个新皮肤档位是一组完整 token 组合</b>（palette + typography + shapes + spacing + motion + 聊天域 ChatAppearance），用户换皮肤 = 换整个气质。以下四档均为新增 <code class="chip-code">AppSkinPreset</code>，零架构改动，默认皮肤不动。</p>
+    <div class="facts">事实底座：<b>AppSkin 全链路已就绪</b>（typography/shapes/spacing/motion/palette/顶栏/抽屉/卡片），试用与回滚机制现成；<b>ChatBubble.visible 已支持关气泡</b>，纸质感档的「平铺」不需要新渲染器；缺口标注在各档「新增成本」行。</div>
+  </div>
+
+  <div class="row">
+    <div class="variant" data-variant="纸质感">
+      <div class="v-name">A · 纸质感（Claude 参照）</div>
+      <div class="v-desc">暖纸底 + 衬线标题 + 关气泡平铺。安静、低饱和，roleplay 与长文阅读场景适配度最高。</div>
+      <div class="phone skin-paper">
+        <div class="screen">
+          <div class="topbar"><span>新对话</span><span class="tb-sub">glm-4.5-air</span></div>
+          <div class="chat">
+            <div class="msg user">帮我把这段 Kotlin 的空指针修一下，Room 返回的 Flow 在 composable 里直接 .first() 会崩</div>
+            <div class="toolcard">
+              <div class="t-title"><span>workspace · 读文件</span><span class="t-time">1.2s</span></div>
+              <div class="t-kv">ConversationDao.kt · 42 行</div>
+            </div>
+            <div class="msg assistant"><div class="who">助手</div>
+              <h4>崩点是协程没进作用域</h4>
+              在 <code>snapshotFlow</code> 里改用 <code>firstOrNull()</code> 兜底，外层套 <code>remember</code>；collect 放进 <code>LaunchedEffect</code>。
+            </div>
+          </div>
+          <div class="setgroup">
+            <div class="sg-title">外观</div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">皮肤</div></div><div class="sr-val">纸质感</div></div>
+            <div class="divider"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">Expressive 排版</div></div><div class="sr-val">关</div></div>
+          </div>
+          <div class="inputbar"><span>输入消息…</span><span class="send"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6.5 2.5 10 6l-3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+        </div>
+      </div>
+      <table class="tok">
+        <tr><td>palette</td><td>自定义主题：暖纸底 <code>#F7F2E9</code> / 卡片 <code>#FBF8F1</code> / 主色赭 <code>#A0522D</code></td></tr>
+        <tr><td>typography</td><td>serif 家族（新增）+ sizeRatio 1.05，expressive 关</td></tr>
+        <tr><td>shapes</td><td>xs 4 / sm 6 / md 10 / lg 14 / xl 20 · cardGroup 外 18 内 4 · 按钮 12</td></tr>
+        <tr><td>spacing</td><td>page 12 / section 20 / formV 14（跟随舒展阅读档）</td></tr>
+        <tr><td>motion</td><td>STANDARD（安静，无回弹）</td></tr>
+        <tr><td>聊天域</td><td>assistantBubble.visible=false（平铺）+ user 气泡 <code>#EBDFC9</code></td></tr>
+        <tr><td>新增成本</td><td>ChatFontFamily 新增 SERIF 枚举 + 内置字体或系统衬线映射</td></tr>
+      </table>
+    </div>
+
+    <div class="variant" data-variant="工程感">
+      <div class="v-name">B · 工程感（raw / functional minimalism）</div>
+      <div class="v-desc">暗底 hairline + 等宽数字 + 近直角。开发者工具受众，代码块与工具 trace 场景优先。</div>
+      <div class="phone skin-raw">
+        <div class="screen">
+          <div class="topbar"><span>新对话</span><span class="tb-sub">glm-4.5-air</span></div>
+          <div class="chat">
+            <div class="msg user">帮我把这段 Kotlin 的空指针修一下，Room 返回的 Flow 在 composable 里直接 .first() 会崩</div>
+            <div class="toolcard">
+              <div class="t-title"><span>workspace · 读文件</span><span class="t-time">1.2s</span></div>
+              <div class="t-kv">ConversationDao.kt · 42 行</div>
+            </div>
+            <div class="msg assistant"><div class="who">ASSISTANT</div>
+              崩点是协程没进作用域。在 <code>snapshotFlow</code> 里改用 <code>firstOrNull()</code> 兜底，外层套 <code>remember</code>。
+            </div>
+          </div>
+          <div class="setgroup">
+            <div class="sg-title">APPEARANCE</div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">皮肤</div></div><div class="sr-val">raw</div></div>
+            <div class="divider"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">生成时动效</div></div><div class="sr-val">OFF</div></div>
+          </div>
+          <div class="inputbar"><span>输入消息…</span><span class="send"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6.5 2.5 10 6l-3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+        </div>
+      </div>
+      <table class="tok">
+        <tr><td>palette</td><td>暗底 <code>#14161A</code> / 面板 <code>#1B1E23</code> / 终端绿 <code>#7FC79B</code> / hairline <code>#2A2F36</code></td></tr>
+        <tr><td>typography</td><td>默认 family；数字与代码强制 mono（ChatFontFamily 已有 mono 候选则接线）</td></tr>
+        <tr><td>shapes</td><td>xs 2 / sm 3 / md 4 / lg 6 / xl 8 · cardGroup 外 6 内 2 · 按钮 4 · 输入 4</td></tr>
+        <tr><td>spacing</td><td>page 10 / section 12 / formV 10（紧凑档微调）</td></tr>
+        <tr><td>motion</td><td>STANDARD</td></tr>
+        <tr><td>聊天域</td><td>双气泡 visible + 描边材质（BubbleMaterial 新增 OUTLINE，见拍板点）</td></tr>
+        <tr><td>新增成本</td><td>AppSkinCards 新增「描边卡」形态 token；其余零新增</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="variant" data-variant="squircle">
+      <div class="v-name">C · HyperOS squircle</div>
+      <div class="v-desc">连续曲率大圆角 + 玻璃顶栏 + 动态色。与现有玻璃体系（方向 C 成果）最搭，感知「现代旗舰」。</div>
+      <div class="phone skin-squircle">
+        <div class="screen">
+          <div class="topbar"><span>新对话</span><span class="tb-sub">glm-4.5-air</span></div>
+          <div class="chat">
+            <div class="msg user">帮我把这段 Kotlin 的空指针修一下，Room 返回的 Flow 在 composable 里直接 .first() 会崩</div>
+            <div class="toolcard">
+              <div class="t-title"><span>workspace · 读文件</span><span class="t-time">1.2s</span></div>
+              <div class="t-kv">ConversationDao.kt · 42 行</div>
+            </div>
+            <div class="msg assistant"><div class="who">助手</div>
+              崩点是协程没进作用域。在 <code>snapshotFlow</code> 里改用 <code>firstOrNull()</code> 兜底，外层套 <code>remember</code>。
+            </div>
+          </div>
+          <div class="setgroup">
+            <div class="sg-title">外观</div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">皮肤</div></div><div class="sr-val">squircle</div></div>
+            <div class="divider"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">页面顶栏玻璃</div></div><div class="sr-val">开</div></div>
+          </div>
+          <div class="inputbar"><span>输入消息…</span><span class="send"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6.5 2.5 10 6l-3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+        </div>
+      </div>
+      <table class="tok">
+        <tr><td>palette</td><td>动态色（壁纸取色）+ 浅灰蓝面 <code>#EDF1F7</code>；示意主色 <code>#3E6BD6</code></td></tr>
+        <tr><td>typography</td><td>expressive 开（GSF emphasized）</td></tr>
+        <tr><td>shapes</td><td>xs 8 / sm 12 / md 18 / lg 24 / xl 32 · cardGroup 外 28 内 6 · 按钮 28</td></tr>
+        <tr><td>spacing</td><td>page 12 / section 18（默认档微调）</td></tr>
+        <tr><td>motion</td><td>EXPRESSIVE（弹簧）</td></tr>
+        <tr><td>聊天域</td><td>GLASS 材质用户气泡 + 页面顶栏玻璃开</td></tr>
+        <tr><td>新增成本</td><td><b>连续曲率</b>：M3 圆角是圆弧非 squircle，需 AppSkinShapes 加 <code>continuous: Boolean</code> + 自绘 SmoothCorner path</td></tr>
+      </table>
+    </div>
+
+    <div class="variant" data-variant="iOS">
+      <div class="v-name">D · iOS 风（compose-cupertino 取风格不取库）</div>
+      <div class="v-desc">systemGray 分组底 + inset 分隔 + 胶囊输入栏。角色扮演受众有市场，实现成本最低的一档。</div>
+      <div class="phone skin-ios">
+        <div class="screen">
+          <div class="topbar"><span>新对话</span><span class="tb-sub">glm-4.5-air</span></div>
+          <div class="chat">
+            <div class="msg user">帮我把这段 Kotlin 的空指针修一下，Room 返回的 Flow 在 composable 里直接 .first() 会崩</div>
+            <div class="toolcard">
+              <div class="t-title"><span>workspace · 读文件</span><span class="t-time">1.2s</span></div>
+              <div class="t-kv">ConversationDao.kt · 42 行</div>
+            </div>
+            <div class="msg assistant"><div class="who">助手</div>
+              崩点是协程没进作用域。在 <code>snapshotFlow</code> 里改用 <code>firstOrNull()</code> 兜底，外层套 <code>remember</code>。
+            </div>
+          </div>
+          <div class="setgroup">
+            <div class="sg-title">外观</div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">皮肤</div></div><div class="sr-val">iOS</div></div>
+            <div class="divider"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">主题</div></div><div class="sr-val">跟随系统</div></div>
+          </div>
+          <div class="inputbar"><span>输入消息…</span><span class="send"><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6.5 2.5 10 6l-3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div>
+        </div>
+      </div>
+      <table class="tok">
+        <tr><td>palette</td><td>系统灰阶 <code>#F2F2F7</code> / 白卡 / systemBlue <code>#0A7AFF</code>（或动态色替换）</td></tr>
+        <tr><td>typography</td><td>默认 family</td></tr>
+        <tr><td>shapes</td><td>xs 6 / sm 10 / md 12 / lg 16 / xl 22 · cardGroup 外 12 内 0（inset 分隔线形态）· 按钮 capsule</td></tr>
+        <tr><td>spacing</td><td>page 8 / section 16（默认）</td></tr>
+        <tr><td>motion</td><td>STANDARD</td></tr>
+        <tr><td>聊天域</td><td>SOLID 双气泡 + 非对称尾角（见第二节几何提案）</td></tr>
+        <tr><td>新增成本</td><td>CardGroup 内分隔线渲染形态 token；其余零新增</td></tr>
+      </table>
+    </div>
+  </div>
+  <p class="note">四档共用同一对话内容与设置片段，方便横向对比气质差异。所有色值均为提案示意，实施时走 AppSkin palette 契约（AMOLED 纯黑覆盖与降级逻辑自动继承）。</p>
+</section>
+
+<!-- ══════════ Section 2 气泡几何 ══════════ -->
+<section id="s2">
+  <div class="sec-head">
+    <h2>二 · 气泡几何自由度：一次数据类升级，补齐 SillyTavern 差距</h2>
+    <p class="why">竞品对照（第一轮调研 §4）指出的差距是<b>气泡几何自由度</b>：宽度、对齐、尾角。现状 <code class="chip-code">ChatBubbleGeometry(radiusDp=16, paddingDp=8)</code> 只有半径与内边距两个字段。提案：三个预设开箱即用，全部由现有字段加下方提案字段组合，无新渲染器。</p>
+    <div class="facts">事实底座：<b>ChatLayout 已有</b> <code>userAlignEnd</code> / <code>contentWidthFraction</code> / <code>messageGapDp</code>；缺的是<b>气泡级</b>宽度上限与<b>尾角</b>。尾角用逐角圆角实现，不画 tail path（避免非连续曲率渲染问题）。</div>
+  </div>
+
+  <div class="geo-row">
+    <div class="geo-panel" data-variant="经典尾角">
+      <div class="gp-head">预设 1 · 经典尾角</div>
+      <p class="gp-desc">用户气泡限宽 + 尾角收紧（聊天气泡的标志性轮廓），助手侧不变。</p>
+      <div class="geo-screen">
+        <div class="gmsg g-user" style="max-width:72%; border-radius:18px 18px 5px 18px;">帮我看看为什么重新生成后不自动滚动了</div>
+        <div class="gmsg g-asst" style="border-radius:18px;">根因是贴底闩锁只在滚动请求时重立，regen 路径没补发请求。</div>
+        <div class="gmsg g-user" style="max-width:72%; border-radius:18px 18px 5px 18px;">修复影响面大吗</div>
+        <div class="gmsg g-asst" style="border-radius:18px;">两处调用补一行，THIS_ONLY 分支由 id 守卫自然跳过。</div>
+      </div>
+      <div class="geo-chips">
+        <span class="chip">radiusDp=18</span><span class="chip">tailCornerDp=5</span><span class="chip">maxWidth=72%</span><span class="chip">alignEnd=true</span>
+      </div>
+    </div>
+
+    <div class="geo-panel" data-variant="对称卡片">
+      <div class="gp-head">预设 2 · 对称卡片</div>
+      <p class="gp-desc">双方同宽同圆角、无尾角。安静对称，适合工具调用多、结构化输出多的对话。</p>
+      <div class="geo-screen">
+        <div class="gmsg g-user" style="margin-left:auto; margin-right:auto; max-width:88%; border-radius:16px;">帮我看看为什么重新生成后不自动滚动了</div>
+        <div class="gmsg g-asst" style="border-radius:16px;">根因是贴底闩锁只在滚动请求时重立，regen 路径没补发请求。</div>
+        <div class="gmsg g-user" style="margin-left:auto; margin-right:auto; max-width:88%; border-radius:16px;">修复影响面大吗</div>
+        <div class="gmsg g-asst" style="border-radius:16px;">两处调用补一行，THIS_ONLY 分支由 id 守卫自然跳过。</div>
+      </div>
+      <div class="geo-chips">
+        <span class="chip">radiusDp=16</span><span class="chip">tailCornerDp=null</span><span class="chip">maxWidth=88%</span>
+      </div>
+    </div>
+
+    <div class="geo-panel" data-variant="文档平铺">
+      <div class="gp-head">预设 3 · 文档平铺</div>
+      <p class="gp-desc">助手气泡关掉（visible=false 已支持），满宽排版像文档；用户消息只留窄条定位。</p>
+      <div class="geo-screen">
+        <div class="gmsg g-user" style="max-width:64%; border-radius:10px;">帮我看看为什么重新生成后不自动滚动了</div>
+        <div class="gmsg g-asst" style="background:transparent; padding:4px 2px;">根因是贴底闩锁只在滚动请求时重立，regen 路径没补发请求。修复影响面：两处调用各补一行。</div>
+      </div>
+      <div class="geo-chips">
+        <span class="chip">assistantVisible=false</span><span class="chip">radiusDp=10</span><span class="chip">maxWidth=100%</span>
+      </div>
+    </div>
+  </div>
+
+  <table class="tok" style="margin-top:28px;">
+    <tr><th style="width:34%;">提案字段（ChatBubbleGeometry v2）</th><th>说明</th></tr>
+    <tr><td><code>radiusDp</code></td><td>保留，基准半径</td></tr>
+    <tr><td><code>tailCornerDp: Float?</code></td><td>尾角收紧，映射到 userAlignEnd 侧的下角；null = 对称四角</td></tr>
+    <tr><td><code>maxWidthFraction: Float</code></td><td>0.5 至 1.0，气泡内容宽度上限（现由 contentWidthFraction 全局管，气泡级补局部能力）；只影响测量宽度，不动增量渲染管线</td></tr>
+    <tr><td><code>paddingHorizontalDp / paddingVerticalDp</code></td><td>拆分现有单一 paddingDp（现横竖同值 8dp，长文观感局促）</td></tr>
+    <tr><td>迁移</td><td>现有 <code>paddingDp=8</code> 读取时拆成 8/8，序列化兼容；皮肤与 ChatAppearance 双层 overrides 机制不变</td></tr>
+  </table>
+</section>
+
+<!-- ══════════ Section 3 IA 三件 ══════════ -->
+<section id="s3">
+  <div class="sec-head">
+    <h2>三 · 设置页 IA 三件：每行显值 · 一项一家 · 低频收高级</h2>
+    <p class="why">上轮拍板遗留的 E 收窄版。不做全面 Bento（视觉层感知偏低、CardGroup 触碰 75+ 页），只做 dsh-go 式三件低成本结构改动。前置动作：实施前先跑一遍 dsh-go 式 IA 盘点表（点击步数 / 使用频率 / 影响面）。</p>
+    <div class="facts">事实底座：<b>CardGroup 是 Column 实现</b>，天然免疫 Lazy item IME 坑，加行内值 chip 不触坑族；<b>supportingContent 单子节点坑</b>：值 chip 与条件行一律 Column 包一层；示例取本仓真实设置项（DisplaySetting 字段名见括号）。</div>
+  </div>
+
+  <div class="row">
+    <div class="variant" data-variant="现状">
+      <div class="v-name">现状（真仓形态还原）</div>
+      <div class="v-desc">三项问题可见：值不可见（要进去才知道状态）、同一设置出现在两个家（Expressive 排版在皮肤编辑器与显示两处）、低频项与高频项平铺混排。</div>
+      <div class="phone">
+        <div class="screen" style="background:#F2F2F2;">
+          <div class="topbar" style="background:#FAFAFA; color:#1C1C1E;">偏好设置</div>
+          <div class="setgroup" style="background:#FFF;">
+            <div class="sg-title">常规</div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">生成时动效</div><div class="sr-desc">流式输出时启用块级淡入与相关动画，关闭后生成过程为静态渲染，长文本下更流畅</div></div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">浮动输入栏</div><div class="sr-desc">输入栏改为浮动胶囊形态，低频控件收入渐进披露菜单</div></div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">输入栏图标淡入</div><div class="sr-desc">输入时淡入低频图标组，非输入态隐藏占位不变</div></div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">页面顶栏玻璃</div><div class="sr-desc">在列表与设置页顶栏启用玻璃采样效果</div></div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">玻璃效果类型</div><div class="sr-desc">选择 BLUR 或 GLASS 渲染路径</div></div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">Expressive 排版</div><div class="sr-desc">标题与按钮切换 Google Sans Flex emphasized 字阶</div></div></div>
+          </div>
+          <div class="setgroup" style="background:#FFF;">
+            <div class="sg-title">显示</div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">Expressive 排版</div><div class="sr-desc">在显示设置中也可切换（与皮肤编辑器重复的家）</div></div></div>
+          </div>
+          <div class="inputbar" style="background:#FFF; color:#9E9E9E; border:1px solid #E6E6E6;"><span>搜索设置…</span></div>
+        </div>
+      </div>
+      <div style="margin-top:10px; font-size:12.5px; color:var(--ink-2);">问题标注：六个开关行全部只有标题 + 长描述；「Expressive 排版」出现两个家。</div>
+    </div>
+
+    <div class="variant" data-variant="提案">
+      <div class="v-name">提案（IA 三件落地后）</div>
+      <div class="v-desc">值前置（行尾 chip 直读当前值）、Expressive 排版唯一家在皮肤编辑器（显示页留同名入口跳转）、低频项收进「高级」默认折叠。</div>
+      <div class="phone">
+        <div class="screen" style="background:#F2F2F2;">
+          <div class="topbar" style="background:#FAFAFA; color:#1C1C1E;">偏好设置</div>
+          <div class="setgroup" style="background:#FFF;">
+            <div class="sg-title">常规</div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">生成时动效</div></div><div class="sr-val" style="background:var(--accent-soft); color:var(--accent);">开</div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">浮动输入栏</div></div><div class="sr-val" style="background:var(--accent-soft); color:var(--accent);">开</div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">皮肤</div></div><div class="sr-val">默认</div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">主题</div></div><div class="sr-val">动态色</div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">Expressive 排版</div><div class="sr-desc">家在皮肤编辑器，此处为同名跳转入口</div></div><div class="sr-val">开 ›</div></div>
+          </div>
+          <div class="setgroup" style="background:#FFF;">
+            <div class="sg-title">常规（续）</div>
+            <div class="adv-head"><span>高级<span class="adv-hint">　低频 6 项</span></span><svg class="chev" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="m3.5 5.5 3.5 3.5 3.5-3.5" stroke="#1C1C1E" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div class="divider" style="margin:0 0 0 14px; background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">输入栏图标淡入</div></div><div class="sr-val" style="background:var(--accent-soft); color:var(--accent);">开</div></div>
+            <div class="divider" style="background:#ECECEC;"></div>
+            <div class="setrow"><div class="sr-main"><div class="sr-title">页面顶栏玻璃</div></div><div class="sr-val" style="background:var(--accent-soft); color:var(--accent);">开</div></div>
+          </div>
+          <div class="inputbar" style="background:#FFF; color:#9E9E9E; border:1px solid #E6E6E6;"><span>搜索设置…</span></div>
+        </div>
+      </div>
+      <div style="margin-top:10px; font-size:12.5px; color:var(--ink-2);">「高级」段为展开态示意，默认折叠；搜索命中折叠项时自动展开并高亮（dsh-go 已验证的搜索跳转模式）。</div>
+    </div>
+  </div>
+
+  <table class="tok" style="margin-top:28px;">
+    <tr><th style="width:22%;">三件</th><th>落点</th></tr>
+    <tr><td>每行显值</td><td>CardGroup item 新增 <code>trailingValue</code> 槽（Column 包裹，避 supportingContent 坑）；每行一个当前值 chip，布尔值用「开/关」，枚举用短词。覆盖高频页先行：偏好设置、显示、模型设置</td></tr>
+    <tr><td>一项一家</td><td>盘点表先跑：同一设置多处出现时，收敛到语义最准的一处，其余位置留<b>同名</b>跳转入口（入口可多、名字必须相同）</td></tr>
+    <tr><td>低频收高级</td><td>CardGroup 新增可折叠「高级」段（纯状态折叠，不用 Lazy）；搜索命中自动展开；首页不放放宽保护与删数据控件（挪进对应功能页或高级段）</td></tr>
+  </table>
+</section>
+
+<!-- ══════════ Section 4 motion token ══════════ -->
+<section id="s4">
+  <div class="sec-head">
+    <h2>四 · motion token 表对照：从二值枚举到九档数值</h2>
+    <p class="why">现状 <code class="chip-code">AppSkinMotion = EXPRESSIVE | STANDARD</code> 只是个开关，仓内大量自定义动画仍手写 tween，时长各自为政（图标淡入 200ms、思维链短 tween、块淡入 240ms）。提案：引入 dsh-go 式数值 token 表作为第三档 <code class="chip-code">TOKENS</code>，先对齐存量散值，再逐步替换手写值。</p>
+    <div class="facts">可及性纪律照抄：<b>系统「移除动画」开启时所有时长取 0</b>（读 <code>Settings.Global.ANIMATOR_DURATION_SCALE</code>）；弹簧只喂位移/缩放，<b>透明度永不越界</b>；思维链短 tween 是已调优 perf 决策，<b>不在替换清单内</b>。</div>
+  </div>
+
+  <table class="tok">
+    <tr><th>dsh-go token</th><th>值</th><th>本仓落点（现状散值）</th><th>建议</th></tr>
+    <tr><td>press</td><td>90ms</td><td>按压缩放（无统一 token）</td><td>新增，按压反馈统一入口</td></tr>
+    <tr><td>quick</td><td>160ms</td><td>chatInputIconFade 现为 tween(200)</td><td>对齐 160；图标淡入属「感觉不到在等」档</td></tr>
+    <tr><td>standard</td><td>240ms</td><td>块淡入 blockFadeIn 240ms（已对齐）</td><td>收编为正式 token</td></tr>
+    <tr><td>collapse</td><td>280ms</td><td>思维链/工具行折叠（短 tween 有意保留，perf）</td><td>仅非列表场景用 280；列表内维持现状</td></tr>
+    <tr><td>emphasized</td><td>340ms</td><td>发送↔停止 morph（motionScheme.fastSpatialSpec）</td><td>EXPRESSIVE 档弹簧驱动，TOKENS 档 340</td></tr>
+    <tr><td>sheetIn / sheetOut</td><td>380 / 260ms</td><td>ModalBottomSheet 默认值</td><td>收编（注意 M3 sheet API 只认时长）</td></tr>
+    <tr><td>slow</td><td>480ms</td><td>页面级过场（无统一 token）</td><td>新增</td></tr>
+    <tr><td>breath</td><td>2400ms</td><td>环境呼吸（MeshGradient、连接中状态点）</td><td>新增，循环动画用 reduced 判断停静止帧</td></tr>
+    <tr><td>layout spring</td><td>350ms / bounce 0</td><td>animateContentSize 各处手写 spring</td><td>统一落位弹簧</td></tr>
+    <tr><td>fling spring</td><td>500ms / bounce 0.15</td><td>抽屉、贴底滚动收尾</td><td>唯一带一点回弹的档</td></tr>
+    <tr><td>release spring</td><td>320ms / bounce 0.45</td><td>无</td><td>仅 EXPRESSIVE 档启用，只喂位移/缩放</td></tr>
+  </table>
+
+  <div class="demo-row">
+    <div class="demo-tile">
+      <div class="d-name">press 90ms</div>
+      <div class="d-spec">transform scale 0.96 · ease-out</div>
+      <div class="d-stage"><button class="demo-btn">按住我</button><span style="font-size:12px; color:var(--ink-2);">反馈快到感觉不到在等</span></div>
+    </div>
+    <div class="demo-tile">
+      <div class="d-name">collapse 280ms</div>
+      <div class="d-spec">max-height + opacity · cubic-bezier(.65,0,.35,1)</div>
+      <div class="d-stage">
+        <div class="collapse-card" id="collapseDemo">
+          <div class="collapse-head" id="collapseHead"><span>workspace · 读文件</span><svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="m3.5 5.5 3.5 3.5 3.5-3.5" stroke="#26231F" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="collapse-body"><div class="cb-in">ConversationDao.kt · 42 行 · 大块高度变化慢一拍才不「啪」一下。列表内维持现状短 tween 是 perf 决策。</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="demo-tile">
+      <div class="d-name">quick 160ms</div>
+      <div class="d-spec">opacity + scale · ease</div>
+      <div class="d-stage">
+        <div class="fade-wrap">
+          <button class="fade-ic" id="fadeToggle" aria-label="切换图标显隐"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.2" stroke="currentColor" stroke-width="1.6"/><path d="M8 5.6v2.4l1.6 1.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+          <span style="font-size:12px; color:var(--ink-2);">点圆切换淡入淡出（160ms）</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <table class="tok" style="margin-top:24px;">
+    <tr><th style="width:30%;">落点方案</th><th>说明</th></tr>
+    <tr><td><code>AppSkinMotionTokens</code>（@Serializable）</td><td>九档时长 + 四组弹簧档位，作为 <code>AppSkinMotion</code> 第三档枚举值 <code>TOKENS</code> 携带；EXPRESSIVE / STANDARD 保持现语义不动，老皮肤序列化零迁移</td></tr>
+    <tr><td>消费入口</td><td><code>AppSkinTheme</code> 暴露 <code>LocalMotionTokens</code>；先收编 chatInputIconFade(200→quick)、页面过场等散值，morph 等已有弹簧调用不动</td></tr>
+    <tr><td>可及性</td><td>统一在取值口判断 ANIMATOR_DURATION_SCALE=0 归零；循环动画（breath）判 reduced 停静止帧</td></tr>
+    <tr><td>验证</td><td>真机验证矩阵沿用既有：audit_ime_trap + 中文 IME 注入 + AMOLED 开关（顺带收账方向 C 挂账）+ 关闭动效开关全静态</td></tr>
+  </table>
+</section>
+
+<!-- ══════════ 拍板点 ══════════ -->
+<section id="s5">
+  <div class="decide">
+    <h2>拍板点清单</h2>
+    <ol>
+      <li><b>皮肤档位取舍</b>：四档全做，还是先做两档？<span class="opt">建议先行：纸质感 + squircle（感知差最大、成本可控）；工程感与 iOS 档随后。</span></li>
+      <li><b>serif 字体族</b>：ChatFontFamily 是否新增 SERIF？内置字体（增加包体）还是系统衬线映射（GB 字重不可控）？<span class="opt">建议系统衬线起步 + 皮肤 resources 已支持自定义字体导入兜底。</span></li>
+      <li><b>squircle 连续曲率</b>：值得为 HyperOS 档自绘 SmoothCorner path 吗？<span class="opt">若不值得，该档降级为普通大圆角（28/32dp）仍成立。</span></li>
+      <li><b>气泡几何 v2 字段集</b>：tailCornerDp / maxWidthFraction / padding 拆分三项是否按提案执行？</li>
+      <li><b>IA 三件实施范围</b>：先跑盘点表，首批只覆盖偏好设置 + 显示 + 模型设置三页？</li>
+      <li><b>motion token 档</b>：AppSkinMotion 加 TOKENS 档是否通过？收编散值首批清单（图标淡入 200→160）是否接受？</li>
+    </ol>
+  </div>
+</section>
+
+</div>
+<script>
+(function () {
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var head = document.getElementById('collapseHead');
+  var card = document.getElementById('collapseDemo');
+  if (head && card) head.addEventListener('click', function () {
+    card.classList.toggle('open');
+  });
+  var fade = document.getElementById('fadeToggle');
+  if (fade) fade.addEventListener('click', function () {
+    fade.classList.toggle('hidden-ic');
+  });
+})();
+</script>
+</body>
+</html>

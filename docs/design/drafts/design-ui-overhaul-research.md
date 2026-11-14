@@ -1,6 +1,6 @@
 # UI 改造初步调研：控件、风格与竞品（2026-11）
 
-> 状态：**调研稿** · 2026-11-13 撰写；A+G+D/C/B/I/F 七方向已于 2026-11-14 全部落地（9df438545/2f7eaec17/7e9b623ca/6704e4258/a945e0f57/4ee3390ca/858ef57be），仅剩方向 E（Bento IA 三件）未做
+> 状态：**调研稿** · 2026-11-13 撰写；A+G+D/C/B/I/F 七方向已于 2026-11-14 全部落地（9df438545/2f7eaec17/7e9b623ca/6704e4258/a945e0f57/4ee3390ca/858ef57be）。**第三轮已拍板（2026-11-14）**：首轮皮肤 = HyperOS squircle + 纸质感，serif 系统衬线起步、squircle 连续曲率做、气泡几何 v2 / IA 三件 / motion TOKENS 全通过——正式稿见 [design-ui-round3-skins-geometry-motion.md](design-ui-round3-skins-geometry-motion.md)（本地暂存未提交）
 > 目的：为下一轮 UI 改造提供外部情报（设计语言 / 组件库 / 竞品模式 / 视觉趋势）与本仓基线对照，产出候选方向清单供决策。
 > 方法：网络调研（来源见 §8）+ 本仓代码盘点（关键结论均已核实到 file:line）。
 
