@@ -10,6 +10,8 @@ data class AppSkin(
     val shapes: AppSkinShapes = AppSkinShapes(),
     val spacing: AppSkinSpacing = AppSkinSpacing(),
     val motion: AppSkinMotion = AppSkinMotion.EXPRESSIVE,
+    /** 仅 motion == TOKENS 时生效；null 回落 EXPRESSIVE。老皮肤 JSON 无此字段，零迁移。 */
+    val motionTokens: AppSkinMotionTokens? = null,
     /** null retains the existing dynamic/preset/custom palette selection. */
     val palette: CustomTheme? = null,
     val topBar: AppSkinTopBar = AppSkinTopBar(),
@@ -19,6 +21,7 @@ data class AppSkin(
     val resources: AppSkinResources = AppSkinResources(),
 ) {
     fun normalized() = copy(typography = typography.normalized(), shapes = shapes.normalized(), spacing = spacing.normalized(),
+        motionTokens = motionTokens?.normalized(),
         topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized(), embedded = embedded.normalized(), resources = resources.normalized())
 }
 
@@ -48,6 +51,8 @@ data class AppSkinShapes(
     /** null keeps Material's full capsule button. Explicit caller shapes still take precedence. */
     val buttonDp: Float? = null,
     val inputDp: Float = 4f,
+    /** 连续曲率（squircle）：true 时 Shapes 用 SmoothCornerShape 代替圆弧圆角。列表项暂不消费。 */
+    val continuous: Boolean = false,
 ) {
     /** Preserve host radii between the five Material reference sizes while following skin tokens. */
     fun scaledCornerRadius(defaultDp: Float): Float {
@@ -90,7 +95,47 @@ data class AppSkinSpacing(
 }
 
 @Serializable
-enum class AppSkinMotion { EXPRESSIVE, STANDARD }
+enum class AppSkinMotion { EXPRESSIVE, STANDARD, TOKENS }
+
+/**
+ * 数值动效档（对照 dsh-go AppMotion 表）：九档时长(ms) + 两组弹簧(时长 + bounce)。
+ * 原则「安静、短、跟手」：反馈 ≤160ms、结构 240–340ms、环境 2.4s。
+ * 弹簧只喂位移/缩放，透明度永不越界；消费口统一处理「系统移除动画 → 时长归 0」。
+ */
+@Serializable
+data class AppSkinMotionTokens(
+    val pressMs: Int = 90,
+    val quickMs: Int = 160,
+    val standardMs: Int = 240,
+    val collapseMs: Int = 280,
+    val emphasizedMs: Int = 340,
+    val sheetInMs: Int = 380,
+    val sheetOutMs: Int = 260,
+    val slowMs: Int = 480,
+    val breathMs: Int = 2400,
+    /** 尺寸/位置落位弹簧：bounce 0 最通用。 */
+    val layoutSpringMs: Int = 350,
+    val layoutBounce: Float = 0f,
+    /** 甩动收尾（抽屉、贴底滚动）：唯一带一点回弹的档。 */
+    val flingSpringMs: Int = 500,
+    val flingBounce: Float = 0.15f,
+) {
+    fun normalized() = copy(
+        pressMs = pressMs.coerceIn(0, 500),
+        quickMs = quickMs.coerceIn(0, 600),
+        standardMs = standardMs.coerceIn(0, 800),
+        collapseMs = collapseMs.coerceIn(0, 1000),
+        emphasizedMs = emphasizedMs.coerceIn(0, 1200),
+        sheetInMs = sheetInMs.coerceIn(0, 1500),
+        sheetOutMs = sheetOutMs.coerceIn(0, 1500),
+        slowMs = slowMs.coerceIn(0, 2000),
+        breathMs = breathMs.coerceIn(0, 10000),
+        layoutSpringMs = layoutSpringMs.coerceIn(0, 1500),
+        layoutBounce = layoutBounce.bound(0f, 0.5f, 0f),
+        flingSpringMs = flingSpringMs.coerceIn(0, 1500),
+        flingBounce = flingBounce.bound(0f, 0.5f, 0.15f),
+    )
+}
 
 /** Group-wise overrides. null inherits the selected skin; resetting a group resumes inheritance. */
 @Serializable
@@ -99,6 +144,7 @@ data class AppSkinOverrides(
     val shapes: AppSkinShapes? = null,
     val spacing: AppSkinSpacing? = null,
     val motion: AppSkinMotion? = null,
+    val motionTokens: AppSkinMotionTokens? = null,
     val palette: CustomTheme? = null,
     val topBar: AppSkinTopBar? = null,
     val drawer: AppSkinDrawer? = null,
@@ -107,7 +153,7 @@ data class AppSkinOverrides(
     val resources: AppSkinResources? = null,
 ) {
     fun applyTo(base: AppSkin) = AppSkin(typography ?: base.typography, shapes ?: base.shapes,
-        spacing ?: base.spacing, motion ?: base.motion, palette ?: base.palette,
+        spacing ?: base.spacing, motion ?: base.motion, motionTokens ?: base.motionTokens, palette ?: base.palette,
         topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards, embedded ?: base.embedded, resources ?: base.resources).normalized()
 
     /** Only edited groups become overrides; untouched groups continue following the selected skin. */
@@ -116,6 +162,7 @@ data class AppSkinOverrides(
         shapes = if (before.shapes != value.shapes) value.shapes else shapes,
         spacing = if (before.spacing != value.spacing) value.spacing else spacing,
         motion = if (before.motion != value.motion) value.motion else motion,
+        motionTokens = if (before.motionTokens != value.motionTokens) value.motionTokens else motionTokens,
         palette = if (before.palette != value.palette) value.palette else palette,
         topBar = if (before.topBar != value.topBar) value.topBar else topBar,
         drawer = if (before.drawer != value.drawer) value.drawer else drawer,
@@ -125,8 +172,8 @@ data class AppSkinOverrides(
     ) }
 
     companion object {
-        fun from(skin: AppSkin) = AppSkinOverrides(skin.typography, skin.shapes, skin.spacing, skin.motion, skin.palette,
-            skin.topBar, skin.drawer, skin.cards, skin.embedded, skin.resources)
+        fun from(skin: AppSkin) = AppSkinOverrides(skin.typography, skin.shapes, skin.spacing, skin.motion, skin.motionTokens,
+            skin.palette, skin.topBar, skin.drawer, skin.cards, skin.embedded, skin.resources)
     }
 }
 

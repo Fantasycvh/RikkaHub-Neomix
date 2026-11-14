@@ -1,6 +1,6 @@
 # UI 第三轮改造设计稿：皮肤档位 / 气泡几何 v2 / IA 三件 / motion tokens
 
-> 状态：**草稿（拍板完成，本地暂存未提交）** · 2026-11-14
+> 状态：**M1 契约层已实施（2026-11-14，工作区未提交）**：§2.1/§2.2/§2.4/§2.5 落地 + §2.3 核实为已存在（ChatFontFamily.SERIF 全链路在仓，零代码）。全量单测绿、audit A=0/A'=0、真机冒烟（主页/聊天/设置五页）0 FATAL。渲染接线挂账：maxWidthFraction（M2 皮肤档一起）、advancedGroup 页面消费（M3）、motion 散值收编（M4）。
 > 上游：[design-ui-overhaul-research.md](design-ui-overhaul-research.md)（第一轮调研 + §10 dsh-go 补析）
 > 视觉对比稿：`原型/RikkaHub-UI第三轮-视觉对比稿.html`（用户已按稿拍板）
 > 硬约束沿用调研稿 §6：IME 宿主规范、supportingContent 单子节点坑、皮肤契约、长文本性能、布局稳定性。

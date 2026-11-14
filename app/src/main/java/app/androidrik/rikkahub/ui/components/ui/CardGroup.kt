@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.components.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -34,16 +36,23 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
+import androidx.compose.ui.util.fastForEach
+import com.composables.icons.lucide.ChevronDown
+import com.composables.icons.lucide.Lucide
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.LocalAppSkin
 
@@ -62,6 +71,19 @@ private data class CardGroupItem(
     val colors: ListItemColors?,
     /** 不为空时是表单项，标题行下方接这块内容 */
     val formContent: (@Composable ColumnScope.() -> Unit)? = null,
+    /** 行尾「当前值」位：与 trailingContent 同时给出时并排渲染（值在前） */
+    val trailingValue: (@Composable () -> Unit)? = null,
+    /** 折叠段内成员；折叠时整段隐藏 */
+    val advanced: Boolean = false,
+    /** 不为空时是折叠段标题行（纯数据标记，渲染在 composable 上下文构建） */
+    val advancedHead: AdvancedHead? = null,
+)
+
+private data class AdvancedHead(
+    val title: String,
+    val hint: String?,
+    val expanded: Boolean,
+    val memberCount: Int,
 )
 
 @DslMarker
@@ -77,6 +99,7 @@ interface CardGroupScope {
         leadingContent: (@Composable () -> Unit)? = null,
         trailingContent: (@Composable () -> Unit)? = null,
         colors: ListItemColors? = null,
+        trailingValue: (@Composable () -> Unit)? = null,
         headlineContent: @Composable () -> Unit,
     )
 
@@ -88,6 +111,18 @@ interface CardGroupScope {
         leadingContent: (@Composable () -> Unit)? = null,
         trailingContent: (@Composable () -> Unit)? = null,
         content: @Composable ColumnScope.() -> Unit,
+    )
+
+    /**
+     * 低频收「高级」折叠段：标题行 + 默认隐藏的成员 items。
+     * 状态由调用方持有（rememberSaveable），本组件纯受控；首页不放放宽保护/删数据控件。
+     */
+    fun advancedGroup(
+        title: String,
+        hint: String? = null,
+        expanded: Boolean,
+        onToggle: (Boolean) -> Unit,
+        content: CardGroupScope.() -> Unit,
     )
 }
 
@@ -102,6 +137,7 @@ private class CardGroupScopeImpl : CardGroupScope {
         leadingContent: (@Composable () -> Unit)?,
         trailingContent: (@Composable () -> Unit)?,
         colors: ListItemColors?,
+        trailingValue: (@Composable () -> Unit)?,
         headlineContent: @Composable () -> Unit,
     ) {
         items.add(
@@ -114,6 +150,7 @@ private class CardGroupScopeImpl : CardGroupScope {
                 leadingContent = leadingContent,
                 trailingContent = trailingContent,
                 colors = colors,
+                trailingValue = trailingValue,
             )
         )
     }
@@ -139,6 +176,32 @@ private class CardGroupScopeImpl : CardGroupScope {
                 formContent = content,
             )
         )
+    }
+
+    override fun advancedGroup(
+        title: String,
+        hint: String?,
+        expanded: Boolean,
+        onToggle: (Boolean) -> Unit,
+        content: CardGroupScope.() -> Unit,
+    ) {
+        val nested = CardGroupScopeImpl()
+        nested.content()
+        // 标题行只带纯数据（title/hint/expanded），composable 内容在 CardGroupListItem 渲染时构建
+        items.add(
+            CardGroupItem(
+                onClick = { onToggle(!expanded) },
+                modifier = Modifier,
+                overlineContent = null,
+                headlineContent = null,
+                supportingContent = null,
+                leadingContent = null,
+                trailingContent = null,
+                colors = null,
+                advancedHead = AdvancedHead(title, hint, expanded, nested.items.size),
+            )
+        )
+        items.addAll(nested.items.map { it.copy(advanced = true) })
     }
 }
 
@@ -249,8 +312,18 @@ private fun CardGroupListItem(
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
     )
 
+    val head = item.advancedHead
+    val trailing: (@Composable () -> Unit)? = when {
+        head != null -> AdvancedChevron(head.expanded)
+        item.trailingValue == null -> item.trailingContent
+        item.trailingContent == null -> item.trailingValue
+        // 值 chip 与操作并排：值在前、操作靠右
+        else -> MergedTrailing(requireNotNull(item.trailingValue), requireNotNull(item.trailingContent))
+    }
     ListItem(
-        headlineContent = item.headlineContent ?: {},
+        headlineContent = if (head != null) {
+            { Text(head.title) }
+        } else item.headlineContent ?: {},
         modifier = item.modifier
             .fillMaxWidth()
             .clip(
@@ -271,11 +344,61 @@ private fun CardGroupListItem(
                 } else Modifier
             ),
         overlineContent = item.overlineContent,
-        supportingContent = item.supportingContent,
+        supportingContent = if (head != null) {
+            { Text(head.hint ?: "${head.memberCount} 项") }
+        } else item.supportingContent,
         leadingContent = item.leadingContent,
-        trailingContent = item.trailingContent,
+        trailingContent = trailing,
         colors = item.colors ?: CustomColors.listItemColors,
     )
+}
+
+/** 折叠段标题行的 chevron（展开旋转 180 度）。 */
+@Composable
+private fun AdvancedChevron(expanded: Boolean): @Composable () -> Unit {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+    )
+    return { Icon(imageVector = Lucide.ChevronDown, contentDescription = null, modifier = Modifier.rotate(rotation)) }
+}
+
+/** 值 chip + 操作并排的 trailing。 */
+@Composable
+private fun MergedTrailing(
+    value: @Composable () -> Unit,
+    action: @Composable () -> Unit,
+): @Composable () -> Unit {
+    return {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            value()
+            action()
+        }
+    }
+}
+
+/** 行尾「当前值」chip：emphasized=true 用于开/选中态，false 中性（一行放不下时省略号截断）。 */
+@Composable
+fun CardGroupValueChip(text: String, modifier: Modifier = Modifier, emphasized: Boolean = false) {
+    val container by animateColorAsState(
+        targetValue = if (emphasized) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+        animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
+    )
+    val content = if (emphasized) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier = modifier
+            .widthIn(max = 160.dp)
+            .background(container, RoundedCornerShape(999.dp))
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = content,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 @Composable
@@ -297,8 +420,20 @@ fun CardGroup(
                 }
             }
         }
-        val count = scope.items.size
-        scope.items.fastForEachIndexed { index, item ->
+        // 折叠段：标题行恒可见，advanced 成员在收起时整段隐藏（CardGroup 是 Column 实现，无 Lazy 宿主）
+        val visible = ArrayList<CardGroupItem>(scope.items.size)
+        var hiding = false
+        scope.items.fastForEach { item ->
+            val head = item.advancedHead
+            if (head != null) {
+                hiding = !head.expanded
+                visible.add(item)
+            } else if (!item.advanced || !hiding) {
+                visible.add(item)
+            }
+        }
+        val count = visible.size
+        visible.fastForEachIndexed { index, item ->
             val formContent = item.formContent
             if (formContent != null) {
                 CardGroupFormItem(item = item, formContent = formContent, count = count, index = index)
@@ -347,6 +482,30 @@ private fun CardGroupPreview() {
                     headlineContent = { Text("第三项") },
                     trailingContent = { Text("→") },
                 )
+            }
+            var advancedExpanded by remember { mutableStateOf(false) }
+            CardGroup(
+                modifier = Modifier.padding(top = 16.dp),
+                title = { Text("IA") },
+            ) {
+                item(
+                    headlineContent = { Text("生成时动效") },
+                    trailingValue = { CardGroupValueChip("开", emphasized = true) },
+                )
+                item(
+                    headlineContent = { Text("主题") },
+                    trailingValue = { CardGroupValueChip("动态色") },
+                )
+                advancedGroup(
+                    title = "高级",
+                    expanded = advancedExpanded,
+                    onToggle = { advancedExpanded = it },
+                ) {
+                    item(
+                        headlineContent = { Text("页面顶栏玻璃") },
+                        trailingValue = { CardGroupValueChip("开", emphasized = true) },
+                    )
+                }
             }
         }
     }

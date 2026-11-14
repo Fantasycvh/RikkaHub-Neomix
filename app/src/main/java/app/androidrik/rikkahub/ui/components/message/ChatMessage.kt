@@ -448,6 +448,7 @@ private fun MessageTextContent(
             defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
             padWhenHidden = user,
             onClick = if (user) ({ onUserMessageClick?.invoke() }) else null,
+            tailAtEnd = user == appearance.layout.userAlignEnd,
             modifier = if (markdownSlice != null) Modifier.fillMaxWidth()
                 else if (!loading || settings.enableGenerationSizeAnimation) Modifier.animateContentSize(
                     // MotionScheme 快弹簧统一 Expressive 动效（方向 F②）；默认 spring 未纳入主题动效体系

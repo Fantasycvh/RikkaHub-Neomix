@@ -10,6 +10,8 @@ import app.androidrik.rikkahub.data.model.ChatLayout
 import app.androidrik.rikkahub.data.model.ChatTypography
 import app.androidrik.rikkahub.data.model.toChatAppearance
 import app.androidrik.rikkahub.data.model.withChatAppearance
+import app.androidrik.rikkahub.utils.JsonInstant
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.plugin.manager.PluginState
@@ -25,7 +27,7 @@ class ChatAppearanceTest {
         layout = ChatLayout(userAlignEnd = false, messageGapDp = 12f),
         userBubble = ChatBubble(visible = false, opacity = 0.4f, geometry = ChatBubbleGeometry(4f, 12f)),
         assistantBubble = ChatBubble(visible = true, opacity = 0.8f, colorHex = "#123456"),
-    )
+    ).normalized()
 
     @Test fun `old display JSON retains the old chat defaults`() {
         val old = json.decodeFromString<DisplaySetting>("""{"bubbleOpacity":0.6,"showAssistantBubble":true,"chatFontFamily":"serif"}""")
@@ -106,7 +108,49 @@ class ChatAppearanceTest {
         assertEquals(4f, broken.layout.messageGapDp)
         assertEquals(0f, broken.userBubble.opacity)
         assertNull(broken.userBubble.colorHex)
-        assertEquals(ChatBubbleGeometry(0f, 32f), broken.userBubble.geometry)
+        // legacy paddingDp 500 → 迁移拆分后横竖收敛到边界 32
+        val geometry = broken.userBubble.geometry
+        assertEquals(0f, geometry.radiusDp)
+        assertEquals(32f, geometry.paddingHorizontalDp)
+        assertEquals(32f, geometry.paddingVerticalDp)
+        assertNull(geometry.tailCornerDp)
+        assertEquals(1f, geometry.maxWidthFraction)
+    }
+
+    @Test fun `legacy single padding migrates into horizontal and vertical once`() {
+        val migrated = ChatBubbleGeometry(radiusDp = 12f, paddingDp = 12f).normalized()
+        assertEquals(12f, migrated.paddingHorizontalDp)
+        assertEquals(12f, migrated.paddingVerticalDp)
+        // 再次归一：横竖已是自定义值，不再吃 legacy（幂等）
+        val again = migrated.normalized()
+        assertEquals(migrated, again)
+        // 显式横竖值优先于 legacy
+        val explicit = ChatBubbleGeometry(paddingDp = 12f, paddingHorizontalDp = 4f).normalized()
+        assertEquals(4f, explicit.paddingHorizontalDp)
+        assertEquals(8f, explicit.paddingVerticalDp)
+    }
+
+    @Test fun `bubble geometry v2 tokens clamp and survive serialization`() {
+        val broken = ChatBubbleGeometry(
+            radiusDp = 20f,
+            tailCornerDp = Float.NaN,
+            maxWidthFraction = 0.2f,
+            paddingHorizontalDp = -4f,
+            paddingVerticalDp = 64f,
+        ).normalized()
+        assertNull(broken.tailCornerDp)
+        assertEquals(0.5f, broken.maxWidthFraction)
+        assertEquals(0f, broken.paddingHorizontalDp)
+        assertEquals(32f, broken.paddingVerticalDp)
+        val tail = ChatBubbleGeometry(radiusDp = 16f, tailCornerDp = 24f).normalized()
+        assertEquals(16f, tail.tailCornerDp) // 尾角不得超过基准半径
+        val roundtrip = JsonInstant.decodeFromString<ChatBubbleGeometry>(JsonInstant.encodeToString(broken))
+        assertEquals(broken, roundtrip)
+        // 旧 JSON（无新字段）读入取默认值
+        val legacy = JsonInstant.decodeFromString<ChatBubbleGeometry>("""{"radiusDp":14.0,"paddingDp":6.0}""")
+        val normalizedLegacy = legacy.normalized()
+        assertEquals(6f, normalizedLegacy.paddingHorizontalDp)
+        assertEquals(6f, normalizedLegacy.paddingVerticalDp)
     }
 
     @Test fun `new snapshots preserve extra tokens and old snapshots leave them untouched`() {

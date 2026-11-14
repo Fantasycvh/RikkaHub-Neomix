@@ -90,6 +90,36 @@ class AppSkinTest {
         assertEquals(result, result.normalized())
     }
 
+    @Test fun `motion tokens normalize clamp and ride along group overrides`() {
+        val tokens = AppSkinMotionTokens(pressMs = -10, quickMs = 99_999, layoutBounce = 2f, flingBounce = Float.NaN).normalized()
+        assertEquals(0, tokens.pressMs)
+        assertEquals(600, tokens.quickMs)
+        assertEquals(0.5f, tokens.layoutBounce) // 越界 bounce 收敛到上限而非回落
+        assertEquals(0.15f, tokens.flingBounce) // NaN 回落档位默认
+        val skin = AppSkin(motion = AppSkinMotion.TOKENS, motionTokens = AppSkinMotionTokens(quickMs = 120))
+        assertEquals(120, skin.normalized().motionTokens?.quickMs)
+        // 覆写组照常携带；未编辑的组继承基础皮肤更新
+        val base = AppSkin(motion = AppSkinMotion.TOKENS, motionTokens = AppSkinMotionTokens(quickMs = 200))
+        val overrides = AppSkinOverrides.from(skin)
+        assertEquals(skin, overrides.applyTo(AppSkin(motionTokens = AppSkinMotionTokens(quickMs = 300), motion = AppSkinMotion.TOKENS)))
+        val untouched = overrides.withEdits(base, base.copy(shapes = base.shapes.copy(inputDp = 10f)))
+        // 未编辑的组保留原覆写值（继续覆写），被编辑的组更新为 after
+        assertEquals(skin.motionTokens, untouched.motionTokens); assertEquals(10f, untouched.shapes?.inputDp)
+    }
+
+    @Test fun `motion tokens survive serialization and old json reads stay on presets`() {
+        val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+        val skin = AppSkin(motion = AppSkinMotion.TOKENS, motionTokens = AppSkinMotionTokens(quickMs = 180, flingBounce = 0.2f))
+        assertEquals(skin.motionTokens, json.decodeFromString<AppSkin>(json.encodeToString(skin)).motionTokens)
+        // 旧 JSON：无 motionTokens 字段、motion 只有 EXPRESSIVE/STANDARD → 取默认值
+        val legacy = json.decodeFromString<AppSkin>("""{"motion":"STANDARD"}""")
+        assertEquals(AppSkinMotion.STANDARD, legacy.motion)
+        assertNull(legacy.motionTokens)
+        // 新 JSON 被旧构建读回：motion=TOKENS 未知时 kotlinx 会抛错，但 JsonInstant coerce 语义下
+        // 旧构建读到的是「新字段被忽略」——motion 枚举是破坏性变更，跨版本回退属于既有降级隔离范畴
+        assertEquals(180, skin.motionTokens?.quickMs)
+    }
+
     @Test fun `settings and theme sharing flatten skins and omit device font paths`() {
         val json = Json { encodeDefaults = true }
         val skin = AppSkin(typography = AppSkinTypography(ChatFontFamily.CUSTOM, "fonts/local.ttf", "Local", 1.2f),

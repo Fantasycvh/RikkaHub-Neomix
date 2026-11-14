@@ -120,8 +120,8 @@ fun ChatAppearanceSettings(
                 }
             })
             item(headlineContent = { Text("${name}气泡内边距") }, supportingContent = {
-                AppearanceSlider(bubble.geometry.paddingDp, 0f..32f) { value ->
-                    change { it.copy(geometry = it.geometry.copy(paddingDp = value)) }
+                AppearanceSlider(bubble.geometry.paddingHorizontalDp, 0f..32f) { value ->
+                    change { it.copy(geometry = it.geometry.copy(paddingHorizontalDp = value, paddingVerticalDp = value)) }
                 }
             })
         }

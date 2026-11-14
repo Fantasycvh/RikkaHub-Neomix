@@ -33,7 +33,8 @@ fun AppSkinTheme(resolved: ResolvedAppSkin, colorScheme: ColorScheme, content: @
         appSkinTypography(base, tokens.typography, family)
     }
     val shapes = remember(tokens.shapes) { appSkinShapes(tokens.shapes) }
-    CompositionLocalProvider(LocalAppSkin provides resolved.copy(skin = tokens)) {
+    val motionTokens = rememberResolvedMotionTokens(tokens)
+    CompositionLocalProvider(LocalAppSkin provides resolved.copy(skin = tokens), LocalMotionTokens provides motionTokens) {
         MaterialExpressiveTheme(colorScheme = colorScheme, typography = typography, shapes = shapes,
             motionScheme = if (tokens.motion == AppSkinMotion.EXPRESSIVE) MotionScheme.expressive() else MotionScheme.standard(),
             content = content)
@@ -41,11 +42,14 @@ fun AppSkinTheme(resolved: ResolvedAppSkin, colorScheme: ColorScheme, content: @
 }
 
 internal fun appSkinShapes(value: AppSkinShapes): Shapes = value.normalized().run {
-    Shapes(extraSmall = RoundedCornerShape(extraSmallDp.dp), small = RoundedCornerShape(smallDp.dp),
-        medium = RoundedCornerShape(mediumDp.dp), large = RoundedCornerShape(largeDp.dp), extraLarge = RoundedCornerShape(extraLargeDp.dp),
-        largeIncreased = RoundedCornerShape(scaledCornerRadius(20f).dp),
-        extraLargeIncreased = RoundedCornerShape(scaledCornerRadius(32f).dp),
-        extraExtraLarge = RoundedCornerShape(scaledCornerRadius(48f).dp))
+    val s: (Float) -> androidx.compose.foundation.shape.CornerBasedShape = {
+        if (continuous) SmoothCornerShape(it.dp) else RoundedCornerShape(it.dp)
+    }
+    Shapes(extraSmall = s(extraSmallDp), small = s(smallDp),
+        medium = s(mediumDp), large = s(largeDp), extraLarge = s(extraLargeDp),
+        largeIncreased = s(scaledCornerRadius(20f)),
+        extraLargeIncreased = s(scaledCornerRadius(32f)),
+        extraExtraLarge = s(scaledCornerRadius(48f)))
 }
 
 internal fun appSkinTypography(base: Typography, tokens: AppSkinTypography, family: FontFamily?): Typography {

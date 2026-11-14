@@ -73,10 +73,7 @@ data class ChatBubble(
         ),
         noise = noise.copy(strength = noise.strength.bounded(0f, 1f, 0.12f)),
         stack = stack?.normalized(),
-        geometry = geometry.copy(
-            radiusDp = geometry.radiusDp.bounded(0f, 48f, 16f),
-            paddingDp = geometry.paddingDp.bounded(0f, 32f, 8f),
-        ),
+        geometry = geometry.normalized(),
     )
 }
 
@@ -112,7 +109,33 @@ data class BubblePattern(
 data class BubbleNoise(val seed: Int = 0, val strength: Float = 0.12f)
 
 @Serializable
-data class ChatBubbleGeometry(val radiusDp: Float = 16f, val paddingDp: Float = 8f)
+data class ChatBubbleGeometry(
+    val radiusDp: Float = 16f,
+    /** 旧单值内边距；[normalized] 会把它拆进横竖两项（只读兼容，新代码消费横竖字段）。 */
+    @Deprecated("迁移字段：读写一律走 paddingHorizontalDp / paddingVerticalDp") val paddingDp: Float = 8f,
+    /** 尾角收紧（dp）：映射到气泡对齐侧的下角，null = 对称四角。 */
+    val tailCornerDp: Float? = null,
+    /** 气泡内容宽度上限比例（0.5–1.0），相对聊天可用宽度；渲染接线随皮肤档落地。 */
+    val maxWidthFraction: Float = 1f,
+    val paddingHorizontalDp: Float = 8f,
+    val paddingVerticalDp: Float = 8f,
+) {
+    fun normalized(): ChatBubbleGeometry {
+        val radius = radiusDp.bounded(0f, 48f, 16f)
+        val legacy = paddingDp.bounded(0f, 32f, 8f)
+        val horizontal = paddingHorizontalDp.bounded(0f, 32f, 8f)
+        val vertical = paddingVerticalDp.bounded(0f, 32f, 8f)
+        // 旧配置只有 paddingDp：横竖仍是默认时拆分过去，paddingDp 原值保留（旧构建前向兼容）。
+        val migrate = horizontal == 8f && vertical == 8f && legacy != 8f
+        return copy(
+            radiusDp = radius,
+            tailCornerDp = tailCornerDp?.takeIf { it.isFinite() }?.coerceIn(0f, radius),
+            maxWidthFraction = maxWidthFraction.bounded(0.5f, 1f, 1f),
+            paddingHorizontalDp = if (migrate) legacy else horizontal,
+            paddingVerticalDp = if (migrate) legacy else vertical,
+        )
+    }
+}
 
 /** Only additional tokens live here. Existing font/opacity switches remain the storage authority. */
 @Serializable

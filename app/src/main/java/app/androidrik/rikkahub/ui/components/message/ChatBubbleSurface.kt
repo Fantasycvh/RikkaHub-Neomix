@@ -38,6 +38,8 @@ fun ChatBubbleSurface(
     padWhenHidden: Boolean = false,
     onClick: (() -> Unit)? = null,
     segment: BubbleSegment? = null,
+    /** 尾角落在对齐侧的下角：userAlignEnd 时 user 气泡传 true、assistant 传 false。 */
+    tailAtEnd: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val bubble = style.normalized()
@@ -46,10 +48,19 @@ fun ChatBubbleSurface(
     val fill = stack?.layers?.lastOrNull { it.enabled && it.opacity >= 0.5f &&
         (it.kind == BubbleLayerKind.SOLID || it.kind == BubbleLayerKind.GRADIENT || it.kind == BubbleLayerKind.SHADER) }
     val radius = bubble.geometry.radiusDp.dp
-    val shape = if (segment == null) RoundedCornerShape(radius) else RoundedCornerShape(
-        topStart = if (segment.first) radius else 0.dp, topEnd = if (segment.first) radius else 0.dp,
-        bottomStart = if (segment.last) radius else 0.dp, bottomEnd = if (segment.last) radius else 0.dp,
-    )
+    val tail = bubble.geometry.tailCornerDp?.dp
+    val shape = when {
+        segment == null && tail != null -> if (tailAtEnd) RoundedCornerShape(
+            topStart = radius, topEnd = radius, bottomStart = radius, bottomEnd = tail,
+        ) else RoundedCornerShape(
+            topStart = radius, topEnd = radius, bottomStart = tail, bottomEnd = radius,
+        )
+        segment == null -> RoundedCornerShape(radius)
+        else -> RoundedCornerShape(
+            topStart = if (segment.first) radius else 0.dp, topEnd = if (segment.first) radius else 0.dp,
+            bottomStart = if (segment.last) radius else 0.dp, bottomEnd = if (segment.last) radius else 0.dp,
+        )
+    }
     val contentColor = when {
         !bubble.visible -> MaterialTheme.colorScheme.onSurface
         fill?.kind == BubbleLayerKind.SHADER -> adaptiveContentColor(
@@ -73,10 +84,12 @@ fun ChatBubbleSurface(
     else modifier.then(coordinateModifier).clip(shape).then(glass)
         .bubbleLayerBackground(bubble, override ?: defaultColor, contentColor, liveGlass, coordinates)
     val body: @Composable () -> Unit = {
-        val padding = if (bubble.visible || padWhenHidden) bubble.geometry.paddingDp.dp else 0.dp
-        Column(if (segment == null) Modifier.padding(padding) else Modifier.padding(
-            start = padding, end = padding, top = if (segment.first) padding else segment.spacing,
-            bottom = if (segment.last) padding else 0.dp,
+        val shown = bubble.visible || padWhenHidden
+        val paddingH = if (shown) bubble.geometry.paddingHorizontalDp.dp else 0.dp
+        val paddingV = if (shown) bubble.geometry.paddingVerticalDp.dp else 0.dp
+        Column(if (segment == null) Modifier.padding(horizontal = paddingH, vertical = paddingV) else Modifier.padding(
+            start = paddingH, end = paddingH, top = if (segment.first) paddingV else segment.spacing,
+            bottom = if (segment.last) paddingV else 0.dp,
         )) {
             content()
         }
