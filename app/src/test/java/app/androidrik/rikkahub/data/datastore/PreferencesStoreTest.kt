@@ -3,7 +3,9 @@ package app.androidrik.rikkahub.data.datastore
 import kotlinx.serialization.json.Json
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 
+import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PreferencesStoreTest {
@@ -90,5 +92,32 @@ class PreferencesStoreTest {
         org.junit.Assert.assertFalse(setting.enableTopBarBlur)
         org.junit.Assert.assertFalse(setting.enableBlurEffect)
         org.junit.Assert.assertFalse(setting.enableGlassTheme)
+    }
+
+    @Test
+    fun `deepseek ocr settings fields are wired into preferences store`() {
+        // 回归钉子（2026-11-14 真机实锤）：Settings 的 ocrBackend/ocrDeepSeek* 六字段曾只加在
+        // 模型上而**没接 PreferencesStore 的读/写**——vm.updateSettings 写了不落盘，
+        // settingsFlow 重发即回灌默认值，ocrBackend 反复跳回 MODEL。UI 上怎么点都存不住。
+        // 新增 Settings 字段必须同步 PreferencesStore 的键声明 + updateLocked 写入 + 解码读取。
+        val candidates = listOf(
+            File("src/main/java/app/androidrik/rikkahub/data/datastore/PreferencesStore.kt"),
+            File("app/src/main/java/app/androidrik/rikkahub/data/datastore/PreferencesStore.kt"),
+        )
+        val source = candidates.firstOrNull { it.isFile }
+            ?: error("找不到 PreferencesStore.kt，工作目录=${File(".").absolutePath}")
+        val text = source.readText()
+        for (key in listOf(
+            "OCR_BACKEND",
+            "OCR_DEEPSEEK_PROVIDER_ID",
+            "OCR_DEEPSEEK_BASE_URL",
+            "OCR_DEEPSEEK_PURPOSE",
+            "OCR_DEEPSEEK_INCLUDE_LAYOUT",
+            "OCR_DEEPSEEK_MAX_PAGES",
+        )) {
+            assertTrue("缺键声明：val $key", text.contains("val $key = "))
+            assertTrue("缺写入：preferences[$key] =", text.contains("preferences[$key] ="))
+            assertTrue("缺读取：preferences[$key]", text.contains("preferences[$key]"))
+        }
     }
 }

@@ -299,17 +299,17 @@
   <string name="backup_page_import_cherry_studio_desc">导入Cherry Studio提供商配置</string>
   <string name="backup_page_import_desc">导入本地备份文件</string>
   <string name="backup_page_status">备份状态</string>
- <string name="backup_page_import_export">本地</string>
- <string name="backup_page_import_export_title">本地备份与导入</string>
- <string name="backup_page_import_export_desc">导出全部数据为 ZIP，或从本地导入备份文件</string>
- <string name="backup_page_section_methods">备份方式</string>
- <string name="backup_page_section_automation">自动化</string>
- <string name="backup_page_section_experimental">实验功能</string>
- <string name="backup_page_webdav_desc">上传备份到 WebDAV，并从云端恢复</string>
- <string name="backup_page_s3_desc">上传备份到兼容 S3 的对象存储</string>
- <string name="backup_page_reminder_desc">太久没有备份时提醒你</string>
- <string name="backup_page_snapshot_title">增量备份（实验）</string>
- <string name="backup_page_snapshot_desc">快照式增量仓库：恢复点、导出 ZIP、对象回收</string>
+  <string name="backup_page_import_export">本地</string>
+  <string name="backup_page_import_export_title">本地备份与导入</string>
+  <string name="backup_page_import_export_desc">导出全部数据为 ZIP，或从本地导入备份文件</string>
+  <string name="backup_page_section_methods">备份方式</string>
+  <string name="backup_page_section_automation">自动化</string>
+  <string name="backup_page_section_experimental">实验功能</string>
+  <string name="backup_page_webdav_desc">上传备份到 WebDAV，并从云端恢复</string>
+  <string name="backup_page_s3_desc">上传备份到兼容 S3 的对象存储</string>
+  <string name="backup_page_reminder_desc">太久没有备份时提醒你</string>
+  <string name="backup_page_snapshot_title">增量备份（实验）</string>
+  <string name="backup_page_snapshot_desc">快照式增量仓库：恢复点、导出 ZIP、对象回收</string>
   <string name="backup_page_import_conversation">对话（JSON）</string>
   <string name="backup_page_import_conversation_desc">导入本应用导出的对话归档（.zip）</string>
   <string name="backup_page_import_invalid_file">不是有效的对话导出文件</string>
@@ -1487,12 +1487,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_provider_page_api_path">API 路径</string>
   <string name="setting_provider_page_avaliable_models">可用模型</string>
   <string name="setting_provider_page_balance_api_path">余额 API 路径</string>
-    <string name="setting_provider_page_quota_body">POST 请求体（JSON）</string>
+  <string name="setting_provider_page_quota_body">POST 请求体（JSON）</string>
   <string name="setting_provider_page_quota_body_hint">支持 {{baseUrl}} / {{apiKey}} 模板变量</string>
   <string name="setting_display_page_top_bar_style_desc">「整条模糊」保持现状整条穿底；「浮动胶囊」把按钮装进胶囊、背景与输入栏同款并随滚动淡入，开启后整条效果让位。</string>
   <string name="setting_display_page_top_bar_style_full_bar">整条模糊</string>
   <string name="setting_display_page_top_bar_style_capsules">浮动胶囊</string>
-<string name="setting_provider_page_quota_url">额度查询 URL</string>
+  <string name="setting_provider_page_quota_url">额度查询 URL</string>
   <string name="setting_provider_page_balance_info">获取账户余额</string>
   <string name="setting_provider_page_balance_json_key">结果 JSON 键</string>
   <string name="setting_provider_page_balance_expression">计算表达式</string>
@@ -3164,7 +3164,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="memory_trigger_scope_selected">已选助手：%1$d 个</string>
   <string name="memory_trigger_scope_pick_desc">只有所选助手的会话会被整理；全不选 = 全部助手。</string>
   <string name="memory_trigger_note_per_assistant">整理开关与基线仍在每个助手的记忆页单独设置。</string>
-
   <!-- Phone Use -->
   <string name="phone_use_accessibility_description">启用 Phone Use 工具后，允许 AI 助手读取屏幕并为您执行点按、滑动和文本输入。除非助手正在运行您请求的任务，否则不会执行任何操作。</string>
   <string name="assistant_page_local_tools_phone_use_title">Phone Use</string>
@@ -3244,4 +3243,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="stats_page_ocr_pages">OCR 页数（估算）</string>
   <string name="setting_provider_page_deepseek_safety_check">内容安全审核（DeepSeek）</string>
   <string name="setting_provider_page_deepseek_safety_check_desc">开启 safety_check（对外提供服务时官方要求）；会引入拒答行为与额外审核 token 计费</string>
+  <string name="setting_model_page_ocr_deepseek_provider">OCR 密钥提供商</string>
+  <string name="setting_model_page_ocr_deepseek_provider_desc">选择为 OCR 提供 API Key 的提供商。默认使用内置 DeepSeek 提供商（共享 Key）。</string>
+  <string name="setting_model_page_ocr_deepseek_provider_builtin">内置 DeepSeek 提供商（共享 Key）</string>
+  <string name="setting_model_page_ocr_deepseek_base_url">API 端点前缀</string>
+  <string name="setting_model_page_ocr_deepseek_base_url_desc">OCR 请求发往 {base}/v1/tools/ocr。仅镜像站需要修改。</string>
+  <string name="setting_model_page_ocr_deepseek_max_pages">PDF 页数上限</string>
+  <string name="setting_model_page_ocr_deepseek_max_pages_desc">上传前本地预检页数，避免超长 PDF 白发请求。服务端上限 1000 页。</string>
 </resources>
+

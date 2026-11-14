@@ -202,3 +202,21 @@
 | 7 | 重复文件计费/断连计费 | 未测（需余额核对），实现按「客户端 sha256 缓存 + 提示取消不退款」保守处理 |
 
 **对实现的影响**：全部通过，无需改代码。两处记录性差异——① call 内层 index 字段（忽略无害）；② ASR 宽松字段校验 vs OCR 严格校验。
+
+## 10. 设备级 smoke（2026-11-14，PJX110 真机，beta.19→beta.20 升级装机）
+
+App 内全链路装机验证（DB/logcat/截图三口径），结果：
+
+| 项 | 结果 |
+|---|---|
+| DB 迁移 69→70→71 | ✅ 升级安装后 user_version=71，page_count + tool_*_count×3 四列齐全，零崩溃 |
+| 内置 web tools（P0+P1b） | ✅ 搜索块/引用渲染、nerd line「3 search (≈¥0.015)」、多轮含 server_tool_calls 回传 200 |
+| safety_check 开关 | ✅ 仅 api.deepseek.com host 下显示，装机可见 |
+| TTS（P1-2） | ✅ DeepSeek TTS provider 添加→自动选中；朗读触发 3 段分段合成（voice=stella format=wav），AudioTrack 24kHz/mono 播放，无异常 |
+| ASR（P1-3） | ✅ DeepSeek ASR provider 添加→选中；语音模式 `POST /v1/tools/asr` multipart 3.2MB 分段 ×2 均 200（1.3~1.5s），分段节奏与 100s 控制器吻合；识别文本成功入会话（用户确认） |
+| OCR 后端（P1-1） | ✅ 开关+「识别模式」（文字/版面）+「保留版面坐标」子项装机可见；纯文本聊天模型 + 图片触发 OCR 的链路用户手动验证通过（当时走 MODEL 后端：deepseek-flash 视觉直读，source=OCR 按 token 计费，page_count=0 属预期） |
+| 统计页卡片（P2） | ✅ 「DeepSeek 工具调用（估算）3 (≈¥0.02)」卡片按条件渲染；OCR 卡片按页计费口径正确未显示（无 DEEPSEEK 后端 OCR 页记录） |
+
+**挂账（唯一未实弹项）**：`ocrBackend=DEEPSEEK` 的**图片入口**（`performDeepSeekOcr`：multipart 上传→recordOcrPages 按页落账→统计 OCR 卡片出现）在设备上未跑通一次完整闭环——手测时后端被切回视觉模型，自动化复测中途被打断（logcat 已见 `single<DeepSeekOcrClient>` Koin 解析正常，未到 HTTP 阶段）。HTTP 契约层已由 §9 探测覆盖（OCR 恰两 part、page_count、200-with-error 检测），风险低；下次装机时点一张图即可补上。
+
+**设备操作备忘**：截图坐标 ×1.389=设备坐标；`MSYS_NO_PATHCONV=1` 防 Git Bash 路径改写；debug 包 launcher activity 是 `app.androidrik.rikkahub.RouteActivity`（MainActivity 类名不存在）；聊天页模型选择 sheet 的搜索框 `input text` 可直接注入（LatinIME）。

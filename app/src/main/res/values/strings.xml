@@ -3243,5 +3243,12 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="stats_page_ocr_pages">OCR Pages</string>
   <string name="setting_provider_page_deepseek_safety_check">Content Safety (DeepSeek)</string>
   <string name="setting_provider_page_deepseek_safety_check_desc">Enable safety_check for public-facing services; adds refusal behavior and extra moderation token billing</string>
+  <string name="setting_model_page_ocr_deepseek_provider">OCR Key Provider</string>
+  <string name="setting_model_page_ocr_deepseek_provider_desc">Which provider supplies the OCR API key. Default: the built-in DeepSeek provider.</string>
+  <string name="setting_model_page_ocr_deepseek_provider_builtin">Built-in DeepSeek provider (shared key)</string>
+  <string name="setting_model_page_ocr_deepseek_base_url">API endpoint prefix</string>
+  <string name="setting_model_page_ocr_deepseek_base_url_desc">OCR calls go to {base}/v1/tools/ocr. Leave default unless using a compatible mirror.</string>
+  <string name="setting_model_page_ocr_deepseek_max_pages">PDF page limit</string>
+  <string name="setting_model_page_ocr_deepseek_max_pages_desc">Local pre-check before upload to avoid paying for oversized PDFs. Server limit is 1000 pages.</string>
 </resources>
 

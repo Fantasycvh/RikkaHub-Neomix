@@ -299,17 +299,17 @@
   <string name="backup_page_import_cherry_studio_desc">匯入 Cherry Studio 提供者設定</string>
   <string name="backup_page_import_desc">導入本地備份檔案</string>
   <string name="backup_page_status">備份狀態</string>
- <string name="backup_page_import_export">本地</string>
- <string name="backup_page_import_export_title">本地備份與匯入</string>
- <string name="backup_page_import_export_desc">將全部資料匯出為 ZIP，或從本地匯入備份檔案</string>
- <string name="backup_page_section_methods">備份方式</string>
- <string name="backup_page_section_automation">自動化</string>
- <string name="backup_page_section_experimental">實驗功能</string>
- <string name="backup_page_webdav_desc">上傳備份到 WebDAV，並從雲端恢復</string>
- <string name="backup_page_s3_desc">上傳備份到相容 S3 的物件儲存</string>
- <string name="backup_page_reminder_desc">太久沒有備份時提醒你</string>
- <string name="backup_page_snapshot_title">增量備份（實驗）</string>
- <string name="backup_page_snapshot_desc">快照式增量倉庫：還原點、匯出 ZIP、物件回收</string>
+  <string name="backup_page_import_export">本地</string>
+  <string name="backup_page_import_export_title">本地備份與匯入</string>
+  <string name="backup_page_import_export_desc">將全部資料匯出為 ZIP，或從本地匯入備份檔案</string>
+  <string name="backup_page_section_methods">備份方式</string>
+  <string name="backup_page_section_automation">自動化</string>
+  <string name="backup_page_section_experimental">實驗功能</string>
+  <string name="backup_page_webdav_desc">上傳備份到 WebDAV，並從雲端恢復</string>
+  <string name="backup_page_s3_desc">上傳備份到相容 S3 的物件儲存</string>
+  <string name="backup_page_reminder_desc">太久沒有備份時提醒你</string>
+  <string name="backup_page_snapshot_title">增量備份（實驗）</string>
+  <string name="backup_page_snapshot_desc">快照式增量倉庫：還原點、匯出 ZIP、物件回收</string>
   <string name="backup_page_import_conversation">對話（JSON）</string>
   <string name="backup_page_import_conversation_desc">匯入本應用匯出的對話封存（.zip）</string>
   <string name="backup_page_import_invalid_file">不是有效的對話匯出檔案</string>
@@ -1444,12 +1444,12 @@
   <string name="setting_provider_page_api_path">API 路徑</string>
   <string name="setting_provider_page_avaliable_models">可用模型</string>
   <string name="setting_provider_page_balance_api_path">餘額 API 路徑</string>
-    <string name="setting_provider_page_quota_body">POST 請求體（JSON）</string>
+  <string name="setting_provider_page_quota_body">POST 請求體（JSON）</string>
   <string name="setting_provider_page_quota_body_hint">支援 {{baseUrl}} / {{apiKey}} 樣板變數</string>
   <string name="setting_display_page_top_bar_style_desc">「整條模糊」保持現狀整條穿底；「浮動膠囊」把按鈕裝進膠囊、背景與輸入欄同款並隨滾動淡入，開啟後整條效果讓位。</string>
   <string name="setting_display_page_top_bar_style_full_bar">整條模糊</string>
   <string name="setting_display_page_top_bar_style_capsules">浮動膠囊</string>
-<string name="setting_provider_page_quota_url">額度查詢 URL</string>
+  <string name="setting_provider_page_quota_url">額度查詢 URL</string>
   <string name="setting_provider_page_balance_info">取得帳戶餘額</string>
   <string name="setting_provider_page_balance_json_key">結果 JSON 鍵值</string>
   <string name="setting_provider_page_balance_expression">計算表達式</string>
@@ -3150,7 +3150,6 @@
   <string name="memory_trigger_scope_selected">已選助手：%1$d 個</string>
   <string name="memory_trigger_scope_pick_desc">只有所選助手的會話會被整理；全不選 = 全部助手。</string>
   <string name="memory_trigger_note_per_assistant">整理開關與基線仍在每個助手的記憶頁單獨設置。</string>
-
   <!-- Phone Use -->
   <string name="phone_use_accessibility_description">啟用 Phone Use 工具後，允許 AI 助手讀取螢幕並為您執行點按、滑動和文字輸入。除非助手正在執行您要求的任務，否則不會執行任何操作。</string>
   <string name="assistant_page_local_tools_phone_use_title">Phone Use</string>
@@ -3230,4 +3229,12 @@
   <string name="stats_page_ocr_pages">OCR 頁數（估算）</string>
   <string name="setting_provider_page_deepseek_safety_check">內容安全審核（DeepSeek）</string>
   <string name="setting_provider_page_deepseek_safety_check_desc">開啟 safety_check（對外提供服務時官方要求）；會引入拒答行為與額外審核 token 計費</string>
+  <string name="setting_model_page_ocr_deepseek_provider">OCR 金鑰提供商</string>
+  <string name="setting_model_page_ocr_deepseek_provider_desc">選擇為 OCR 提供 API 金鑰的提供商。預設使用內建 DeepSeek 提供商（共享金鑰）。</string>
+  <string name="setting_model_page_ocr_deepseek_provider_builtin">內建 DeepSeek 提供商（共享金鑰）</string>
+  <string name="setting_model_page_ocr_deepseek_base_url">API 端點前綴</string>
+  <string name="setting_model_page_ocr_deepseek_base_url_desc">OCR 請求發往 {base}/v1/tools/ocr。僅鏡像站需要修改。</string>
+  <string name="setting_model_page_ocr_deepseek_max_pages">PDF 頁數上限</string>
+  <string name="setting_model_page_ocr_deepseek_max_pages_desc">上傳前本地預檢頁數，避免超長 PDF 白發請求。伺服器上限 1000 頁。</string>
 </resources>
+

@@ -318,6 +318,13 @@ class SettingsStore(
         val SUGGESTION_PROMPT = stringPreferencesKey("suggestion_prompt")
         val OCR_MODEL = stringPreferencesKey("ocr_model")
         val OCR_PROMPT = stringPreferencesKey("ocr_prompt")
+        // DeepSeek OCR 可选后端（Settings 六字段；缺键 = 默认值，与 Settings.kt 逐字段对齐）
+        val OCR_BACKEND = stringPreferencesKey("ocr_backend")
+        val OCR_DEEPSEEK_PROVIDER_ID = stringPreferencesKey("ocr_deepseek_provider_id")
+        val OCR_DEEPSEEK_BASE_URL = stringPreferencesKey("ocr_deepseek_base_url")
+        val OCR_DEEPSEEK_PURPOSE = stringPreferencesKey("ocr_deepseek_purpose")
+        val OCR_DEEPSEEK_INCLUDE_LAYOUT = booleanPreferencesKey("ocr_deepseek_include_layout")
+        val OCR_DEEPSEEK_MAX_PAGES = intPreferencesKey("ocr_deepseek_max_pages")
         val COMPRESS_MODEL = stringPreferencesKey("compress_model")
         val COMPRESS_PROMPT = stringPreferencesKey("compress_prompt")
 
@@ -524,6 +531,18 @@ class SettingsStore(
                 suggestionPrompt = preferences[SUGGESTION_PROMPT] ?: DEFAULT_SUGGESTION_PROMPT,
                 ocrModelId = preferences[OCR_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
                 ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
+                ocrBackend = preferences[OCR_BACKEND]?.let {
+                    runCatching { OcrBackend.valueOf(it) }.getOrNull()
+                } ?: OcrBackend.MODEL,
+                ocrDeepSeekProviderId = preferences[OCR_DEEPSEEK_PROVIDER_ID]?.let {
+                    runCatching { Uuid.parse(it) }.getOrNull()
+                },
+                ocrDeepSeekBaseUrl = preferences[OCR_DEEPSEEK_BASE_URL] ?: DEFAULT_OCR_DEEPSEEK_BASE_URL,
+                ocrDeepSeekPurpose = preferences[OCR_DEEPSEEK_PURPOSE]?.let {
+                    runCatching { OcrDeepSeekPurpose.valueOf(it) }.getOrNull()
+                } ?: OcrDeepSeekPurpose.TEXT,
+                ocrDeepSeekIncludeLayout = preferences[OCR_DEEPSEEK_INCLUDE_LAYOUT] ?: false,
+                ocrDeepSeekMaxPages = preferences[OCR_DEEPSEEK_MAX_PAGES] ?: OCR_DEEPSEEK_MAX_PAGES_LIMIT,
                 // 空串哨兵 = 用户显式选择「跟随对话模型」；key 不存在 = 默认显式模型
                 compressModelId = preferences[COMPRESS_MODEL]
                     ?.let { raw -> if (raw.isBlank()) null else Uuid.parse(raw) }
@@ -904,6 +923,14 @@ class SettingsStore(
             preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
             preferences[OCR_MODEL] = settings.ocrModelId.toString()
             preferences[OCR_PROMPT] = settings.ocrPrompt
+            preferences[OCR_BACKEND] = settings.ocrBackend.name
+            settings.ocrDeepSeekProviderId?.let {
+                preferences[OCR_DEEPSEEK_PROVIDER_ID] = it.toString()
+            } ?: preferences.remove(OCR_DEEPSEEK_PROVIDER_ID)
+            preferences[OCR_DEEPSEEK_BASE_URL] = settings.ocrDeepSeekBaseUrl
+            preferences[OCR_DEEPSEEK_PURPOSE] = settings.ocrDeepSeekPurpose.name
+            preferences[OCR_DEEPSEEK_INCLUDE_LAYOUT] = settings.ocrDeepSeekIncludeLayout
+            preferences[OCR_DEEPSEEK_MAX_PAGES] = settings.ocrDeepSeekMaxPages
             preferences[COMPRESS_MODEL] = settings.compressModelId?.toString() ?: ""
             preferences[COMPRESS_PROMPT] = settings.compressPrompt
 

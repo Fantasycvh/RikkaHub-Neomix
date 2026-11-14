@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,14 +13,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.RadioButton
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -58,6 +64,8 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.OcrBackend
 import app.androidrik.rikkahub.data.datastore.OcrDeepSeekPurpose
+import app.androidrik.rikkahub.data.datastore.DEFAULT_OCR_DEEPSEEK_BASE_URL
+import app.androidrik.rikkahub.data.datastore.OCR_DEEPSEEK_MAX_PAGES_LIMIT
 import app.androidrik.rikkahub.ui.components.ai.ModelListSheet
 import app.androidrik.rikkahub.ui.components.ai.ReasoningButton
 import app.androidrik.rikkahub.ui.components.ai.rememberModelListState
@@ -825,9 +833,11 @@ private fun ModelSettingItem(
 /**
  * OCR 后端选择（DeepSeek 适配备料 03 §2.2）。
  *
- * CardGroup 是 Column 实现（AGENTS.md TextField 宿主规范），子项常驻不进 Lazy item，
- * maxPages 的数字输入框天然免疫「键盘收缩裁剪视口 → item 销毁重建」坑；
- * 写出用字段级 `vm.updateSettings { }` transform，不走「读 settings.value 改整对象写回」。
+ * CardGroup 是 Column 实现（AGENTS.md TextField 宿主规范）。providerId/baseUrl/maxPages
+ * 三个高级字段的**编辑器都进 ModalBottomSheet**（整个区块在页面的 Lazy item 里，内联
+ * TextField 会踩「键盘收缩裁剪视口 → item 销毁重建」坑）；sheet 内用
+ * `rememberPersistedTextFieldState` 本地权威 + 去抖单向写出，关闭时补写一次防丢；
+ * 全部走字段级 `vm.updateSettings { }` transform，不走「读 settings.value 改整对象写回」。
  */
 @Composable
 private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
@@ -859,6 +869,12 @@ private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
         )
 
         if (settings.ocrBackend == OcrBackend.DEEPSEEK) {
+            val selectedProvider = settings.ocrDeepSeekProviderId?.let { id ->
+                settings.providers.find { it.id == id }
+            }
+            var showProviderPicker by remember { mutableStateOf(false) }
+            var showBaseUrlEditor by remember { mutableStateOf(false) }
+            var showMaxPagesEditor by remember { mutableStateOf(false) }
             CardGroup {
                 item(
                     headlineContent = {
@@ -911,12 +927,222 @@ private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
                         }
                     },
                 )
+                item(
+                    onClick = { showProviderPicker = true },
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_model_page_ocr_deepseek_provider))
+                    },
+                    supportingContent = {
+                        Text(
+                            text = selectedProvider?.name
+                                ?: stringResource(R.string.setting_model_page_ocr_deepseek_provider_builtin),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                )
+                item(
+                    onClick = { showBaseUrlEditor = true },
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_model_page_ocr_deepseek_base_url))
+                    },
+                    supportingContent = {
+                        Text(
+                            text = settings.ocrDeepSeekBaseUrl,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                )
+                item(
+                    onClick = { showMaxPagesEditor = true },
+                    headlineContent = {
+                        Text(stringResource(R.string.setting_model_page_ocr_deepseek_max_pages))
+                    },
+                    supportingContent = {
+                        Text(
+                            text = stringResource(R.string.setting_model_page_ocr_deepseek_max_pages_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    trailingContent = { Text("${settings.ocrDeepSeekMaxPages}") },
+                )
             }
             Text(
                 text = stringResource(R.string.setting_model_page_ocr_deepseek_privacy_notice),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+            )
+
+            if (showProviderPicker) {
+                OcrDeepSeekProviderPickerSheet(
+                    // 只有 OpenAI 型提供商有 baseUrl/apiKey 语义（DeepSeek 内置 provider 同型）
+                    providers = settings.providers.filterIsInstance<ProviderSetting.OpenAI>(),
+                    selectedId = settings.ocrDeepSeekProviderId,
+                    onSelect = { id ->
+                        vm.updateSettings { it.copy(ocrDeepSeekProviderId = id) }
+                    },
+                    onDismiss = { showProviderPicker = false },
+                )
+            }
+            if (showBaseUrlEditor) {
+                OcrDeepSeekTextEditSheet(
+                    title = stringResource(R.string.setting_model_page_ocr_deepseek_base_url),
+                    description = stringResource(R.string.setting_model_page_ocr_deepseek_base_url_desc),
+                    current = settings.ocrDeepSeekBaseUrl,
+                    onCommit = { text ->
+                        val normalized = text.trim().ifBlank { DEFAULT_OCR_DEEPSEEK_BASE_URL }
+                        vm.updateSettings { it.copy(ocrDeepSeekBaseUrl = normalized) }
+                    },
+                    onDismiss = { showBaseUrlEditor = false },
+                )
+            }
+            if (showMaxPagesEditor) {
+                OcrDeepSeekTextEditSheet(
+                    title = stringResource(R.string.setting_model_page_ocr_deepseek_max_pages),
+                    description = stringResource(R.string.setting_model_page_ocr_deepseek_max_pages_desc),
+                    current = "${settings.ocrDeepSeekMaxPages}",
+                    numberOnly = true,
+                    onCommit = { text ->
+                        text.toIntOrNull()?.let { pages ->
+                            vm.updateSettings {
+                                it.copy(ocrDeepSeekMaxPages = pages.coerceIn(1, OCR_DEEPSEEK_MAX_PAGES_LIMIT))
+                            }
+                        }
+                    },
+                    onDismiss = { showMaxPagesEditor = false },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * OCR 密钥提供商选择（null = 内置 DeepSeek 提供商共享 Key，配料 03 §2.2）。
+ * 纯选择无输入框，不存在 IME 视口裁剪问题。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OcrDeepSeekProviderPickerSheet(
+    providers: List<ProviderSetting.OpenAI>,
+    selectedId: Uuid?,
+    onSelect: (Uuid?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.setting_model_page_ocr_deepseek_provider),
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            Text(
+                text = stringResource(R.string.setting_model_page_ocr_deepseek_provider_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onSelect(null)
+                        onDismiss()
+                    }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = selectedId == null, onClick = null)
+                Text(
+                    text = stringResource(R.string.setting_model_page_ocr_deepseek_provider_builtin),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            providers.forEach { provider ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onSelect(provider.id)
+                            onDismiss()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RadioButton(selected = selectedId == provider.id, onClick = null)
+                    Column(modifier = Modifier.padding(start = 8.dp)) {
+                        Text(text = provider.name.ifBlank { provider.id.toString() })
+                        Text(
+                            text = provider.baseUrl,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 单字段编辑 sheet（AGENTS TextField 宿主规范：编辑器不内联 Lazy item，进 sheet 常驻）。
+ *
+ * `numberOnly` 时提交解析 [Int]，解析失败不落库（保持原值）；关闭时补写一次——
+ * 去抖窗口内的编辑在 sheet 销毁后 snapshotFlow 不会再触发。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OcrDeepSeekTextEditSheet(
+    title: String,
+    description: String,
+    current: String,
+    onCommit: (String) -> Unit,
+    onDismiss: () -> Unit,
+    numberOnly: Boolean = false,
+) {
+    val state = rememberPersistedTextFieldState(
+        externalValue = current,
+        onCommit = onCommit,
+    )
+    ModalBottomSheet(
+        onDismissRequest = {
+            onCommit(state.text.toString())
+            onDismiss()
+        },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
+            )
+            OutlinedTextField(
+                state = state,
+                modifier = Modifier.fillMaxWidth(),
+                lineLimits = TextFieldLineLimits.SingleLine,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (numberOnly) KeyboardType.Number else KeyboardType.Uri,
+                ),
             )
         }
     }

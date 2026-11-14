@@ -78,6 +78,12 @@ enum class OcrDeepSeekPurpose {
     RICH_LAYOUT,
 }
 
+/** DeepSeek OCR 的默认端点前缀（UI 与字段默认值共用此常量，防两处漂移） */
+const val DEFAULT_OCR_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+
+/** DeepSeek OCR 的 PDF 页数本地预检上限（服务端上限 1000 页；UI 输入钳制同口径） */
+const val OCR_DEEPSEEK_MAX_PAGES_LIMIT = 1000
+
 @Serializable
 data class Settings(
     @Transient
@@ -135,12 +141,12 @@ data class Settings(
     /** DeepSeek OCR 用的提供商 id；null = 复用内置 DeepSeek provider（共享 Key） */
     val ocrDeepSeekProviderId: Uuid? = null,
     /** DeepSeek Tool API 端点前缀（OCR 走 `{base}/v1/tools/ocr`） */
-    val ocrDeepSeekBaseUrl: String = "https://api.deepseek.com",
+    val ocrDeepSeekBaseUrl: String = DEFAULT_OCR_DEEPSEEK_BASE_URL,
     val ocrDeepSeekPurpose: OcrDeepSeekPurpose = OcrDeepSeekPurpose.TEXT,
     /** 是否在 OCR 结果里保留 ref/box 坐标 token（本仓暂无消费位，默认剥掉） */
     val ocrDeepSeekIncludeLayout: Boolean = false,
     /** PDF 页数本地预检上限，防白发请求（服务端上限 1000 页） */
-    val ocrDeepSeekMaxPages: Int = 1000,
+    val ocrDeepSeekMaxPages: Int = OCR_DEEPSEEK_MAX_PAGES_LIMIT,
     /** 压缩使用的模型 id。默认锁定内置模型；**null = 跟随当前对话模型**（可选，避免单独配置） */
     val compressModelId: Uuid? = DEFAULT_AUTO_MODEL_ID,
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,

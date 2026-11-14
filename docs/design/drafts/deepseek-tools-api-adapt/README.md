@@ -94,7 +94,7 @@ P0+P1+P1b 已落地，ai/app/speech/web/search/common 全量单测绿。要点�
 | P0-2 | ✅ | `filter` 泛化出 `onRemoved` 回调；ASR 选中项被丢 → 移除 `selectedASRProviderId`（不静默回退） |
 | P1-2 TTS | ✅ | `synthesize()` 抽成非 flow 内部函数（JVM 测试入口）；speech 模块加 mockwebserver + `isReturnDefaultValues` |
 | P1-3 ASR | ✅ | `pcm16ToWav` 下沉 `asr/PcmWav.kt`；响应解析用 kotlinx（org.json 在 JVM 单测是 null 桩）；503/504 重试 1 次 |
-| P1-1 OCR | ✅（有留白） | DB 是 **69→70 手写**（资料包 68→69 已过期；本仓 Room 下 AutoMigration 需目标 schema JSON 预导出）；文档入口**本地先解析、抽得出文本就放行**（防文本型 PDF 白花页费）；providerId/baseUrl/maxPages 字段有默认值但 UI 未露出（默认复用内置 DeepSeek Key） |
+| P1-1 OCR | ✅ | DB 是 **69→70 手写**（资料包 68→69 已过期；本仓 Room 下 AutoMigration 需目标 schema JSON 预导出）；文档入口**本地先解析、抽得出文本就放行**（防文本型 PDF 白花页费）；providerId/baseUrl/maxPages 高级字段 UI 已露出（2026-11-14：编辑器进 ModalBottomSheet 防 IME 坑；顺带实锤修复**六字段未接 PreferencesStore 读写**的落盘 bug——曾导致 ocrBackend 写了就回灌 MODEL，防回归钉子 `PreferencesStoreTest`） |
 | P1b | ✅（待真机） | 发裸 `{"type":…}`（无 function 工具时不下发 tool_choice）；原始 call JSON 存 `metadata["deepseek_raw_call"]` 原样回传；注解未知 type 定向放宽（跳过+Log，偏离上游响亮失败）；用过 ServerTool 的轮次禁自动续写+隐藏手动继续 |
 | P2-1/2/3 | ✅（2026-11-14） | TokenUsage+3 工具计数（流/非流双路径解析实测形态）、usage_record 三列迁移 70→71、nerd line/统计页刊例价估算、safety_check 开关（仅 DeepSeek host 下发）+拒答复用既有 content_filter 识别；顺手修 NoticeProtocolTest flake（裸 Json encodeDefaults=false） |
 
