@@ -1,6 +1,10 @@
 package app.androidrik.ai.core
 
+import app.androidrik.common.http.jsonObjectOrNull
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable
 data class TokenUsage(
@@ -15,6 +19,31 @@ data class TokenUsage(
     val toolFetch: Int = 0,
     val toolImageSearch: Int = 0,
 )
+
+/**
+ * `usage.server_tool_use` 的**计费单位数**（DeepSeek 内置工具）。
+ *
+ * 单位不是「调用次数」：搜索按查询词条、抓取按成功取到内容的网页、图片搜索按张/区域，
+ * 失败或无结果时为 0。OpenAI / Anthropic 原生端点没有该字段 → 全 0。
+ *
+ * Chat Completions / Responses / Messages 三种协议的 usage 里字段形状一致，
+ * 统一从 usage 对象解析，避免各 provider 各自漏字段。
+ */
+data class ServerToolUseCounts(
+    val search: Int = 0,
+    val fetch: Int = 0,
+    val imageSearch: Int = 0,
+)
+
+fun JsonObject?.serverToolUseCounts(): ServerToolUseCounts {
+    val serverToolUse = this?.get("server_tool_use")?.jsonObjectOrNull
+        ?: return ServerToolUseCounts()
+    return ServerToolUseCounts(
+        search = serverToolUse["tool_search"]?.jsonPrimitive?.intOrNull ?: 0,
+        fetch = serverToolUse["tool_fetch"]?.jsonPrimitive?.intOrNull ?: 0,
+        imageSearch = serverToolUse["tool_image_search"]?.jsonPrimitive?.intOrNull ?: 0,
+    )
+}
 
 fun TokenUsage?.merge(other: TokenUsage): TokenUsage {
     val promptTokens = if (other.promptTokens > 0) {

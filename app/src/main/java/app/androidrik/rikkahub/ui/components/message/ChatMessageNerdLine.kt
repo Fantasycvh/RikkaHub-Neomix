@@ -107,14 +107,16 @@ fun ChatMessageNerdLine(
                     )
                     // DeepSeek 内置工具计费次数（配料 P2-2）：>0 才显示，附刊例价估算。
                     // 与 tokens 同风格硬编码英文；估算用当前刊例价（次数已落 usage_record）。
-                    val toolCalls = usage.toolSearch + usage.toolFetch + usage.toolImageSearch
-                    if (toolCalls > 0) {
+                    val toolBilling = usage.toolSearch + usage.toolFetch + usage.toolImageSearch
+                    if (toolBilling > 0) {
                         val toolParts = buildList {
                             if (usage.toolSearch > 0) add("${usage.toolSearch} search")
                             if (usage.toolFetch > 0) add("${usage.toolFetch} fetch")
                             if (usage.toolImageSearch > 0) add("${usage.toolImageSearch} img")
                         }
-                        val toolCost = toolCalls * DeepSeekToolPricing.SEARCH_PER_CALL
+                        val toolCost = usage.toolSearch * DeepSeekToolPricing.SEARCH_PER_CALL +
+                            usage.toolFetch * DeepSeekToolPricing.FETCH_PER_CALL +
+                            usage.toolImageSearch * DeepSeekToolPricing.SEARCH_PER_CALL
                         StatsItem(
                             icon = {
                                 Icon(

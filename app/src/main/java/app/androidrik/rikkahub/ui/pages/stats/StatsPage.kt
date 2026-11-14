@@ -719,31 +719,44 @@ private fun UsageTotalsGrid(usage: UsageStats, modifier: Modifier = Modifier) {
             )
         }
         // DeepSeek 按次/按页计费行（配料 P2-2）：有记录才显示；金额按当前刊例价估算
-        // （usage_record 只落次数/页数，价格调整不失真——配料 03 §6）。
-        val toolCalls = totals.toolSearch + totals.toolFetch + totals.toolImageSearch
-        if (toolCalls > 0 || totals.pageCount > 0) {
+        // （usage_record 只落计费单位数/页数，价格调整不失真——配料 03 §6）。
+        // server_tool_use 的三项单位不同（搜索按查询词条、抓取按成功页、图片按张/区域），
+        // 不能加总成「工具调用次数」：分项列出次数，金额单独作为卡片主数值。
+        val toolBillingParts = buildList {
+            if (totals.toolSearch > 0) add(
+                "${stringResource(R.string.stats_page_tool_billing_search)} ${totals.toolSearch.toInt().formatNumber()}"
+            )
+            if (totals.toolFetch > 0) add(
+                "${stringResource(R.string.stats_page_tool_billing_fetch)} ${totals.toolFetch.toInt().formatNumber()}"
+            )
+            if (totals.toolImageSearch > 0) add(
+                "${stringResource(R.string.stats_page_tool_billing_image)} ${totals.toolImageSearch.toInt().formatNumber()}"
+            )
+        }
+        if (toolBillingParts.isNotEmpty()) {
+            val toolCost = totals.toolSearch * DeepSeekToolPricing.SEARCH_PER_CALL +
+                totals.toolFetch * DeepSeekToolPricing.FETCH_PER_CALL +
+                totals.toolImageSearch * DeepSeekToolPricing.SEARCH_PER_CALL
+            StatCard(
+                modifier = Modifier.fillMaxWidth(),
+                icon = HugeIcons.GlobalSearch,
+                label = stringResource(R.string.stats_page_deepseek_tool_calls) +
+                    "\n" + toolBillingParts.joinToString(" · "),
+                value = "≈¥${"%.2f".format(toolCost)}",
+            )
+        }
+        if (totals.pageCount > 0) {
+            val ocrCost = totals.pageCount * DeepSeekToolPricing.OCR_PER_PAGE
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                if (toolCalls > 0) {
-                    val toolCost = toolCalls * DeepSeekToolPricing.SEARCH_PER_CALL
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        icon = HugeIcons.GlobalSearch,
-                        label = stringResource(R.string.stats_page_deepseek_tool_calls),
-                        value = "${toolCalls.toInt().formatNumber()} (≈¥${"%.2f".format(toolCost)})",
-                    )
-                }
-                if (totals.pageCount > 0) {
-                    val ocrCost = totals.pageCount * DeepSeekToolPricing.OCR_PER_PAGE
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        icon = HugeIcons.File01,
-                        label = stringResource(R.string.stats_page_ocr_pages),
-                        value = "${totals.pageCount.toInt().formatNumber()} (≈¥${"%.2f".format(ocrCost)})",
-                    )
-                }
+                StatCard(
+                    modifier = Modifier.weight(1f),
+                    icon = HugeIcons.File01,
+                    label = stringResource(R.string.stats_page_ocr_pages),
+                    value = "${totals.pageCount.toInt().formatNumber()} (≈¥${"%.2f".format(ocrCost)})",
+                )
             }
         }
     }

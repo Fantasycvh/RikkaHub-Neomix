@@ -34,6 +34,7 @@ import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.resolveReasoningOverride
+import app.androidrik.ai.core.serverToolUseCounts
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.Modality
@@ -1061,14 +1062,14 @@ class ChatCompletionsAPI(
         // DeepSeek usage.server_tool_use：内置工具**计费次数**（实测 {tool_search, tool_fetch,
         // tool_image_search}；web_search_requests 等展示计数不存在于 Chat Completions）。
         // 通用 OpenAI 端点无此字段 → 全 0，无副作用。
-        val serverToolUse = jsonObject["server_tool_use"]?.jsonObjectOrNull
+        val serverToolUse = jsonObject.serverToolUseCounts()
         return TokenUsage(
             promptTokens = jsonObject["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             completionTokens = jsonObject["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             totalTokens = jsonObject["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            toolSearch = serverToolUse?.get("tool_search")?.jsonPrimitive?.intOrNull ?: 0,
-            toolFetch = serverToolUse?.get("tool_fetch")?.jsonPrimitive?.intOrNull ?: 0,
-            toolImageSearch = serverToolUse?.get("tool_image_search")?.jsonPrimitive?.intOrNull ?: 0,
+            toolSearch = serverToolUse.search,
+            toolFetch = serverToolUse.fetch,
+            toolImageSearch = serverToolUse.imageSearch,
             // 各 provider 汇报缓存命中的字段形状不统一，按方言兜底解析（#1576）：
             // OpenAI 嵌套 -> Moonshot 顶层 cached_tokens -> DeepSeek prompt_cache_hit_tokens
             cachedTokens = jsonObject["prompt_tokens_details"]?.jsonObjectOrNull?.get("cached_tokens")?.jsonPrimitive?.intOrNull

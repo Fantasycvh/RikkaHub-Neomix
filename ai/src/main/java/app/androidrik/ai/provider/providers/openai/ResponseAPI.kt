@@ -32,6 +32,7 @@ import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.scalarOverride
 import app.androidrik.ai.core.ReasoningOverride
+import app.androidrik.ai.core.serverToolUseCounts
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.providers.asDowngradedSystemMessage
@@ -954,10 +955,15 @@ class ResponseAPI(
 
     private fun parseTokenUsage(jsonObject: JsonObject?): TokenUsage? {
         if (jsonObject == null) return null
+        // DeepSeek 在 Responses 协议同样用 usage.server_tool_use 汇报内置工具计费次数
+        val serverToolUse = jsonObject.serverToolUseCounts()
         return TokenUsage(
             promptTokens = jsonObject["input_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             completionTokens = jsonObject["output_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             totalTokens = jsonObject["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+            toolSearch = serverToolUse.search,
+            toolFetch = serverToolUse.fetch,
+            toolImageSearch = serverToolUse.imageSearch,
             cachedTokens = jsonObject["input_tokens_details"]?.jsonObjectOrNull?.get("cached_tokens")?.jsonPrimitive?.intOrNull
                 ?: 0
         )

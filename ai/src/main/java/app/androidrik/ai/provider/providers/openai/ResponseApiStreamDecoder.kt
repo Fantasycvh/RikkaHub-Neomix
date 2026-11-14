@@ -1,5 +1,6 @@
 package app.androidrik.ai.provider.providers.openai
 
+import app.androidrik.ai.core.serverToolUseCounts
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.stream.DecodeResult
 import app.androidrik.ai.provider.stream.SseEvent
@@ -303,10 +304,15 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
 
     private fun parseUsage(usage: JsonObject?): TokenUsage? {
         if (usage == null) return null
+        // DeepSeek 在 Responses 协议同样用 usage.server_tool_use 汇报内置工具计费次数
+        val serverToolUse = usage.serverToolUseCounts()
         return TokenUsage(
             promptTokens = usage["input_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             completionTokens = usage["output_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             totalTokens = usage["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+            toolSearch = serverToolUse.search,
+            toolFetch = serverToolUse.fetch,
+            toolImageSearch = serverToolUse.imageSearch,
             cachedTokens = usage["input_tokens_details"]?.jsonObjectOrNull
                 ?.get("cached_tokens")?.jsonPrimitive?.intOrNull ?: 0,
         )

@@ -31,6 +31,7 @@ import kotlinx.serialization.json.putJsonArray
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.resolveReasoningOverride
+import app.androidrik.ai.core.serverToolUseCounts
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
@@ -617,11 +618,16 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         val cachedCreationTokens = usageJson["cache_creation_input_tokens"]?.jsonPrimitiveOrNull?.intOrNull ?: 0
         val completionTokens = usageJson["output_tokens"]?.jsonPrimitive?.intOrNull ?: 0
         val promptTokens = inputTokens + cachedInputTokens + cachedCreationTokens
+        // DeepSeek 的 Anthropic 兼容端点同样用 usage.server_tool_use 汇报内置工具计费次数
+        val serverToolUse = usageJson.serverToolUseCounts()
         return TokenUsage(
             promptTokens = promptTokens,
             completionTokens = completionTokens,
             totalTokens = promptTokens + completionTokens,
             cachedTokens = cachedInputTokens,
+            toolSearch = serverToolUse.search,
+            toolFetch = serverToolUse.fetch,
+            toolImageSearch = serverToolUse.imageSearch,
         )
     }
 }
