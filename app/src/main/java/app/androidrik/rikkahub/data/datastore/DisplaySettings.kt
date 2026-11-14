@@ -224,10 +224,14 @@ data class DisplaySetting(
     val pageGlassEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     /**
      * 输入栏浮动 pill 形态（方向 B，design-ui-overhaul-research.md §5.B）：胶囊容器 +
-     * 键盘上方浮动间距 + 低频动作（模型/搜索/思考/上下文/记忆）收进 FAB menu 渐进披露。
-     * 默认关=经典贴底形态（IME 时底角变直角），回退路径即关开关。
+     * 键盘上方浮动间距。默认关=经典贴底形态（IME 时底角变直角），回退路径即关开关。
      */
     val chatInputFloatingPill: Boolean = false,
+    /**
+     * 低频图标组（模型/搜索/思考强度）淡入淡出（仅 pill 形态生效）：开 = 仅输入中淡入，
+     * 非输入态淡出隐藏（占位不变，透明度 0 时屏蔽点击与语义）；关 = 恒显。
+     */
+    val chatInputIconFade: Boolean = true,
     /** 顶栏 chrome 样式：整条穿底模糊（现状）或浮动胶囊（上游 b40d7a273，两套共存）。 */
     val topBarStyle: TopBarChromeStyle = TopBarChromeStyle.FULL_BAR,
     val liquidGlassReadabilityMode: LiquidGlassReadabilityMode = LiquidGlassReadabilityMode.AUTO,

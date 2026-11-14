@@ -1085,7 +1085,9 @@
   <string name="setting_display_page_enable_auto_scroll_title">自動滾動</string>
   <string name="setting_display_page_enable_blur_effect_desc">輸入欄應用磨砂或液態玻璃，樣式在下方選擇</string>
   <string name="setting_display_page_chat_input_pill_title">輸入欄浮動形態</string>
-  <string name="setting_display_page_chat_input_pill_desc">膠囊輸入欄懸浮於鍵盤上方；模型、搜尋等低頻動作收進展開選單</string>
+  <string name="setting_display_page_chat_input_pill_desc">膠囊輸入欄懸浮於鍵盤上方</string>
+  <string name="setting_display_page_chat_input_icon_fade_title">輸入時淡入低頻圖示</string>
+  <string name="setting_display_page_chat_input_icon_fade_desc">模型、搜尋、思考強度圖示在輸入時淡入，非輸入狀態淡出隱藏（佔位不變）；上下文與記憶常駐</string>
   <string name="setting_display_page_enable_glass_theme_title">列表背景效果</string>
   <string name="setting_display_page_enable_glass_theme_desc">訊息列表背後的背景應用磨砂或液態玻璃，樣式在下方選擇</string>
   <string name="setting_display_page_enable_top_bar_blur_title">頂欄背景效果</string>

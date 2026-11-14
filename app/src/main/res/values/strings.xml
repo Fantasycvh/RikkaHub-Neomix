@@ -3253,6 +3253,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_display_page_enable_page_glass_theme_title">Glass top bars beyond chat</string>
   <string name="setting_display_page_enable_page_glass_theme_desc">Extend frosted top bars to settings and other pages; disabled automatically on AMOLED black</string>
   <string name="setting_display_page_chat_input_pill_title">Floating input bar</string>
-  <string name="setting_display_page_chat_input_pill_desc">Capsule input bar floating above the keyboard; low-frequency actions fold into an expandable menu</string>
+  <string name="setting_display_page_chat_input_pill_desc">Capsule input bar floating above the keyboard</string>
+  <string name="setting_display_page_chat_input_icon_fade_title">Fade icons while typing</string>
+  <string name="setting_display_page_chat_input_icon_fade_desc">Model, search and reasoning icons fade in while typing and fade out hidden (space kept) otherwise; context and memory stay visible</string>
 </resources>
 

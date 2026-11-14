@@ -1116,7 +1116,9 @@
   <string name="setting_display_page_enable_auto_scroll_title">自动滚动</string>
   <string name="setting_display_page_enable_blur_effect_desc">输入栏应用磨砂或液态玻璃，样式在下方选择</string>
   <string name="setting_display_page_chat_input_pill_title">输入栏浮动形态</string>
-  <string name="setting_display_page_chat_input_pill_desc">胶囊输入栏悬浮于键盘上方；模型、搜索等低频动作收进展开菜单</string>
+  <string name="setting_display_page_chat_input_pill_desc">胶囊输入栏悬浮于键盘上方</string>
+  <string name="setting_display_page_chat_input_icon_fade_title">输入时淡入低频图标</string>
+  <string name="setting_display_page_chat_input_icon_fade_desc">模型、搜索、思考强度图标在输入时淡入，非输入状态淡出隐藏（占位不变）；上下文与记忆常驻</string>
   <string name="setting_display_page_enable_glass_theme_title">列表背景效果</string>
   <string name="setting_display_page_enable_glass_theme_desc">消息列表背后的背景应用磨砂或液态玻璃，样式在下方选择</string>
   <string name="setting_display_page_enable_top_bar_blur_title">顶栏背景效果</string>

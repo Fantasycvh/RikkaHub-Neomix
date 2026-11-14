@@ -224,7 +224,7 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         }
                     }
-                    // 方向 B：输入栏浮动 pill 形态（胶囊 + 键盘上方浮动 + 低频动作收进 FAB 菜单）
+                    // 方向 B：输入栏浮动 pill 形态（胶囊 + 键盘上方浮动）
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_chat_input_pill_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_chat_input_pill_desc)) },
@@ -237,6 +237,21 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
+                    // 低频图标组淡入淡出，仅 pill 形态有意义——随母开关折叠显示
+                    if (displaySetting.chatInputFloatingPill) {
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_chat_input_icon_fade_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_chat_input_icon_fade_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = displaySetting.chatInputIconFade,
+                                    onCheckedChange = {
+                                        updateDisplaySetting(displaySetting.copy(chatInputIconFade = it))
+                                    }
+                                )
+                            },
+                        )
+                    }
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_enable_glass_theme_desc)) },
