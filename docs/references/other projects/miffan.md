@@ -3,7 +3,7 @@
 > 对应总表 §一 #14。深度：**源码**（本地副本 `F:\build\projects\_miffan-analysis\Ayuilos-Miffan-8988130\`，2026-10-31 逐文件读核验）。
 > 许可：AGPL-3.0（2026-10-31 核验 LICENSE）。同源 RikkaHub fork（包名 `me.ayuilos.miffan`，311★，活跃更新）。
 > 定位：Android AI 客户端 + IM（类 Grok-Bot）模式 + ChatGPT 订阅登录 + **跨应用划词悬浮翻译** + 远程云电脑控制。本次只评估划词翻译一项。
-> [返回索引](../peer-apps-benchmark.md)
+> [返回索引](../../peer-apps-benchmark.md
 
 ## 一句话结论
 
@@ -169,7 +169,7 @@ App，比轻弹窗**重得多也慢得多**（起完整导航栈）。
 
 3. **P2 · 通用 Compose macrobenchmark 管线**（`7442ea738` 合并 + `2e7a25e87`/`31da3fddd`/`38d4b16a7`/`ad5e5adab`/`6768f1f83`/`388030a6a`/`00dda013b`/`19d070952`/`2f730d43f`）
    - Miffan：在既有 startup baseline 外补「fixture + 旅程 + runner + 汇总」——`app/baselineprofile` 新增 `ImBenchmarks.kt`（冷启动到首屏全绘、打开长会话、滚动、切 tab、流式回包）、`PerfSupport.kt`、`scripts/perf/run_bench.sh`、`scripts/perf/summarize.py`（多轮中位数 + 设备信息 + 帧指标表）、`docs/development/PERF_FIXTURE.md`；`ad5e5adab` 给 bench 变体独立 `.bench` applicationId 并校验 fixture；`6768f1f83` 让 benchmark 按需记录 composable 名；`00dda013b` 加 testTags + 打开会话异步 trace（`ThreadOpenTrace`）+ ReportDrawn 全绘上报；`19d070952` 先装 fixture 再跑启动基准；`2f730d43f` 用 variant API 挂 fixture。
-   - 本仓现状（已核）：`app/baselineprofile` 只有 `BaselineProfileGenerator.kt`（启动 + 一次 markdown 发送流程）+ `StartupBenchmarks.kt`（仅 `StartupTimingMetric`，measureBlock 还留着「未等全绘」的 TODO）；**没有**列表滚动/会话打开/tab 切换旅程，没有 benchmark runner/汇总脚本，全仓无 `ReportDrawn`（零命中）。长文本侧另有可复用自研管线：`scripts/longtext_baseline.py` + `app/src/androidTest/java/app/androidrik/rikkahub/perf/LongTextBaselineTest.kt`（FrameMetrics 逐帧、P95/P99、deadline miss，见 `docs/design/longtext-p0-baseline.md`）。
+   - 本仓现状（已核）：`app/baselineprofile` 只有 `BaselineProfileGenerator.kt`（启动 + 一次 markdown 发送流程）+ `StartupBenchmarks.kt`（仅 `StartupTimingMetric`，measureBlock 还留着「未等全绘」的 TODO）；**没有**列表滚动/会话打开/tab 切换旅程，没有 benchmark runner/汇总脚本，全仓无 `ReportDrawn`（零命中）。长文本侧另有可复用自研管线：`scripts/longtext_baseline.py` + `app/src/androidTest/java/app/androidrik/rikkahub/perf/LongTextBaselineTest.kt`（FrameMetrics 逐帧、P95/P99、deadline miss，见 `docs/design/completed/longtext-p0-baseline.md`）。
    - 落点：`app/baselineprofile/src/main/java/app/androidrik/baselineprofile/` 增 `ChatBenchmarks.kt`（冷启动→首屏全绘、长会话打开、滚动、流式回包）+ `PerfSupport.kt`（fixture 安装 + 全绘等待）+ `scripts/perf/{run_bench.sh,summarize.py}`；`StartupBenchmarks.kt` 的 measureBlock 补全绘等待；`BaselineProfileGenerator` 增加长会话/流式旅程后重生成 `app/src/release/generated/baselineProfiles/baseline-prof.txt`（现为旧旅程产物）。**量级 2–3d**。
 
 4. **P3 · 引用卡片/预览去掉 Markdown 标记**（`9531ec767`）
@@ -233,3 +233,26 @@ App，比轻弹窗**重得多也慢得多**（起完整导航栈）。
 5. **`c48dcbdff` 的 markdown LruCache 部分不建议直接抄**：本仓长消息预解析在 `ChatRenderIndex`，短消息解析开销待 `scripts/longtext_baseline.py` 量测后再定；先做其中 3 个已确证的分钟级小件（月日本地化 / ImageRequest remember / reasoning tick）。
 
 > 证据级别：**远端（标题 + 文件级 patch）**——无本地克隆；对本批 42 个提交调 `repos/Ayuilos/Miffan/commits/<sha>` 取 `files[].patch`（覆盖全部候选/等价证据），其余按标题分桶。本仓结论为本地源码 grep/读文件取证。
+
+## 2026-11-09 → 11-14 增量评估（2026-11-14 晚，远端，82 提交）
+
+> 同步方式：`gh api`（直连）。锚点 HEAD `11b8fb55b`（PR #70，11-09）。证据级别：**远端：标题全量 + 12 个代表提交的 message/files/patch 抽样**；本仓侧结论全部本地 grep/file:line 取证。
+
+**分桶**：A 性能第二轮（11-10，21 条，流式渲染全线优化）· B IM 伙伴设置第二轮（11-11，~40 条，IM 4.0 域不吸收）· C 版本/改名/翻译（11-12）· D 工具卡片（11-13，7 条）· 记账/杂项。**总评：吸收 0 / 候选 4（全 P3）/ 已有等价 7 / 记账 ~23 / 不适用 ~48。本窗口与本仓「撞题率」历次最高，但结论是正面信号**：Miffan 11-10 性能簇逐条对应本仓 11-09 刚自研完成且带量测基线的 longtext p2 工程（`MarkdownStreamParser` + `ChatRenderIndex` + `_measure/longtext/*`），且本仓实现普遍更深（取消安全落点/半截保留/HEADERS 级日志）。
+
+**候选（4，全 P3）**：
+
+| sha | 实质 | 判定 | 理由/前置 |
+|---|---|---|---|
+| `51c6b0f2` | **聊天框凭证拦截**（`extractCredential`：sk-/AIzaSy/Bearer 等正则族 + 中英混排用例；发送前提示「发出去就能看到」） | 候选 P3（**唯一无争议，0.5h 级**） | 本仓全仓无输入框凭证检测（`sk-` 零命中）；key 发进聊天会进模型上下文并落库。落点 = composer 发送前 `containsMatchIn` 提示；其「搬进安全卡片」后半属 IM 域不做 |
+| `8c354547` | **数据层按帧合流**（流式 chunk 每帧最多一次 UI 更新 + 132 行 `GenerationStreamBatchingTest`） | 候选 P3（量测前置） | 本仓生成流无 per-frame 合流（`withFrameNanos`/`conflate` 生成路径零命中）；收益与 `MarkdownStreamParser` 协同未知——用 `scripts/longtext_baseline.py` 先实测再立项 |
+| `baad2774` | 每 Markdown 顶层块 `graphicsLayer` 独立成层（流式早块不重绘） | 候选 P3（低置信） | 本仓无 per-block layer；`ChatRenderIndex` 切片 + Compose draw invalidation 可能已覆盖大部分收益，挂账观察 |
+| `26bc942d` | **审批卡上编辑工具参数**（`EditableApprovalSchema` 321 行：按 schema 生成可编辑表单 + 校验 + 编辑标记随 decision 落库） | 候选 P3（中型） | 本仓审批 UI 只有批准/全部批准/拒绝带理由（`ChatMessageTools.kt:147-349`），无参数编辑；需按本仓 `SubagentApproval`/`ApprovalBaselines` 自研，原则值得挂账 |
+
+**已有等价（7）**：`ea461c0e` 增量 Markdown 解析（本仓 `MarkdownStreamParser` appendOnly 投影更强，且 11-09 基线在档）· `207b066d` 砍整页重组（本仓 strong skipping + `ChatRenderIndex`）· `66d1294e` flowOn 缓冲丢尾（本仓 `GenerationHandler.kt:464-502` 取消安全落点 + 半截保留覆盖更全）· `7cefdb28`/`23e95a5d` debug-only HTTP 日志（本仓 `DataSourceModule.kt:311-327` release 不挂拦截器 + HEADERS 级不打 body，更保守）· `e90c9989`/`d6c52553` 朗读格式/voice（`TTSProviderConfigure.kt:1122`）· `c9007d57` stale 提示（本仓无该提示面）。
+
+**记账**：`9c74a89e`+`72d70c4e` 代码块行分片高亮（写在 `me.rerere.highlight` 上游库内，本仓跟库版本即可）· `d7b3b6f1` 四项 chunk 省活细则（挂其 ThreadTimeline，本仓对应热路径频率低）· 归因进工具输出/卡片编辑 3 条（同 26bc942d 域）· 备份闲置提醒 4 条（原则弱候选）· 自更新/云电脑测试 2 条（「本仓无自更新通道」判据复核仍成立）· merge/bump/测量评审文档 ~12 条。
+
+**销账**：上轮候选 #4（引用卡片剥 Markdown `9531ec767`）确认已落地——本仓 `MessageQuoteCard.kt:92` 已调 `stripMarkdown()`；其缓存化（quote 缓存）记账待量测。
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §八。

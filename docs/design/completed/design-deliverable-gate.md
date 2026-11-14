@@ -1,6 +1,6 @@
 # 设计稿：交付物契约 + 收尾闸门（loop-end gate）
 
-> 状态：**rev 2——P1 已实现（2026-10-31，本地未提交/未推送）**。落点：
+> 状态：**rev 2——P1 已实现并推送（ae382c8c1，2026-10-31）**。落点：
 > `data/ai/LoopGate.kt`（DeliverableChecker / LoopGateConfig / evaluateLoopGate）、
 > `GenerationHandler.kt` 空工具分支出口、`SubagentRunner.buildSubagentLoopGate`、
 > `ScheduledTaskRunner.buildTaskLoopGate`（v55 `deliverables` / `gate_retries` 列）；

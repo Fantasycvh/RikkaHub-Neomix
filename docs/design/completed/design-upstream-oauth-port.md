@@ -1,6 +1,6 @@
 # 上游 OAuth 订阅登录全量移植评估（路线 A）
 
-> 状态：评估稿（2026-11-01）
+> 状态：评估稿（2026-11-01）→ 已按 P0–P5 全量实施并随 beta.16 发布（ba4f7fbc5）
 > 上游快照：`upstream/master` = `5ad19405c`（2026-11-01，`git fetch` 于评估当日）
 > 本仓基线：`2c9806427`（与上游的 merge-base），本仓已落地设备码方案（见 `design-codex-subscription-login.md`）
 > 目标：把本仓「设备码登录 + 复用 `ProviderSetting.OpenAI`」替换为上游 #2186 的架构（`oauth` 模块 loopback PKCE + `ChatGPT`/`Grok` 账号态 Provider + `ProviderAccountManager` + `ProviderQuota` + 新 SSE 解码层）
@@ -335,7 +335,7 @@ chatgpt.com/backend-api/codex、grok 后端
 
 - 上游提交：`4b9ff1a99`（#1648 ai 重构）、`b6df5f044`（oauth 抽包）、`318cffef6`（#2186 订阅登录）、`5ad19405c`（评估时 HEAD）
 - 上游 PR：[#2186](https://github.com/rikkahub/rikkahub/pull/2186)、[#1752](https://github.com/rikkahub/rikkahub/pull/1752)（设备码血统，本仓现行方案参考）
-- 本仓：`docs/design/drafts/design-codex-subscription-login.md`（现行方案设计 + 已落地记录）、`docs/upstream-analysis.md` §专项「OAuth 订阅登录（#2186）为何暂不吸收」
+- 本仓：`docs/design/completed/design-codex-subscription-login.md`（现行方案设计 + 已落地记录）、`docs/upstream-analysis.md` §专项「OAuth 订阅登录（#2186）为何暂不吸收」
 
 ---
 

@@ -1,6 +1,7 @@
 # DeepSeek Tool APIs 适配资料包（2026-11-13）
 
 > **状态：P0+P1+P1b+P2 全部实施（2026-11-14），全量单测绿。** 实施记录见 §9。
+> 2026-11-14 起进入实施：3b73b4cdd（P0+P1+P1b）/ ab6e576d5（P2，usage_record 迁移 70→71）/ b74021ee5（OCR 高级字段 UI 露出 + 六字段漏接 PreferencesStore 落盘修复）。
 > 备料原文： 本目录只新增文档，源码零改动（`git status` 仅本目录 + 既有未跟踪文件）。
 > 官方资料抓取时间：2026-11-13；用户提供的定价截图已与官网 CNY 价目**逐项核对一致**（见 `01-api-reference.md` §7）。
 > **2026-11-13 二次核对修订**：修正 ASR 语种数（21 种）、ASR 重试现状（Step 有重试）、models.dev `cost` 机制描述；补充官方契约点（工具互斥/中途失败照常计费/`kind`+`signature` 回传/续写需 beta `prefix: true`/safety 与 Files 限制）与 SearchPicker 模型 ID 白名单。官方契约断言已与 2026-11-13 官网逐条复核。
@@ -36,10 +37,10 @@
 |---|---|---|---|
 | Search | `POST /v1/tools/search` | ✅ 已适配（`786638fca`，2026-10-17） | 仅 P2 补 QPS 文案/i18n/可选 `ori_question` |
 | Fetch | `POST /v1/tools/fetch` | ✅ 已适配（作为 `scrape_web`） | 同上 |
-| OCR | `POST /v1/tools/ocr` | ❌ 未适配；现为「视觉模型 OCR」 | P1：新增可选后端，默认不变 |
-| TTS | `POST /v1/tools/tts`（+ WSS） | ❌ 未适配；已有 11 个 TTS provider | P1：整段 POST，默认 wav |
-| ASR | `POST /v1/tools/asr` | ❌ 未适配；已有 5 个 ASR provider | P1：MiMo 型分段 multipart |
-| 聊天内置 web tools | `deepseek_web_search` / `deepseek_read_url` | ⚠️ 抽象齐全，Chat Completions 链路缺收发 | P0 守卫 + P1 收发 |
+| OCR | `POST /v1/tools/ocr` | ❌ 未适配；现为「视觉模型 OCR」→ ✅ 已适配（P0/P1，2026-11-14） | P1：新增可选后端，默认不变 |
+| TTS | `POST /v1/tools/tts`（+ WSS） | ❌ 未适配；已有 11 个 TTS provider → ✅ 已适配（P0/P1，2026-11-14） | P1：整段 POST，默认 wav |
+| ASR | `POST /v1/tools/asr` | ❌ 未适配；已有 5 个 ASR provider → ✅ 已适配（P0/P1，2026-11-14） | P1：MiMo 型分段 multipart |
+| 聊天内置 web tools | `deepseek_web_search` / `deepseek_read_url` | ⚠️ 抽象齐全，Chat Completions 链路缺收发 → ✅ 已适配（P0/P1，2026-11-14） | P0 守卫 + P1 收发 |
 | 文件输入 / Files API | `POST /files` + `file_id` | ❌ 未适配 | **首版不做**（与本地解析重复） |
 | 内容安全 | `safety_check` | ✅ 适配（provider 开关，默认关，仅 DeepSeek host 下发） | 对外服务场景启用 |
 
@@ -74,11 +75,15 @@
 
 ## 7. 本轮边界
 
+> （2026-11-14 已失效：实施已由 3b73b4cdd/ab6e576d5/b74021ee5 完成，见 §9/§10）
+
 - 未写任何实现代码、未提交、未推送；没有真实 Key（上一次 Search/Fetch 适配也没有，详见 `02` §1.2）。
 - 所有契约以 2026-11-13 官网为准；文档未覆盖或与实测不符的部分，列入 `04-plan-and-tests.md` §4 的探测清单。
 - 价格是「当前官网价」，限时折扣截止时间官网未公布；实现时应把单价做成可配置常量，并在 UI 标注限时。
 
 ## 8. 下一步（待用户决定）
+
+（已拍板实施，见 §9 实施记录与 §10 装机 smoke；唯一挂账 = §10 末段的 DEEPSEEK OCR 图片入口实弹闭环）
 
 1. 确认适配范围与优先级（是否全做 / 先做 P0+P1 / 只做某一项）。
 2. 准备一把真实 Key，先跑 `04` §4 的 8 项探测（尤其是 Chat Completions 的 `server_tool_calls` 形态与 OCR 200-with-error）。

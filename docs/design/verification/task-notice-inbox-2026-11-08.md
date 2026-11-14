@@ -1,7 +1,7 @@
 # Notice、随机调度与定时记忆：首期实施记录
 
 > 日期：2026-11-08；本地实施，未提交、未推送。开始实施时 HEAD：`4e7ba4b14`。
-> 设计：[整合稿](../drafts/design-task-notice-inbox-and-proactive-sync.md)。
+> 设计：[整合稿](../completed/design-task-notice-inbox-and-proactive-sync.md)。
 > 用户要求先暂存再实施：两份评估草稿的实施前版本已进入 index；以下代码与实施记录留在工作区。
 
 ## 已实现

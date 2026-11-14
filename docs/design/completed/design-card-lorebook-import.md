@@ -1,6 +1,6 @@
 # 角色卡内嵌世界书（character_book）导入 — 设计稿
 
-> 状态：**一期（世界书拆分导入）+ 二期（重复导入检测 §六）均已实现**，本地单测全绿（2026-10-31，`:app:testDebugUnitTest`），待真机验证。
+> 状态：**一期（世界书拆分导入）+ 二期（重复导入检测 §六）均已实现并随 1.0.28-beta.14 (316) 发行**（b02e07404，真机装机通过），本地单测全绿（2026-10-31，`:app:testDebugUnitTest`）。
 > **一期实现**：`parseSillyTavernCharacterBook` + 卡内嵌书 DTO（`ExportSerializer.kt`）、`TavernCardImport` 结果类与解析接线（`AssistantImporter.kt`）、代码块导入 toast 带书信息（`HighlightCodeBlock.kt`）、`code_block_add_assistant_success_with_lorebook` 三语言；单测 `SillyTavernCharacterBookTest`（15 项）+ `AssistantImporterTest` 内嵌世界书 region（4 项）。
 > **二期实现**：`tavernCardSourceKey` 指纹 + `findCardDuplicate`/`upsertCardSourceRecord`/`commitCardImportExtras`（复用 `Settings.importedSources`，键空间 `card:` 前缀）；两入口共用 `CardDuplicateConfirmDialog`（文案复用对话导入通用键）；单测指纹 4 项 + upsert 1 项。实现期补充：`importAssistantFromJsonText` 一站式入口因「确认对话框无法阻塞 suspend」撤销，改为调用方编排（`parseAssistantFromJsonText` + 查重 + `appendAssistantWithLorebook`）。
 > **方向**：角色卡（chara_card_v2/v3）内嵌的 `data.character_book` 拆分为**独立世界书**，导入时**绑定到新导入的助手**（`assistant.lorebookIds`）。不把条目压进人设、不新建存储模型。

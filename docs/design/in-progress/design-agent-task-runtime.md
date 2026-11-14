@@ -885,7 +885,7 @@ P4b 本地提交 `feat(task-runtime): 定时任务可选 headless agent_run`（`
 约 15.2k 行、794 个测试）。**只做概念对照，不引入依赖、不照搬代码**；该仓是研究原型，API 与生产语义
 均未定型。
 
-2026-11-03 固定提交源码复核与插件架构增补，见[可组合插件运行时设计 §九](../drafts/design-plugin-composable-runtime.md)。
+2026-11-03 固定提交源码复核与插件架构增补，见[可组合插件运行时设计 §九](../completed/design-plugin-composable-runtime.md)。
 该增补不改变本文已批准的执行面划分、权限上限及 D6 默认行为。
 
 ### E.1 结构对照

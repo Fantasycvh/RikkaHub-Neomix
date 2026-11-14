@@ -50,4 +50,4 @@ Header、附件/思维链、翻译和动作栏保留原顺序和回调。一条�
 
 BetterText 的布局通知只在选中文本的实际位置、StaticLayout/PreparedText 身份或容器边界变化时更新，避免 toolbar/popup 自身重排再次触发布局状态的反馈循环。旧公开容器入口保持不变，新共享选择组和全文回调为附加 API。
 
-验证结果与限制见 [P3 验收记录](verification/longtext-p3-2026-11-09.md)。
+验证结果与限制见 [P3 验收记录](../verification/longtext-p3-2026-11-09.md。

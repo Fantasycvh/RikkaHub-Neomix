@@ -5,7 +5,7 @@
 **核查时间**：2026-10-19
 **方法**：两个仓库的静态代码对照。**未**编译运行 Yuihub，未做真机 A/B，未采集任何使用数据。
 
-> 本文承接 [ui-simplification-proposal.md](ui-simplification-proposal.md)（已实测的 Neomix 复杂度基线）。那份文档给出"Neomix 哪里复杂"；本文回答"参考 Yuihub 该怎么改，以及 Yuihub 本身该怎么改"。
+> 本文承接 [ui-simplification-proposal.md](../../ui-simplification-proposal.md（已实测的 Neomix 复杂度基线）。那份文档给出"Neomix 哪里复杂"；本文回答"参考 Yuihub 该怎么改，以及 Yuihub 本身该怎么改"。
 
 ---
 
@@ -129,7 +129,7 @@ Yuihub 在整个根 `Box` 上挂 `detectHorizontalDragGestures`（`:1771`），�
 
 Yuihub 的 4 个槽是"图像生成/收藏/统计/设置"，**没有**媒体创作、没有搜索/历史（它把这些放别处或没有）。Neomix 的功能集需要至少：创作（媒体创作）、收藏、统计、设置、搜索对话。
 
-**改进**：槽位 4 → 5，并把"图像生成"槽升级为**"创作"**——进入后统一落在 `MediaCreationSessions`，旧 `ImgGen` 收进其内部。这一步同时解决 [ui-simplification-proposal.md](ui-simplification-proposal.md) §5.1 记录的"生图双栈、两个并列入口"。
+**改进**：槽位 4 → 5，并把"图像生成"槽升级为**"创作"**——进入后统一落在 `MediaCreationSessions`，旧 `ImgGen` 收进其内部。这一步同时解决 [ui-simplification-proposal.md](../../ui-simplification-proposal.md §5.1 记录的"生图双栈、两个并列入口"。
 
 ### 4.4 一致性缺口：抽屉顶部有两套视觉语言
 

@@ -198,4 +198,4 @@ TTL 过期不删除历史证据，只改变为「上次检查」；从其他入�
 - 折叠：`CatalogBatchControls` 把这些行收敛成一行汇总「N 个提供商 · M 个已添加模型未在目录中找到」，点行展开/收起（chevron 指示），不再默认常驻。汇总计数取自新增纯函数 `catalogProvidersNeedingAttention`（只统计未确认的缺失，已确认项照旧退出提醒）。
 - 展开态：限高 96dp（约三行）并在内部 `verticalScroll`，条目再多也不会把下方提供商列表挤出屏幕；行改为 28dp `dense` 变体（`labelSmall` + 14dp 图标 + 2dp 间距），点行仍打开该提供商的缺失详情 sheet。
 - 清理：`CatalogMissingSummary` 新增 `dense` 参数，普通调用点行为不变；新增字符串 `catalog_missing_aggregate` 三语（英文/简中/繁中，占位符逐条核对；自动翻译 key 未配置）。
-- 验证：`CatalogPresentationTest` 新增 1 项（汇总只含需注意的提供商、计数=报告条数之和、已确认后退出），该类 6 项全通过；`:app:installDebug` 装机后真机核对——总览页 5 家提供商折叠后仅一行、展开约三行且可内部滚动、点行弹出 DeepSeek 缺失详情；聊天模型选择面板顶部同样只留一行汇总。未提交/未推送。
+- 验证：`CatalogPresentationTest` 新增 1 项（汇总只含需注意的提供商、计数=报告条数之和、已确认后退出），该类 6 项全通过；`:app:installDebug` 装机后真机核对——总览页 5 家提供商折叠后仅一行、展开约三行且可内部滚动、点行弹出 DeepSeek 缺失详情；聊天模型选择面板顶部同样只留一行汇总。已提交（c6b408af9，2026-11-06）。

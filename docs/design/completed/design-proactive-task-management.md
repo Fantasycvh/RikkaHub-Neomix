@@ -1,6 +1,6 @@
 # 设计稿：隐形会话 + AI 管理任务（含「真无头」不做声明）
 
-> 状态：**rev 2——P1/P2 主体已实现（2026-10-31，本地未提交/未推送）**：
+> 状态：**rev 2——P1/P2 已实现并推送（ae382c8c1，2026-10-31）**：
 > `Conversation.hidden`（v55 合批，六处同步 + 查询面过滤 14 处 + web DTO）、
 > 隐形横幅（ChatPage 覆盖层，v1 UI 只露「移出隐藏」，普通会话无隐藏入口）、
 > `createTaskConversation` 默认 `hidden = true`、

@@ -13,7 +13,7 @@
 > - **「媒体创作」点击深度 3 → 2**：抽屉直达 `MediaCreationSessions`；旧版生图改为媒体创作页顶部兼容入口
 > - **抽屉目的地仍为 10 个**（原计划“翻译外移”未做——应用内翻译只有抽屉一个入口，外移会成死路）
 >
-> 改造结果与验收见 [design/design-ui-yuihub-inspired.md](design/design-ui-yuihub-inspired.md) §7；提交 `538605ca7`（阶段 1）、`5e8e6f667`（阶段 2+3）。**文中代码行号同样是改前基线**。
+> 改造结果与验收见 [design/design-ui-yuihub-inspired.md](design/completed/design-ui-yuihub-inspired.md §7；提交 `538605ca7`（阶段 1）、`5e8e6f667`（阶段 2+3）。**文中代码行号同样是改前基线**。
 
 ---
 

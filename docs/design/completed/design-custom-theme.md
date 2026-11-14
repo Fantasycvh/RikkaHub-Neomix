@@ -1,6 +1,6 @@
 # 自定义主题增强（主题内核 + 角色覆写 + 外观快照导入导出）— 设计稿
 
-> 状态：**已实现（2026-11-01，编译 + 全量单测通过：2650 项 0 失败），待真机验证**。
+> 状态：**已实现并随 1.0.28-beta.15 (317) 发行**（7ea6ad7e7 主体 + 9bc2d58f4 IME 修复 + 8bb45ca9c 防回归三件套）；剩 3 观感项待日常验证（2026-11-01 编译 + 全量单测通过：2650 项 0 失败）。
 > **范围（用户已拍板）**：P1 主题内核 + **BiliPai 式角色覆写（非简化方案）** + 导入/导出升级为「外观快照」。
 > **实现落点**：`CustomTheme.kt`（`ThemePaletteStyle` 9 风格 + `contrastLevel` 最近档归一）、`ThemeRoleOverride.kt`（新文件，含 `userBubbleHex` fork 特有槽位 + WCAG 对比度 + tone 自适应）、`ThemeSnapshot.kt`（新文件，`theme` 字段**必填**防旧 JSON 静默解码成默认主题）、`Theme.kt`（覆写应用位次 + `LocalUserBubbleColor`）、`PreferencesStore.kt`（`DisplaySetting.themeRoleOverrides`）、`ChatMessage.kt`/`Export.kt`（气泡消费点；导出用户卡顺手改为与屏显同源 primaryContainer）、`SettingThemePage.kt`（hex 输入 + 风格/对比度选择 + 覆写区块 + 导入双格式 + sakura fallback 修正）；字符串 27 键 ×3 locale（locale-tui 翻译 API 无 key，en 由 skill 落、zh/zh-rTW 手动补）。单测：`ThemeRoleOverrideTest`（13 项）+ `ThemeSnapshotTest`（5 项）；顺手修 `BatchRenamePlanTest` 既有失败（66a20deda 枚举化重构后测试未跟上，全量单测因此长期红）。
 > **参照系**：① **BiliPai（实现参照）**（`docs/references/other projects/bilipai.md`，源码级调研在档）——主题引擎工程化：seed 优先管线、角色覆写 + 对比度预警、主题=设置快照；② **橘瓣 OrangeChat（仅灵感来源）**（`docs/roadmap.md` §一，watermio123-droid/orangechat 的 `liquid-glass-ui` 分支）——提供「用户想直接改哪几个颜色位」的需求洞察（背景/气泡/重点色），**实现不照抄**，由角色覆写全量承接。两者是**不同应用**。

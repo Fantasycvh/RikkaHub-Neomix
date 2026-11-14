@@ -155,3 +155,17 @@ BiliPai 用 AGP `AsmClassVisitorFactory` 给 Compose 库内 `AndroidClipboardMan
 - **不适用**：横竖屏网格列数记忆、合作视频作者合并、章节进度填充、播放地址过期重取、评论区对话恢复、键鼠快捷键（仅记「次键=右键返回上级」）等域内件。
 
 > 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §五 2026-11-14 轮。
+
+## 2026-11-14 晚增量评估（`bb8b97369..ad20fff82^`，5 提交，0.8.0 后）
+
+> 同步方式：本地克隆直连 fetch。5 提交全量读 message + stats。
+
+| 提交 | 实质 | 判定 |
+|---|---|---|
+| `ad20fff82` | release：0.8.0 汇总 + versionCode 575 | 不适用 |
+| `9856a0a4d` | fix(miuix)：原生搜索/菜单/选择控件/弹窗交互完善（HomeHeader/AdaptiveDialog/AppSheet 等 8 文件） | 不适用（BiliPai 自维护 miuix 兼容层；本仓 M3 Expressive 自有体系） |
+| `623c548bf` | fix(player)：分栏全屏/折叠交接/竖屏背景采集 | 不适用（视频播放域） |
+| `79b29da02` | feat(message)：**前台订阅消息并同步未读角标与会话**（`ForegroundMessageSync` 138 行 + `MessageBadgeNewMessageTest`/`ForegroundMessageSyncTest`） | 不适用（B 站私信域）。形态记账：前台服务数据同步必配双测试（同步逻辑 + 角标状态机） |
+| `af8826d73` | fix(home)：**推荐请求页大小跟随网格列数**并修正刷新标记（`HomeFeedRequestPolicy`） | 判据记账：请求页大小与视口布局列数耦合，避免拉取量/渲染量错配（本仓聊天无 feed 网格，适用面低） |
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §八。

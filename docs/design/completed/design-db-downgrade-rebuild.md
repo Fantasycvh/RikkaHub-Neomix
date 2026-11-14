@@ -1,7 +1,7 @@
 # 设计：数据库降级重建 —— 启动期隔离旧库 + 全新起库 + 升级回归可恢复
 
 - 日期：2026-10-31
-- 状态：代码完成（DowngradeQuarantineStore + doBoot 第 0 步 + 双弹窗 + 备份页常驻入口；14 项 JVM 单测绿、全量 295 个测试类绿、装机冒烟通过）；待真机验收 §7 四场景（A 降级/B 回升恢复/C 中间版本/D 隔离中途强杀）
+- 状态：已随 1.0.28-beta.14 (316) 发行（63f005c07）；§7 四场景（A 降级/B 回升恢复/C 中间版本/D 隔离中途强杀）真机验收结论待补记
 - 前置：B 档 staged 恢复已落地（`PendingRestoreStore`，设计稿 `design-backup-staged-restore.md`）；A 档恢复前安全备份已落地（`filesDir/safety_backup/` 滚动 3 份）
 
 ## 0. 随案必修：`SCHEMA_VERSION` 已经漂移（现存 bug）

@@ -5,7 +5,7 @@
 
 ## 一句话结论
 
-**代码可移植 ≈ 0，机制可借。** 值得拿的是三套产品机制——运行时安装/更新的完整状态机（含失败兜底与「边装边设置」）、危险操作分级 +「问 AI」、以及更新分发契约；再加一套严格的协议/SDK 工程纪律。插件协议已在设计稿 [`design-plugin-composable-runtime.md`](../../design/drafts/design-plugin-composable-runtime.md) §十一 系统复盘（基线 `8e36cdbf3`，2026-11-03），**本轮不新增立项**；内嵌引擎、手机操控、插件市场、分享/回放服务不照搬。
+**代码可移植 ≈ 0，机制可借。** 值得拿的是三套产品机制——运行时安装/更新的完整状态机（含失败兜底与「边装边设置」）、危险操作分级 +「问 AI」、以及更新分发契约；再加一套严格的协议/SDK 工程纪律。插件协议已在设计稿 [`design-plugin-composable-runtime.md`](../../design/completed/design-plugin-composable-runtime.md) §十一 系统复盘（基线 `8e36cdbf3`，2026-11-03），**本轮不新增立项**；内嵌引擎、手机操控、插件市场、分享/回放服务不照搬。
 
 ## 一、它是什么
 
@@ -170,3 +170,19 @@ dsh-Go 把「哪台主机能用什么」写成明确矩阵：工具卡全主机�
 - §二 六项建议顺序不变；§2.1「安装事务化」因 1.0.15 语义更明确而略升优先级（仍等用户需求）。
 - 新增 §7.1 的 16 KB 页候选，与本仓 TikZ/PDF 原生库直接相关，已挂进 [peer-verdicts §五](../../peer-verdicts-2026-11-08.md) 候选池。
 - 高速移动靶纪律：本文结论只对 `8f31b2e` 负责；下次同步按台账同步点（而非 ref 区间）判断欠账。
+
+## 八、2026-11-10 → 11-14 增量（抽样，`8f31b2ed8..e6dc475b`，first-parent 311 条，其中真增量 11-11→11-14 约 177 条）
+
+> 同步方式：本地克隆 fetch（SSH）。范围勘误：`8f31b2ed8` 主链重建带入 11-01 起旧料 134 条（上轮已覆盖），真增量 177 条。分桶：Merge ≈200 / fix 84 / feat 18 / test 13 / docs 3。**总评：无任何动摇「代码可移植 ≈ 0，机制可借」的信号；产品分叉加速**——本轮新开五条线（自动诊断、语音 v2、Tavern roleplay、创意工坊、super-agent router），全部绑定其 Flutter+PRoot+服务端 worker 栈。
+
+**候选（2，均机制级）**：
+- **opt-in 自动诊断三段式**（`36903ae2` EvidenceStore + DiagnosticsTool + `5033173a` eligibility 后才初始化连接）：**证据先落盘 → 用户显式 opt-in 才分析 → eligibility 通过才建立连接**。本仓无诊断证据体系；与「机制可借」结论同族，若做生成失败诊断可当隐私分级规格。
+- **context overflow 恢复动作**（`823e477c` notice action）：本仓缺口——`GenerationErrorPolicy.kt:21` 的 `isRetryableGenerationError` 覆盖网络/限流/换 key，无「上下文溢出 → 给用户恢复动作」分支；一行级补齐候选。
+
+**已有等价**：自定义请求头（`ai/.../ProviderSetting.kt:176`）、超长工具输出折叠展开（`ui/components/message/ChatMessage.kt`）、插件页面接缝（design-plugin-composable-runtime 已复盘）、DND 门禁教训（design-phone-use 已落地；其「自检门禁误伤可用通道 → 整套删除」可作 phone-use 维护期反模式参考）。
+
+**不适用·记账**：创意工坊+审核台（UGC 平台型）、runtime-layers 分层升级（前提是随包分发 rootfs）、tawcroot 加速启动（默认关纪律佐证）、SSH 认证后压缩、companion 悬浮伙伴、Tavern roleplay 五篇 design docs、router.md super-agent 方向稿（产品重心移向多机编排/消息入口，与本仓定位进一步分叉）、`5de0cc81` opus 5.5 自适应思考推断（catalog 维护项）。
+
+**工程纪律强化**：`docs/design/refactor-2026-11.md` 方法论稿（依赖成环 347/836 文件、123 个补丁无序的量化 + 先守卫再动/文件独占写手/避让清单/行为不变优先）——是其架构债的自量化解法，可补 §七 工程纪律条作佐证；arch-dev-guides + 「反过度防御」（撤走不到的判空）制度化了「只防真实可达的情况」。
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §八。

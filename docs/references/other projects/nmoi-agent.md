@@ -199,3 +199,14 @@ signing 指纹钉死（D170）、tar.gz 自研解包（D164）、容器覆盖安
 > 记账：D329 询问进 `turn_busy.asks` + `nmoi_tool_answer_json`（JNI 58）异步作答、D318 三层系统提示词拼接、D322 索引摘要批量补写——壳/FFI 形态，不适用。
 
 > 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §五 2026-11-14 轮。
+
+## 13.6、2026-11-14 晚增量评估（a30d0cd..122fe5a，2 提交，D330）
+
+> 同步方式：本地克隆直连 fetch（7890 代理挂，`-c http.proxy=` 直连成功）。2 提交全量读 diff。
+
+| 提交 | 实质 | 判定 |
+|---|---|---|
+| `122fe5a` | fix(audio)：淡入淡出改迭代器（CI clippy 1.100 `needless_range_loop`） | 不适用（CI lint 顺带） |
+| `68dc7ee` | **Voice-Caps 只读能力表（D330）**：`voicecaps.rs` 407 行 + `Capability::Voice` 两层声明；模型合成/识别前先问 `{tts, asr, sing, note}`，参数格以回答为准 | 工具本体**不适用**——本仓语音是生成后 UI 播放 + ASR 输入，模型不调用语音工具，「模型先问能力」的产品前提不存在。**判据记账 3 条**：① 工具 JSON 输出「缺字段 ≠ 没配」，未配置条目**显式 `null`**（模型无法从缺失读出「这条没配」）；② 能力声明**两层制**——`Capability` 说「这一档允许」+ `any()` 说「这一轮有东西可答」，只装声库引擎没接不算，防「只会回唱不了的」工具占声明位让模型白试；③ `known_*` 是**快捷清单不是白名单**（写进返回体 `note` 自解释）。④ UI 开关与模型可见判据同源（`svsEngine()` + `VoiceBankRepository.installed`）——本仓既有纪律的又一互证 |
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §八。

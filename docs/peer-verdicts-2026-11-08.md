@@ -131,6 +131,7 @@
 - peer 候选池见 §五；C1–C6 已在后续本地提交落地，C7 与备份自校验本轮（2026-11-08）已实现；内容级脱敏仍待语义边界拍板。
 - BiliPai 门控层零改动；nmoi/BiliPai 本轮全部细节见 [nmoi-agent.md §13.4](references/other%20projects/nmoi-agent.md) / [bilipai.md](references/other%20projects/bilipai.md)。
 - **2026-11-10 同步**：upstream 同步点 `8a837b27e`（issue 扫描到 #2310）；peer 侧 NMoi 到 `92585e8`、BiliPai 到 `05c4e2ac5`、PurrCat 到 `7cd7134`、Miffan 远端 `11b8fb55b`、billion-context `4dea18ea`、dsh-Go `8f31b2e`；仍然只评不施。**新增两个本仓实证项**：CI 零测试门禁（purrcat F1）、3 个 .so 未 16 KB 页对齐（dsh-Go 引出的静态核验）。候选池见 §六。
+- **2026-11-14 晚全量克隆同步**：15 个来源全部复检（上游 0 新）；候选池刷新见 §八.1（5 条，P3 为主）；**「921427f95 lastUsage 旧账」销账**（本仓 `GenerationHandler` 双口径已覆盖）。
 
 ## 五、本轮增量判决（2026-11-08：NMoi 173 提交 + BiliPai 108 提交）
 
@@ -299,3 +300,42 @@ arm64 debug）走查通知权限卡与世界书编辑对话框，logcat 无新�
 - **11-11 节「仍未动 bcc649abc 轮中压缩」勘误**：已随第三轮落地（`GenerationHandler.kt:342/1377-1419`），§6.1 #2 行已过时，以 6.7 表为准。
 - **NMoi 本地克隆检出分支已从 `toolchain/agp9-neomix` 换到 `master`**（用户操作），后续增量评估直接基于 master。
 - **Phone Use 大特性观察定稿**：上游 github 渠道专属（source set 剔除 Play 构建），无障碍操作手机的安全边界克制（支付/银行/微信黑名单 + 本应用前台不操作 + 悬浮窗可见可停）——本仓不跟，做同域功能时参考其边界写法。
+
+## 八、2026-11-14 晚全量克隆同步轮判决（全部 15 个来源复检）
+
+> 同步方式：本地克隆 fetch（7890 代理挂，https 仓 `-c http.proxy=` 直连、SSH 仓直连均通）；无本地克隆的走 `gh api` 远端。上游无新提交，故本轮为纯 peer 轮。**总评：吸收 0 / 候选 5（P3×4 + 机制级 1）/ 已有等价 ~16 / 判据记账 ~14 / 不适用其余；销账 3 处。**
+
+| 来源 | 锚点 → HEAD | 新增 | 判决摘要 | 明细 |
+|---|---|---|---|---|
+| 上游 rikkahub | `64452581d` → 同 | **0** | 无新提交，同步点不变 | — |
+| NMoi | `a30d0cd` → `122fe5a` | 2 | 候选 0；Voice-Caps 工具本体不适用，**判据记账 3**（显式 `null` 表「没配」/能力声明两层制/`known_*` 非白名单） | [nmoi §13.6](references/other%20projects/nmoi-agent.md) |
+| BiliPai | `bb8b97369` → `ad20fff82^` | 5 | 候选 0；判据记账 2（请求页大小跟随视口列数/前台服务同步必配双测试） | [bilipai 晚增量节](references/other%20projects/bilipai.md) |
+| PurrCat | `7cd7134` → `67d33cc` | 24 | **候选 2**：AGENTS.md 重构纪律四条（文档级可直接抄）+ 文件权限 blocked-first 语义（P3）；9 连模块拆分与本仓 longfile 同题互证 | [purrcat F.8](purrcat-analysis.md) |
+| 华灯 | `90a5da9c4` → `8107f093e` | 96 | **候选 1**：MCP 预请求 Hook（P3，request-only 管线可承载）；已有等价 9（含**销上游 lastUsage 挂账**：本仓 `GenerationHandler` 双口径已覆盖）；酒馆前端六连方向级不跟 | [huadeng §8.3](references/other%20projects/huadeng.md) |
+| dsh-Go | `8f31b2ed8` → `e6dc475b` | fp 311（真增量 177） | **候选 2**：opt-in 自动诊断三段式（证据落盘→显式 opt-in→eligibility 后连接）+ context overflow 恢复动作（本仓 `GenerationErrorPolicy` 无此分支）；架构结论不变，产品分叉加速（新开诊断/语音 v2/Tavern/工坊/router 五线） | [dsh-go §八](references/other%20projects/dsh-go.md) |
+| Miffan | `11b8fb55b` → 远端 | 82 | **候选 4（全 P3）**：聊天框凭证拦截（0.5h 级唯一无争议）/按帧合流（量测前置）/per-block graphicsLayer（低置信）/审批卡参数编辑（中型）；已有等价 7——性能簇与本仓 longtext p2 正面撞题且本仓更深；销上轮引用卡片候选（已落地） | [miffan 晚增量节](references/other%20projects/miffan.md) |
+| billion-context | `4dea18ea` → 远端 | ≥400 | 候选 0；判据记账 2（具名不变量套件钉回归/wave 批次合流） | [billion-context 晚增量节](references/other%20projects/billion-context.md) |
+| archify | 11-10 → `e37848822` | 1 | docs-only（赞助文案），不适用 | — |
+| bigeye | `4f4c0cf` → 同 | **0** | 无新提交 | — |
+| Yuihub | `08825f5a` → 同 | **0** | 无新提交 | — |
+| senera | `614b1117` → 同 | **0** | 无新提交 | — |
+| SoLab | `72d28b1` → 同 | **0** | 无新提交 | — |
+| rikkahub-agent | `a88f5854b` → 同 | **0** | 无新提交 | — |
+| agentd / SillyTavern | 远端 pushed_at / since 复查 | **0** | agentd pushed_at 2026-10-13；SillyTavern 11-10 后零提交 | — |
+
+### 8.1 本轮候选池（按优先级）
+
+1. **PurrCat AGENTS.md 重构纪律四条**（`af1cf4e`，文档级）：characterization 测试先行、顺序类断言优先于快照、重构不顺手改行为、按子包拆提交——可并入本仓 AGENTS.md 或 longfile 稿的常备规范。
+2. **Miffan 聊天框凭证拦截**（`51c6b0f2`，0.5h 级）：composer 发送前对 sk-/AIzaSy/Bearer 等凭证正则族提示（key 发进聊天会进模型上下文并落库）；只取原则，不做其 IM 安全卡片搬运。
+3. **dsh-Go context overflow 恢复动作**（`823e477c`）：`GenerationErrorPolicy` 补「上下文溢出 → 用户恢复动作」分支，一行级。
+4. **华灯 MCP 预请求 Hook**（`48e98a622`）：InputMessageTransformer request-only 接线，P3。
+5. **dsh-Go opt-in 自动诊断三段式**（`36903ae2`/`5033173a`）：机制级规格，做生成失败诊断时参考。
+6. **PurrCat 文件权限 blocked-first**（`67576bc`）：若做工作区文件权限面照此语义。
+
+### 8.2 本轮销账
+
+- 上游 11-10 轮挂账「`921427f95` lastUsage 旧账」：本仓 `GenerationHandler.kt:1649-1690`（`accumulateRound` + `lastUsage = stepUsage`）已实现，销。
+- archify 11-10 后唯一提交为 docs-only，无评估负担。
+- agentd / SillyTavern / bigeye / Yuihub / senera / SoLab / rikkahub-agent 七源零新增，下轮可直接从本轮锚点起查。
+
+> 同步细节与同步方式（代理/直连/SSH 哪条通）见各来源文件对应节。

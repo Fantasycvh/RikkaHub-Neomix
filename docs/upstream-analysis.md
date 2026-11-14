@@ -1,6 +1,8 @@
 # 上游变更分析（综合版，2.4.11 → 2.5.6+，2026-09-12 重写，2026-10-13 复核）
 
-> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.14 (316)`（预发布，2026-10-31 发）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
+> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.20 (323)`（预发布，2026-11-11 发）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
+
+> **同步点（2026-11-14 更新）**：已评估到上游 **`64452581d`**（tag `3.2.0`），`90269e39d` 之后共 **5 提交**（逐条见「2026-11-14 同步评估」）；issue 扫描维持 #2312。**唯一吸收候选 `c1c3c4d12`（message_node 复合索引）已当日落地**（fork `0bf49eed4`，DB 68→69）；`66149047e` 不跟、`3adeba476` 等价、Phone Use 两件不适用；**#2271（Mistral 422）确认关闭——本仓修复与上游语义一致，挂账销账**。peer 侧同轮评估见 [peer-verdicts §七](peer-verdicts-2026-11-08.md)。**同日晚复查：`upstream/master` 仍为 `64452581d`，无新增提交**（全量 peer 复检见 [peer-verdicts §八](peer-verdicts-2026-11-08.md)）。
 
 > **同步点（2026-11-07 更新）**：已评估到上游 **`fe5a28f9a`**（2026-11-07，上游 HEAD，已发 `3.1.2`），`903e058b9` 之后共 **25 提交**（逐条见「2026-11-07 同步评估」）；issue 扫描到 **#2304**。**当日已吸收落地**：bettertext bump v0.1.5（#2285/#2301）、`3733bac8f` DAO/仓库部分（本仓确认 #2299 同构孤儿收藏 bug 后修复）、`6328f4a8d` 余额查询 POST+JSON、`b40d7a273` 顶栏胶囊（方案定案「两套共存加开关」，haze 维持 2.0.1）；**等价五条**：`e011970cb`（跳板机）、`dba9fa574`（收藏去重）、`ae599e8d7`（图片压缩缓存，本仓 MediaEncodingCache 覆盖热路径）、`e85c1d901`（压缩直填，NumericDialogField 领先）、`88dee920c`（世界书拖拽，本仓整页领先）；**大体等价**：`4ebfde221`+`27ef05ede`（后台任务三件套/任务中心/进程树杀本仓均已领先，唯一缺口「任务完成主动通知模型」挂账待专项批次）。用户拍板不跟：`bbae6d3a7`+`6687f636c` 推荐提供商弹窗线；`c512338d5` deps update 稍后。详见文末实施记录。
 
@@ -272,7 +274,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | `7e2ec76c2` **`PagerTab` label 改 Composable getter + 调试页改用 `PagerTabs`** | 为 `b8d309e66` 的 MCP 独立详情页铺路 | fork `PagerTab` **零命中** ⇒ 该抽象在 fork 不存在 | **不跟**（无消费者） |
 | `b8d309e66` **MCP 服务器配置改独立详情页 + `PagerTabs`** | 底部弹窗 → 独立页（基础设置 / 工具两 tab），`SettingMcpDetailPage.kt` 782 行新增 | fork 的 MCP 配置仍是**自有形态**（已有独立 `SettingMcpPage` 体系与 MCP 工具分层加载） | **不跟**：属「换配置页形态」的 UX 取舍、不是修复；要做应按 fork 现形态设计，不照搬 782 行 |
 | `660571449` **侧边栏搜索入口并入「聊天历史」一行（行尾）** | `ChatDrawer.kt`，+45/-26 | fork 抽屉是**自有布局**（含 fork 特有入口） | **不跟**：纯 UX 取舍 |
-| `93f231149` **翻译页 MD3 Expressive + 新增翻译历史** | 新增 `TranslationHistoryDAO` + Room **迁移 30** + 设置项 | fork 有**翻译能力**但不是上游那个翻译页；且 fork 的 DB 版本线**已与上游分叉**（fork 到 35+），**上游的 30.json 不能照搬** | **自研已落地（未移植上游改版）**：fork 保持自有翻译页形态，不吸收 MD3 Expressive 改版与翻译页设置项；「翻译历史」按 fork 版本线自研——DB **v45** 新增 `translation_history` + `AutoMigration(44→45)`，见 [design-translation-history.md](design/design-translation-history.md)。上游的 `30.json`/设置项仍未移植 |
+| `93f231149` **翻译页 MD3 Expressive + 新增翻译历史** | 新增 `TranslationHistoryDAO` + Room **迁移 30** + 设置项 | fork 有**翻译能力**但不是上游那个翻译页；且 fork 的 DB 版本线**已与上游分叉**（fork 到 35+），**上游的 30.json 不能照搬** | **自研已落地（未移植上游改版）**：fork 保持自有翻译页形态，不吸收 MD3 Expressive 改版与翻译页设置项；「翻译历史」按 fork 版本线自研——DB **v45** 新增 `translation_history` + `AutoMigration(44→45)`，见 [design-translation-history.md](design/completed/design-translation-history.md。上游的 `30.json`/设置项仍未移植 |
 | `06d59cc8c` / `c72fa6853` / `68826514d` **工作区/技能/快捷消息页、备份页/文件管理页、媒体/语音设置页改 MD3 Expressive** | 五批页面**大重写**（`WorkspaceDetailPage` 898 行、`SettingSpeechPage` 813 行、`S3Tab` 489 行…） | fork 这些页面是**自有实现且已有定制**（工作区多选导出、备份留存区、S3 分片等）。照搬=把 fork 定制全部推平 | **不跟**：这是**全仓 UX 改版工程**、不是修复；若要跟进须作为**独立设计任务**按 fork 页面逐个重建，逐条 cherry-pick 不可行 |
 | `f6e3e49a4` **新增「自动生成对话标题」开关** | 关闭后对话结束不再自动生成标题 | **fork 早已具备**：`Settings.enableAutoTitle`（`PreferencesStore.kt:875`，默认 true）+ UI 开关（`SettingModelPage.kt:173`）+ 消费点（`ChatService.kt:1684`） | **不跟（已具备）** |
 | `b69331473` **Markdown 引号内文字高亮开关** / `a6abed3be` **搜索引用角标暗色可读性** | 新增 `quoteHighlight` 开关；角标改实色背景 + 中等字重 | fork **零命中** `quoteHighlight`（含字符串），且 fork 的 Markdown/高亮链是**自有流式/公式定制**（`HighlightCodeBlock` 等） | **不跟**：属功能偏好项、非缺陷；fork 渲染链不宜为它改结构 |
@@ -285,7 +287,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 - **待真机视觉确认**：`2e572c204`（标题栏与背景图/顶栏模糊的关系，fork 形态不同）。
 - **明确不跟**：MD3 Expressive 五批大改（独立设计任务）、MCP 配置页改版（自有形态）、
   PagerTabs/Lucide/引号高亮/抽屉布局（前提不成立或无消费者）。**已自研落地**：翻译历史
-  （DB v45，fork 自有翻译页 + 新表，见 [design-translation-history.md](design/design-translation-history.md)；
+  （DB v45，fork 自有翻译页 + 新表，见 [design-translation-history.md](design/completed/design-translation-history.md；
   上游的翻译页 MD3 改版仍不跟）。**已具备**：自动标题开关。
 
 ### 2026-10-13 同步：`b64beeef6` → `05b655bb`（26 提交）+ 新 issue #2126–#2150（22 条）
@@ -322,7 +324,7 @@ master 已 ff-only 快进至 `2267943a`（同步于 10-02）。**⚠️ 更正�
 | `c907608bc` 之外的 MCP 相关 issue（#2132/#2138/#2139/#2140/#2146/#2150） | 均为同一根因族（非标准 schema / modern-era） | 见上 `c907608bc` 行 | 同一决策，不重复 |
 | `4dbf303f8` `3462d9ee1` `735ade8a8` `640496127` **设置层重构与性能（4 提交）** | ①修改设置一律基于**最新值**（不再写回界面手里的快照）②写入以内存为准，修「快速输入/拖动 slider 丢更新」③`PreferencesStore.kt` 按职责拆文件 ④**设置解码移出主线程** + `launchCount` 拆成独立流（只有它变化时不重新解码设置）+ `BingLocalOptions` 改 data class（否则每次解码出的实例互不相等 ⇒ 任何一次写入都让读设置的界面重组） | **fork 同款，且被 fork 的改动放大**（逐项核实）：<br>① **解码/映射在主线程**——`SettingsStore` 用 `AppScope`（`RikkaHubApp.kt:399-402` = `Dispatchers.Main`）收集 `settingsFlowRaw`（`PreferencesStore.kt:300-309` 的 Preferences→Settings 逐字段映射）+ `settingsFlow`（`:496-559` 的 `distinctBy` 规整），**两段 `map` 都无 `flowOn`**（全文件零 `flowOn`）⇒ 冷启动与每次设置变化时在主线程跑。<br>② **fork 的映射比上游更重**：`settingsFlow` 里对 providers/assistants/modeInjections/lorebooks/quickMessages/promptPresets 逐个 `distinctBy`（`:504-550`）——这是 fork 自己的「悬空引用过滤」定制。<br>③ **`launchCount` 仍在 Settings 快照内**（`:895` 字段、`:423` 读、`:662` 写）——虽然 fork 的 `incrementLaunchCount()`（`:575`）已经很聪明地只 `edit` 一个 key，但该 key 变化仍会让 `settingsFlowRaw` 重新**整份解码**（无值级 diff）。<br>④ **`BingLocalOptions` 不是 data class**（`search/.../SearchService.kt:198`）⇒ 与上游同款等值坑，`distinctUntilChanged()` 挡不住。<br>**未核实**：③④ 各自在真机上的实际重组量（需 profiler/实测） | ✅ **已吸收 (a)(b) 两件**（2026-10-13）：**(a)** 在 `settingsFlowRaw` 链尾加 `.flowOn(Dispatchers.Default)`（放链尾而非每条流各加：所有消费者都只是接收映射结果；`settingsFlow` 自己的 `distinctUntilChanged()` 与 `MutableStateFlow.value =` 仍在 Main 执行 = 映射在后台、状态更新在主）+ 源码守卫 `SettingsThreadingWiringTest`；**(b)** `BingLocalOptions` 改 `data class`（`search/.../SearchService.kt`）+ `SearchOptionsEqualityTest` 3 项（含「字段不同必须不相等」的反向钉子，防有人把 equals 写成恒真让去重吞掉真实变化）。<br>**未采纳**：**(c)** `launchCount` 拆分（改动面大：三件套 + 备份 JSON 兼容 + 迁移，收益只剩避免一次整份重解码；fork 已用「只 edit 一个 key」缓解写侧）；**(d)** 按职责拆 `PreferencesStore.kt`（纯结构重构、无行为收益）。<br>**冲突风险（已按此执行）**：fork 的 `Settings` 是重度定制区 ⇒ 未照搬上游补丁；fork 那条「勿把 Mutex 插进本流链」的警示也守住了（守卫里先剥注释再断言，否则**源码里那条警示注释本身**会让断言误报——第一版正是这么挂的） |
 | `9f5b5b8ea` `3ae5c1612` `3c1580ea6` `eebdea0bd` **构建/CI/文档/依赖** | 上表已列 daemon JVM 与 CI；其余为 AGENTS.md 设计语言改 MD3 Expressive、deps 更新 | 文档类不适用；`3c1580ea6` update deps 需单独看是否有 fork 关心的依赖 | **D 类（不跟）** |
-| `35fbf61d5` **会话列表按创建时间排序**（#1995） | 加 `ConversationSortOrder{UPDATE_TIME,CREATE_TIME}` + `DisplaySetting.conversationSortOrder` + DAO 布尔 `sortByCreateTime` + `ChatDrawer` 排序按钮 | fork 已实现**更强**的「自定义手动顺序」（`design/design-conversation-manual-order.md`，随 v1.0.23 发布）：`ConversationDAO` 排序常量 + `ConversationEntity.sortOrder` + `ConversationOrdering.kt` + `applyManualOrder` + `ChatDrawerVM` + 自己的排序/编辑顺序入口。**类型零交集但同一调用点被双方改写**（DAO 分页 / 仓库 / VM / FolderBar 同区域）⇒ cherry-pick 必冲突；强植 DAO 的 `CASE WHEN` 会**当场触发 fork 自己的护栏** `ConversationSchemaGuardsTest.kt:93-108`（任何 `ORDER BY` 必须用两个常量或 `guard-allow: order-helper`） | **零动作（fork 已领先）**。**⚠️ 一处更正（子代理核实，勿再沿用旧说法）**：fork 的「自定义手动顺序」**不含「按创建时间」这个显式维度**——设计稿 §一.7 恰恰写明**时间档排序已不再提供**（退路是「恢复默认顺序」= 回 `update_at`），§一.8 规定 AI 最近对话**保持按时间**、§七.7 规定搜索**刻意不跟随**自定义顺序。正确表述是：**fork 走的是另一条更强的路（手动顺序），#1995 的诉求不必再吸收**；不要写成「fork 的排序维度已含创建时间视角」 |
+| `35fbf61d5` **会话列表按创建时间排序**（#1995） | 加 `ConversationSortOrder{UPDATE_TIME,CREATE_TIME}` + `DisplaySetting.conversationSortOrder` + DAO 布尔 `sortByCreateTime` + `ChatDrawer` 排序按钮 | fork 已实现**更强**的「自定义手动顺序」（`design/completed/design-conversation-manual-order.md`，随 v1.0.23 发布）：`ConversationDAO` 排序常量 + `ConversationEntity.sortOrder` + `ConversationOrdering.kt` + `applyManualOrder` + `ChatDrawerVM` + 自己的排序/编辑顺序入口。**类型零交集但同一调用点被双方改写**（DAO 分页 / 仓库 / VM / FolderBar 同区域）⇒ cherry-pick 必冲突；强植 DAO 的 `CASE WHEN` 会**当场触发 fork 自己的护栏** `ConversationSchemaGuardsTest.kt:93-108`（任何 `ORDER BY` 必须用两个常量或 `guard-allow: order-helper`） | **零动作（fork 已领先）**。**⚠️ 一处更正（子代理核实，勿再沿用旧说法）**：fork 的「自定义手动顺序」**不含「按创建时间」这个显式维度**——设计稿 §一.7 恰恰写明**时间档排序已不再提供**（退路是「恢复默认顺序」= 回 `update_at`），§一.8 规定 AI 最近对话**保持按时间**、§七.7 规定搜索**刻意不跟随**自定义顺序。正确表述是：**fork 走的是另一条更强的路（手动顺序），#1995 的诉求不必再吸收**；不要写成「fork 的排序维度已含创建时间视角」 |
 
 #### C. 新 issue 分诊（#2126–#2150，22 条）
 
@@ -1004,7 +1006,7 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 | `bdb2ddc73` | OpenAI 图像响应里空字符串 `b64_json` 视为没有、改用 `url` | **已吸收**（fork `aaa8d2883`）：`parseTask` 对 `b64_json`/`url` 都加 `takeIf { isNotBlank() }`；`MediaCreationService` 走 url 下载时补地址与字节数日志。带单测 `blankBase64FallsBackToUrl`（`mediagen` 该文件 11 例全过） |
 | `183a7da70` | 画笔落笔主动让窗口重画一帧（Android 13 OPPO 上画不出内容、撤销不可用，#2193） | **已吸收**（fork `e53536283`）：落笔且工具为画笔时 `view.invalidate()`。**注**：本机非该机型，只验证不破坏现有绘制，未复现原始故障 |
 | `43d9e30e1` | 思考内容字号跟随聊天字号设置 | **已吸收**（fork `d856ddf17`）：`ReasoningContent` 的 `bodySmall` 乘 `fontSizeRatio`（字号+行高），与正文口径一致 |
-| `318cffef6` | OAuth 订阅登录（ChatGPT / Grok 账号态，#2186） | **暂不吸收（用户决定）**：见下方专项，依赖本仓完全不存在的子系统，属新功能不是修复。**2026-11-01 复审**：同功能改走「设备码登录 + 复用 OpenAI Provider」轻量路线，见 `docs/design/drafts/design-codex-subscription-login.md` |
+| `318cffef6` | OAuth 订阅登录（ChatGPT / Grok 账号态，#2186） | **暂不吸收（用户决定）**：见下方专项，依赖本仓完全不存在的子系统，属新功能不是修复。**2026-11-01 复审**：同功能改走「设备码登录 + 复用 OpenAI Provider」轻量路线，见 `docs/design/completed/design-codex-subscription-login.md` |
 | `eeef60b22` | `bump version to 3.1.0` | **跳过**：本仓独立版本线（`1.0.28-beta.3` / 305） |
 | `e5bb70730` | 更新日志 skill 约定（`.agents/skills/publish-release`） | **跳过**：本仓无该 skill，属上游发版流程文档 |
 
@@ -1022,7 +1024,7 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 
 **若将来要做**：单独立项、只做这一个特性，按「SSE 读取器 → 账号 + 配额数据层与迁移 → provider 与设置 UI」三段落地，每段跑 provider 层单测并做一次真实订阅账号的端到端验证。不要与日常上游同步混在一个提交里。
 
-> **2026-11-01 复审（结论变更）**：上述「缺的底座」评估成立，但**不必走 #2186 这条重路线**——上游 Draft PR [#1752](https://github.com/rikkahub/rikkahub/pull/1752)（+1389/−94）、二次修改版 `Lin-chpin/rikkahub-Jude`、`Inonvation/rikkahub` 已给出「设备授权登录塞进 OpenAI Provider」的实现：不需要 `oauth` 模块、loopback 回调服务器、前台服务，也不需要新 provider 子类型与 Streaming 重构；设备码端点已于 2026-11-01 用 curl 实测可用（`usercode` 200 / 轮询 403 pending）。落地设计与逐文件拆解见 **`docs/design/drafts/design-codex-subscription-login.md`**（估 5–7 人日、~1.5k 行；#2186 的 `CODEX_CAPABILITIES`、`parseCodexModels`、`parseCodexUsage` 仍作为请求体与额度语义的正确性参考）。
+> **2026-11-01 复审（结论变更）**：上述「缺的底座」评估成立，但**不必走 #2186 这条重路线**——上游 Draft PR [#1752](https://github.com/rikkahub/rikkahub/pull/1752)（+1389/−94）、二次修改版 `Lin-chpin/rikkahub-Jude`、`Inonvation/rikkahub` 已给出「设备授权登录塞进 OpenAI Provider」的实现：不需要 `oauth` 模块、loopback 回调服务器、前台服务，也不需要新 provider 子类型与 Streaming 重构；设备码端点已于 2026-11-01 用 curl 实测可用（`usercode` 200 / 轮询 403 pending）。落地设计与逐文件拆解见 **`docs/design/completed/design-codex-subscription-login.md`**（估 5–7 人日、~1.5k 行；#2186 的 `CODEX_CAPABILITIES`、`parseCodexModels`、`parseCodexUsage` 仍作为请求体与额度语义的正确性参考）。
 >
 > **2026-11-01 追加（用户决定走全量路线）**：设备码方案已落地并通过 debug/release 真机验证；随后用户选择**路线 A：全量对齐上游 #2186 架构**。可行性、依赖拓扑（前置 `#1648` 流式重构）、迁移风险与 P0–P5 分期见 **`docs/design/drafts/design-upstream-oauth-port.md`**（估 18–25 人日）。
 
@@ -1030,7 +1032,7 @@ prompt/size/数量/参考图定下了，先按它硬编码即可；真要走 med
 
 > 触发：用户「借鉴上游，改进用量统计」。该提交**不在**上面任何一个 fetch 区间里——它比 `42896e5ad`(10-19) 更早（10-19 13:12），
 > 但此前从未移植：`upstream/master` 与本仓共有 **346** 个「上游有、本仓无」的提交，本轮只挑这一条（用户点名的方向）。
-> 设计/取舍/边界见 [design/design-usage-stats.md](design/design-usage-stats.md)。
+> 设计/取舍/边界见 [design/design-usage-stats.md](design/completed/design-usage-stats.md。
 
 | 项 | 上游 `5a90c0548` | 本仓落地 |
 |---|---|---|
@@ -1791,7 +1793,7 @@ scrape_web 提示落空。改法：`searchWebDescription()` 按当前服务真�
 - **唯一实质缺口＝任务完成后主动通知模型**（上游 Notice/收件箱协议改造：`UIMessagePart.Notice` + `expandNotices` + MessageQueue→ConversationInbox + 压缩/记忆/导出 skip 规则 + i18n）。嫁接到本仓 MessageQueue/生成循环是协议级专项，**挂账待用户排期**；未实施期间本仓模型需自行轮询 `workspace_task_status`。
 
 **2026-11-07 联合评估补记（草稿，未实施）**：用户要求与随机触发/记忆同步一起评估，方案见
-[任务完成通知与主动同步整合稿](design/drafts/design-task-notice-inbox-and-proactive-sync.md)。
+[任务完成通知与主动同步整合稿](design/completed/design-task-notice-inbox-and-proactive-sync.md)。
 建议先复用本仓 notice 事务投递模式、保留用户队列，补 shell 终态路由与空闲续跑；步骤间 Notice
 part 展开后置。随机调度独立实施，子代理默认不续跑；旧随机稿“普通定时记忆审批现状即通”
 已按源码修正，需 scheduled 注入审批桥，headless 当前无记忆能力。以上为建议，待实施排期。
@@ -1917,4 +1919,4 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 ## 关联
 
-[peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/design-partial-failure-draft.md)
+[peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md

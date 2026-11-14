@@ -254,3 +254,17 @@ breakevenTurns = 一次性成本 / 每轮节省
 
 1. **#6021 当日三态**：`60a557e78`（11-09 11:54 落）→ 15:34 合并（#6027 `c812a843e`）→ 15:35 revert（`7d5f42efa`）→ 15:36 换实现重落（#6024 `f3766fea0`）。同一问题当天「落 → 撤 → 重落」，只引最终态。
 2. **v6 渲染快照/身份面 3 天内两次方向反转 + 一次整体删除**：11-05 02:53「永久杀 lane」→ 07:14「见证式 rebase」→ 11-07 05:32 整条 revert。这比任何单条 patch 都更能说明「物化渲染面 × 压缩」仍未解。
+
+## 2026-11-10 → 11-14 增量评估（2026-11-14，远端抽样，≥400 提交）
+
+> 同步方式：`gh api`（直连，网络波动重试）。证据级别：**远端：标题全量分页（≥4 页×100）+ 主题聚类**，未逐条读 patch。
+
+**分桶**：11-14 两大 wave merge（batch5-wave5 / batch6-wave6，几十个 PR 分支 rebase 进 master 的批次化合流）；其余为单 PR 单判据流：fix + **「test: pin the #N review shape in the invariants suite」式回归钉子**、test golden 重生成、web 渲染件（压缩树 tooltip/剪枝叶 frozen-snapshot hydration/handoff 文档渲染）、storage/cache 归因。
+
+**判据级记账（不立项）**：
+- **每修复必配具名回归钉子**：`pin the #6104 review shape in the side-lane invariants suite (lane-guard #2170)`——修复 PR 的验收 = 在**具名不变量套件**里钉住该 shape，而非随手加孤立用例。与本仓「防回归钉子」纪律（PreferencesStoreTest 源码扫描钉子等）同族，其「具名套件 + 编号追溯」的组织方式值得参考。
+- **wave 批次合流**：几十个 PR 分支先各自验证、再按 wave rebase 进 master——大批量外部贡献的合流纪律，本仓无此规模，记账。
+- web 渲染件（handoff 文档 markdown+高亮+角色卡）——web 域，不适用。
+- 总评：无动摇既有结论的信号；其「压缩树 × 剪枝叶快照水合」仍在活跃迭代，与本仓树形分支线同题不同域（其面向 web 渲染、本仓面向数据语义），维持记账。
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §八。

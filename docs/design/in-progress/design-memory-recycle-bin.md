@@ -1,6 +1,6 @@
 # 记忆回收站（软删除）
 
-> 状态（2026-10-17）：**仅设计稿，未落地、未实测**。
+> 状态（2026-10-17 立稿）：**阶段 1/2/4 已落地**（1a910c620，2026-10-18：memory_trash 表 DB 40→41、MemoryTrashDAO、MemoryRepository 同事务回收、MemoryRecoveryDialog 恢复 UI、memory_tool delete 走回收路径）；**阶段 3 过期 sweep（时间+条数双上限）未实现**，MemoryTrashDAO 无 purge/retention 查询。本稿仍保留设计稿性质，供阶段 3 落地参照。
 > 起因：`memory_tool` 的 `delete` 至今**不可逆**，而 2026-10-16 刚让「记忆整理」可以**批量提出删除建议**
 > —— 风险面被显著放大（一次误采纳就是多条永久丢失）。
 >

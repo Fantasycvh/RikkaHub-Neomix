@@ -12,7 +12,7 @@ P2 为后续懒加载建立显示投影，不改变会话存储、发送上下�
 
 ## 受控的本地模块
 
-`bettertext-markdown` 替换 `com.github.re-ovo.bettertext:markdown:v0.1.5`。保留原包名、`MarkdownDocument`/节点类型、完整文档渲染 API 与九个上游主源文件，以及 MIT 许可证和三个上游测试文件。来源和差异见 [模块说明](../../bettertext-markdown/README.md)。LaTeX/highlight Maven 模块及已有 `bettertext-text` 替换继续兼容。
+`bettertext-markdown` 替换 `com.github.re-ovo.bettertext:markdown:v0.1.5`。保留原包名、`MarkdownDocument`/节点类型、完整文档渲染 API 与九个上游主源文件，以及 MIT 许可证和三个上游测试文件。来源和差异见 [模块说明](../../../bettertext-markdown/README.md。LaTeX/highlight Maven 模块及已有 `bettertext-text` 替换继续兼容。
 
 依赖必须保留发布物中的 JetBrains Markdown `25d181c` 与 Jsoup `1.23.2`。应用虽然请求 `d79a97cc8e`，此前 Gradle 冲突解析选中了 `25d181c`。只保留应用声明会改变单波浪线删除线等行为，已通过旧 APK 快照及上游测试核实。
 

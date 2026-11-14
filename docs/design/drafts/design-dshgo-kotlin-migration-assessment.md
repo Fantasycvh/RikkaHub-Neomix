@@ -5,7 +5,7 @@
 > 日期：2026-11-03。代码基线：dsh-Go `8e36cdb`（外部仓库 `ccch1mneyyy/dsh-go`），本仓 `13846d07f`。
 > 方法：三路只读实测（dsh-go 插件栈 / 本仓目标侧 / 引擎托管与最小客户端），行数为 `find`/`grep`/`wc`
 > 实测；人日为估算，标注区间与点位。
-> 与既有设计的关系：**不取代** [`design-plugin-composable-runtime.md`](design-plugin-composable-runtime.md)
+> 与既有设计的关系：**不取代** [`design-plugin-composable-runtime.md`](../completed/design-plugin-composable-runtime.md
 > （rev2）。rev2 的「契约化装配优先、UI 插槽 P5 暂缓、不接引擎宿主」结论被本评估的成本数据支持；
 > 本评估补的是**迁移面**、**分层成本**与**决策门**。
 

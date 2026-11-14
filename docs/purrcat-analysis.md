@@ -435,3 +435,23 @@ git -C F:/build/projects/purrcat show 016a8a7 --stat    # 5696 行 host.js → 2
 ```
 
 证据级别：本地源码（PurrCat `adbba56..7cd7134` 逐条 diff；本仓 `file:line` 现场 grep，未改源码）。
+
+### F.8 2026-11-10 晚 → 11-12 增量评估（7cd7134..67d33cc，24 提交）
+
+> 同步方式：本地克隆直连 fetch（7890 代理挂，`-c http.proxy=` 直连成功）。24 提交全量读标题，代表提交读 diff。
+
+**分桶**：① **11-10 单日 9 连模块拆分**（`9ff8a32` utils / `b108c6c` model 用量账本+重试 / `7e7ce95` sensor / `9056253` memory 打分 / `04c2926` tool / `ba8603b` agent turn loop / `6d3c520` harness DAG / `81bd28c` evolve / `cb283c0` server ACP）——**与本仓 longfile-split-refactoring（批次 1–10，2026-11-07 收官）同周期同题互证**，无新判据；② 文件权限（`a2ea92f` 权限页 + `67576bc` blocked-first 语义）；③ API 文档（`5eb394c` OpenAPI 生成 + `ca39aad` CI 校验）；④ 压缩文案单一来源（`b605a1f`/`a447172`）；⑤ JSON 读写收敛（`e133b4c`/`f1158b0`）；⑥ 其余 UI/测试可移植/ACP/细节修复。
+
+| 出处 | 判定 | 理由 |
+|---|---|---|
+| `af1cf4e` AGENTS.md 重构纪律四条 | **候选（文档级，可直接抄）** | ① 纯重构一次只改一个子包、先补 characterization 测试锁现状再上浮；② **顺序类断言优先于快照**（阶段调用/上下文拼接/工具批次/压缩重建顺序不许变）；③ 重构只搬运拆层，不得顺手改提示词/字段名/日志文案，行为修正另开提交；④ 按子包拆提交、新模块可追溯 SPEC。与本仓「提取块 7 项自查」互补 |
+| `a2ea92f`+`67576bc` 文件权限页 + blocked-first 语义 | **候选（P3）** | `blocked` **最高优先、最先判定**，命中后无视默认权限；readonly/writable 白名单仅在默认权限不含该能力时生效。本仓工作区无文件级权限面；若做照此语义（与插件出站白名单 SSRF 硬拦截 deny-first 同构） |
+| `5eb394c`+`ca39aad` OpenAPI 生成 + CI 校验一致 | 记账（F1 维持） | 上轮 F.6 已记「本仓 web/routes 无此校验，随 F1 可选落地」；本轮其校验进 CI，佐证该判据的可持续性 |
+| `b605a1f`/`a447172` 压缩提示词/兜底文案单一来源 | 已有等价 | 本仓 `compressPrompt` 全局可编辑 + 单一装配点 |
+| `e133b4c`/`f1158b0` JSON 读写/原子写收敛 | 已有等价 | 本仓 SettingsStore 字段级 transform + DataStore 串行 edit 纪律 |
+| 9 连 refactor | 记账 | 同题互证；两个独立项目同周期做 Strangler Fig 式拆分，方法收敛一致 |
+| `e976c0b`/`d21692e`/`b9d530b`/`796d2b0`/`809b259`/`67d33cc` | 不适用 | 细节修复/测试可移植/设置页 UI/ACP 配置展示（本仓无 ACP） |
+
+**总评：吸收 0 / 候选 2（重构纪律成文、文件权限 blocked-first）/ 已有等价 2 / 记账 2 / 不适用 18。** 趋势：purrcat 进入「拆分后的纪律固化期」——重构纪律成文化（AGENTS.md 6/7/8/17 条）是其拆分风暴的直接产出，对本仓是把 longfile 教训升级为常备规范的现成参考。
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](peer-verdicts-2026-11-08.md) §八。

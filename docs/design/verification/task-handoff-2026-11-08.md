@@ -2,7 +2,7 @@
 
 日期：2026-11-08。仅本地记录，未推送。
 
-实现设计见 [保留任务并立即处理新消息](../drafts/design-task-handoff-and-immediate-message.md)。
+实现设计见 [保留任务并立即处理新消息](../completed/design-task-handoff-and-immediate-message.md)。
 
 ## 结果
 

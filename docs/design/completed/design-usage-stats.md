@@ -119,4 +119,4 @@ usageRecorder.wrap(provider, UsageTag(source, assistantId, conversationId))
 
 ## 关联
 
-[docs/upstream-analysis.md](../upstream-analysis.md) · [design-ui-yuihub-inspired.md](design-ui-yuihub-inspired.md)
+[docs/upstream-analysis.md](../../upstream-analysis.md · [design-ui-yuihub-inspired.md](design-ui-yuihub-inspired.md)

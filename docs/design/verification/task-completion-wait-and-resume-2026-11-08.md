@@ -1,6 +1,6 @@
 # 任务等待与自动恢复：验证记录
 
-日期：2026-11-08。本地记录，未推送。实现见 [设计草稿](../drafts/design-task-completion-wait-and-resume.md)。
+日期：2026-11-08。本地记录，未推送。实现见 [设计草稿](../completed/design-task-completion-wait-and-resume.md)。
 
 ## 最终结果
 

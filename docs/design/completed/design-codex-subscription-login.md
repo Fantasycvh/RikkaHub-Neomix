@@ -1,6 +1,6 @@
 # Codex 订阅登录（ChatGPT 账号）设计稿（Draft）
 
-> 状态：**草案，未实现**。协议可用性已于 2026-11-01 用 curl 实测（见第三节），但本仓尚未写一行实现代码。
+> 状态：**历史存档：S1 曾实施（174946239，2026-11-01），整条设备码链路后被 OAuth 移植路线取代并删除（7b81a9ded）；现行方案见 design/completed/design-upstream-oauth-port.md**。协议可用性已于 2026-11-01 用 curl 实测（见第三节）。
 > 路线：设备授权登录（device authorization grant）+ 复用现有 `ProviderSetting.OpenAI`，不新增 provider 类型、不引入 `oauth` 模块。
 > 血统：上游 Draft PR [#1752](https://github.com/rikkahub/rikkahub/pull/1752)（`Ayuilos`，已关闭未合并，作者确认「可以直接移植，没有已知问题」）→ 二次修改版 [`Lin-chpin/rikkahub-Jude`](https://github.com/Lin-chpin/rikkahub-Jude)（96★，ADR 参照）→ 本稿按本仓架构重写。
 > 关联：`docs/upstream-analysis.md` 中 `318cffef6`（#2186）条目——本稿与 #2186 是两条不同路线，#2186 的请求体/模型解析语义作为正确性参考。

@@ -1,6 +1,7 @@
 # RikkaHub 插件系统设计(借鉴 BiliPai)—— 草稿
 
-> 状态:**草稿,未提交**。日期:2026-10-22。
+> 状态:**历史底稿（已落地）**。日期:2026-10-22。
+> ⚠️ 本稿为最初调研底稿；插件系统已于 beta.7（2026-10-22，JSON 规则 + JS 沙箱插件）首发，可组合插件运行时整线于 2026-11-07 收官推送（`144c3fd57` P1 验收关闭、`c50154453` 修订通道+SAF 导入+boot 竞态修复）。**现行设计与实施记录见 [design/completed/design-plugin-composable-runtime.md](design/completed/design-plugin-composable-runtime.md)**，本文不再维护。
 > 调研对象:BiliPai([jay3-yy/BiliPai](https://github.com/jay3-yy/BiliPai))插件体系 × RikkaHub-Neomix 可扩展性现状。
 
 ---

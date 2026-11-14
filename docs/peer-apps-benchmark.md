@@ -1,6 +1,6 @@
 # 同类应用借鉴评估（索引 + 汇总）
 
-> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.17`（320）（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
+> **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.20`（323）（预发布）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
 
 > 生成时间：2026-08-28（Yuihub 记忆机制评估 2026-09-14 补，见 [`yuihub.md`](references/other%20projects/yuihub.md)）
 > **2026-10-30 按应用拆分**：正文（每个应用的评估原文）迁至 [`docs/references/other projects/`](references/other%20projects/)，本页只保留**索引、跨应用章节与汇总分析**。拆分只重排位置，正文逐字保留（仅 4 处链接按新位置修正了相对路径）；每个应用文件头部标注了它对应原 §几。
@@ -11,6 +11,10 @@
 > **2026-11-06 新增 #15 dsh-Go**：固定提交 `cf2f7c861e1098661a3a2039b3a4cb1633790102`（2026-11-06）正式评估，深度 文档+源码抽样；判定「不同架构、代码可移植 ≈ 0」，可借的是**运行时安装事务/更新契约、危险操作分级 +「问 AI」、协议/SDK 工程纪律**；插件协议已由设计稿 §十一 系统复盘，**不新增立项**。原文 [`dsh-go.md`](references/other%20projects/dsh-go.md)。
 
 > **2026-11-10 增量同步**：对上游 + 8 个有新增提交的来源做了一轮增量评估——上游 `fe5a28f9a..8a837b27e`（16 提交 + issue #2305–#2310）、NMoi 32、BiliPai 35、PurrCat 61、Miffan 141（远端）、bigeye 1、billion-context 671（抽样）、dsh-Go 542（抽样）、archify 3；Yuihub / senera / rikkahub-agent / agentd / SillyTavern 核对为**无新提交**。本轮**只评不施**：**吸收 0 / 候选 32（P2×11、P3×21）**，其余为已有等价或判据记账。两项本仓实证发现已挂候选：**CI 零测试门禁**（PurrCat 判据，`.github/workflows` 只 `assembleRelease`）与 **3 个 bundled `.so` 未做 16 KB 页对齐**（dsh-Go 16 KB 适配引出，`libtex_poc`/`libpdf2svg_bridge`/`libgraphite2`）；**#2306 多图上传跳过图片编辑**确认为本仓同构 bug（`ChatFilesPickerSheet.kt:125`）。判决汇总见 [peer-verdicts §六](peer-verdicts-2026-11-08.md)，明细在各台账末节。
+
+> **2026-11-14 增量同步**：上游 `90269e39d..64452581d`（5 提交，唯一吸收候选 c1c3c4d12 复合索引已落地 fork `0bf49eed4`）、NMoi 69（候选 3：压缩撤回/会话 tmp/命令询问，未拍板）、BiliPai 57（撤自研转场验证方向、剪贴板守卫候选）。判决汇总见 [peer-verdicts §七](peer-verdicts-2026-11-08.md)，明细在 [nmoi-agent.md §13.5](references/other%20projects/nmoi-agent.md)、[bilipai.md](references/other%20projects/bilipai.md) 与 [upstream-analysis 11-14 节](upstream-analysis.md)。
+
+> **2026-11-14 晚全量克隆同步**：15 个来源全部复检（上游/bigeye/Yuihub/senera/SoLab/rikkahub-agent/agentd/SillyTavern 八源零新增；NMoi 2 / BiliPai 5 / PurrCat 24 / 华灯 96 / dsh-Go fp 311 / Miffan 远端 87 / billion-context 远端 ≥400 / archify 1）。**候选池 5 条（P3 为主）**，销上游 lastUsage 挂账一处；判决汇总见 [peer-verdicts §八](peer-verdicts-2026-11-08.md)，明细在各台账当日节。
 
 **怎么读这份文档**：
 

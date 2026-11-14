@@ -127,4 +127,4 @@
 
 ## 关联
 
-[design-usage-stats.md](design-usage-stats.md) · [design-backup-legacy-import.md](design-backup-legacy-import.md) · [docs/upstream-analysis.md](../upstream-analysis.md)
+[design-usage-stats.md](design-usage-stats.md) · [design-backup-legacy-import.md](design-backup-legacy-import.md) · [docs/upstream-analysis.md](../../upstream-analysis.md

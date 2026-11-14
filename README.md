@@ -174,13 +174,13 @@
 **仅作设计参考、未采用其实现细节的**：`opencode` / `codex` / `Cherry Studio` —— 子代理与独立上下文设计稿只借其**思路**，
 其实现细节本仓**未核实、也未抄**（见 [`docs/design/in-progress/design-subagent-context.md`](docs/design/in-progress/design-subagent-context.md)）。
 **Claude 式文件记忆（Anthropic）** 同样是只借思路的一类：三类记忆只借「按用途分型」这个**维度**，
-不借其文件形态（设计口径见 [`docs/design/in-progress/design-memory-kinds.md`](docs/design/in-progress/design-memory-kinds.md) §0.3）。
+不借其文件形态（设计口径见 [`docs/design/completed/design-memory-kinds.md`](docs/design/completed/design-memory-kinds.md) §0.3）。
 **BiliPai** 的**插件体系**仍属只借思路的一类：能力声明 + 授权
 （声明 ∩ 用户批准、记录绑定插件 id）、「只做会真跑的东西」的取舍；本仓不做其「能解析能授权但不执行」的外部 Dex 形态
 （见 [`docs/PLUGIN_SYSTEM_DESIGN_DRAFT.md`](docs/PLUGIN_SYSTEM_DESIGN_DRAFT.md)）——主题/液态玻璃部分则为源码级参照，见上表。
 **橘瓣 OrangeChat**（[watermio123-droid/orangechat](https://github.com/watermio123-droid/orangechat) 的 `liquid-glass-ui` 分支）同样只借思路：
 轻量个性化只借「用户想直接改哪几个颜色位」（背景/气泡/重点色）的需求洞察，实现不照抄，由自定义主题的角色覆写全量承接；
-两者是**不同应用**（橘瓣 ≠ BiliPai，见 [`docs/design/in-progress/design-custom-theme.md`](docs/design/in-progress/design-custom-theme.md) §2.2）。
+两者是**不同应用**（橘瓣 ≠ BiliPai，见 [`docs/design/completed/design-custom-theme.md`](docs/design/completed/design-custom-theme.md) §2.2）。
 
 > **备注**：`SoLab` 的源码在 **MT 论坛**开源（上表已给帖链接），**没有 GitHub 仓库**，故不伪造 GitHub 链接。
 > 若作者愿意提供正式仓库地址，欢迎提 issue 或 PR 补上。

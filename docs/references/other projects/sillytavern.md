@@ -593,7 +593,7 @@ system 里仍贡献换行的逐字节契约由 `PromptAssemblyTest` 锁着）；
 
 **关联**：`701361d8`（上下文构成诊断日志，真实构成与 3.4% 精度实测）、§6.12 Tier 4。
 
-关联文档：[upstream-analysis.md](../../upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](../../design/design-memory-scoring.md)（§六 6.2 ③ 的预算范式来源）、[本页索引](../../peer-apps-benchmark.md)。
+关联文档：[upstream-analysis.md](../../upstream-analysis.md)（上游综合分析，A1 前台服务取舍——本文第五.5 条为其补充了 Android 15 dataSync 6h 限时的决策依据；「提示词注入/世界书统一重写」议题见其「注意点」第 8 条）、[design-memory-scoring.md](../../design/completed/design-memory-scoring.md（§六 6.2 ③ 的预算范式来源）、[本页索引](../../peer-apps-benchmark.md)。
 
 ## 2026-11-03 增量核查
 
