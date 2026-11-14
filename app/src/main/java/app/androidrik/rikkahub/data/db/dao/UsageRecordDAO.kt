@@ -24,7 +24,11 @@ interface UsageRecordDAO {
     @Query(
         "SELECT COALESCE(SUM(prompt_tokens), 0) AS promptTokens, " +
             "COALESCE(SUM(completion_tokens), 0) AS completionTokens, " +
-            "COALESCE(SUM(cached_tokens), 0) AS cachedTokens " +
+            "COALESCE(SUM(cached_tokens), 0) AS cachedTokens, " +
+            "COALESCE(SUM(page_count), 0) AS pageCount, " +
+            "COALESCE(SUM(tool_search_count), 0) AS toolSearch, " +
+            "COALESCE(SUM(tool_fetch_count), 0) AS toolFetch, " +
+            "COALESCE(SUM(tool_image_search_count), 0) AS toolImageSearch " +
             "FROM usage_record WHERE created_at >= :since AND (:until IS NULL OR created_at < :until) " +
             "AND (:providerKey IS NULL OR COALESCE(provider_id, provider_name) = :providerKey) " +
             "AND (:modelKey IS NULL OR COALESCE(model_id, model_name) = :modelKey)"
@@ -139,6 +143,12 @@ data class UsageTotals(
     val promptTokens: Long = 0,
     val completionTokens: Long = 0,
     val cachedTokens: Long = 0,
+    /** DeepSeek OCR 按页计费的成功页数（page_count 列合计，¥1.5/千页） */
+    val pageCount: Long = 0,
+    /** DeepSeek 内置工具计费次数（¥5/千次各自，金额=合计×单价估算） */
+    val toolSearch: Long = 0,
+    val toolFetch: Long = 0,
+    val toolImageSearch: Long = 0,
 ) {
     val totalTokens: Long get() = promptTokens + completionTokens
 }

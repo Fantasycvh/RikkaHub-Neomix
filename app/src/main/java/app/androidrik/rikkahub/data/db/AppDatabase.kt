@@ -93,7 +93,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 70,
+    version = 71,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -214,9 +214,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 68→69 不在这里：message_node 索引从 (conversation_id) 换成 (conversation_id, node_index)
         // （长会话分页读平方级，上游 c1c3c4d12 同款），由手写迁移 Migration_68_69 负责——只建索引删索引，
         // 不动表数据；索引非唯一，历史重复 node_index 不影响迁移。
-        // 69→70 不在这里：usage_record.page_count（DeepSeek 适配备料 03 §2.5）——
-        // 由手写迁移 Migration_69_70 负责（纯 ADD COLUMN，NOT NULL DEFAULT 0；旧行全 0，
-        // 统计页对 0 页行不展示页数）。
+        // 69→70 / 70→71 不在这里：usage_record.page_count（配料 03 §2.5）与工具计费三列
+        // （配料 P2-1）——均由手写迁移 Migration_69_70 / Migration_70_71 负责（纯 ADD COLUMN，
+        // NOT NULL DEFAULT 0；旧行全 0）。
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -276,7 +276,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 70
+        const val SCHEMA_VERSION = 71
     }
 }
 

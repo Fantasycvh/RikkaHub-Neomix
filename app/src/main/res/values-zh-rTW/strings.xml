@@ -3226,4 +3226,8 @@
   <string name="setting_model_page_ocr_deepseek_include_layout">保留版面座標</string>
   <string name="setting_model_page_ocr_deepseek_include_layout_desc">在 OCR 輸出裡保留 ref/box 版面座標標記（實驗性）</string>
   <string name="setting_model_page_ocr_deepseek_privacy_notice">使用 DeepSeek OCR 時，檔案內容會上傳到 DeepSeek 伺服器，按成功頁數計費。</string>
+  <string name="stats_page_deepseek_tool_calls">DeepSeek 工具呼叫（估算）</string>
+  <string name="stats_page_ocr_pages">OCR 頁數（估算）</string>
+  <string name="setting_provider_page_deepseek_safety_check">內容安全審核（DeepSeek）</string>
+  <string name="setting_provider_page_deepseek_safety_check_desc">開啟 safety_check（對外提供服務時官方要求）；會引入拒答行為與額外審核 token 計費</string>
 </resources>

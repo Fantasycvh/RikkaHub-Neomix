@@ -59,4 +59,15 @@ data class UsageRecordEntity(
      */
     @ColumnInfo(name = "page_count", defaultValue = "0")
     val pageCount: Int = 0,
+    /**
+     * DeepSeek 内置工具**计费次数**（usage.server_tool_use，配料 04 §9 实测）：
+     * 搜索/图片搜索/抓取各一列，¥5/千次各自。普通请求恒 0；
+     * 统计页按当前刊例价估算金额（价格可变，**落账只存次数**，见配料 03 §6）。
+     */
+    @ColumnInfo(name = "tool_search_count", defaultValue = "0")
+    val toolSearchCount: Int = 0,
+    @ColumnInfo(name = "tool_fetch_count", defaultValue = "0")
+    val toolFetchCount: Int = 0,
+    @ColumnInfo(name = "tool_image_search_count", defaultValue = "0")
+    val toolImageSearchCount: Int = 0,
 )

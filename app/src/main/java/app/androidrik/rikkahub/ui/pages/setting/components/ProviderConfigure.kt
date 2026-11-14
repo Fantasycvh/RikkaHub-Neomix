@@ -361,6 +361,29 @@ private fun ProviderConfigureOpenAI(
         )
     }
 
+    // DeepSeek 内容安全审核（配料 P2-3）：仅 DeepSeek host 显示；默认关——合规要求只针对
+    // 「对外提供服务」场景，本地自用不需要（开了会引入拒答与额外审核 token 计费）。
+    if (provider.baseUrl.toHttpUrlOrNull()?.host == "api.deepseek.com") {
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(stringResource(R.string.setting_provider_page_deepseek_safety_check))
+                Switch(
+                    checked = provider.deepseekSafetyCheck,
+                    onCheckedChange = { onEdit(provider.copy(deepseekSafetyCheck = it)) }
+                )
+            }
+            Text(
+                text = stringResource(R.string.setting_provider_page_deepseek_safety_check_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,

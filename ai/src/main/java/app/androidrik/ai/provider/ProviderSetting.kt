@@ -248,6 +248,14 @@ sealed class ProviderSetting : Enableable {
         var useResponseApi: Boolean = false,
         var includeHistoryReasoning: Boolean = true,
         var responsesPath: String = "/responses",
+        /**
+         * DeepSeek 内容安全审核（`safety_check: {"level":"high"}`，配料 01 §8 / 03 §5.5）。
+         *
+         * **默认关**：开启会引入拒答行为与额外审核 token 计费；合规要求只针对
+         * 「对外提供服务」（如内置 Web server 暴露），本地自用不需要。
+         * 仅当 baseUrl 指向 api.deepseek.com 时才真正下发（发送侧守卫）。
+         */
+        var deepseekSafetyCheck: Boolean = false,
     ) : ApiKey() {
         override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
             return copy(quotaQuery = quotaQuery)

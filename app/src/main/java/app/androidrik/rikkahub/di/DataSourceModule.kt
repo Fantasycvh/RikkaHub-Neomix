@@ -63,6 +63,7 @@ import app.androidrik.rikkahub.data.db.migrations.Migration_46_47
 import app.androidrik.rikkahub.data.db.migrations.Migration_47_48
 import app.androidrik.rikkahub.data.db.migrations.Migration_68_69
 import app.androidrik.rikkahub.data.db.migrations.Migration_69_70
+import app.androidrik.rikkahub.data.db.migrations.Migration_70_71
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.network.RikkaProxyAuthenticator
 import app.androidrik.rikkahub.data.remote.ModelsDevUpdater
@@ -112,7 +113,7 @@ val dataSourceModule = module {
             .addMigrations(
                 Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15,
                 Migration_15_16, Migration_27_28, Migration_28_29, Migration_40_41, Migration_41_42,
-                Migration_43_44, Migration_46_47, Migration_47_48, Migration_68_69, Migration_69_70,
+                Migration_43_44, Migration_46_47, Migration_47_48, Migration_68_69, Migration_69_70, Migration_70_71,
             )
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {

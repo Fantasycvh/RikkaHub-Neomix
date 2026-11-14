@@ -6,6 +6,8 @@ import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.ai.core.accumulateRound
+import app.androidrik.ai.core.merge
 import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.TextGenerationParams
@@ -199,4 +201,76 @@ class ChatCompletionsServerToolTest {
         val toolsArray = body["tools"] as kotlinx.serialization.json.JsonArray
         assertTrue(toolsArray.all { it is JsonObject && ((it)["type"] as JsonPrimitive).content == "function" })
     }
+// ---- P2：usage.server_tool_use 计费次数解析（配料 04 §9 实测形态）----
+
+@Test
+fun `usage server_tool_use counters are parsed`() {
+    val decoder = ChatCompletionsStreamDecoder()
+    val result = decoder.accept(
+        app.androidrik.ai.provider.stream.SseEvent(
+            // SSE data 按行切分解析，必须单行
+            data = """{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"server_tool_use":{"tool_search":2,"tool_fetch":1,"tool_image_search":3}}}""",
+
+        ),
+    )
+    val usage = result.chunks.filterIsInstance<app.androidrik.ai.ui.StreamChunk.Usage>().single().usage
+    assertEquals(2, usage.toolSearch)
+    assertEquals(1, usage.toolFetch)
+    assertEquals(3, usage.toolImageSearch)
+}
+
+@Test
+fun `usage without server_tool_use yields zero counters`() {
+    val decoder = ChatCompletionsStreamDecoder()
+    val result = decoder.accept(
+        app.androidrik.ai.provider.stream.SseEvent(
+            data = """{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}""",
+
+        ),
+    )
+    val usage = result.chunks.filterIsInstance<app.androidrik.ai.ui.StreamChunk.Usage>().single().usage
+    assertEquals(0, usage.toolSearch)
+    assertEquals(0, usage.toolFetch)
+    assertEquals(0, usage.toolImageSearch)
+}
+
+@Test
+fun `tool counters sum across rounds and take max in stream snapshots`() {
+    // 流式快照：取最大（同一次请求内服务端计数递增）
+    val merged = app.androidrik.ai.core.TokenUsage(toolSearch = 2).merge(
+        app.androidrik.ai.core.TokenUsage(toolSearch = 5, toolFetch = 1),
+    )
+    assertEquals(5, merged.toolSearch)
+    assertEquals(1, merged.toolFetch)
+
+    // 多步工具轮：按步累加（每步是独立请求、独立计费）
+    val acc = app.androidrik.ai.core.TokenUsage(toolSearch = 2).accumulateRound(
+        app.androidrik.ai.core.TokenUsage(toolSearch = 3, toolImageSearch = 1),
+    )
+    assertEquals(5, acc.toolSearch)
+    assertEquals(1, acc.toolImageSearch)
+}
+
+// ---- P2：safety_check 发送（配料 01 §8 内容安全 / 03 §5.5）----
+
+@Test
+fun `safety_check is sent when enabled on deepseek host`() {
+    val body = api.buildChatCompletionRequestBodyForTest(
+        messages = listOf(app.androidrik.ai.ui.UIMessage.user("hi")),
+        params = TextGenerationParams(model = Model(modelId = "deepseek-flash")),
+        providerSetting = deepseekProvider.copy(deepseekSafetyCheck = true),
+    )
+    val safety = body["safety_check"] as JsonObject
+    assertEquals("high", (safety["level"] as JsonPrimitive).content)
+}
+
+@Test
+fun `safety_check is not sent when disabled`() {
+    val body = api.buildChatCompletionRequestBodyForTest(
+        messages = listOf(app.androidrik.ai.ui.UIMessage.user("hi")),
+        params = TextGenerationParams(model = Model(modelId = "deepseek-flash")),
+        providerSetting = deepseekProvider,
+    )
+    assertTrue(!body.containsKey("safety_check"))
+}
 }

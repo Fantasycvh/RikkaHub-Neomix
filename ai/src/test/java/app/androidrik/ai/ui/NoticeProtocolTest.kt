@@ -6,6 +6,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NoticeProtocolTest {
+    // 必须与生产持久化同配置（encodeDefaults=true）：裸 Json 的 encodeDefaults=false 会把
+    // 等于「静态 default 实例」的 createdAt 省略掉，解码回落到新的 Clock.System.now()——
+    // 默认表达式是 now() 时跨毫秒边界即偶发不等（2026-11-14 全量跑复现的 flake 根因）。
+    private val json = Json { encodeDefaults = true; ignoreUnknownKeys = true }
+
     @Test fun `mixed notices expand in place with stable unique identities and intact tools`() {
         val tool = UIMessagePart.Tool("call", "shell", "{}", listOf(UIMessagePart.Text("result")))
         val original = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(tool,
@@ -22,8 +27,8 @@ class NoticeProtocolTest {
 
     @Test fun `notice part round trips and contributes to visible text`() {
         val original = UIMessage(role = MessageRole.SYSTEM, parts = listOf(UIMessagePart.Notice("id", "bounded output")))
-        val encoded = Json.encodeToString(UIMessage.serializer(), original)
-        assertEquals(original, Json.decodeFromString(UIMessage.serializer(), encoded))
+        val encoded = json.encodeToString(UIMessage.serializer(), original)
+        assertEquals(original, json.decodeFromString(UIMessage.serializer(), encoded))
         assertEquals("bounded output", original.toText())
         assertTrue(original.isExternalNotice)
         assertTrue(listOf(original).messagesForAuxGeneration().isEmpty())

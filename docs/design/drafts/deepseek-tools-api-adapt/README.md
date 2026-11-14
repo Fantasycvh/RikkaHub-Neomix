@@ -1,6 +1,6 @@
 # DeepSeek Tool APIs 适配资料包（2026-11-13）
 
-> **状态：P0+P1+P1b 已实施（2026-11-14），全量单测绿，未提交；P2 待做。** 实施记录见 §9。
+> **状态：P0+P1+P1b+P2 全部实施（2026-11-14），全量单测绿。** 实施记录见 §9。
 > 备料原文： 本目录只新增文档，源码零改动（`git status` 仅本目录 + 既有未跟踪文件）。
 > 官方资料抓取时间：2026-11-13；用户提供的定价截图已与官网 CNY 价目**逐项核对一致**（见 `01-api-reference.md` §7）。
 > **2026-11-13 二次核对修订**：修正 ASR 语种数（21 种）、ASR 重试现状（Step 有重试）、models.dev `cost` 机制描述；补充官方契约点（工具互斥/中途失败照常计费/`kind`+`signature` 回传/续写需 beta `prefix: true`/safety 与 Files 限制）与 SearchPicker 模型 ID 白名单。官方契约断言已与 2026-11-13 官网逐条复核。
@@ -41,7 +41,7 @@
 | ASR | `POST /v1/tools/asr` | ❌ 未适配；已有 5 个 ASR provider | P1：MiMo 型分段 multipart |
 | 聊天内置 web tools | `deepseek_web_search` / `deepseek_read_url` | ⚠️ 抽象齐全，Chat Completions 链路缺收发 | P0 守卫 + P1 收发 |
 | 文件输入 / Files API | `POST /files` + `file_id` | ❌ 未适配 | **首版不做**（与本地解析重复） |
-| 内容安全 | `safety_check` | ❌ 未适配 | P2（对外服务场景，未做） |
+| 内容安全 | `safety_check` | ✅ 适配（provider 开关，默认关，仅 DeepSeek host 下发） | 对外服务场景启用 |
 
 ## 4. 优先级建议
 
@@ -96,6 +96,6 @@ P0+P1+P1b 已落地，ai/app/speech/web/search/common 全量单测绿。要点�
 | P1-3 ASR | ✅ | `pcm16ToWav` 下沉 `asr/PcmWav.kt`；响应解析用 kotlinx（org.json 在 JVM 单测是 null 桩）；503/504 重试 1 次 |
 | P1-1 OCR | ✅（有留白） | DB 是 **69→70 手写**（资料包 68→69 已过期；本仓 Room 下 AutoMigration 需目标 schema JSON 预导出）；文档入口**本地先解析、抽得出文本就放行**（防文本型 PDF 白花页费）；providerId/baseUrl/maxPages 字段有默认值但 UI 未露出（默认复用内置 DeepSeek Key） |
 | P1b | ✅（待真机） | 发裸 `{"type":…}`（无 function 工具时不下发 tool_choice）；原始 call JSON 存 `metadata["deepseek_raw_call"]` 原样回传；注解未知 type 定向放宽（跳过+Log，偏离上游响亮失败）；用过 ServerTool 的轮次禁自动续写+隐藏手动继续 |
-| P2-1/2/3 | ❌ 未做 | server_tool_use 计费计数器落账、价格表、safety_check |
+| P2-1/2/3 | ✅（2026-11-14） | TokenUsage+3 工具计数（流/非流双路径解析实测形态）、usage_record 三列迁移 70→71、nerd line/统计页刊例价估算、safety_check 开关（仅 DeepSeek host 下发）+拒答复用既有 content_filter 识别；顺手修 NoticeProtocolTest flake（裸 Json encodeDefaults=false） |
 
 **真 Key HTTP 级探测已完成（2026-11-14，结论：实现全部通过、零改动）**——server_tool_calls 精确形态/回传 echo 200/流式整块单帧/OCR 恰两 part/TTS wav 24k/ASR duration_ms 全实锤，详见 `04` §9。设备级 smoke（App 内全链路）仍待装机。

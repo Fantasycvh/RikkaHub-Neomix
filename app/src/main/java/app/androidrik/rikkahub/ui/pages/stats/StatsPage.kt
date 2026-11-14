@@ -71,12 +71,16 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.UsageSource
+import app.androidrik.rikkahub.data.ai.DeepSeekToolPricing
 import app.androidrik.rikkahub.data.db.dao.SourceUsage
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.plus
+import app.androidrik.rikkahub.utils.formatNumber
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.GlobalSearch
+import me.rerere.hugeicons.stroke.File01
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Message01
@@ -711,6 +715,34 @@ private fun UsageTotalsGrid(usage: UsageStats, modifier: Modifier = Modifier) {
                     "-"
                 },
             )
+        }
+        // DeepSeek 按次/按页计费行（配料 P2-2）：有记录才显示；金额按当前刊例价估算
+        // （usage_record 只落次数/页数，价格调整不失真——配料 03 §6）。
+        val toolCalls = totals.toolSearch + totals.toolFetch + totals.toolImageSearch
+        if (toolCalls > 0 || totals.pageCount > 0) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                if (toolCalls > 0) {
+                    val toolCost = toolCalls * DeepSeekToolPricing.SEARCH_PER_CALL
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        icon = HugeIcons.GlobalSearch,
+                        label = stringResource(R.string.stats_page_deepseek_tool_calls),
+                        value = "${toolCalls.toInt().formatNumber()} (≈¥${"%.2f".format(toolCost)})",
+                    )
+                }
+                if (totals.pageCount > 0) {
+                    val ocrCost = totals.pageCount * DeepSeekToolPricing.OCR_PER_PAGE
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        icon = HugeIcons.File01,
+                        label = stringResource(R.string.stats_page_ocr_pages),
+                        value = "${totals.pageCount.toInt().formatNumber()} (≈¥${"%.2f".format(ocrCost)})",
+                    )
+                }
+            }
         }
     }
 }

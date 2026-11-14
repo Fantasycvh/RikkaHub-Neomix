@@ -389,6 +389,12 @@ class ChatCompletionsAPI(
             )
             put("messages", builtMessages)
 
+            // DeepSeek 内容安全（配料 01 §8）：顶层 `safety_check`；仅 DeepSeek host 下发，
+            // 避免把私有字段发给其他 OpenAI 兼容端点。开启后部分参数被服务端接管（官方文档）。
+            if (providerSetting.deepseekSafetyCheck && host == "api.deepseek.com") {
+                put("safety_check", buildJsonObject { put("level", "high") })
+            }
+
             if (isModelAllowTemperature(params.model)) {
                 if (params.temperature != null) put("temperature", params.temperature)
                 if (params.topP != null) put("top_p", params.topP)
@@ -1052,10 +1058,17 @@ class ChatCompletionsAPI(
 
     private fun parseTokenUsage(jsonObject: JsonObject?): TokenUsage? {
         if (jsonObject == null) return null
+        // DeepSeek usage.server_tool_use：内置工具**计费次数**（实测 {tool_search, tool_fetch,
+        // tool_image_search}；web_search_requests 等展示计数不存在于 Chat Completions）。
+        // 通用 OpenAI 端点无此字段 → 全 0，无副作用。
+        val serverToolUse = jsonObject["server_tool_use"]?.jsonObjectOrNull
         return TokenUsage(
             promptTokens = jsonObject["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             completionTokens = jsonObject["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             totalTokens = jsonObject["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+            toolSearch = serverToolUse?.get("tool_search")?.jsonPrimitive?.intOrNull ?: 0,
+            toolFetch = serverToolUse?.get("tool_fetch")?.jsonPrimitive?.intOrNull ?: 0,
+            toolImageSearch = serverToolUse?.get("tool_image_search")?.jsonPrimitive?.intOrNull ?: 0,
             // 各 provider 汇报缓存命中的字段形状不统一，按方言兜底解析（#1576）：
             // OpenAI 嵌套 -> Moonshot 顶层 cached_tokens -> DeepSeek prompt_cache_hit_tokens
             cachedTokens = jsonObject["prompt_tokens_details"]?.jsonObjectOrNull?.get("cached_tokens")?.jsonPrimitive?.intOrNull

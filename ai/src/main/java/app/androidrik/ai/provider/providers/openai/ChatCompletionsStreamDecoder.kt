@@ -201,10 +201,15 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
 
     private fun parseUsage(usage: JsonObject?): TokenUsage? {
         if (usage == null) return null
+        // DeepSeek usage.server_tool_use：内置工具**计费次数**（实测见配料 04 §9）
+        val serverToolUse = usage["server_tool_use"]?.jsonObjectOrNull
         return TokenUsage(
             promptTokens = usage["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             completionTokens = usage["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             totalTokens = usage["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
+            toolSearch = serverToolUse?.get("tool_search")?.jsonPrimitive?.intOrNull ?: 0,
+            toolFetch = serverToolUse?.get("tool_fetch")?.jsonPrimitive?.intOrNull ?: 0,
+            toolImageSearch = serverToolUse?.get("tool_image_search")?.jsonPrimitive?.intOrNull ?: 0,
             cachedTokens = usage["prompt_tokens_details"]?.jsonObjectOrNull
                 ?.get("cached_tokens")?.jsonPrimitive?.intOrNull
                 ?: usage["cached_tokens"]?.jsonPrimitive?.intOrNull

@@ -3239,5 +3239,9 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_model_page_ocr_deepseek_include_layout">Keep layout coordinates</string>
   <string name="setting_model_page_ocr_deepseek_include_layout_desc">Keep ref/box layout tokens in OCR output (experimental)</string>
   <string name="setting_model_page_ocr_deepseek_privacy_notice">When using DeepSeek OCR, the file content is uploaded to DeepSeek servers and billed per successful page.</string>
+  <string name="stats_page_deepseek_tool_calls">DeepSeek Tool Calls</string>
+  <string name="stats_page_ocr_pages">OCR Pages</string>
+  <string name="setting_provider_page_deepseek_safety_check">Content Safety (DeepSeek)</string>
+  <string name="setting_provider_page_deepseek_safety_check_desc">Enable safety_check for public-facing services; adds refusal behavior and extra moderation token billing</string>
 </resources>
 

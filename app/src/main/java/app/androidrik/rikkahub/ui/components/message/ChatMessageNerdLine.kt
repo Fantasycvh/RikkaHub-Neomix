@@ -37,8 +37,10 @@ import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Refresh
 import me.rerere.hugeicons.stroke.Upload02
 import me.rerere.hugeicons.stroke.Zap
+import me.rerere.hugeicons.stroke.GlobalSearch
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.utils.formatNumber
+import app.androidrik.rikkahub.data.ai.DeepSeekToolPricing
 import app.androidrik.rikkahub.utils.toFixed
 import java.time.Duration
 import kotlin.math.roundToInt
@@ -103,6 +105,30 @@ fun ChatMessageNerdLine(
                             Text(text = "${usage.completionTokens.formatNumber()} tokens")
                         }
                     )
+                    // DeepSeek 内置工具计费次数（配料 P2-2）：>0 才显示，附刊例价估算。
+                    // 与 tokens 同风格硬编码英文；估算用当前刊例价（次数已落 usage_record）。
+                    val toolCalls = usage.toolSearch + usage.toolFetch + usage.toolImageSearch
+                    if (toolCalls > 0) {
+                        val toolParts = buildList {
+                            if (usage.toolSearch > 0) add("${usage.toolSearch} search")
+                            if (usage.toolFetch > 0) add("${usage.toolFetch} fetch")
+                            if (usage.toolImageSearch > 0) add("${usage.toolImageSearch} img")
+                        }
+                        val toolCost = toolCalls * DeepSeekToolPricing.SEARCH_PER_CALL
+                        StatsItem(
+                            icon = {
+                                Icon(
+                                    imageVector = HugeIcons.GlobalSearch,
+                                    contentDescription = "Built-in tools",
+                                    tint = color,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            },
+                            content = {
+                                Text(text = "${toolParts.joinToString(" · ")} (≈¥${"%.3f".format(toolCost)})")
+                            }
+                        )
+                    }
                     // TPS
                     if (message.finishedAt != null) {
                         val duration = Duration.between(

@@ -136,6 +136,10 @@ class UsageRecorder(
             promptTokens = usage.promptTokens,
             completionTokens = usage.completionTokens,
             cachedTokens = usage.cachedTokens,
+            // DeepSeek 内置工具计费次数（¥5/千次各自）；普通请求全 0
+            toolSearchCount = usage.toolSearch,
+            toolFetchCount = usage.toolFetch,
+            toolImageSearchCount = usage.toolImageSearch,
         )
         scope.launch {
             runCatching { dao.insert(record) }
