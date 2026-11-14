@@ -115,6 +115,7 @@ import app.androidrik.rikkahub.ui.components.ui.ErrorCardsDisplay
 import app.androidrik.rikkahub.ui.components.ui.ListSelectableItem
 import app.androidrik.rikkahub.ui.components.ui.LocalConversationImageUrls
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
+import app.androidrik.rikkahub.ui.modifier.shimmer
 import app.androidrik.rikkahub.ui.components.ui.ScrollJumperBar
 import app.androidrik.rikkahub.ui.components.ui.Tooltip
 import app.androidrik.rikkahub.ui.hooks.ImeLazyListAutoScroller
@@ -388,6 +389,9 @@ private fun ChatListNormal(
         conversation.pathNodes()
     }
     val lastMessageIndex = visibleNodes.lastIndex
+    // 活动感知加载态（方向 I §9.1）：当前阶段一行（思考中/工具执行中/输出中），
+    // processingStatus（OCR/压缩/重试显式状态）优先；见 ChatActivityStage.kt 的事件映射
+    val activityStage = rememberChatActivityStage(visibleNodes.lastOrNull(), processingStatus)
     val appearance = rememberChatAppearance(settings.displaySetting)
     val truncatedNotice = stringResource(R.string.chat_message_truncated_notice, MAX_RENDER_TEXT_LENGTH)
     val staticDocuments = rememberStaticDocuments(conversation.id, visibleNodes, assistant, appearance,
@@ -746,13 +750,15 @@ private fun ChatListNormal(
                         RabbitLoadingIndicator(
                             modifier = Modifier.size(28.dp)
                         )
+                        // 阶段步进文字：shimmer 扫光为 AI 加载态的行业标志视觉（§9.1）
                         AnimatedVisibility(
-                            visible = processingStatus != null,
+                            visible = activityStage != null,
                         ) {
                             Text(
-                                text = processingStatus ?: "",
+                                text = activityStage.orEmpty(),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.shimmer(isLoading = true),
                             )
                         }
                     }

@@ -421,6 +421,11 @@
   <string name="chat_message_tool_approve_all">全部批准</string>
   <string name="chat_message_tool_ask_questions">询问 %d 个问题</string>
   <string name="chat_message_tool_call_generic">调用工具 %1$s</string>
+<string name="chat_stage_thinking">正在思考…</string>
+  <string name="chat_stage_generating">正在输出…</string>
+  <string name="chat_stage_tool_running">正在调用 %1$s…</string>
+  <string name="chat_stage_tool_awaiting">等待工具确认…</string>
+  <string name="chat_message_tool_summary_more">还有 %1$d 项，点开步骤查看完整输出</string>
   <string name="chat_message_tool_call_label">调用工具 %1$s</string>
   <string name="chat_message_tool_call_result">调用结果</string>
   <string name="chat_message_tool_call_title">工具调用</string>

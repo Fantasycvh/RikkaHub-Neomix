@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -18,11 +19,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.common.http.jsonObjectOrNull
@@ -99,6 +105,18 @@ interface ToolUIRenderer {
 /** 未注册工具使用的默认渲染器, 全部行为来自 [ToolUIRenderer] 的默认实现 */
 private object DefaultToolUIRenderer : ToolUIRenderer {
     override val toolName: String get() = ""
+
+    // 结构化输出卡片化（方向 I，design-ui-overhaul-research.md §9.2）：未注册工具的
+    // JSON 对象输出以内联键值摘要展示，不必点开详情 sheet 看裸 JSON 代码块。
+    // 只覆盖默认渲染器 ⇒ 已注册的定制渲染器（hasSummary 各有语义）零影响；
+    // 生成中 content 为 null、输出不可解析为对象时均为 false，不出现空摘要。
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        (context.content as? JsonObject)?.values?.isNotEmpty() == true
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        (context.content as? JsonObject)?.let { StructuredOutputSummary(content = it) }
+    }
 }
 
 /**
@@ -249,4 +267,69 @@ fun DefaultToolPreview(
             }
         }
     }
+}
+
+/** 内联结构化摘要最多展示的顶层键数，超出部分合并为提示行 */
+private const val STRUCTURED_SUMMARY_MAX_KEYS = 6
+
+/** 单个值的预览截断长度（字符）；完整内容始终在详情 sheet 里可看 */
+private const val STRUCTURED_SUMMARY_VALUE_MAX_CHARS = 120
+
+/**
+ * 结构化输出内联摘要（方向 I「结构化输出卡片」）：JSON 对象的顶层键值行。
+ *
+ * 值的形态化：对象/数组只显示元素计数（`{…}×3`），字符串/数值/布尔截断预览——
+ * 摘要行回答「输出了什么」，完整值点开详情 sheet 看（渲染器 Preview 未动）。
+ */
+@Composable
+internal fun StructuredOutputSummary(content: JsonObject) {
+    val entries = content.entries.toList()
+    val shown = entries.take(STRUCTURED_SUMMARY_MAX_KEYS)
+    val hidden = entries.size - shown.size
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        shown.forEach { (key, value) ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = key,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.widthIn(max = 120.dp),
+                )
+                Text(
+                    text = formatStructuredSummaryValue(value),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        if (hidden > 0) {
+            Text(
+                text = stringResource(R.string.chat_message_tool_summary_more, hidden),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.tertiary,
+            )
+        }
+    }
+}
+
+private fun formatStructuredSummaryValue(value: JsonElement): String = when (value) {
+    is JsonObject -> "{…}×${value.size}"
+    is JsonArray -> "[…]×${value.size}"
+    // JsonNull 是 JsonPrimitive 的子类型，必须先于 JsonPrimitive 匹配
+    is JsonNull -> "null"
+    is JsonPrimitive -> value.content.let { content ->
+        if (content.length > STRUCTURED_SUMMARY_VALUE_MAX_CHARS) {
+            content.take(STRUCTURED_SUMMARY_VALUE_MAX_CHARS) + "…"
+        } else {
+            content
+        }
+    } ?: "null"
+    else -> value.toString()
 }

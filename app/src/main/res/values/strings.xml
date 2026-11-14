@@ -392,6 +392,11 @@
   <string name="chat_message_tool_approve_all">Approve all</string>
   <string name="chat_message_tool_ask_questions">Ask %d questions</string>
   <string name="chat_message_tool_call_generic">Called tool %1$s</string>
+<string name="chat_stage_thinking">Thinking…</string>
+  <string name="chat_stage_generating">Writing…</string>
+  <string name="chat_stage_tool_running">Running %1$s…</string>
+  <string name="chat_stage_tool_awaiting">Waiting for tool approval…</string>
+  <string name="chat_message_tool_summary_more">+%1$d more, tap the step for full output</string>
   <string name="chat_message_tool_call_label">Called tool %1$s</string>
   <string name="chat_message_tool_call_result">Call result</string>
   <string name="chat_message_tool_call_title">Tool Call</string>

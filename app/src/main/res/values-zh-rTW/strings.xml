@@ -418,6 +418,11 @@
   <string name="chat_message_tool_approve_all">全部核准</string>
   <string name="chat_message_tool_ask_questions">詢問 %d 個問題</string>
   <string name="chat_message_tool_call_generic">調用工具 %1$s</string>
+<string name="chat_stage_thinking">正在思考…</string>
+  <string name="chat_stage_generating">正在輸出…</string>
+  <string name="chat_stage_tool_running">正在調用 %1$s…</string>
+  <string name="chat_stage_tool_awaiting">等待工具確認…</string>
+  <string name="chat_message_tool_summary_more">還有 %1$d 項，點開步驟查看完整輸出</string>
   <string name="chat_message_tool_call_label">調用工具 %1$s</string>
   <string name="chat_message_tool_call_result">調用結果</string>
   <string name="chat_message_tool_call_title">工具調用</string>
