@@ -70,10 +70,13 @@ fun ConversationTreeSheet(
         buildList {
             val visited = mutableSetOf<Uuid>()
             fun dfs(parentId: Uuid?, depth: Int) {
-                childrenByParent[parentId]?.forEach { node ->
+                val children = childrenByParent[parentId].orEmpty()
+                // 只有真分叉才增加层级：长对话单链不缩进，避免 59 层把内容挤出屏幕
+                val childDepth = if (children.size > 1) depth + 1 else depth
+                children.forEach { node ->
                     if (!visited.add(node.id)) return@forEach
                     add(node to depth)
-                    dfs(node.id, depth + 1)
+                    dfs(node.id, childDepth)
                 }
             }
             dfs(null, 0)
@@ -149,7 +152,7 @@ private fun TreeRow(
             .clip(RoundedCornerShape(10.dp))
             .background(rowBackground)
             .clickable(onClick = onSwitch)
-            .padding(start = (8 + depth * 16).dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            .padding(start = treeIndentDp(depth).dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -179,6 +182,8 @@ private fun TreeRow(
                 text = stringResource(R.string.chat_tree_candidates_count, node.messages.size),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
             )
         }
         if (subtreeMessageCount > node.messages.size) {
@@ -186,6 +191,8 @@ private fun TreeRow(
                 text = stringResource(R.string.chat_tree_subtree_count, subtreeMessageCount - node.messages.size),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                softWrap = false,
             )
         }
         IconButton(onClick = onFork, modifier = Modifier.size(28.dp)) {
@@ -205,4 +212,14 @@ private fun TreeRow(
             )
         }
     }
+}
+
+/**
+ * 树行缩进：前 6 层每层 16dp，更深层每层仅 3dp 且最多再算 18 层，
+ * 总缩进 ≤ 8 + 96 + 54 = 158dp，避免深层分叉把行内容挤出屏幕。
+ */
+private fun treeIndentDp(depth: Int): Int {
+    val full = depth.coerceAtMost(6)
+    val deep = (depth - 6).coerceIn(0, 18)
+    return 8 + full * 16 + deep * 3
 }
