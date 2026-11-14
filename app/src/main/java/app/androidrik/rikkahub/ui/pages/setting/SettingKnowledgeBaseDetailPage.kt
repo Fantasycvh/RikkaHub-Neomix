@@ -23,7 +23,9 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedButton as OutlinedButton
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
-import androidx.compose.material3.Scaffold
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -86,7 +88,7 @@ fun SettingKnowledgeBaseDetailPage(
         if (uri != null) vm.importDocument(uri)
     }
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
@@ -96,7 +98,7 @@ fun SettingKnowledgeBaseDetailPage(
                     BackButton()
                 },
                 scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors,
+                colors = pageGlassTopBarColors(CustomColors.topBarColors),
             )
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

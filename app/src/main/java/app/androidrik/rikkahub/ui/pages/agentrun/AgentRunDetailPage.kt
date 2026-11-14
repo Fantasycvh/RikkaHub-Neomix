@@ -16,9 +16,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -88,7 +90,7 @@ fun AgentRunDetailPage(
         parentExists = parent != null && vm.parentConversationExists(parent)
     }
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
@@ -126,7 +128,7 @@ fun AgentRunDetailPage(
                         }
                     }
                 },
-                colors = CustomColors.topBarColors,
+                colors = pageGlassTopBarColors(CustomColors.topBarColors),
             )
         },
         containerColor = CustomColors.topBarColors.containerColor,

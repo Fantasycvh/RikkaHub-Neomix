@@ -20,7 +20,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
-import androidx.compose.material3.Scaffold
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
@@ -92,13 +94,13 @@ fun PluginsPage() {
     var pendingJs by remember { mutableStateOf<JsPluginDefinition?>(null) }
     var busy by remember { mutableStateOf(false) }
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.plugins_page_title)) },
                 navigationIcon = { BackButton() },
                 scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors,
+                colors = pageGlassTopBarColors(CustomColors.topBarColors),
             )
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

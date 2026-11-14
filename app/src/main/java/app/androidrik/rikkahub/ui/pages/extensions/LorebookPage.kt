@@ -30,6 +30,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -42,7 +45,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -515,7 +517,7 @@ internal fun LorebookDetailScreen(
         currentOnUpdate(currentBook.updateEntry(edited))
     }
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 // Return to the worldbook list without popping the management route.
@@ -528,7 +530,7 @@ internal fun LorebookDetailScreen(
                     Text(book.name.ifBlank { stringResource(R.string.prompt_page_unnamed_lorebook) })
                 },
                 scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors,
+                colors = pageGlassTopBarColors(CustomColors.topBarColors),
             )
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

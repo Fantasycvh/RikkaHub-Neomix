@@ -22,7 +22,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
-import androidx.compose.material3.Scaffold
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -106,12 +108,12 @@ fun AgentRunsPage(vm: AgentRunsVM = koinViewModel()) {
     val resources = LocalResources.current
     var showDispatch by rememberSaveable { mutableStateOf(false) }
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.agent_runs_title)) },
                 navigationIcon = { BackButton() },
-                colors = CustomColors.topBarColors,
+                colors = pageGlassTopBarColors(CustomColors.topBarColors),
             )
         },
         floatingActionButton = {

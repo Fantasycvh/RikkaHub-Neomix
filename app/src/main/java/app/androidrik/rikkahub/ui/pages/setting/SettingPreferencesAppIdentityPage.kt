@@ -1,6 +1,9 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -29,7 +32,6 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedButton as OutlinedButton
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -99,7 +101,7 @@ fun SettingPreferencesAppIdentityPage(vm: SettingVM = koinViewModel()) {
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
@@ -109,7 +111,7 @@ fun SettingPreferencesAppIdentityPage(vm: SettingVM = koinViewModel()) {
                     BackButton()
                 },
                 scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors
+                colors = pageGlassTopBarColors(CustomColors.topBarColors)
             )
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

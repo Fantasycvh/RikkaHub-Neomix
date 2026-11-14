@@ -2,6 +2,8 @@ package app.androidrik.rikkahub.ui.pages.setting
 
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -160,7 +162,7 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
         )
     }
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(if (selectionMode) stringResource(R.string.setting_files_page_selected_count, selectedFiles.size) else stringResource(R.string.setting_files_page_title)) },
@@ -177,7 +179,7 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
                         IconButton(enabled = enabled, onClick = { showRetentionDialog = true }) { Icon(Lucide.Timer, stringResource(R.string.setting_files_page_export_retention_content_description)) }
                         IconButton(enabled = enabled && files.isNotEmpty(), onClick = { selectionMode = true }) { Icon(Lucide.ListChecks, stringResource(R.string.setting_files_page_select_files_content_description)) }
                     }
-                }, scrollBehavior = scrollBehavior, colors = CustomColors.topBarColors,
+                }, scrollBehavior = scrollBehavior, colors = pageGlassTopBarColors(CustomColors.topBarColors),
             )
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

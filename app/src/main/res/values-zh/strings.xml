@@ -1119,6 +1119,8 @@
   <string name="setting_display_page_enable_glass_theme_desc">消息列表背后的背景应用磨砂或液态玻璃，样式在下方选择</string>
   <string name="setting_display_page_enable_top_bar_blur_title">顶栏背景效果</string>
   <string name="setting_display_page_enable_top_bar_blur_desc">顶栏应用磨砂或液态玻璃，消息从其下方穿过</string>
+  <string name="setting_display_page_enable_page_glass_theme_title">页面顶栏玻璃</string>
+  <string name="setting_display_page_enable_page_glass_theme_desc">磨砂顶栏延伸到设置等页面；AMOLED 纯黑下自动禁用</string>
   <string name="setting_display_page_enable_blur_effect_title">输入栏背景效果</string>
   <string name="setting_display_page_enable_latex_rendering_desc">使用 LaTeX 语法渲染数学表达式和公式</string>
   <string name="setting_display_page_enable_latex_rendering_title">启用 LaTeX 渲染</string>

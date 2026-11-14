@@ -215,6 +215,13 @@ data class DisplaySetting(
     val listGlassEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     val enableTopBarBlur: Boolean = false,
     val topBarEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
+    /**
+     * 聊天域之外的页面 chrome 玻璃（方向 C，design-ui-overhaul-research.md §5.C）：
+     * 设置页等页面的 TopAppBar 穿底模糊/玻璃。与聊天域三个开关同级、互相独立；
+     * AMOLED 纯黑主题下无意义，消费点会自动跳过（退回不透明顶栏）。
+     */
+    val enablePageGlassTheme: Boolean = false,
+    val pageGlassEffectType: BackgroundEffectType = BackgroundEffectType.BLUR,
     /** 顶栏 chrome 样式：整条穿底模糊（现状）或浮动胶囊（上游 b40d7a273，两套共存）。 */
     val topBarStyle: TopBarChromeStyle = TopBarChromeStyle.FULL_BAR,
     val liquidGlassReadabilityMode: LiquidGlassReadabilityMode = LiquidGlassReadabilityMode.AUTO,

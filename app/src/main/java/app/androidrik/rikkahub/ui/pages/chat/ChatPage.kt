@@ -340,6 +340,8 @@ fun ChatPage(
         }
     }
 
+    // 抽屉玻璃的采样 state（方向 C）：抽屉只采背景（垫底层），源注册在 ChatPageContent 的背景上
+    val drawerGlassState = rememberRecoverableHazeState(userEnabled = setting.displaySetting.enablePageGlassTheme)
     when {
         isBigScreen -> {
             PermanentNavigationDrawer(
@@ -348,7 +350,8 @@ fun ChatPage(
                         navController = navController,
                         current = conversation,
                         vm = vm,
-                        settings = setting
+                        settings = setting,
+                        glassState = drawerGlassState
                     )
                 }
             ) {
@@ -357,6 +360,7 @@ fun ChatPage(
                     loadingJob = loadingJob,
                     processingStatus = processingStatus,
                     setting = setting,
+                    drawerGlassState = drawerGlassState,
                     conversation = conversation,
                     contextUsage = contextUsage,
                     drawerOpen = false,
@@ -387,7 +391,8 @@ fun ChatPage(
                         navController = navController,
                         current = conversation,
                         vm = vm,
-                        settings = setting
+                        settings = setting,
+                        glassState = drawerGlassState
                     )
                 },
                 content = {
@@ -396,6 +401,7 @@ fun ChatPage(
                         loadingJob = loadingJob,
                         processingStatus = processingStatus,
                         setting = setting,
+                        drawerGlassState = drawerGlassState,
                         conversation = conversation,
                         contextUsage = contextUsage,
                         drawerOpen = drawerOpen,
@@ -427,6 +433,7 @@ private fun ChatPageContent(
     processingStatus: String? = null,
     setting: Settings,
     bigScreen: Boolean,
+    drawerGlassState: HazeState,
     conversation: Conversation,
     contextUsage: ContextUsage,
     drawerOpen: Boolean,
@@ -531,7 +538,11 @@ private fun ChatPageContent(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize()
     ) {
-        AssistantBackground(setting = setting, modifier = Modifier.hazeSourceCompat(hazeState).hazeSourceCompat(glassHazeState))
+        // 抽屉玻璃（方向 C）采样同一份背景：抽屉是垫底层，绝不采聊天内容
+        AssistantBackground(
+            setting = setting,
+            modifier = Modifier.hazeSourceCompat(hazeState).hazeSourceCompat(glassHazeState)
+                .then(if (setting.displaySetting.enablePageGlassTheme) Modifier.hazeSourceCompat(drawerGlassState) else Modifier))
         Scaffold(
             topBar = {
                 TopBar(

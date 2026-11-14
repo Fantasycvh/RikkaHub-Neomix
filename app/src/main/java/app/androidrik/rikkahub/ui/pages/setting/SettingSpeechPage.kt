@@ -39,13 +39,15 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
@@ -174,7 +176,7 @@ fun SettingSpeechPage(vm: SettingVM = koinViewModel(), embedded: Boolean = false
             speechContent(Modifier.weight(1f))
         }
     } else {
-        Scaffold(
+        GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
             topBar = {
                 LargeFlexibleTopAppBar(
                     title = {
@@ -187,7 +189,7 @@ fun SettingSpeechPage(vm: SettingVM = koinViewModel(), embedded: Boolean = false
                         addProvider()
                     },
                     scrollBehavior = scrollBehavior,
-                    colors = CustomColors.topBarColors
+                    colors = pageGlassTopBarColors(CustomColors.topBarColors)
                 )
             },
             bottomBar = {

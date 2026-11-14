@@ -1,6 +1,9 @@
 package app.androidrik.rikkahub.ui.pages.setting
 
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBarItem
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -130,7 +132,7 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
         "SiliconFlow" to { MediaGenerationProviderSetting.SiliconFlow() },
     )
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(stringResource(R.string.setting_page_media_and_speech)) },
@@ -169,7 +171,7 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                     }
                 },
                 scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors,
+                colors = pageGlassTopBarColors(CustomColors.topBarColors),
             )
         },
         // 内部三个页签放底部：与「设置 → 模型」一致（那边也是 BottomAppBar + NavigationBarItem），

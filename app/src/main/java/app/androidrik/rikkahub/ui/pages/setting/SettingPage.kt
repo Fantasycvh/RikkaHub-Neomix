@@ -19,7 +19,8 @@ import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -95,7 +96,8 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val notificationPermission = rememberNotificationPermissionState()
     notificationPermission?.let { PermissionManager(it) }
 
-    Scaffold(
+    GlassTopBarScaffold(
+        displaySetting = settings.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
@@ -105,7 +107,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     BackButton()
                 },
                 scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors
+                colors = pageGlassTopBarColors(CustomColors.topBarColors)
             )
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

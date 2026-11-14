@@ -2,6 +2,9 @@ package app.androidrik.rikkahub.ui.pages.favorite
 
 import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.CheckmarkCircle02
@@ -29,7 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -117,7 +119,7 @@ fun FavoritePage(vm: FavoriteVM = koinViewModel()) {
         )
     }
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 navigationIcon = {
@@ -170,7 +172,7 @@ fun FavoritePage(vm: FavoriteVM = koinViewModel()) {
                     }
                 },
                 scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors,
+                colors = pageGlassTopBarColors(CustomColors.topBarColors),
             )
         },
         snackbarHost = {
@@ -219,7 +221,7 @@ fun FavoritePage(vm: FavoriteVM = koinViewModel()) {
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                     )
                 }
-                return@Scaffold
+                return@GlassTopBarScaffold
             }
 
             LazyColumn(

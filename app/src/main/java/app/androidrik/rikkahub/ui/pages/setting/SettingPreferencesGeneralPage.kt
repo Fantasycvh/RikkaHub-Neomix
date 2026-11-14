@@ -14,7 +14,9 @@ import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
-import androidx.compose.material3.Scaffold
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -76,7 +78,7 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             LargeFlexibleTopAppBar(
                 title = {
@@ -86,7 +88,7 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                     BackButton()
                 },
                 scrollBehavior = scrollBehavior,
-                colors = CustomColors.topBarColors
+                colors = pageGlassTopBarColors(CustomColors.topBarColors)
             )
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -261,6 +263,27 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             EffectTypePill(
                                 selected = displaySetting.topBarEffectType,
                                 onSelect = { updateDisplaySetting(displaySetting.copy(topBarEffectType = it)) },
+                            )
+                        }
+                    }
+                    // 方向 C：聊天域之外的页面顶栏玻璃（设置页等）；AMOLED 纯黑下消费点自动禁用
+                    item(
+                        headlineContent = { Text(stringResource(R.string.setting_display_page_enable_page_glass_theme_title)) },
+                        supportingContent = { Text(stringResource(R.string.setting_display_page_enable_page_glass_theme_desc)) },
+                        trailingContent = {
+                            Switch(
+                                checked = displaySetting.enablePageGlassTheme,
+                                onCheckedChange = {
+                                    updateDisplaySetting(displaySetting.copy(enablePageGlassTheme = it))
+                                }
+                            )
+                        },
+                    )
+                    if (displaySetting.enablePageGlassTheme) {
+                        item {
+                            EffectTypePill(
+                                selected = displaySetting.pageGlassEffectType,
+                                onSelect = { updateDisplaySetting(displaySetting.copy(pageGlassEffectType = it)) },
                             )
                         }
                     }

@@ -20,7 +20,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.SheetValue
@@ -42,6 +41,10 @@ import app.androidrik.rikkahub.ui.components.webview.WebView
 import app.androidrik.rikkahub.ui.components.webview.WebViewContentCache
 import app.androidrik.rikkahub.ui.components.webview.rememberWebViewState
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.theme.CustomColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,9 +84,10 @@ fun WebViewPage(url: String, contentId: String) {
         state.goBack()
     }
 
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             TopAppBar(
+                    colors = pageGlassTopBarColors(CustomColors.topBarColors),
                 title = {
                     Text(
                         text = state.pageTitle?.takeIf { it.isNotEmpty() } ?: state.currentUrl

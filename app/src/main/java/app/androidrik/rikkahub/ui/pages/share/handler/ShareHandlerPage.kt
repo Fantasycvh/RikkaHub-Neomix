@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Card
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -24,6 +23,10 @@ import kotlinx.coroutines.withContext
 import coil3.compose.AsyncImage
 import org.koin.compose.koinInject
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.theme.CustomColors
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -56,9 +59,10 @@ fun ShareHandlerPage(text: String, files: List<String>) {
     }
     val scope = rememberCoroutineScope()
     val navController = LocalNavController.current
-    Scaffold(
+    GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
             TopAppBar(
+                    colors = pageGlassTopBarColors(CustomColors.topBarColors),
                 title = {
                     Text(stringResource(R.string.share_handler_page_title))
                 }

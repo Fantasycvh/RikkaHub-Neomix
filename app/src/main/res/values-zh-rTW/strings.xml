@@ -1088,6 +1088,8 @@
   <string name="setting_display_page_enable_glass_theme_desc">訊息列表背後的背景應用磨砂或液態玻璃，樣式在下方選擇</string>
   <string name="setting_display_page_enable_top_bar_blur_title">頂欄背景效果</string>
   <string name="setting_display_page_enable_top_bar_blur_desc">頂欄應用磨砂或液態玻璃，訊息從其下方穿過</string>
+  <string name="setting_display_page_enable_page_glass_theme_title">頁面頂欄玻璃</string>
+  <string name="setting_display_page_enable_page_glass_theme_desc">磨砂頂欄延伸到設定等頁面；AMOLED 純黑下自動停用</string>
   <string name="setting_display_page_enable_blur_effect_title">輸入欄背景效果</string>
   <string name="setting_display_page_enable_latex_rendering_desc">使用 LaTeX 語法呈現數學表達式與公式</string>
   <string name="setting_display_page_enable_latex_rendering_title">啟用 LaTeX 渲染</string>

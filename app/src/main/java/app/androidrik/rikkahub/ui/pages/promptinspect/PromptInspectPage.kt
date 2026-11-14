@@ -6,6 +6,9 @@ import app.androidrik.rikkahub.data.ai.PromptDebugState
 import app.androidrik.rikkahub.data.ai.PurgeObservationStore
 import app.androidrik.rikkahub.data.ai.PrefixDivergence
 import app.androidrik.rikkahub.data.ai.PromptSegmentStability
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import androidx.compose.runtime.produceState
@@ -35,7 +38,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -115,13 +117,13 @@ fun PromptInspectPage(
     val segmentOffset = 4
 
     Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
+        GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
             topBar = {
                 LargeFlexibleTopAppBar(
                     title = { Text(stringResource(R.string.prompt_inspect_title)) },
                     navigationIcon = { BackButton() },
                     scrollBehavior = scrollBehavior,
-                    colors = CustomColors.topBarColors,
+                    colors = pageGlassTopBarColors(CustomColors.topBarColors),
                 )
             },
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

@@ -2,6 +2,10 @@ package app.androidrik.rikkahub.ui.pages.extensions.workspace
 
 import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
+import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
+import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.theme.CustomColors
 import android.graphics.Typeface
 import android.view.MotionEvent
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -31,7 +35,6 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.X
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -93,9 +96,10 @@ fun WorkspaceTerminalPage(id: String) {
 
     RikkahubTheme(colorMode = if (LocalAppSkin.current.skin.embedded.terminal.followAppColors)
         rememberCurrentColorMode() else ColorMode.DARK) {
-        Scaffold(
+        GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
             topBar = {
                 TopAppBar(
+                    colors = pageGlassTopBarColors(CustomColors.topBarColors),
                     title = {
                         Text(
                             text = state.workspace?.name?.let { stringResource(R.string.workspace_terminal_title_with_name, it) } ?: stringResource(R.string.workspace_terminal_title),

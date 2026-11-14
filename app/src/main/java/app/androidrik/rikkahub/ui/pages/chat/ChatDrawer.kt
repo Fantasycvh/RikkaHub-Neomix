@@ -101,6 +101,9 @@ import app.androidrik.rikkahub.ui.components.ui.Greeting
 import app.androidrik.rikkahub.ui.components.ui.Tooltip
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
 import androidx.compose.ui.draw.clip
+import dev.chrisbanes.haze.HazeState
+import app.androidrik.rikkahub.ui.components.haze.liquidGlassChromeEffect
+import app.androidrik.rikkahub.ui.hooks.rememberAmoledDarkMode
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.context.Navigator
 import com.dokar.sonner.ToastType
@@ -121,6 +124,7 @@ fun ChatDrawerContent(
     vm: ChatVM,
     settings: Settings,
     current: Conversation,
+    glassState: HazeState? = null,
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -340,11 +344,23 @@ fun ChatDrawerContent(
     val drawerShape = drawerPanel.shape(DrawerDefaults.shape)
     val drawerInk = drawerPanel.ink(MaterialTheme.colorScheme.onSurface, DrawerDefaults.modalContainerColor)
     val drawerBorder = drawerPanel.border()
+    // 方向 C：抽屉玻璃——垫底层只采背景（glassState 由 ChatPage 注册在 AssistantBackground 上），
+    // AMOLED 纯黑下自动禁用；皮肤抽屉背景（drawerPanel.background）优先于玻璃（皮肤契约）
+    val drawerGlassOn = glassState != null && settings.displaySetting.enablePageGlassTheme &&
+        drawerPanel.background == null && !rememberAmoledDarkMode().value
     ModalDrawerSheet(
-        modifier = Modifier.width(300.dp).appSkinPanelBackground(drawerPanel, DrawerDefaults.modalContainerColor, drawerInk, drawerShape)
+        modifier = Modifier.width(300.dp)
+            .then(
+                if (drawerGlassOn) Modifier.clip(drawerShape).liquidGlassChromeEffect(
+                    hazeState = glassState!!,
+                    effectType = settings.displaySetting.pageGlassEffectType,
+                    readabilityMode = settings.displaySetting.liquidGlassReadabilityMode,
+                ) else Modifier
+            )
+            .appSkinPanelBackground(drawerPanel, DrawerDefaults.modalContainerColor, drawerInk, drawerShape)
             .then(if (drawerBorder != null) Modifier.border(drawerBorder, drawerShape) else Modifier),
         drawerShape = drawerShape,
-        drawerContainerColor = if (drawerPanel.background == null) DrawerDefaults.modalContainerColor else Color.Transparent,
+        drawerContainerColor = if (drawerPanel.background == null && !drawerGlassOn) DrawerDefaults.modalContainerColor else Color.Transparent,
         drawerContentColor = drawerInk,
     ) {
         Column(
