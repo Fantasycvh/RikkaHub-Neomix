@@ -41,6 +41,7 @@ fun Markdown(
     components: MarkdownComponents = MarkdownDefaults.components,
     softBreakAsLineBreak: Boolean = true,
     streaming: Boolean = false,
+    blockFadeIn: Boolean = false,
     onLinkClick: ((url: String) -> Unit)? = null,
 ) {
     Markdown(
@@ -49,6 +50,7 @@ fun Markdown(
         style = style,
         theme = theme,
         components = components,
+        blockFadeIn = blockFadeIn,
         onLinkClick = onLinkClick,
     )
 }
@@ -61,10 +63,11 @@ fun Markdown(
     style: TextStyle = TextStyle.Default,
     theme: MarkdownTheme = MarkdownDefaults.theme,
     components: MarkdownComponents = MarkdownDefaults.components,
+    blockFadeIn: Boolean = false,
     onLinkClick: ((url: String) -> Unit)? = null,
 ) {
     ProvideMarkdownContext(style, theme, components, onLinkClick) {
-        MarkdownBlocks(blocks = document.blocks, modifier = modifier)
+        MarkdownBlocks(blocks = document.blocks, modifier = modifier, blockFadeIn = blockFadeIn)
     }
 }
 
@@ -79,10 +82,16 @@ fun Markdown(
     style: TextStyle = TextStyle.Default,
     theme: MarkdownTheme = MarkdownDefaults.theme,
     components: MarkdownComponents = MarkdownDefaults.components,
+    blockFadeIn: Boolean = false,
     onLinkClick: ((url: String) -> Unit)? = null,
 ) {
     ProvideMarkdownContext(style, theme, components, onLinkClick) {
-        MarkdownBlocks(blocks = unit.blocks, modifier = modifier, firstBlockIndex = unit.firstBlockIndex)
+        MarkdownBlocks(
+            blocks = unit.blocks,
+            modifier = modifier,
+            firstBlockIndex = unit.firstBlockIndex,
+            blockFadeIn = blockFadeIn,
+        )
     }
 }
 

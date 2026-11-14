@@ -12,14 +12,23 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -55,14 +64,45 @@ internal fun MarkdownBlocks(
     modifier: Modifier = Modifier,
     spacing: Dp = LocalMarkdownContext.current.theme.blockSpacing,
     firstBlockIndex: Int = 0,
+    blockFadeIn: Boolean = false,
 ) {
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(spacing),
     ) {
         blocks.fastForEachIndexed { index, block ->
-            MarkdownBlockNode(block = block, first = firstBlockIndex + index == 0)
+            FadeInOnFirstAppearance(enabled = blockFadeIn) {
+                MarkdownBlockNode(block = block, first = firstBlockIndex + index == 0)
+            }
         }
+    }
+}
+
+/**
+ * Typewriter-style streaming polish: a block fades in (alpha 0→1) the first time it
+ * composes while [enabled] is on, instead of popping in. Draw-phase only (graphicsLayer);
+ * no layout work. The shown flag persists via [rememberSaveable], so:
+ * - a block whose content grows (the streaming tail) does not re-animate;
+ * - blocks scrolled out of a lazy viewport and back in do not replay;
+ * - history rendering and non-streaming paths are untouched (disabled ⇒ pass-through).
+ * Positions drive the saveable keys: appended blocks are new positions, so only they fade.
+ */
+@Composable
+private fun FadeInOnFirstAppearance(enabled: Boolean, content: @Composable () -> Unit) {
+    if (!enabled) {
+        content()
+        return
+    }
+    var appeared by rememberSaveable { mutableStateOf(false) }
+    val alpha = remember { Animatable(if (appeared) 1f else 0f) }
+    LaunchedEffect(appeared) {
+        if (!appeared) {
+            alpha.animateTo(1f, tween(durationMillis = 240, easing = LinearEasing))
+            appeared = true
+        }
+    }
+    Box(modifier = Modifier.graphicsLayer { this.alpha = alpha.value }) {
+        content()
     }
 }
 

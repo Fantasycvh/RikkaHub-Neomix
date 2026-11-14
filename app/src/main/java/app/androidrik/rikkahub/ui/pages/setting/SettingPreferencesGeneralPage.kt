@@ -168,9 +168,9 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                         },
                     )
                     item(
-                        headlineContent = { Text("生成时高度动画") },
+                        headlineContent = { Text("生成时动效") },
                         supportingContent = {
-                            Text("平滑过渡正文和思维链的高度变化。关闭可减少长回复生成时的布局开销。")
+                            Text("新内容块淡入 + 正文和思维链高度平滑过渡。关闭可减少长回复生成时的开销。")
                         },
                         trailingContent = {
                             Switch(

@@ -449,7 +449,10 @@ private fun MessageTextContent(
             padWhenHidden = user,
             onClick = if (user) ({ onUserMessageClick?.invoke() }) else null,
             modifier = if (markdownSlice != null) Modifier.fillMaxWidth()
-                else if (!loading || settings.enableGenerationSizeAnimation) Modifier.animateContentSize() else Modifier,
+                else if (!loading || settings.enableGenerationSizeAnimation) Modifier.animateContentSize(
+                    // MotionScheme 快弹簧统一 Expressive 动效（方向 F②）；默认 spring 未纳入主题动效体系
+                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
+                ) else Modifier,
             segment = segment,
         ) {
             // Do not collapse an already visible streamed block as it crosses the threshold.
@@ -468,7 +471,8 @@ private fun MessageTextContent(
             } else {
                 if (markdownSlice?.preview != null) TextButton(onClick = { expanded = false }) { Text("折叠超长内容") }
                 MarkdownBlock(documentKey = documentKey, content = content, renderUnit = markdownSlice?.unit,
-                    renderDocument = prepared, onClickCitation = onClickCitation, streaming = loading)
+                    renderDocument = prepared, onClickCitation = onClickCitation, streaming = loading,
+                    blockFadeIn = loading && settings.enableGenerationSizeAnimation)
             }
         }
     }
@@ -496,7 +500,7 @@ private fun rememberMessageCitationClick(parts: List<UIMessagePart>): (String) -
     }
 }
 
-@OptIn(FlowPreview::class)
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class, FlowPreview::class)
 @Composable
 private fun MessagePartsBlock(
     messageId: Uuid,

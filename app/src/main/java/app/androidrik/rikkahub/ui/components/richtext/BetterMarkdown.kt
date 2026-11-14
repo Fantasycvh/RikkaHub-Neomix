@@ -121,6 +121,8 @@ fun MarkdownBlock(
     documentKey: Any? = null,
     renderUnit: MarkdownRenderUnit? = null,
     renderDocument: MarkdownRenderDocument? = null,
+    /** 流式新块淡入（方向 F）：仅生成中的文档路径启用，静态/历史路径保持 false */
+    blockFadeIn: Boolean = false,
 ) {
     val displaySetting = LocalSettings.current.displaySetting
     val enableLatexRendering = displaySetting.enableLatexRendering
@@ -202,7 +204,7 @@ fun MarkdownBlock(
             else {
                 val document = renderDocument ?: rememberMarkdownRenderDocument(normalizedContent, streaming = streaming)
                 BetterMarkdown(document = document.document, modifier = modifier.padding(horizontal = 4.dp),
-                    style = resolved, theme = theme, components = components)
+                    style = resolved, theme = theme, components = components, blockFadeIn = blockFadeIn)
             }
         }
     }
