@@ -28,6 +28,8 @@ data class AppSkinTypography(
     val customFontPath: String = "",
     val customFontName: String = "",
     val sizeRatio: Float = 1f,
+    /** Expressive typography: emphasized styles switch to Google Sans Flex (Latin/digits only; CJK falls back to system font). */
+    val expressive: Boolean = false,
 ) {
     fun normalized() = copy(sizeRatio = sizeRatio.bound(0.75f, 1.5f, 1f),
         customFontPath = customFontPath.takeIf { it.length <= 1024 }.orEmpty(),

@@ -51,6 +51,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -134,6 +136,7 @@ import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionProvide
 import app.androidrik.rikkahub.ui.components.ai.completion.completionContext
 import app.androidrik.rikkahub.ui.components.message.MessageQuoteCard
 import app.androidrik.rikkahub.ui.components.ui.KeepScreenOn
+import app.androidrik.rikkahub.ui.components.ui.rememberMorphShape
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionRecordAudio
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -150,6 +153,7 @@ import app.androidrik.rikkahub.utils.SoundEffectPlayer
 import org.koin.compose.koinInject
 import kotlin.time.Duration.Companion.seconds
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChatInput(
     state: ChatInputState,
@@ -635,6 +639,13 @@ fun ChatInput(
                                     )
                             ) {
                                 val showStop = loading && state.isEmpty()
+                                // M3E polygon morph：发送（圆）↔停止（方圆角多边形）连续形变，形状与颜色同源切换
+                                val morphProgress by animateFloatAsState(
+                                    targetValue = if (showStop) 1f else 0f,
+                                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
+                                    label = "send_stop_shape_morph",
+                                )
+                                val buttonShape = rememberMorphShape(MaterialShapes.Circle, MaterialShapes.Square, morphProgress)
                                 val containerColor = when {
                                     showStop -> MaterialTheme.colorScheme.errorContainer
                                     state.isEmpty() -> MaterialTheme.colorScheme.surfaceContainerHigh
@@ -647,7 +658,7 @@ fun ChatInput(
                                 }
                                 Surface(
                                     modifier = Modifier.fillMaxSize(),
-                                    shape = CircleShape,
+                                    shape = buttonShape,
                                     color = containerColor,
                                     content = {})
                                 if (showStop) {

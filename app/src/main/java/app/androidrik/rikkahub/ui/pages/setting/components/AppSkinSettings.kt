@@ -108,6 +108,12 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
                     ChatFontFamily.MONOSPACE -> "等宽字体"; ChatFontFamily.CUSTOM -> "自定义：${draft.typography.customFontName}" } })
             AppTextButton(enabled = !importing, onClick = { fontPicker.launch(arrayOf("font/*", "application/octet-stream", "application/x-font-ttf", "application/x-font-opentype")) }) { Text("导入全局字体") }
             Text("自定义字体保存在本机并参与完整备份；主题分享暂不携带字体文件。")
+            Row {
+                Text("Expressive 排版")
+                Switch(draft.typography.expressive, onCheckedChange = { value ->
+                    draft = draft.copy(typography = draft.typography.copy(expressive = value))
+                }) }
+            Text("标题和按钮使用 Google Sans Flex 的强调字阶（仅英文与数字生效，中文回退系统字体）。")
             SkinSlider("字号比例", draft.typography.sizeRatio, 0.75f..1.5f) { value -> draft = draft.copy(typography = draft.typography.copy(sizeRatio = value)) }
             SkinSlider("全局圆角", draft.shapes.largeDp, 0f..32f) { value -> draft = draft.copy(shapes = draft.shapes.copy(
                 extraSmallDp = value / 4, smallDp = value / 2, mediumDp = value * 0.75f, largeDp = value, extraLargeDp = value * 1.75f)) }

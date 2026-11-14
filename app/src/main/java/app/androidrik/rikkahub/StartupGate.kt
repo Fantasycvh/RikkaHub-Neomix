@@ -10,7 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -71,6 +72,7 @@ internal fun AppStartupGateContent(
 }
 
 /** Restoring 阻塞屏：换库 + Koin 完成前的全屏转圈。基础 Material 主题（不走 Koin）。 */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 internal fun StartupBlockingScreen() {
     GateTheme {
@@ -79,7 +81,7 @@ internal fun StartupBlockingScreen() {
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
+                CircularWavyProgressIndicator()
                 Text(
                     text = stringResource(R.string.startup_restore_running),
                     modifier = Modifier.padding(top = 16.dp),

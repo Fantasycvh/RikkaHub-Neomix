@@ -27,7 +27,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -334,7 +335,7 @@ open class RouteActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    @OptIn(ExperimentalComposeUiApi::class)
+    @OptIn(ExperimentalComposeUiApi::class, ExperimentalMaterial3ExpressiveApi::class)
     @Composable
     fun AppRoutes() {
         val toastState = rememberToasterState()
@@ -511,7 +512,7 @@ open class RouteActivity : ComponentActivity() {
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                CircularProgressIndicator()
+                                CircularWavyProgressIndicator()
                                 Text(
                                     text = stringResource(R.string.db_migrating),
                                     style = MaterialTheme.typography.bodyLarge

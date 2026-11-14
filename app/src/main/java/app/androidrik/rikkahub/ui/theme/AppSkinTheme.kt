@@ -28,7 +28,10 @@ fun AppSkinTheme(resolved: ResolvedAppSkin, colorScheme: ColorScheme, content: @
         if (tokens.typography.family == ChatFontFamily.DEFAULT) null
         else resolveChatFontFamily(context, tokens.typography.family, tokens.typography.customFontPath)
     }
-    val typography = remember(tokens.typography, family) { appSkinTypography(Typography, tokens.typography, family) }
+    val typography = remember(tokens.typography, family) {
+        val base = if (tokens.typography.expressive) expressiveTypography else Typography
+        appSkinTypography(base, tokens.typography, family)
+    }
     val shapes = remember(tokens.shapes) { appSkinShapes(tokens.shapes) }
     CompositionLocalProvider(LocalAppSkin provides resolved.copy(skin = tokens)) {
         MaterialExpressiveTheme(colorScheme = colorScheme, typography = typography, shapes = shapes,
