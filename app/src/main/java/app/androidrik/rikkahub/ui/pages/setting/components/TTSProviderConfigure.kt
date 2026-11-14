@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -48,6 +49,7 @@ fun TTSProviderConfigure(
                     is TTSProviderSetting.Step -> "Step"
                     is TTSProviderSetting.ElevenLabs -> "ElevenLabs"
                     is TTSProviderSetting.FishAudio -> "Fish Audio"
+                    is TTSProviderSetting.DeepSeek -> "DeepSeek"
                 },
                 options = providers,
                 readOnly = true,
@@ -65,6 +67,7 @@ fun TTSProviderConfigure(
                         TTSProviderSetting.ElevenLabs::class -> "ElevenLabs"
                         TTSProviderSetting.FishAudio::class -> "Fish Audio"
                         TTSProviderSetting.Step::class -> "Step"
+                        TTSProviderSetting.DeepSeek::class -> "DeepSeek"
                         // 兜底也不再回落 `simpleName`（release 下是 R8 混淆短名）
                         else -> "Unknown"
                     }
@@ -126,6 +129,11 @@ fun TTSProviderConfigure(
                             name = "Step TTS"
                         )
 
+                        TTSProviderSetting.DeepSeek::class -> TTSProviderSetting.DeepSeek(
+                            id = setting.id,
+                            name = "DeepSeek TTS"
+                        )
+
                         else -> setting
                     }
                     onValueChange(newSetting)
@@ -161,6 +169,7 @@ fun TTSProviderConfigure(
             is TTSProviderSetting.ElevenLabs -> ElevenLabsTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.FishAudio -> FishAudioTTSConfiguration(setting, onValueChange)
             is TTSProviderSetting.Step -> StepTTSConfiguration(setting, onValueChange)
+            is TTSProviderSetting.DeepSeek -> DeepSeekTTSConfiguration(setting, onValueChange)
         }
     }
 }
@@ -1199,6 +1208,100 @@ private fun StepTTSConfiguration(
             placeholder = { Text(stringResource(R.string.tts_config_step_instruction_placeholder)) },
             minLines = 2,
             maxLines = 4,
+        )
+    }
+}
+
+@Composable
+private fun DeepSeekTTSConfiguration(
+    setting: TTSProviderSetting.DeepSeek,
+    onValueChange: (TTSProviderSetting) -> Unit
+) {
+    // API Key（与 DeepSeek 聊天/搜索同一把 Key）
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_api_key)) },
+        description = { Text(stringResource(R.string.tts_config_deepseek_api_key_desc)) }
+    ) {
+        OutlinedTextField(
+            value = setting.apiKey,
+            onValueChange = { newApiKey ->
+                onValueChange(setting.copy(apiKey = newApiKey))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("sk-xxx") },
+        )
+    }
+
+    // Base URL
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_base_url)) },
+        description = { Text(stringResource(R.string.setting_tts_page_base_url_description)) }
+    ) {
+        OutlinedTextField(
+            value = setting.baseUrl,
+            onValueChange = { newBaseUrl ->
+                onValueChange(setting.copy(baseUrl = newBaseUrl))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("https://api.deepseek.com") }
+        )
+    }
+
+    // Voice（stella 女 / tide 男；无语种与语速参数，按文本自动判定）
+    val voices = listOf(
+        "stella" to "Stella",
+        "tide" to "Tide",
+    )
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_tts_page_voice)) },
+        description = { Text(stringResource(R.string.tts_config_deepseek_voice_desc)) }
+    ) {
+        SelectTextField(
+            value = setting.voiceId,
+            options = voices,
+            onValueChange = { newVoiceId ->
+                onValueChange(setting.copy(voiceId = newVoiceId))
+            },
+            onOptionSelected = { (voiceId, _) ->
+                onValueChange(setting.copy(voiceId = voiceId))
+            },
+            optionToString = { (_, displayName) -> displayName },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+
+    // Format（wav 直接交播放器；pcm 是裸 16-bit 单声道 24kHz 流）
+    val formats = listOf("wav", "pcm")
+
+    FormItem(
+        label = { Text("Format") },
+        description = { Text(stringResource(R.string.tts_config_deepseek_format_desc)) }
+    ) {
+        SelectTextField(
+            value = setting.format,
+            options = formats,
+            onValueChange = { newFormat ->
+                onValueChange(setting.copy(format = newFormat))
+            },
+            onOptionSelected = { format ->
+                onValueChange(setting.copy(format = format))
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+
+    // Filter Markdown（本仓朗读前已 stripMarkdown，默认关）
+    FormItem(
+        label = { Text("Filter Markdown") },
+        description = { Text(stringResource(R.string.tts_config_deepseek_filter_markdown_desc)) }
+    ) {
+        Switch(
+            checked = setting.filterMarkdown,
+            onCheckedChange = { checked ->
+                onValueChange(setting.copy(filterMarkdown = checked))
+            },
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

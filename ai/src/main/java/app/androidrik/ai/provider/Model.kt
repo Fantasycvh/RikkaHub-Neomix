@@ -88,7 +88,29 @@ sealed class BuiltInTools {
     @Serializable
     @SerialName("image_generation")
     data object ImageGeneration : BuiltInTools()
+
+    // https://api-docs.deepseek.com/zh-cn/guides/web_tools/
+    // Chat Completions / Responses 只声明 type；Messages 兼容层还需 name（见 DeepSeek 适配备料 01 §8）
+    @Serializable
+    @SerialName("deepseek_web_search")
+    data object DeepSeekWebSearch : BuiltInTools()
+
+    @Serializable
+    @SerialName("deepseek_read_url")
+    data object DeepSeekReadUrl : BuiltInTools()
 }
+
+/**
+ * 模型是否带「搜索类」内置工具（Gemini/GPT 的 [BuiltInTools.Search] 或 DeepSeek 的
+ * [BuiltInTools.DeepSeekWebSearch]）。
+ *
+ * 双计费守卫判据（DeepSeek 适配备料 03 §5.1）：模型任一搜索类内置工具开启时，
+ * 助手的外挂搜索（`search_web`/`scrape_web`）不再注册，否则同一问题走两条搜索路径，
+ * token 之外按次双重计费（¥5/千次）。[BuiltInTools.DeepSeekReadUrl] 不算搜索——
+ * 它只抓取用户消息里的 URL，与外挂搜索不冲突。
+ */
+val Model.hasBuiltInSearch: Boolean
+    get() = BuiltInTools.Search in tools || BuiltInTools.DeepSeekWebSearch in tools
 
 
 

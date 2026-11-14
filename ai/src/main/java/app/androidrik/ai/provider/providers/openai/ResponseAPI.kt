@@ -487,6 +487,20 @@ class ResponseAPI(
                                     put("model", "gpt-image-2")
                                 })
                             }
+
+                            // DeepSeek Responses 协议内置工具（deepseek-flash 限定；
+                            // 见配料 01 §8：Responses 只需 type，tool_choice 不能指定）
+                            BuiltInTools.DeepSeekWebSearch -> {
+                                add(buildJsonObject {
+                                    put("type", "deepseek_web_search")
+                                })
+                            }
+
+                            BuiltInTools.DeepSeekReadUrl -> {
+                                add(buildJsonObject {
+                                    put("type", "deepseek_read_url")
+                                })
+                            }
                         }
                     }
                 }

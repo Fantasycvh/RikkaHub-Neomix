@@ -117,6 +117,7 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
             ?: parsedContent.reasoning
         val reasoningMetadata = accumulateReasoningDetails(payload["reasoning_details"]?.jsonArrayOrNull)
         val images = payload["images"] as? JsonArray ?: JsonArray(emptyList())
+        val serverToolCalls = payload["server_tool_calls"] as? JsonArray ?: JsonArray(emptyList())
 
         return UIMessage(
             role = role,
@@ -131,6 +132,9 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
                         )
                     )
                 }
+                // DeepSeek 内置工具块 → ServerTool part（一次性整块下发，配料 01 §8 W11）；
+                // 原始 JSON 进 metadata，供下一轮原样回传（含 kind/signature）
+                addAll(parseDeepSeekServerToolCalls(serverToolCalls))
                 if (content.isNotEmpty()) add(UIMessagePart.Text(content))
                 images.forEach { image ->
                     val imageObject = image.jsonObjectOrNull ?: return@forEach
@@ -176,16 +180,22 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
         }
     }
 
-    private fun parseAnnotations(array: JsonArray): List<UIMessageAnnotation> = array.map { element ->
-        val type = element.jsonObject["type"]?.jsonPrimitive?.contentOrNull ?: error("type is null")
+    // 与 ChatCompletionsAPI.parseAnnotations 同一条定向放宽：未知注解类型跳过 + 日志，
+    // 不再整轮 error（DeepSeek annotations 形态未真机确认，一次漂移不该杀掉整轮——配料 03 §5.2.4）
+    private fun parseAnnotations(array: JsonArray): List<UIMessageAnnotation> = array.mapNotNull { element ->
+        val annotation = element.jsonObjectOrNull
+        val type = annotation?.get("type")?.jsonPrimitive?.contentOrNull ?: error("type is null")
         when (type) {
             "url_citation" -> UIMessageAnnotation.UrlCitation(
-                title = element.jsonObject["url_citation"]?.jsonObject
+                title = annotation["url_citation"]?.jsonObject
                     ?.get("title")?.jsonPrimitive?.contentOrNull ?: "",
-                url = element.jsonObject["url_citation"]?.jsonObject
+                url = annotation["url_citation"]?.jsonObject
                     ?.get("url")?.jsonPrimitive?.contentOrNull ?: "",
             )
-            else -> error("unknown annotation type: $type")
+            else -> {
+                android.util.Log.w("ChatCompletionsStreamDecoder", "skipped unknown annotation type: $type")
+                null
+            }
         }
     }
 
@@ -251,6 +261,15 @@ internal class ChatCompletionsStreamDecoder : StreamChunkDecoder {
                             imageId = it; add(StreamChunk.ImageStart(it, metadata = part.metadata))
                         }
                         add(StreamChunk.ImageDelta(id, part.url.substringAfter(";base64,", part.url), part.metadata))
+                    }
+
+                    is UIMessagePart.ServerTool -> {
+                        // DeepSeek server_tool_calls 是整块一次性出现（官方：不会分段下发），
+                        // Start/End 同帧即可，思考链 UI 折叠块直接可用（配料 03 §5.2.2）
+                        addAll(closeText()); addAll(closeReasoning()); addAll(closeImage()); addAll(closeTools())
+                        val id = part.toolCallId.ifBlank { nextId(sourceId, "server_tool") }
+                        add(StreamChunk.ServerToolStart(id, part.toolName, part.input, part.metadata))
+                        add(StreamChunk.ServerToolEnd(id, part.input, part.output, part.status, part.metadata))
                     }
 
                     else -> Unit

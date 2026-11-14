@@ -37,7 +37,7 @@ class TransformerChainRegistryTest {
         val plugins = listOf(info(z), info(a))
         val expectedInput = listOf(
             TimeReminderTransformer, PromptInjectionTransformer, TavernMacroTransformer, PlaceholderTransformer,
-            DocumentAsPromptTransformer, OcrTransformer, ContextImageEvictionTransformer, QuoteTransformer,
+            DeepSeekDocumentOcrTransformer, DocumentAsPromptTransformer, OcrTransformer, ContextImageEvictionTransformer, QuoteTransformer,
             template, workspace, z, a,
             ToolResultBalancingTransformer,
         )
@@ -60,12 +60,16 @@ class TransformerChainRegistryTest {
         val preview = registry.snapshot(plugins, TransformerUse.PREVIEW)
         val warmup = registry.snapshot(plugins, TransformerUse.WARMUP)
         assertEquals(request.inputTransformers.filterNot {
-            it === plugin || it === OcrTransformer || it === workspace
+            it === plugin || it === OcrTransformer || it === workspace || it === DeepSeekDocumentOcrTransformer
         }, preview.inputTransformers)
         assertEquals(preview.inputs, warmup.inputs)
         assertTrue(preview.outputs.isEmpty())
         assertTrue(warmup.outputs.isEmpty())
-        assertEquals(listOf("builtin.ocr", "builtin.workspace_reminder", "plugin:effects:input"), preview.omittedInputs.map { it.id })
+        // DeepSeek 文档 OCR（按页计费）同样必须出现在省略清单里——预览/预热不触发付费请求
+        assertEquals(
+            listOf("builtin.deepseek_document_ocr", "builtin.ocr", "builtin.workspace_reminder", "plugin:effects:input"),
+            preview.omittedInputs.map { it.id },
+        )
         assertSame(ToolResultBalancingTransformer, warmup.inputTransformers.last())
     }
 

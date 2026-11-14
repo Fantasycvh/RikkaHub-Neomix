@@ -191,6 +191,43 @@ sealed class ASRProviderSetting : Enableable {
         }
     }
 
+    /**
+     * DeepSeek ASR（2026-11-13 Tool API）。
+     *
+     * **整段音频一次请求、返回完整转写、不支持流式**（与 MiMo/Step 同类，与三个 WSS 类不同）。
+     * multipart 单字段 `file`（16-bit PCM WAV 或 Ogg Opus），响应 `{request_id, text, duration_ms}`。
+     *
+     * 官方限制（配料 01 §6）：≤8 MiB、≤120 秒、上传 10 分钟内；语种 **无参数**自动判定
+     * （21 种），故本变体没有 language 字段；立体声只识别左声道（App 录音恒单声道，无关）。
+     * 计费按音频时长到秒（限时 5 折 ¥0.39/小时）。
+     *
+     * 官方文档: https://api-docs.deepseek.com/zh-cn/guides/asr/
+     */
+    @Serializable
+    @SerialName("deepseek")
+    data class DeepSeek(
+        override val id: Uuid = Uuid.random(),
+        override val name: String = "DeepSeek ASR",
+        override val enabled: Boolean = true,
+        val apiKey: String = "",
+        val baseUrl: String = "https://api.deepseek.com",
+        // WAV 支持 8000/16000/22050/24000/32000/44100/48000 Hz
+        val sampleRate: Int = 16000,
+        // 每多少秒自动 flush。服务端上限 120s / 8 MiB，取保守值 100s；
+        // 0 = 仅 stop() 时整体上传（此时录音总长仍受 120s 硬限）
+        val segmentDurationSec: Int = 100,
+    ) : ASRProviderSetting() {
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+        ): ASRProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+            )
+        }
+    }
+
     companion object {
         val Types by lazy {
             listOf(
@@ -199,6 +236,7 @@ sealed class ASRProviderSetting : Enableable {
                 Volcengine::class,
                 MiMo::class,
                 Step::class,
+                DeepSeek::class,
             )
         }
     }
@@ -223,5 +261,6 @@ fun <T : ASRProviderSetting> T.withEnabled(enabled: Boolean): T {
         is ASRProviderSetting.Volcengine -> copy(enabled = enabled)
         is ASRProviderSetting.MiMo -> copy(enabled = enabled)
         is ASRProviderSetting.Step -> copy(enabled = enabled)
+        is ASRProviderSetting.DeepSeek -> copy(enabled = enabled)
     } as T
 }

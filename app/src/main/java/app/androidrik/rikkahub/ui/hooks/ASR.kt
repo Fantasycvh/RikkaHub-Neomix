@@ -18,6 +18,7 @@ import app.androidrik.asr.ASRState
 import app.androidrik.asr.ASRStatus
 import app.androidrik.rikkahub.R
 import app.androidrik.asr.providers.DashScopeASRController
+import app.androidrik.asr.providers.DeepSeekASRController
 import app.androidrik.asr.providers.MiMoASRController
 import app.androidrik.asr.providers.OpenAIRealtimeASRController
 import app.androidrik.asr.providers.StepASRController
@@ -155,6 +156,11 @@ private class CustomAsrStateImpl(
             is ASRProviderSetting.Step -> {
                 if (provider.apiKey.isBlank()) return null
                 StepASRController(context, httpClient, provider)
+            }
+
+            is ASRProviderSetting.DeepSeek -> {
+                if (provider.apiKey.isBlank()) return null
+                DeepSeekASRController(context, httpClient, provider)
             }
         }
     }

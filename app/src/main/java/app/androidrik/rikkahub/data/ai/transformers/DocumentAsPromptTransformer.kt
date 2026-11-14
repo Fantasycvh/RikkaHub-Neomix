@@ -70,7 +70,9 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
         return "/upload/${file.name}"
     }
 
-    private fun readDocumentContent(document: UIMessagePart.Document): String {
+    // DeepSeekDocumentOcrTransformer 复用同一读取逻辑做「本地有没有文本」判定（配料 03 §2.4）；
+    // 其错误文本（[ERROR, …]）由调用方自行识别
+    internal fun readDocumentContent(document: UIMessagePart.Document): String {
         val file = runCatching { document.url.toUri().toFile() }.getOrNull()
             ?: return "[ERROR, invalid file uri: ${document.fileName}]"
         if (!file.exists() || !file.isFile) {

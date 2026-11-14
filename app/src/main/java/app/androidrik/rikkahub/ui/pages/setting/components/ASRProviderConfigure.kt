@@ -37,6 +37,7 @@ fun ASRProviderConfigure(
                     is ASRProviderSetting.Volcengine -> "Volcengine"
                     is ASRProviderSetting.MiMo -> "MiMo"
                     is ASRProviderSetting.Step -> "Step"
+                    is ASRProviderSetting.DeepSeek -> "DeepSeek"
                 },
                 onValueChange = {},
                 readOnly = true,
@@ -62,6 +63,7 @@ fun ASRProviderConfigure(
             is ASRProviderSetting.Volcengine -> VolcengineASRConfiguration(setting, onValueChange)
             is ASRProviderSetting.MiMo -> MiMoASRConfiguration(setting, onValueChange)
             is ASRProviderSetting.Step -> StepASRConfiguration(setting, onValueChange)
+            is ASRProviderSetting.DeepSeek -> DeepSeekASRConfiguration(setting, onValueChange)
         }
     }
 }
@@ -527,6 +529,70 @@ private fun StepASRConfiguration(
             },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.setting_asr_configure_hotwords_placeholder)) }
+        )
+    }
+}
+
+@Composable
+private fun DeepSeekASRConfiguration(
+    setting: ASRProviderSetting.DeepSeek,
+    onValueChange: (ASRProviderSetting) -> Unit
+) {
+    FormItem(
+        label = { Text(stringResource(R.string.setting_asr_configure_api_key)) },
+        description = { Text(stringResource(R.string.setting_asr_configure_deepseek_api_key_desc)) }
+    ) {
+        OutlinedTextField(
+            value = setting.apiKey,
+            onValueChange = { onValueChange(setting.copy(apiKey = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("sk-...") }
+        )
+    }
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_asr_configure_base_url)) },
+        description = { Text(stringResource(R.string.setting_asr_configure_deepseek_base_url_desc)) }
+    ) {
+        OutlinedTextField(
+            value = setting.baseUrl,
+            onValueChange = { onValueChange(setting.copy(baseUrl = it)) },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("https://api.deepseek.com") }
+        )
+    }
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_asr_configure_sample_rate)) },
+        description = { Text(stringResource(R.string.setting_asr_configure_deepseek_sample_rate_desc)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.sampleRate,
+            onValueChange = { value ->
+                // 官方支持的 WAV 采样率范围 8000~48000
+                if (value in 8000..48000) {
+                    onValueChange(setting.copy(sampleRate = value))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = "Sample Rate"
+        )
+    }
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_asr_configure_segment_duration)) },
+        description = { Text(stringResource(R.string.setting_asr_configure_deepseek_segment_desc)) }
+    ) {
+        OutlinedNumberInput(
+            value = setting.segmentDurationSec,
+            onValueChange = { value ->
+                // 服务端单文件硬限 120s；0 = 仅 stop() 时整体上传
+                if (value in 0..120) {
+                    onValueChange(setting.copy(segmentDurationSec = value))
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            label = "Segment Duration (s)"
         )
     }
 }

@@ -141,6 +141,13 @@ internal fun defaultTransformerChainRegistry(
         TransformerContribution("builtin.prompt_injection", TransformerStage.CORE, PromptInjectionTransformer, allowPreview = true),
         TransformerContribution("builtin.tavern_macro", TransformerStage.CORE, TavernMacroTransformer, allowPreview = true),
         TransformerContribution("builtin.placeholder", TransformerStage.CORE, PlaceholderTransformer, allowPreview = true),
+        // DeepSeek 文档 OCR（配料 03 §2.4 入口 2）：**必须排在 document_prompt 之前**——
+        // 扫描件由它先换成 Text，文本型文档原样放行给本地解析；allowPreview/allowWarmup
+        // 双 false（预览/预热会真执行链，付费 OCR 不能被上下文检查器触发）。
+        TransformerContribution(
+            "builtin.deepseek_document_ocr", TransformerStage.CORE, DeepSeekDocumentOcrTransformer,
+            allowWarmup = false, previewLabel = "DeepSeek 文档 OCR（按页计费）",
+        ),
         TransformerContribution("builtin.document_prompt", TransformerStage.CORE, DocumentAsPromptTransformer, allowPreview = true),
         TransformerContribution("builtin.ocr", TransformerStage.CORE, OcrTransformer, false, previewLabel = "图片文字识别（OCR）"),
         TransformerContribution("builtin.context_image_eviction", TransformerStage.CORE, ContextImageEvictionTransformer, allowPreview = true),

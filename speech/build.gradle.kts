@@ -7,6 +7,10 @@ plugins {
 
 android {
     namespace = "app.androidrik.speech"
+    // provider 测试走 JVM 单测（interceptor 假响应），放行 android.util.Log 等框架桩
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     tasks.withType<KotlinCompile>().configureEach {
         compilerOptions.optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
         compilerOptions.optIn.add("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
@@ -37,6 +41,7 @@ dependencies {
     implementation(libs.androidx.material3)
 
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 }

@@ -52,6 +52,32 @@ enum class UsageDisplayMode {
     REMAINING,
 }
 
+/**
+ * 图片 OCR 后端（DeepSeek 适配备料 03 §2.1）。
+ *
+ * 两种后端计费口径不同（token vs 按页 ¥1.5/千页），混用不可归因——显式二选一，
+ * **不做隐式跨后端回退**。默认 [MODEL] = 现有视觉模型 OCR，零行为变化。
+ */
+@Serializable
+enum class OcrBackend {
+    /** 配置一个视觉模型看图说话（现状，走 token 计费） */
+    MODEL,
+
+    /** DeepSeek 文件 OCR Tool API（文件进、逐页文本出，按页计费） */
+    DEEPSEEK,
+}
+
+/**
+ * DeepSeek OCR 的识别模式（对应服务端 `purpose` 字段）。
+ * - [TEXT]：无图 Word/PPT 直接抽文字（**不产生 OCR 费用**），其余逐页识别；
+ * - [RICH_LAYOUT]：一律逐页识别，输出含 ref/box 坐标 token。
+ */
+@Serializable
+enum class OcrDeepSeekPurpose {
+    TEXT,
+    RICH_LAYOUT,
+}
+
 @Serializable
 data class Settings(
     @Transient
@@ -104,6 +130,17 @@ data class Settings(
     val suggestionPrompt: String = DEFAULT_SUGGESTION_PROMPT,
     val ocrModelId: Uuid = Uuid.random(),
     val ocrPrompt: String = DEFAULT_OCR_PROMPT,
+    // —— DeepSeek OCR 可选后端（默认 MODEL = 现状，零行为变化；配料 03 §2.2）——
+    val ocrBackend: OcrBackend = OcrBackend.MODEL,
+    /** DeepSeek OCR 用的提供商 id；null = 复用内置 DeepSeek provider（共享 Key） */
+    val ocrDeepSeekProviderId: Uuid? = null,
+    /** DeepSeek Tool API 端点前缀（OCR 走 `{base}/v1/tools/ocr`） */
+    val ocrDeepSeekBaseUrl: String = "https://api.deepseek.com",
+    val ocrDeepSeekPurpose: OcrDeepSeekPurpose = OcrDeepSeekPurpose.TEXT,
+    /** 是否在 OCR 结果里保留 ref/box 坐标 token（本仓暂无消费位，默认剥掉） */
+    val ocrDeepSeekIncludeLayout: Boolean = false,
+    /** PDF 页数本地预检上限，防白发请求（服务端上限 1000 页） */
+    val ocrDeepSeekMaxPages: Int = 1000,
     /** 压缩使用的模型 id。默认锁定内置模型；**null = 跟随当前对话模型**（可选，避免单独配置） */
     val compressModelId: Uuid? = DEFAULT_AUTO_MODEL_ID,
     val compressPrompt: String = DEFAULT_COMPRESS_PROMPT,

@@ -81,6 +81,40 @@ class UsageRecorder(
     fun <T : ProviderSetting> wrap(provider: Provider<T>, tag: UsageTag): Provider<T> =
         UsageRecordingProvider(provider, tag)
 
+    /**
+     * 记一行**按页计费**的 OCR 流水（DeepSeek 适配备料 03 §2.5）。
+     *
+     * 与 [record] 的关键差异：**绕开零 token 行被丢弃的闸门**——DeepSeek OCR 按
+     * 成功页数计费（¥1.5/千页），`usage` 仅供参照甚至缺省，按 token 过滤会把
+     * 真实花费整个丢掉。page_count 行与 token 行共用一张表；统计页对 page_count>0
+     * 的行按页展示。
+     */
+    fun recordOcrPages(
+        providerSetting: ProviderSetting,
+        pageCount: Int,
+        usage: TokenUsage? = null,
+    ) {
+        if (pageCount <= 0) return
+        val record = UsageRecordEntity(
+            createdAt = System.currentTimeMillis(),
+            source = UsageSource.OCR.name,
+            providerId = providerSetting.id.toString(),
+            providerName = providerSetting.name.takeIf { it.isNotBlank() },
+            modelId = null,
+            modelName = "DeepSeek OCR",
+            assistantId = null,
+            conversationId = null,
+            promptTokens = usage?.promptTokens ?: 0,
+            completionTokens = usage?.completionTokens ?: 0,
+            cachedTokens = 0,
+            pageCount = pageCount,
+        )
+        scope.launch {
+            runCatching { dao.insert(record) }
+                .onFailure { Log.w(TAG, "Failed to record OCR pages", it) }
+        }
+    }
+
     private fun record(
         tag: UsageTag,
         providerSetting: ProviderSetting,

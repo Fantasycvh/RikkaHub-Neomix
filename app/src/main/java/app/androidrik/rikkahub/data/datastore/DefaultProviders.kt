@@ -39,6 +39,14 @@ import kotlin.uuid.Uuid
  */
 val DEFAULT_AUTO_MODEL_ID = Uuid.parse("b7055fb4-39f9-4042-a88a-0d80ed76cf08")
 
+/**
+ * 内置 DeepSeek 提供商的固定 id（见 `DEFAULT_PROVIDERS` 里 `f099ad5b-…` 那一项）。
+ *
+ * DeepSeek Tool API（OCR/TTS/ASR/搜索）与聊天共用同一把 Key——OCR 后端选「复用内置
+ * DeepSeek」时按此 id 找 provider 取 `apiKey`（配料 03 §2.2）。改出厂 id 必须同步这里。
+ */
+val DEEPSEEK_BUILTIN_PROVIDER_ID = Uuid.parse("f099ad5b-ef03-446d-8e78-7e36787f780b")
+
 val DEFAULT_PROVIDERS = listOf(
     ProviderSetting.OpenAI(
         id = Uuid.parse("1eeea727-9ee5-4cae-93e6-6fb01a4d051e"),

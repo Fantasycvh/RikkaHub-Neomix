@@ -305,6 +305,47 @@ sealed class TTSProviderSetting : Enableable {
         }
     }
 
+    /**
+     * DeepSeek TTS（2026-11-13 Tool API）。
+     *
+     * 走 [POST {baseUrl}/v1/tools/tts] 整段接口，请求体 JSON
+     * `{text, voice_id, format, filter_markdown}`，服务端**边合成边流式返回音频字节**；
+     * 本仓播放端把流拍平（`TtsSynthesizer.collectToResponse`），故以单个 [AudioChunk] 发出即可，
+     * WSS 增量流在现架构零收益（DeepSeek 适配备料 03 §3.3）。
+     *
+     * 无 model / 语言 / 语速参数：语种按文本自动判定，两档音色 stella(女)/tide(男)。
+     * 计费按字符（中文算 2，其余算 1），单请求 ≤10,000 计费字符——本仓朗读分片 160 字符
+     * 远小于该上限，天然安全。
+     *
+     * 官方文档: https://api-docs.deepseek.com/zh-cn/guides/tts/
+     */
+    @Serializable
+    @SerialName("deepseek")
+    data class DeepSeek(
+        override var id: Uuid = Uuid.random(),
+        override var name: String = "DeepSeek TTS",
+        override var enabled: Boolean = true,
+        val apiKey: String = "",
+        val baseUrl: String = "https://api.deepseek.com",
+        // stella(女声,默认) | tide(男声)
+        val voiceId: String = "stella",
+        // wav(默认) | pcm。pcm 是裸 16-bit 单声道 24kHz 流，需客户端自己知道采样率；
+        // 默认 wav 让 ExoPlayer 直接吃容器头，避免 PCM 采样率猜错变调
+        val format: String = "wav",
+        // 服务端先过滤 Markdown 再合成。本仓朗读前已 stripMarkdown，默认 false
+        val filterMarkdown: Boolean = false,
+    ) : TTSProviderSetting() {
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+        ): TTSProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+            )
+        }
+    }
+
     companion object {
         val Types by lazy {
             listOf(
@@ -319,6 +360,7 @@ sealed class TTSProviderSetting : Enableable {
                 ElevenLabs::class,
                 Step::class,
                 FishAudio::class,
+                DeepSeek::class,
             )
         }
     }
@@ -345,5 +387,6 @@ fun <T : TTSProviderSetting> T.withEnabled(enabled: Boolean): T {
         is TTSProviderSetting.ElevenLabs -> copy(enabled = enabled)
         is TTSProviderSetting.Step -> copy(enabled = enabled)
         is TTSProviderSetting.FishAudio -> copy(enabled = enabled)
+        is TTSProviderSetting.DeepSeek -> copy(enabled = enabled)
     } as T
 }

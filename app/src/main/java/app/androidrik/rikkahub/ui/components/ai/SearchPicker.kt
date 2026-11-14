@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.hasBuiltInSearch
 import app.androidrik.ai.registry.ModelRegistry
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.GlobalSearch
@@ -74,7 +75,7 @@ fun SearchPickerButton(
 
     ToggleSurface(
         modifier = modifier,
-        checked = enableSearch || model?.tools?.contains(BuiltInTools.Search) == true,
+        checked = enableSearch || model?.hasBuiltInSearch == true,
         onClick = {
             showSearchPicker = true
         }
@@ -89,7 +90,7 @@ fun SearchPickerButton(
                 modifier = Modifier.size(24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (model?.tools?.contains(BuiltInTools.Search) == true) {
+                if (model?.hasBuiltInSearch == true) {
                     Icon(
                         imageVector = HugeIcons.AiSearch02,
                         contentDescription = stringResource(R.string.use_web_search),
@@ -163,11 +164,14 @@ private fun SearchPicker(
 ) {
     val navBackStack = LocalNavController.current
 
-    // 模型是否支持内置搜索
+    // 模型是否支持内置搜索（DeepSeek 的内置 web tools 按 modelId 识别——注册表 DeepSeek
+    // 分组是 private，且此处判定历史上就是 id 前缀白名单，沿用同款口径）
     val supportsBuiltInSearch = model != null &&
-        (ModelRegistry.GEMINI_SERIES.match(model.modelId) || model.modelId.contains("gpt-"))
+        (ModelRegistry.GEMINI_SERIES.match(model.modelId) ||
+            model.modelId.contains("gpt-") ||
+            model.modelId.contains("deepseek"))
     // 模型是否已开启内置搜索（可能是不支持的模型残留的孤儿状态）
-    val hasBuiltInSearchEnabled = model?.tools?.contains(BuiltInTools.Search) == true
+    val hasBuiltInSearchEnabled = model?.hasBuiltInSearch == true
 
     // 模型支持内置搜索，或已开启内置搜索（后者保证残留状态也能被关闭）时显示开关
     if (model != null && (supportsBuiltInSearch || hasBuiltInSearchEnabled)) {
@@ -327,6 +331,15 @@ private fun AppSearchSettings(
 private fun BuiltInSearchSetting(model: Model, onUpdateBuiltInSearch: ((Boolean) -> Unit)? = null) {
     val settingsStore = koinInject<SettingsStore>()
     val scope = rememberCoroutineScope()
+    // 本开关管理的「搜索类」工具：DeepSeek 模型切 deepseek_web_search（¥5/千次按次计费），
+    // 其余模型维持原生 search。关闭时把所有搜索类变体一并清掉，避免残留孤儿状态继续压住外挂搜索。
+    val searchTool = remember(model) {
+        if (model.modelId.contains("deepseek", ignoreCase = true)) {
+            BuiltInTools.DeepSeekWebSearch
+        } else {
+            BuiltInTools.Search
+        }
+    }
     Card {
         Row(
             modifier = Modifier
@@ -352,7 +365,7 @@ private fun BuiltInSearchSetting(model: Model, onUpdateBuiltInSearch: ((Boolean)
             }
 
             Switch(
-                checked = model.tools.contains(BuiltInTools.Search),
+                checked = model.tools.contains(searchTool),
                 onCheckedChange = { checked ->
                     if (onUpdateBuiltInSearch != null) {
                         onUpdateBuiltInSearch(checked)
@@ -365,7 +378,11 @@ private fun BuiltInSearchSetting(model: Model, onUpdateBuiltInSearch: ((Boolean)
                                 providers = settings.providers.map { providerSetting ->
                                     providerSetting.editModel(
                                         model.copy(
-                                            tools = if (checked) model.tools + BuiltInTools.Search else model.tools - BuiltInTools.Search
+                                            tools = if (checked) {
+                                                model.tools + searchTool
+                                            } else {
+                                                model.tools - BuiltInTools.Search - BuiltInTools.DeepSeekWebSearch
+                                            }
                                         )
                                     )
                                 }

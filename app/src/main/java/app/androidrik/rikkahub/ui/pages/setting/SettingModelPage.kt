@@ -56,6 +56,8 @@ import me.rerere.hugeicons.stroke.ArrowRight01
 import me.rerere.hugeicons.stroke.Cancel01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.datastore.OcrBackend
+import app.androidrik.rikkahub.data.datastore.OcrDeepSeekPurpose
 import app.androidrik.rikkahub.ui.components.ai.ModelListSheet
 import app.androidrik.rikkahub.ui.components.ai.ReasoningButton
 import app.androidrik.rikkahub.ui.components.ai.rememberModelListState
@@ -71,6 +73,7 @@ import app.androidrik.rikkahub.ui.components.ai.CompressPresetSelector
 import app.androidrik.rikkahub.ui.components.ai.builtInCompressPresetNames
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.utils.formatContextLength
 import app.androidrik.rikkahub.utils.parseContextLengthInput
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -256,6 +259,9 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 providers = settings.providers,
                 onSelect = { vm.updateSettings(settings.copy(ocrModelId = it.id)) },
             )
+        }
+        item {
+            OcrBackendSettingItem(settings = settings, vm = vm)
         }
         item {
             ModelSettingItem(
@@ -814,4 +820,104 @@ private fun ModelSettingItem(
     }
 
     ModelListSheet(state = state, onSelect = onSelect)
+}
+
+/**
+ * OCR 后端选择（DeepSeek 适配备料 03 §2.2）。
+ *
+ * CardGroup 是 Column 实现（AGENTS.md TextField 宿主规范），子项常驻不进 Lazy item，
+ * maxPages 的数字输入框天然免疫「键盘收缩裁剪视口 → item 销毁重建」坑；
+ * 写出用字段级 `vm.updateSettings { }` transform，不走「读 settings.value 改整对象写回」。
+ */
+@Composable
+private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
+    Column {
+        CardGroup(title = { Text(stringResource(R.string.setting_model_page_ocr_backend)) }) {
+            item(
+                headlineContent = {
+                    SegmentedPill(
+                        options = listOf(OcrBackend.MODEL, OcrBackend.DEEPSEEK),
+                        selectedOption = settings.ocrBackend,
+                        onOptionSelected = { backend ->
+                            vm.updateSettings { it.copy(ocrBackend = backend) }
+                        },
+                        optionToString = { backend ->
+                            when (backend) {
+                                OcrBackend.MODEL -> stringResource(R.string.setting_model_page_ocr_backend_model)
+                                OcrBackend.DEEPSEEK -> stringResource(R.string.setting_model_page_ocr_backend_deepseek)
+                            }
+                        },
+                    )
+                },
+            )
+        }
+        Text(
+            text = stringResource(R.string.setting_model_page_ocr_backend_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+        )
+
+        if (settings.ocrBackend == OcrBackend.DEEPSEEK) {
+            CardGroup {
+                item(
+                    headlineContent = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(stringResource(R.string.setting_model_page_ocr_deepseek_purpose))
+                            SegmentedPill(
+                                options = listOf(OcrDeepSeekPurpose.TEXT, OcrDeepSeekPurpose.RICH_LAYOUT),
+                                selectedOption = settings.ocrDeepSeekPurpose,
+                                onOptionSelected = { purpose ->
+                                    vm.updateSettings { it.copy(ocrDeepSeekPurpose = purpose) }
+                                },
+                                optionToString = { purpose ->
+                                    when (purpose) {
+                                        OcrDeepSeekPurpose.TEXT -> stringResource(R.string.setting_model_page_ocr_deepseek_purpose_text)
+                                        OcrDeepSeekPurpose.RICH_LAYOUT -> stringResource(R.string.setting_model_page_ocr_deepseek_purpose_rich)
+                                    }
+                                },
+                            )
+                        }
+                    },
+                    supportingContent = {
+                        Text(
+                            text = stringResource(R.string.setting_model_page_ocr_deepseek_purpose_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                )
+                item(
+                    headlineContent = {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Column {
+                                Text(stringResource(R.string.setting_model_page_ocr_deepseek_include_layout))
+                                Text(
+                                    text = stringResource(R.string.setting_model_page_ocr_deepseek_include_layout_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = settings.ocrDeepSeekIncludeLayout,
+                                onCheckedChange = { checked ->
+                                    vm.updateSettings { it.copy(ocrDeepSeekIncludeLayout = checked) }
+                                },
+                            )
+                        }
+                    },
+                )
+            }
+            Text(
+                text = stringResource(R.string.setting_model_page_ocr_deepseek_privacy_notice),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+            )
+        }
+    }
 }

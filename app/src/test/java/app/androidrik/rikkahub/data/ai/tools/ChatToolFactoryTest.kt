@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.ai.tools
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.hasBuiltInSearch
 import app.androidrik.rikkahub.data.model.Assistant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -47,6 +48,45 @@ class ChatToolFactoryTest {
         val model = Model(tools = setOf(BuiltInTools.Search))
 
         assertFalse(shouldUseExternalWebSearch(assistant, model))
+    }
+
+    // ---- DeepSeek 内置 web tools（配料 03 §5.1 双计费守卫）----
+
+    @Test
+    fun `deepseek built-in web search suppresses enabled external web search`() {
+        val assistant = Assistant(enableWebSearch = true)
+        val model = Model(tools = setOf(BuiltInTools.DeepSeekWebSearch))
+
+        // 守卫只认「搜索类」变体：deepseek_web_search 开启时若仍注册外挂搜索，
+        // 同一问题走两条搜索路径，token 之外按 ¥5/千次双重计费
+        assertFalse(shouldUseExternalWebSearch(assistant, model))
+        assertFalse(shouldUseExternalWebSearch(assistant, model.copy(tools = setOf(BuiltInTools.Search, BuiltInTools.DeepSeekWebSearch))))
+    }
+
+    @Test
+    fun `deepseek read-url is not a search-class tool`() {
+        val assistant = Assistant(enableWebSearch = true)
+        val model = Model(tools = setOf(BuiltInTools.DeepSeekReadUrl))
+
+        // deepseek_read_url 只抓用户消息里的 URL，与外挂搜索不冲突——不能误伤外挂搜索
+        assertTrue(shouldUseExternalWebSearch(assistant, model))
+        assertFalse(model.hasBuiltInSearch)
+    }
+
+    @Test
+    fun `built-in tools serialize with frozen wire names`() {
+        // 判别值是持久化（Settings JSON / 备份）与 Web 面板 DTO 的线上契约，漂移即旧数据不可读
+        val json = kotlinx.serialization.json.Json.encodeToString(
+            BuiltInTools.serializer(),
+            BuiltInTools.DeepSeekWebSearch,
+        )
+        assertEquals("""{"type":"deepseek_web_search"}""", json)
+
+        val readUrl = kotlinx.serialization.json.Json.encodeToString(
+            BuiltInTools.serializer(),
+            BuiltInTools.DeepSeekReadUrl,
+        )
+        assertEquals("""{"type":"deepseek_read_url"}""", readUrl)
     }
 
     // ---- P2a：ToolSource 段名契约锚定（子代理信封/折叠提升按它判断，漂移即静默失效） ----

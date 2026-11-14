@@ -481,7 +481,15 @@ internal fun BuiltInToolsSettings(
             BuiltInTools.ImageGeneration to Pair(
                 stringResource(R.string.setting_page_built_in_tools_image_generation),
                 stringResource(R.string.setting_page_built_in_tools_image_generation_desc)
-            )
+            ),
+            BuiltInTools.DeepSeekWebSearch to Pair(
+                stringResource(R.string.setting_page_built_in_tools_deepseek_web_search),
+                stringResource(R.string.setting_page_built_in_tools_deepseek_web_search_desc)
+            ),
+            BuiltInTools.DeepSeekReadUrl to Pair(
+                stringResource(R.string.setting_page_built_in_tools_deepseek_read_url),
+                stringResource(R.string.setting_page_built_in_tools_deepseek_read_url_desc)
+            ),
         )
 
         availableTools.forEach { (tool, info) ->

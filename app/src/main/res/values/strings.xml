@@ -3216,5 +3216,28 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="chat_tree_fork_here">New Timeline Here</string>
   <string name="chat_tree_candidates_count">%1$d versions</string>
   <string name="chat_tree_subtree_count">%1$d below</string>
+  <string name="setting_page_built_in_tools_deepseek_web_search">DeepSeek Web Search</string>
+  <string name="setting_page_built_in_tools_deepseek_web_search_desc">Enable DeepSeek server-side web search (billed per search, extra to tokens)</string>
+  <string name="setting_page_built_in_tools_deepseek_read_url">DeepSeek Read URL</string>
+  <string name="setting_page_built_in_tools_deepseek_read_url_desc">Enable DeepSeek server-side URL reading (billed per fetched page)</string>
+  <string name="tts_config_deepseek_api_key_desc">DeepSeek API key (same key as chat/search)</string>
+  <string name="tts_config_deepseek_voice_desc">Voice; language auto-detected, no speed control</string>
+  <string name="tts_config_deepseek_format_desc">wav plays directly; pcm is raw 16-bit mono 24kHz</string>
+  <string name="tts_config_deepseek_filter_markdown_desc">Let the server strip Markdown before synthesis (app already strips locally)</string>
+  <string name="setting_asr_configure_deepseek_api_key_desc">DeepSeek API key (same key as chat/search); language auto-detected</string>
+  <string name="setting_asr_configure_deepseek_base_url_desc">DeepSeek API base URL</string>
+  <string name="setting_asr_configure_deepseek_sample_rate_desc">Recording sample rate (supported 8000-48000 Hz)</string>
+  <string name="setting_asr_configure_deepseek_segment_desc">Auto-flush interval; server limit is 120s / 8 MiB per file, 0 = upload only on stop</string>
+  <string name="setting_model_page_ocr_backend">OCR Backend</string>
+  <string name="setting_model_page_ocr_backend_desc">How images are converted to text for text-only models. Both are billed separately.</string>
+  <string name="setting_model_page_ocr_backend_model">Vision Model</string>
+  <string name="setting_model_page_ocr_backend_deepseek">DeepSeek OCR</string>
+  <string name="setting_model_page_ocr_deepseek_purpose">Recognition Mode</string>
+  <string name="setting_model_page_ocr_deepseek_purpose_desc">Text: text-only documents are extracted directly (no OCR billing). Rich layout: all pages recognized with layout coordinates. Billed per successful page.</string>
+  <string name="setting_model_page_ocr_deepseek_purpose_text">Text</string>
+  <string name="setting_model_page_ocr_deepseek_purpose_rich">Rich Layout</string>
+  <string name="setting_model_page_ocr_deepseek_include_layout">Keep layout coordinates</string>
+  <string name="setting_model_page_ocr_deepseek_include_layout_desc">Keep ref/box layout tokens in OCR output (experimental)</string>
+  <string name="setting_model_page_ocr_deepseek_privacy_notice">When using DeepSeek OCR, the file content is uploaded to DeepSeek servers and billed per successful page.</string>
 </resources>
 

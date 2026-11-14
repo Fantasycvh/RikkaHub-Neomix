@@ -37,6 +37,7 @@ import app.androidrik.ai.core.resolveReasoningOverride
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.Modality
+import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
@@ -51,6 +52,7 @@ import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.util.KeyRoulette
 import app.androidrik.ai.util.apiEndpoint
 import app.androidrik.ai.util.configureClientWithProxy
@@ -359,6 +361,14 @@ class ChatCompletionsAPI(
     }.buffer(Channel.UNLIMITED).flowOn(Dispatchers.IO)
 
 
+    /** 测试注入点：请求体 JSON 组装的 internal 包装（与 [buildChatCompletionRequest] 同一路径）。 */
+    internal fun buildChatCompletionRequestBodyForTest(
+        messages: List<UIMessage>,
+        params: TextGenerationParams,
+        providerSetting: ProviderSetting.OpenAI,
+        stream: Boolean = false,
+    ): JsonObject = buildChatCompletionRequest(messages, params, providerSetting, stream)
+
     private fun buildChatCompletionRequest(
         messages: List<UIMessage>,
         params: TextGenerationParams,
@@ -556,11 +566,26 @@ class ChatCompletionsAPI(
                 }
             }
 
-            if (params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()) {
+            // DeepSeek 内置 web tools（配料 01 §8 / 03 §5.2）：裸 `{"type":…}` 项，可与
+            // function 工具混排。tool_choice **不能**指定它们（官方 400），故 tool_choice=auto
+            // 只在真有 function 工具时下发；`web_search_options` / `logprobs` / 非 text 的
+            // `response_format` 官方一律 400，本仓不构造这些字段。
+            val serverToolTypes = params.model.tools.mapNotNull { builtIn ->
+                when (builtIn) {
+                    is BuiltInTools.DeepSeekWebSearch -> "deepseek_web_search"
+                    is BuiltInTools.DeepSeekReadUrl -> "deepseek_read_url"
+                    else -> null
+                }
+            }
+            if (params.model.abilities.contains(ModelAbility.TOOL) &&
+                (params.tools.isNotEmpty() || serverToolTypes.isNotEmpty())
+            ) {
                 // 网关兼容：省略 tool_choice 时部分中转/聚合端点会把 tool_calls 的 name 翻译成空串，
                 // 工具一个都跑不起来（NMoi-Agent 2026-11-03 真机定位；bigeye 亦无条件发送）。
                 // 规范上省略等于 auto，但实现不保证；有工具时显式声明。
-                put("tool_choice", "auto")
+                if (params.tools.isNotEmpty()) {
+                    put("tool_choice", "auto")
+                }
                 putJsonArray("tools") {
                     params.tools.forEach { tool ->
                         add(buildJsonObject {
@@ -577,6 +602,9 @@ class ChatCompletionsAPI(
                                 )
                             })
                         })
+                    }
+                    serverToolTypes.forEach { type ->
+                        add(buildJsonObject { put("type", type) })
                     }
                 }
             }
@@ -626,6 +654,7 @@ class ChatCompletionsAPI(
     ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
+        val serverToolBuffer = mutableListOf<UIMessagePart.ServerTool>()
         var reasoningPart: UIMessagePart.Reasoning? = null
 
         for (group in groups) {
@@ -637,6 +666,9 @@ class ChatCompletionsAPI(
                             reasoningPart = it
                         }
                     }
+                    // DeepSeek 内置工具块（配料 03 §5.2.3）：多轮**必须原样回传**（含 kind/signature），
+                    // 否则下一轮 400。原始 JSON 存在 part.metadata["deepseek_raw_call"]，按 step 分组还原。
+                    group.parts.filterIsInstance<UIMessagePart.ServerTool>().forEach { serverToolBuffer.add(it) }
                     group.parts
                         .filter { it is UIMessagePart.Text || it is UIMessagePart.Image }
                         .forEach { contentBuffer.add(it) }
@@ -648,12 +680,14 @@ class ChatCompletionsAPI(
                         contentParts = contentBuffer,
                         tools = group.tools,
                         reasoningPart = reasoningPart,
+                        serverToolParts = serverToolBuffer.toList(),
                         backfillReasoning = backfillReasoning,
                         mistralThinkingReplay = mistralThinkingReplay,
                     )?.let { assistantMessage ->
                         add(assistantMessage)
                     }
                     contentBuffer.clear()
+                    serverToolBuffer.clear()
                     reasoningPart = null // 清空，下一个 group 可能有新的 reasoning
 
                     // 紧跟 tool 结果消息
@@ -669,11 +703,12 @@ class ChatCompletionsAPI(
         }
 
         // 输出剩余内容
-        if (contentBuffer.isNotEmpty() || reasoningPart != null) {
+        if (contentBuffer.isNotEmpty() || reasoningPart != null || serverToolBuffer.isNotEmpty()) {
             buildAssistantMessageJson(
                 contentParts = contentBuffer,
                 tools = emptyList(),
                 reasoningPart = reasoningPart,
+                serverToolParts = serverToolBuffer.toList(),
                 backfillReasoning = backfillReasoning,
                 mistralThinkingReplay = mistralThinkingReplay,
             )?.let { assistantMessage ->
@@ -686,6 +721,7 @@ class ChatCompletionsAPI(
         contentParts: List<UIMessagePart>,
         tools: List<UIMessagePart.Tool>,
         reasoningPart: UIMessagePart.Reasoning?,
+        serverToolParts: List<UIMessagePart.ServerTool> = emptyList(),
         backfillReasoning: Boolean = false,
         mistralThinkingReplay: Boolean = false,
     ): JsonObject? {
@@ -697,7 +733,7 @@ class ChatCompletionsAPI(
             }
         }
         val hasReasoning = !reasoningPart?.reasoning.isNullOrBlank()
-        if (!hasUsableContent && !hasReasoning && tools.isEmpty()) {
+        if (!hasUsableContent && !hasReasoning && tools.isEmpty() && serverToolParts.isEmpty()) {
             return null
         }
 
@@ -803,6 +839,13 @@ class ChatCompletionsAPI(
                     }
                 })
             }
+
+            // DeepSeek server_tool_calls 回传（配料 03 §5.2.3）：原始 JSON **逐字段原样**带回
+            // （含 kind 与 signature——官方要求，缺了下一轮 400）。按 step 分组还原 steps 数组；
+            // 用过的轮次**不能续写**（续写/继续生成已在 GenerationHandler/ChatMessage 侧禁用）。
+            rebuildServerToolCallSteps(serverToolParts)?.let { steps ->
+                put("server_tool_calls", steps)
+            }
         }
     }
 
@@ -907,6 +950,7 @@ class ChatCompletionsAPI(
             ?: jsonObject["reasoning"]?.jsonPrimitiveOrNull?.contentOrNull
             ?: parsedContent.reasoning
         val toolCalls = jsonObject["tool_calls"] as? JsonArray ?: JsonArray(emptyList())
+        val serverToolCalls = jsonObject["server_tool_calls"] as? JsonArray ?: JsonArray(emptyList())
         val images = jsonObject["images"] as? JsonArray ?: JsonArray(emptyList())
 
         return UIMessage(
@@ -939,6 +983,9 @@ class ChatCompletionsAPI(
                         )
                     )
                 }
+                // DeepSeek 内置工具块 → ServerTool part（思考链 UI 直接可折叠渲染）；
+                // 原始 JSON 进 metadata，供下一轮**原样回传**（含 kind/signature）
+                addAll(parseDeepSeekServerToolCalls(serverToolCalls))
                 if (content.isNotEmpty()) add(UIMessagePart.Text(content))
                 images.forEach { image ->
                     val imageObject = image.jsonObjectOrNull ?: return@forEach
@@ -976,8 +1023,10 @@ class ChatCompletionsAPI(
     // 不防 `JsonNull` 这个值** —— JSON 的 null 到了 kotlinx 手里是非空引用，所以这里必须用
     // jsonObjectOrNull，而不是 `element.jsonObject` / `?.jsonObject`。
     //
-    // 与上游保持同一条线：只跳过"元素/字段本身是 null"，`type` 缺失（error("type is null")）与
-    // 未知注解类型仍然**响亮失败** —— 上游的修复也没动这两处，本仓不擅自比上游更宽容。
+    // 与上游保持同一条线：只跳过"元素/字段本身是 null"，`type` 缺失仍然响亮失败。
+    // ⚠️ 本仓对**未知注解类型**定向放宽（跳过 + 日志），不再整轮 error：DeepSeek 内置
+    // web tools 的 annotations 形态未真机确认（配料 04 探测清单 #5），一次格式漂移就把
+    // 整轮打成失败是净负收益——丢一条角标远好于丢整个回答（配料 03 §5.2.4 的定向放宽决策）。
     private fun parseAnnotations(jsonArray: JsonArray): List<UIMessageAnnotation> {
         return jsonArray.mapNotNull { element ->
             val annotation = element.jsonObjectOrNull ?: return@mapNotNull null
@@ -993,7 +1042,10 @@ class ChatCompletionsAPI(
                     )
                 }
 
-                else -> error("unknown annotation type: $type")
+                else -> {
+                    Log.w(TAG, "parseAnnotations: skipped unknown annotation type: $type")
+                    null
+                }
             }
         }
     }
@@ -1018,4 +1070,93 @@ class ChatCompletionsAPI(
         val texts = filter { it is UIMessagePart.Text }.size
         return gonnaSend == texts && texts == 1
     }
+}
+
+
+/**
+ * 解析 DeepSeek Chat Completions 的 `message.server_tool_calls[]`（按「步」分组的原始形态，
+ * 配料 01 §8）：`[{"index":0,"reasoning_content":"…","calls":[{"id","type","kind","action",
+ * "status","sources","page","signature","error"}]}]`。
+ *
+ * 每个 call 映射为一个 [UIMessagePart.ServerTool]：
+ * - `toolName` 取 `kind`（搜索 search/deep_search/image_search，读链接 read_link），
+ *   缺失时回退 `type`；
+ * - `input`/`output` 按 request/result 侧字段分组；
+ * - **原始 call JSON 逐字段存进 `metadata["deepseek_raw_call"]`**——回传必须含 kind/signature，
+ *   用「重新拼装」不如「原样带回」保险（块形态未真机确认，配料 04 探测清单 #5）；
+ * - step 序号与 reasoning_content 也进 metadata（回传时按 step 分组还原）。
+ *
+ * 解析失败**跳过而不是抛**：思考链 UI 少一个块远好于整轮失败。
+ */
+internal fun parseDeepSeekServerToolCalls(steps: JsonArray): List<UIMessagePart.ServerTool> = buildList {
+    steps.forEach { stepElement ->
+        val step = stepElement.jsonObjectOrNull ?: return@forEach
+        val stepIndex = step["index"]?.jsonPrimitiveOrNull?.intOrNull
+        val stepReasoning = step["reasoning_content"]?.jsonPrimitiveOrNull?.contentOrNull
+        val calls = step["calls"] as? JsonArray ?: return@forEach
+        calls.forEach { callElement ->
+            val call = callElement.jsonObjectOrNull ?: return@forEach
+            val id = call["id"]?.jsonPrimitiveOrNull?.contentOrNull
+            val kind = call["kind"]?.jsonPrimitiveOrNull?.contentOrNull
+            val type = call["type"]?.jsonPrimitiveOrNull?.contentOrNull
+            val statusText = call["status"]?.jsonPrimitiveOrNull?.contentOrNull
+            add(
+                UIMessagePart.ServerTool(
+                    toolCallId = id ?: "server_tool-$stepIndex-${size}",
+                    toolName = kind ?: type ?: "server_tool",
+                    input = buildJsonObject {
+                        listOf("action", "queries", "kind").forEach { key ->
+                            call[key]?.let { put(key, it) }
+                        }
+                    },
+                    output = buildJsonObject {
+                        listOf("sources", "page", "error").forEach { key ->
+                            call[key]?.let { put(key, it) }
+                        }
+                    },
+                    status = when (statusText) {
+                        "completed" -> ServerToolStatus.COMPLETED
+                        "failed" -> ServerToolStatus.FAILED
+                        else -> ServerToolStatus.IN_PROGRESS
+                    },
+                    metadata = buildJsonObject {
+                        stepIndex?.let { put("deepseek_step", JsonPrimitive(it)) }
+                        if (!stepReasoning.isNullOrEmpty()) put("deepseek_reasoning", JsonPrimitive(stepReasoning))
+                        put("deepseek_raw_call", call)
+                    },
+                )
+            )
+        }
+    }
+}
+
+/**
+ * 从 ServerTool parts 还原回传用的 `server_tool_calls` steps 数组：按 metadata 里的
+ * `deepseek_step` 分组，`calls` 用**原始 JSON 原样带回**（含 signature）。
+ * 没有 raw metadata（被用户编辑/旧数据）的 part 跳过——残缺回传会被 400，
+ * 不如不传该 step（内容仍在 content 里）。
+ */
+internal fun rebuildServerToolCallSteps(parts: List<UIMessagePart.ServerTool>): JsonArray? {
+    if (parts.isEmpty()) return null
+    val steps = linkedMapOf<String, MutableList<Pair<JsonObject, Int?>>>()
+    val reasoningByKey = linkedMapOf<String, String?>()
+    parts.forEach { part ->
+        val meta = part.metadata ?: return@forEach
+        val raw = meta["deepseek_raw_call"] as? JsonObject ?: return@forEach
+        val key = (meta["deepseek_step"] as? JsonPrimitive)?.content ?: ""
+        steps.getOrPut(key) { mutableListOf() }.add(raw to (meta["deepseek_step"] as? JsonPrimitive)?.content?.toIntOrNull())
+        if (key !in reasoningByKey) {
+            reasoningByKey[key] = (meta["deepseek_reasoning"] as? JsonPrimitive)?.content
+        }
+    }
+    if (steps.isEmpty()) return null
+    return JsonArray(
+        steps.entries.map { (key, calls) ->
+            buildJsonObject {
+                calls.first().second?.let { put("index", JsonPrimitive(it)) }
+                reasoningByKey[key]?.takeIf { it.isNotBlank() }?.let { put("reasoning_content", JsonPrimitive(it)) }
+                put("calls", JsonArray(calls.map { it.first }))
+            }
+        },
+    )
 }

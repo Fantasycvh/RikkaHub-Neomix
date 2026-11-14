@@ -227,17 +227,20 @@ fun ChatMessage(
 
             // 输出不完整提示（本批）：只挂在**末条**消息上——只有它还能「接着写」。
             // 三档成因分开表述（成本/可续性不同）：裸断流与撞上限可续写，内容拦截不提供续写按钮。
+            // DeepSeek 内置 web tools 官方约束（配料 01 §8 W10）：用过内置工具的轮次续写 400 ⇒
+            // 无论哪档成因都不提供「继续生成」入口（自动续写已在 GenerationHandler 同步禁用）。
+            val canContinueMessage = message.parts.none { it is UIMessagePart.ServerTool }
             if (lastMessage && message.role == MessageRole.ASSISTANT) {
                 when {
                     message.finishIncomplete -> IncompleteOutputBanner(
                         text = stringResource(R.string.message_incomplete_output_stream_cut),
-                        onContinue = onContinue,
+                        onContinue = if (canContinueMessage) onContinue else null,
                         modifier = Modifier.fillMaxWidth(),
                     )
 
                     isOutputLimitTruncation(message.finishReason) -> IncompleteOutputBanner(
                         text = stringResource(R.string.message_incomplete_output_limit),
-                        onContinue = onContinue,
+                        onContinue = if (canContinueMessage) onContinue else null,
                         modifier = Modifier.fillMaxWidth(),
                     )
 

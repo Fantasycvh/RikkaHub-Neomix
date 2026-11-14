@@ -52,4 +52,11 @@ data class UsageRecordEntity(
     val completionTokens: Int,
     @ColumnInfo("cached_tokens")
     val cachedTokens: Int,
+    /**
+     * 按页计费调用的成功页数（DeepSeek OCR：¥1.5/千页，按成功 page_count）。
+     * 非 OCR 行恒 0；0-token 但 page_count>0 的行**仍然入账**——按页计费的费用
+     * 与 token 无关，见 [app.androidrik.rikkahub.data.ai.UsageRecorder.recordOcrPages]。
+     */
+    @ColumnInfo(name = "page_count", defaultValue = "0")
+    val pageCount: Int = 0,
 )

@@ -795,13 +795,20 @@ class GenerationHandler(
                     // - 撞输出上限（finishReason=length 等）：模型确实写满了配额，续写多半是
                     //   用户想要的长文；但连烧 3 轮的成本由用户承担 ⇒ **默认只提示、由用户手动继续**
                     //   （设置里可开自动，见 RetrySetting.autoContinueOnLengthTruncation）。
-                    val continueHint = autoContinueHintFor(
-                        finishIncomplete = last?.finishIncomplete == true,
-                        finishReason = last?.finishReason,
-                        autoContinueOnLengthTruncation =
-                            (provider.retryOption ?: settings.retrySetting).autoContinueOnLengthTruncation,
-                        alreadyContinued = autoContinuations,
-                    )
+                    // DeepSeek 内置 web tools 官方约束（配料 01 §8 W10）：用过内置工具的回复
+                    // **不能续写**（续写请求 400）。本轮出现过 ServerTool 时直接放弃自动续写。
+                    val usedServerTool = last?.parts?.any { it is UIMessagePart.ServerTool } == true
+                    val continueHint = if (usedServerTool) {
+                        null
+                    } else {
+                        autoContinueHintFor(
+                            finishIncomplete = last?.finishIncomplete == true,
+                            finishReason = last?.finishReason,
+                            autoContinueOnLengthTruncation =
+                                (provider.retryOption ?: settings.retrySetting).autoContinueOnLengthTruncation,
+                            alreadyContinued = autoContinuations,
+                        )
+                    }
                     if (continueHint != null && autoContinuations < CONTINUE_LIMIT) {
                         autoContinuations++
                         pendingRecoveryHint = continueHint

@@ -275,6 +275,8 @@ private fun BuiltInTools.toWebDto(): WebBuiltInToolDto = WebBuiltInToolDto(
         BuiltInTools.Search -> "search"
         BuiltInTools.UrlContext -> "url_context"
         BuiltInTools.ImageGeneration -> "image_generation"
+        BuiltInTools.DeepSeekWebSearch -> "deepseek_web_search"
+        BuiltInTools.DeepSeekReadUrl -> "deepseek_read_url"
     }
 )
 

@@ -200,6 +200,8 @@ private fun parseBuiltInTool(tool: String): BuiltInTools {
         "search" -> BuiltInTools.Search
         "url_context", "url-context", "urlcontext" -> BuiltInTools.UrlContext
         "image_generation", "image-generation", "imagegeneration" -> BuiltInTools.ImageGeneration
+        "deepseek_web_search", "deepseek-web-search", "deepseekwebsearch" -> BuiltInTools.DeepSeekWebSearch
+        "deepseek_read_url", "deepseek-read-url", "deepseekreadurl" -> BuiltInTools.DeepSeekReadUrl
         else -> throw BadRequestException("Unsupported built-in tool")
     }
 }

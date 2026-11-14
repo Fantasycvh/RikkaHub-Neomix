@@ -12,6 +12,7 @@ import app.androidrik.ai.core.TOOL_NO_APPROVAL
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.hasBuiltInSearch
 import app.androidrik.ai.util.ToolSchemaSize
 import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
@@ -43,12 +44,14 @@ private const val TAG = "ChatToolFactory"
 /**
  * 是否注册外挂（客户端）搜索工具。
  *
- * 模型自带内置搜索（`BuiltInTools.Search`，如 Gemini / GPT 原生搜索）时不再叠加，
+ * 模型自带内置搜索（Gemini/GPT 的 `BuiltInTools.Search` 或 DeepSeek 的
+ * `BuiltInTools.DeepSeekWebSearch`，见 [Model.hasBuiltInSearch]）时不再叠加，
  * 否则会同时下发两套搜索能力——既浪费 schema 预算，也可能让两套搜索冲突
- * （上游 `aac6e963` / #1666「统一内置搜索与外挂搜索行为」）。
+ * （上游 `aac6e963` / #1666「统一内置搜索与外挂搜索行为」）；
+ * 对 DeepSeek 内置搜索还意味着**双重计费**（内置与外挂各按 ¥5/千次叠加）。
  */
 internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
-    return assistant.enableWebSearch && BuiltInTools.Search !in model.tools
+    return assistant.enableWebSearch && !model.hasBuiltInSearch
 }
 
 /**

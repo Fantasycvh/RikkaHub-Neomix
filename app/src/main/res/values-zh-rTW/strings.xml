@@ -1320,6 +1320,10 @@
   <string name="setting_page_built_in_tools_search_desc">啟用 Google 搜尋整合</string>
   <string name="setting_page_built_in_tools_url_context">URL 上下文</string>
   <string name="setting_page_built_in_tools_url_context_desc">啟用 URL 內容處理</string>
+  <string name="setting_page_built_in_tools_deepseek_web_search">DeepSeek 網路搜尋</string>
+  <string name="setting_page_built_in_tools_deepseek_web_search_desc">啟用 DeepSeek 伺服器端網路搜尋（按搜尋次數計費，與 token 分開計）</string>
+  <string name="setting_page_built_in_tools_deepseek_read_url">DeepSeek 閱讀連結</string>
+  <string name="setting_page_built_in_tools_deepseek_read_url_desc">啟用 DeepSeek 伺服器端讀取連結內文（按成功擷取的網頁數計費）</string>
   <string name="setting_page_chat_storage">聊天記錄儲存</string>
   <string name="setting_page_chat_storage_desc">%1$d 個檔案，%2$.2f MB</string>
   <string name="setting_page_code_display_settings">程式碼顯示</string>
@@ -3203,4 +3207,23 @@
   <string name="chat_tree_fork_here">在此開新時間線</string>
   <string name="chat_tree_candidates_count">%1$d 個候選</string>
   <string name="chat_tree_subtree_count">下方 %1$d 條</string>
+  <string name="tts_config_deepseek_api_key_desc">DeepSeek API 金鑰（與聊天/搜尋同一把 Key）</string>
+  <string name="tts_config_deepseek_voice_desc">音色；語種按文字自動判定，不支援語速控制</string>
+  <string name="tts_config_deepseek_format_desc">wav 可直接播放；pcm 是裸 16-bit 單聲道 24kHz 流</string>
+  <string name="tts_config_deepseek_filter_markdown_desc">由伺服器先過濾 Markdown 再合成（本倉朗讀前已本地過濾）</string>
+  <string name="setting_asr_configure_deepseek_api_key_desc">DeepSeek API 金鑰（與聊天/搜尋同一把 Key）；語種自動判定</string>
+  <string name="setting_asr_configure_deepseek_base_url_desc">DeepSeek API 位址</string>
+  <string name="setting_asr_configure_deepseek_sample_rate_desc">錄音取樣率（支援 8000-48000 Hz）</string>
+  <string name="setting_asr_configure_deepseek_segment_desc">自動分段間隔；伺服器單檔限 120 秒 / 8 MiB，0 = 僅停止時整體上傳</string>
+  <string name="setting_model_page_ocr_backend">OCR 後端</string>
+  <string name="setting_model_page_ocr_backend_desc">純文字模型如何讀取圖片/文件內容。兩種後端分開計費，不自動回退。</string>
+  <string name="setting_model_page_ocr_backend_model">視覺模型</string>
+  <string name="setting_model_page_ocr_backend_deepseek">DeepSeek OCR</string>
+  <string name="setting_model_page_ocr_deepseek_purpose">辨識模式</string>
+  <string name="setting_model_page_ocr_deepseek_purpose_desc">文字：純文字文件直接抽取（不計費）。版面：所有文件逐頁辨識並輸出座標。按成功頁數計費。</string>
+  <string name="setting_model_page_ocr_deepseek_purpose_text">文字</string>
+  <string name="setting_model_page_ocr_deepseek_purpose_rich">版面</string>
+  <string name="setting_model_page_ocr_deepseek_include_layout">保留版面座標</string>
+  <string name="setting_model_page_ocr_deepseek_include_layout_desc">在 OCR 輸出裡保留 ref/box 版面座標標記（實驗性）</string>
+  <string name="setting_model_page_ocr_deepseek_privacy_notice">使用 DeepSeek OCR 時，檔案內容會上傳到 DeepSeek 伺服器，按成功頁數計費。</string>
 </resources>

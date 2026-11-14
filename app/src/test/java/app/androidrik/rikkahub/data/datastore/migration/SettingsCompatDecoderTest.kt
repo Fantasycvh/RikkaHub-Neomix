@@ -57,6 +57,31 @@ class SettingsCompatDecoderTest {
         assertEquals(listOf("ttsProviders[0] (volcengine)"), result.droppedEntries)
     }
 
+    @Test fun unknownAsrProvidersAreSkippedAndSelectionCleared() {
+        // ASR 与 TTS 同款降级（配料 04 P0-2）：未知类型只丢该条，选中项被丢则清空选择
+        // （null = 未选择，读路径如实提示，不静默回退到别的可能计费的 provider）。
+        // 注意用 future_asr 而非 deepseek——后者在本仓落地后会变成已知类型。
+        val droppedId = "22222222-2222-4222-8222-222222222222"
+        val keptId = "33333333-3333-4333-8333-333333333333"
+        val result = decode("""{"asrProviders":[
+            {"type":"future_asr","id":"$droppedId"},
+            {"type":"mimo","id":"$keptId"}
+        ],"selectedASRProviderId":"$droppedId"}""")
+        assertEquals(1, result.settings.asrProviders.size)
+        assertNull(result.settings.selectedASRProviderId)
+        assertEquals(listOf("asrProviders[0] (future_asr)"), result.droppedEntries)
+    }
+
+    @Test fun supportedAsrProviderRoundTripsWithSelection() {
+        val keptId = "44444444-4444-4444-8444-444444444444"
+        val result = decode("""{"asrProviders":[{"type":"mimo","id":"$keptId"}],
+            "selectedASRProviderId":"$keptId"}""")
+        assertEquals(1, result.settings.asrProviders.size)
+        assertTrue(result.droppedEntries.isEmpty())
+        // Uuid 序列化形式与输入一致即证明选择未被误清
+        assertTrue(JsonInstant.encodeToString(Settings.serializer(), result.settings).contains(keptId))
+    }
+
     @Test fun migrationAndDecoderHandleUpstreamNamespacesAndRetiredSearch() {
         val migrated = SettingsJsonMigrator.migrate("""{
             "providers":[{"type":"grok"},{"type":"google"}],
