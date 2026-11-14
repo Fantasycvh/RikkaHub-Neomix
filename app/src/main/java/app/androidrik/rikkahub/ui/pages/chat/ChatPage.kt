@@ -463,6 +463,12 @@ private fun ChatPageContent(
      */
     fun doRegenerate(message: UIMessage, regenerateScope: ChatService.RegenerateScope) {
         vm.regenerateAtMessage(message, regenerateScope)
+        // 重新生成也要贴底跟随（与发送路径同语义）：贴底闩锁只在「拖动到底」或
+        // 「Bottom 滚动请求」时置 true——用户拖动过（比如滚上来点重新生成按钮）闩锁
+        // 就被清了，此前 regen 没有任何滚动请求 ⇒ 生成中内容增长视口永远停在原地。
+        // scrollToBottomAfter 带 waitForChange：等最后一个消息 id 变化（新候选节点出现）
+        // 才跳，不会跳到尚在显示的旧内容上。
+        chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
     }
     var previewMode by rememberSaveable { mutableStateOf(false) }
     val hazeState = rememberRecoverableHazeState()
@@ -746,6 +752,9 @@ private fun ChatPageContent(
                 onContinue = {
                     // 续写是「同一条消息往下写」，无下游语义问题（只作用于末条）
                     vm.continueMessage()
+                    // 续写往**同一条消息**追加内容（id 不变），scrollToBottomAfter 的
+                    // waitForChange（等 id 变化）永远等不到 ⇒ 用立即贴底请求重立闩锁
+                    chatListScrollController.scrollToBottom()
                 },
                 onEdit = {
                     editKeepFollowing = true // 每次进入编辑默认「保留后续」（最小惊讶）
