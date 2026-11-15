@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.datastore.DEFAULT_ASSISTANTS_IDS
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.ui.pages.assistant.detail.appendAssistant
@@ -24,6 +25,7 @@ class AssistantVM(
     private val conversationRepo: ConversationRepository,
     private val filesManager: FilesManager,
     private val memoryFiles: MemoryFileRepository,
+    private val appScope: AppScope,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settingsFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, Settings.dummy())
@@ -42,7 +44,10 @@ class AssistantVM(
     }
 
     fun removeAssistant(assistant: Assistant) {
-        viewModelScope.launch {
+        // 删除链必须跑进程级 AppScope：settingsStore.update 在会话/附件清理**之前**，
+        // 走 viewModelScope 的话，删完助手一离开本页 onCleared 就把协程取消——
+        // 恰好砍在最后（最慢）的会话+附件删除步上，残留全部会话与附件且无重试入口。
+        appScope.launch {
             cleanupAssistantFiles(assistant)
 
             val settings = settings.value
