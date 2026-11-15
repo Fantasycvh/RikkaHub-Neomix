@@ -6,6 +6,8 @@ import androidx.paging.PagingData
 import androidx.paging.PagingSource
 import androidx.paging.map
 import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -372,33 +374,37 @@ class ConversationRepository(
         return conversation
     }
 
-    private suspend fun loadConversationSparseOrFull(uuid: Uuid): Conversation? {
-        val entity = conversationDAO.getConversationById(uuid.toString()) ?: return null
-        val summaries = nodeStore.loadNodeSummaries(entity.id)
-        val checkpoints = loadCompressionSummaries(entity.id)
-        suspend fun fullLoad(): Conversation =
-            conversationEntityToConversation(entity, loadMessageNodes(entity.id), checkpoints)
-        if (summaries.isEmpty() || checkpoints.isEmpty()) return fullLoad()
-        val leafId = entity.activeLeafNodeId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-        val boundaryId = checkpoints.last().boundaryNodeId
-            ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
-            ?: return fullLoad()
-        if (boundaryId !in summaryPathIds(summaries, leafId)) return fullLoad()
-        val boundaryNode = nodeStore.loadNodeBodies(entity.id, listOf(boundaryId))[boundaryId]
-            ?: return fullLoad()
-        if (boundaryNode.messages.any { it.isContextCheckpoint }) return fullLoad()
-        val window = buildConversationLoadWindow(
-            summaries = summaries,
-            activeLeafNodeId = leafId,
-            boundaryNodeId = boundaryId,
-        )
-        if (window.loadedIds.isEmpty()) return fullLoad()
-        val bodies = nodeStore.loadNodeBodies(entity.id, window.loadedIds)
-        val nodes = window.loadedIds.mapNotNull { bodies[it] }
-        if (nodes.isEmpty()) return fullLoad()
-        return conversationEntityToConversation(entity, nodes, checkpoints)
-            .copy(nodeSummaries = summaries)
-    }
+    private suspend fun loadConversationSparseOrFull(uuid: Uuid): Conversation? =
+        // 打开会话由 ChatVM init（Main）触发。Room 的 suspend 查询本身在查询线程执行，但续体与
+        // 摘要行映射、路径/窗口计算会回到调用者线程；7000 行摘要的 O(n) 处理占住主线程既拖慢首帧，
+        // 也让 wall time 混入主线程排队。整段挪到 Default，主线程只负责最后的状态写入。
+        withContext(Dispatchers.Default) {
+            val entity = conversationDAO.getConversationById(uuid.toString()) ?: return@withContext null
+            val summaries = nodeStore.loadNodeSummaries(entity.id)
+            val checkpoints = loadCompressionSummaries(entity.id)
+            suspend fun fullLoad(): Conversation =
+                conversationEntityToConversation(entity, loadMessageNodes(entity.id), checkpoints)
+            if (summaries.isEmpty() || checkpoints.isEmpty()) return@withContext fullLoad()
+            val leafId = entity.activeLeafNodeId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+            val boundaryId = checkpoints.last().boundaryNodeId
+                ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+                ?: return@withContext fullLoad()
+            if (boundaryId !in summaryPathIds(summaries, leafId)) return@withContext fullLoad()
+            val boundaryNode = nodeStore.loadNodeBodies(entity.id, listOf(boundaryId))[boundaryId]
+                ?: return@withContext fullLoad()
+            if (boundaryNode.messages.any { it.isContextCheckpoint }) return@withContext fullLoad()
+            val window = buildConversationLoadWindow(
+                summaries = summaries,
+                activeLeafNodeId = leafId,
+                boundaryNodeId = boundaryId,
+            )
+            if (window.loadedIds.isEmpty()) return@withContext fullLoad()
+            val bodies = nodeStore.loadNodeBodies(entity.id, window.loadedIds)
+            val nodes = window.loadedIds.mapNotNull { bodies[it] }
+            if (nodes.isEmpty()) return@withContext fullLoad()
+            conversationEntityToConversation(entity, nodes, checkpoints)
+                .copy(nodeSummaries = summaries)
+        }
 
     /** 按 id 补齐正文（稀疏加载的 hydrate；返回顺序不保证，调用方按摘要序重排）。 */
     suspend fun loadNodesByIds(conversationId: Uuid, nodeIds: Collection<Uuid>): List<MessageNode> =
