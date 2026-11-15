@@ -170,15 +170,6 @@ fun ImportExportTab(
                 pendingLocalRestore = tempFile to inspection
             }
 
-            ImportFormat.CHERRY_STUDIO -> {
-                try {
-                    vm.restoreFromCherryStudio(tempFile)
-                } finally {
-                    tempFile.delete()
-                }
-                finishImport(format)
-            }
-
             ImportFormat.CHATBOX -> {
                 // Chatbox 备份 v2（zip）：需先选**目标助手**（会话归属）→ 交给对话框，暂不删临时文件
                 pendingChatboxFile = tempFile

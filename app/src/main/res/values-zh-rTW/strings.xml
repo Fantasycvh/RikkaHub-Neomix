@@ -296,7 +296,6 @@
   <string name="backup_page_exporting">正在導出...</string>
   <string name="backup_page_files">檔案</string>
   <string name="backup_page_import_chatbox_desc">匯入 ChatBox 提供者設定和完整聊天記錄</string>
-  <string name="backup_page_import_cherry_studio_desc">匯入 Cherry Studio 提供者設定</string>
   <string name="backup_page_import_desc">導入本地備份檔案</string>
   <string name="backup_page_status">備份狀態</string>
   <string name="backup_page_import_export">本地</string>
@@ -322,7 +321,6 @@
   <string name="backup_page_import_target_assistant_message">匯入的對話將歸屬到該助手。</string>
   <string name="backup_page_import_chatbox_done">已匯入 %1$s 個對話、%2$s 個提供商。</string>
   <string name="backup_page_import_from_chatbox">從ChatBox導入</string>
-  <string name="backup_page_import_from_cherry_studio">從Cherry Studio導入</string>
   <string name="backup_page_import_from_deepseek">從 DeepSeek 匯入</string>
   <string name="backup_page_import_deepseek_desc">匯入從 deepseek.com 匯出的聊天記錄（.zip）</string>
   <string name="backup_page_import_deepseek_title">匯入 DeepSeek 匯出包</string>

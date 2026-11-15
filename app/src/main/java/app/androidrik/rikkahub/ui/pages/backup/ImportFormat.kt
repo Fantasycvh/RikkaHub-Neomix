@@ -27,9 +27,6 @@ enum class ImportFormat {
     /** Chatbox 备份 v2（zip：providers + 多会话 + 图片资源）。 */
     CHATBOX,
 
-    /** Cherry Studio 备份（**仅 providers**，不含会话）。 */
-    CHERRY_STUDIO,
-
     /** DeepSeek 官方导出（多个会话，含思考链；图片按条目存在性尽力还原）。 */
     DEEPSEEK,
 }
@@ -41,8 +38,8 @@ enum class ImportFormat {
  * @param titleRes 卡片标题。
  * @param descRes 卡片副标题。
  * @param needsAssistant 是否需要用户**先选目标助手**再导入。
- *   `true` 的两个格式都涉及"会话归属"；`LOCAL_BACKUP` 是整库覆盖、`CHERRY_STUDIO` 无会话，
- *   结构上都不适用按会话归属（这也是"三处共用助手选择"实际只能落到两处的原因）。
+ *   `true` 的几个格式都涉及"会话归属"；`LOCAL_BACKUP` 是整库覆盖，结构上不适用按会话归属
+ *   （这也是"三处共用助手选择"实际只能落到多处的原因）。
  * @param needsPrePickConfirm 是否需要**在选文件之前**先弹一次确认。
  *   仅整库恢复需要——它覆盖当前全部数据且不可逆，先确认再让用户去挑文件。
  * @param needsRestartDialog 完成后是否提示重启。
@@ -96,16 +93,6 @@ val ImportFormatSpecs: List<ImportFormatSpec> = listOf(
         needsRestartDialog = true,
     ),
     ImportFormatSpec(
-        format = ImportFormat.CHERRY_STUDIO,
-        mimes = listOf("application/zip"),
-        titleRes = R.string.backup_page_import_from_cherry_studio,
-        descRes = R.string.backup_page_import_cherry_studio_desc,
-        // 只导入 providers，无会话 → 无需选助手
-        needsAssistant = false,
-        needsPrePickConfirm = false,
-        needsRestartDialog = true,
-    ),
-    ImportFormatSpec(
         format = ImportFormat.DEEPSEEK,
         mimes = listOf("application/zip"),
         titleRes = R.string.backup_page_import_from_deepseek,
@@ -125,7 +112,8 @@ fun specOf(format: ImportFormat): ImportFormatSpec =
 /**
  * 合并 providers：**导入的排在前面**，当前的接在后面。
  *
- * 抽出来的原因：chatbox 与 cherry 两处原本各写一遍同样的 `imported + current`。
+ * 抽出来的原因：chatbox 与 cherry 两处原本各写一遍同样的 `imported + current`
+ * （cherry 导入已移除，现仅 chatbox 使用）。
  * 顺序有意义——列表靠前者在 UI 上更靠前，且同名 provider 的解析按首个命中。
  *
  * **有意不去重**：这是既有行为（重复导入同一文件会产生重复 provider 条目），

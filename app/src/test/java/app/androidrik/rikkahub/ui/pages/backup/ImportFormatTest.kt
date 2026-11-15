@@ -40,13 +40,13 @@ class ImportFormatTest {
     }
 
     @Test
-    fun `conversation and chatbox require an assistant while provider-only formats do not`() {
+    fun `conversation and chatbox require an assistant while whole backup does not`() {
         // 这两个格式会导入**会话**，必须由用户指定归属助手（chatbox 是本轮补上的缺口）
         assertTrue(specOf(ImportFormat.CONVERSATION).needsAssistant)
         assertTrue(specOf(ImportFormat.CHATBOX).needsAssistant)
-        // 整库覆盖与 cherry（仅 providers，无会话）结构上不适用"按会话归属"
+        assertTrue(specOf(ImportFormat.DEEPSEEK).needsAssistant)
+        // 整库覆盖结构上不适用"按会话归属"
         assertFalse(specOf(ImportFormat.LOCAL_BACKUP).needsAssistant)
-        assertFalse(specOf(ImportFormat.CHERRY_STUDIO).needsAssistant)
     }
 
     @Test
@@ -60,10 +60,9 @@ class ImportFormatTest {
 
     @Test
     fun `restart is required for db-level and provider imports but not single conversation`() {
-        // 整库/chatbox/cherry 都改了 DB 或设置 → 提示重启
+        // 整库/chatbox 都改了设置或会话库 → 提示重启
         assertTrue(specOf(ImportFormat.LOCAL_BACKUP).needsRestartDialog)
         assertTrue(specOf(ImportFormat.CHATBOX).needsRestartDialog)
-        assertTrue(specOf(ImportFormat.CHERRY_STUDIO).needsRestartDialog)
         // 单会话导入不需重启（会话已直接落库并可立即查看）
         assertFalse(specOf(ImportFormat.CONVERSATION).needsRestartDialog)
     }
@@ -77,9 +76,8 @@ class ImportFormatTest {
     }
 
     @Test
-    fun `chatbox uses json and cherry uses zip`() {
-        assertEquals(listOf("application/json"), specOf(ImportFormat.CHATBOX).mimes)
-        assertEquals(listOf("application/zip"), specOf(ImportFormat.CHERRY_STUDIO).mimes)
+    fun `chatbox only accepts zip since backup v2`() {
+        assertEquals(listOf("application/zip"), specOf(ImportFormat.CHATBOX).mimes)
     }
 
     @Test

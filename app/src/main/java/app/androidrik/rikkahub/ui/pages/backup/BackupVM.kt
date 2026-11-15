@@ -22,7 +22,6 @@ import app.androidrik.rikkahub.data.datastore.WebDavConfig
 import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.sync.importer.ChatboxImporter
-import app.androidrik.rikkahub.data.sync.importer.CherryStudioProviderImporter
 import app.androidrik.rikkahub.data.sync.importer.DeepSeekImporter
 import app.androidrik.rikkahub.data.sync.importer.DeepSeekImportResult
 import app.androidrik.rikkahub.data.sync.webdav.WebDavBackupItem
@@ -707,22 +706,6 @@ class BackupVM(
             nonImageAttachments = result.nonImageAttachments,
             restoredImages = result.restoredImages,
             missingImages = result.missingImages,
-        )
-    }
-
-    fun restoreFromCherryStudio(file: File) {
-        val importProviders = CherryStudioProviderImporter.importProviders(file)
-
-        if (importProviders.isEmpty()) {
-            throw IllegalArgumentException("No importable providers found in Cherry Studio backup")
-        }
-
-        Log.i(TAG, "restoreFromCherryStudio: import ${importProviders.size} providers: $importProviders")
-
-        updateSettings(
-            settings.value.copy(
-                providers = mergeProviders(settings.value.providers, importProviders),
-            )
         )
     }
 
