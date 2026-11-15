@@ -326,25 +326,30 @@ fun ChatMessage(
                 message.parts.isEmptyUIMessage().not()
             }
 
-            AnimatedVisibility(
-                visible = showActions,
-                enter = slideInVertically { it / 2 } + fadeIn(),
-                exit = slideOutVertically { it / 2 } + fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier.animateContentSize()
+            if (!showActions && !lastMessage) {
+                // An empty historical candidate still needs a way to switch back.
+                ChatMessageBranchSelector(node = node, onUpdate = onUpdate)
+            } else {
+                AnimatedVisibility(
+                    visible = showActions,
+                    enter = slideInVertically { it / 2 } + fadeIn(),
+                    exit = slideOutVertically { it / 2 } + fadeOut()
                 ) {
-                    ChatMessageActionButtons(
-                        message = message,
-                        onRegenerate = onRegenerate,
-                        node = node,
-                        onUpdate = onUpdate,
-                        onOpenActionSheet = {
-                            showActionsSheet = true
-                        },
-                        onTranslate = onTranslate,
-                        onClearTranslation = onClearTranslation
-                    )
+                    Column(
+                        modifier = Modifier.animateContentSize()
+                    ) {
+                        ChatMessageActionButtons(
+                            message = message,
+                            onRegenerate = onRegenerate,
+                            node = node,
+                            onUpdate = onUpdate,
+                            onOpenActionSheet = {
+                                showActionsSheet = true
+                            },
+                            onTranslate = onTranslate,
+                            onClearTranslation = onClearTranslation
+                        )
+                    }
                 }
             }
 

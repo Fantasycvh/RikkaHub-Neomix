@@ -35,6 +35,7 @@ import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.UIMessageAnnotation
@@ -131,6 +132,12 @@ class ChatLazyRenderingInstrumentedTest {
                     LocalClipboard provides clipboardBackend) {
                     ChatList(PaddingValues(), conversation.value, state, loading = loading.value, previewMode = false,
                         settings = settings.value, hazeState = remember { HazeState() }, glassHazeState = remember { HazeState() },
+                        onUpdateMessage = { updated ->
+                            val current = conversation.value
+                            conversation.value = current.copy(messageNodes = current.messageNodes.map { node ->
+                                if (node.id == updated.id) updated else node
+                            })
+                        },
                         scrollController = if (internalController) null else controller)
                 }
             }
@@ -301,6 +308,27 @@ class ChatLazyRenderingInstrumentedTest {
         awaitClipboard(alternate.toText())
         assertEquals(text, original.toText())
         assertTrue(rows().none { it.config.getOrNull(SemanticsProperties.TestTag)?.contains(":${original.id}:text:") == true })
+    }
+
+    @Test fun canSwitchBackFromEmptyHistoricalCandidate() {
+        val original = UIMessage.assistant("Original historical reply")
+        val blank = UIMessage.assistant("").copy(
+            parts = emptyList(),
+            usage = TokenUsage(promptTokens = 37, completionTokens = 5),
+        )
+        val reply = MessageNode(messages = listOf(original, blank))
+        val nextTurn = UIMessage.user("Following question").toMessageNode().copy(parentId = reply.id)
+        mountList(listOf(reply, nextTurn), expectSplit = false)
+
+        compose.onNodeWithText("Original historical reply").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Next").performClick()
+        compose.onNodeWithText("Original historical reply").assertDoesNotExist()
+        compose.onNodeWithText("37 tokens").assertIsDisplayed()
+        compose.onNodeWithText("2/2").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Prev").performClick()
+        compose.onNodeWithText("1/2").assertIsDisplayed()
+        compose.onNodeWithText("Original historical reply").assertIsDisplayed()
+        compose.onNodeWithText("Following question").assertIsDisplayed()
     }
 
     @Test fun documentSelectAllCopiesOffscreenTextWithoutPinningAllItems() {

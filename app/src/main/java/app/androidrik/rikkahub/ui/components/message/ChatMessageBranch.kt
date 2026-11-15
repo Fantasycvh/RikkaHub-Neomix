@@ -49,6 +49,12 @@ fun ChatMessageBranchSelector(
     modifier: Modifier = Modifier,
     onUpdate: (MessageNode) -> Unit,
 ) {
+    val branch = LocalChatBranchController.current
+    val siblings = remember(branch, node.id, node.parentId) {
+        branch?.nodes?.filter { it.parentId == node.parentId }.orEmpty()
+    }
+    if (node.messages.size <= 1 && siblings.size <= 1) return
+
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
@@ -113,10 +119,6 @@ fun ChatMessageBranchSelector(
         }
 
         // 时间线切换（兄弟分支）：仅当该节点存在兄弟（含分支点两子树各一）时渲染
-        val branch = LocalChatBranchController.current
-        val siblings = remember(branch, node.id, node.parentId) {
-            branch?.nodes?.filter { it.parentId == node.parentId }.orEmpty()
-        }
         if (siblings.size > 1) {
             val actionColor = MaterialTheme.colorScheme.onSurfaceVariant
             val currentIndex = siblings.indexOfFirst { it.id == node.id }.coerceAtLeast(0)
