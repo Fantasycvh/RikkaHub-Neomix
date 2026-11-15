@@ -53,8 +53,8 @@ import kotlin.uuid.Uuid
  * 稀疏会话用 [sparseTree]（SQL 侧抽取的轻量树信息）渲染，打开面板不再全量载入正文；
  * 这类行没有正文，分叉/剪枝入口隐藏（需先加载该节点）。
  *
- * 宿主纪律：Column + verticalScroll，节点树在组合期一次性展开成 (node, depth) 行表
- * （节点集小、且与 LazyList 的 TextField 宿主坑族无关）。
+ * 宿主纪律：行表在组合期一次性展开成 (row, depth)，但用 LazyColumn 只组合可见行
+ * （数千节点一次性组合会 ANR）；面板内无 TextField，不涉 IME 宿主坑族。
  */
 @Composable
 fun ConversationTreeSheet(
@@ -64,6 +64,7 @@ fun ConversationTreeSheet(
     onSwitchToNode: (Uuid) -> Unit,
     onForkBranchAt: (UIMessage) -> Unit,
     onDeleteBranch: (MessageNode) -> Unit,
+    switching: Boolean = false,
 ) {
     val maxSheetHeight = LocalWindowInfo.current.containerDpSize.height * 0.7f
     val displayRows = remember(conversation.messageNodes, conversation.isSparse, sparseTree) {
@@ -123,6 +124,23 @@ fun ConversationTreeSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
+            if (switching) {
+                // 分支切换中（稀疏会话可能触发全量补齐，约 0.5 s）：留在面板里给反馈
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                    Text(
+                        text = stringResource(R.string.chat_tree_switching),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (rows.isEmpty()) {
                 // 稀疏会话的首帧：树信息查询还没回来（全量会话不会走到这里）
                 if (conversation.isSparse) {
@@ -151,9 +169,9 @@ fun ConversationTreeSheet(
                             onPath = row.id in pathIds,
                             isLeaf = conversation.activeLeafNodeId == row.id,
                             subtreeMessageCount = subtreeMessageCounts[row.id] ?: row.candidateCount,
-                            onSwitch = { onSwitchToNode(row.id) },
-                            onFork = row.node?.let { node -> { onForkBranchAt(node.currentMessage) } },
-                            onDelete = row.node?.let { node -> { onDeleteBranch(node) } },
+                            onSwitch = { if (!switching) onSwitchToNode(row.id) },
+                            onFork = row.node?.let { node -> { if (!switching) onForkBranchAt(node.currentMessage) } },
+                            onDelete = row.node?.let { node -> { if (!switching) onDeleteBranch(node) } },
                         )
                     }
                 }

@@ -483,10 +483,22 @@ class ChatVM(
         chatService.regenerateAtMessage(_conversationId, message, scope)
     }
 
+    private val _switchingBranch = MutableStateFlow(false)
+
+    /** 分支切换进行中（树面板据此显示进度，并在完成后收起）。 */
+    val switchingBranch: StateFlow<Boolean> = _switchingBranch.asStateFlow()
+
     /** 分支切换（时间线）：把激活叶子切到 [nodeId] 子树的最近更新叶子（树形分支 P1）。 */
     fun switchMessageBranch(nodeId: Uuid) {
+        if (_switchingBranch.value) return
+        // 同步置位：调用方（树面板）靠 true→false 的翻转决定何时收起并定位
+        _switchingBranch.value = true
         viewModelScope.launch {
-            chatService.switchMessageBranch(_conversationId, nodeId)
+            try {
+                chatService.switchMessageBranch(_conversationId, nodeId)
+            } finally {
+                _switchingBranch.value = false
+            }
         }
     }
 

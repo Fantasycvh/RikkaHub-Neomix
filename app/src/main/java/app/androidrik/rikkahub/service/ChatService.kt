@@ -3570,8 +3570,10 @@ class ChatService(
         conversationId: Uuid,
         nodeId: Uuid,
     ) {
-        // 分支切换要算「子树最近更新叶子」，必须看到整棵树；稀疏窗口先全量补齐。
-        if (getConversationFlow(conversationId).value.isSparse) hydrateAll(conversationId)
+        // 分支切换要算「子树最近更新叶子」，必须看到完整子树。稀疏会话先判断目标子树是否
+        // 整体在内存窗口内（如点击窗口内节点）：在就直接用内存树，避免无谓的全量载入。
+        val state = getConversationFlow(conversationId).value
+        if (state.isSparse && !state.isSubtreeFullyLoaded(nodeId)) hydrateAll(conversationId)
         val currentConversation = getConversationFlow(conversationId).value
         val node = currentConversation.messageNodes.firstOrNull { it.id == nodeId }
             ?: throw NotFoundException("Message node not found")

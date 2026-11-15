@@ -353,6 +353,18 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
   7000 行正常渲染、无 ANR；点选未加载分支触发全量补齐 492 ms，界面不卡；全量会话树面板
   分叉/剪枝图标正常、无 ANR。
 
+### 9.5 分支切换：窗口内跳过补齐 + 进度反馈（2026-11-15）
+
+- **① 子树在窗口内时不补齐**：`Conversation.isSubtreeFullyLoaded(rootId)` 用摘要的 `parentId`
+  算后代集合，全部命中已加载节点才为 true；`switchMessageBranch` 仅在不成立时才
+  `hydrateAll`。单测覆盖（窗口只载入 c/d 时 c/d 的子树完整、b/a 不完整）。
+- **② 切换期间保留面板并显示进度**：`ChatVM.switchingBranch` 同步置位，树面板顶部显示
+  「正在切换分支…」，切换完成由页面 `LaunchedEffect` 收起面板并定位；切换中行点击/分叉/剪枝置灰。
+- **实测**：点老分支 → 全量补齐 569 ms，进度提示可见，完成后面板收起并定位到所选行。
+- **第 3 层（按路径 hydrate）评估结论：不做**。理由：链条会话的路径长度 ≈ 节点总数（无收益）；
+  发请求依赖内存完整路径（`pathNodes()`），片段化会送出残缺上下文；`latestLeafIdOfSubtree`
+  需要后代时间戳而摘要没有；切到压缩边界之前的分支会让检查点指纹失效，前缀仍需实体化。
+
 ## 十、测试数据与验证
 
 ### 10.1 夹具生成器

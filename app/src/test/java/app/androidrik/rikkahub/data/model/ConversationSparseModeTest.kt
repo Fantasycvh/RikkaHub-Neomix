@@ -61,6 +61,17 @@ class ConversationSparseModeTest {
     }
 
     @Test
+    fun `subtree fully loaded only when descendants are in memory`() {
+        val (conversation, all) = sparseConversation()
+        val (a, b, c, d) = all
+        // 窗口只载入 c、d：c 的子树完整，b（含 a 之外的后代）与 a 都不完整
+        assertTrue(conversation.isSubtreeFullyLoaded(c.id))
+        assertTrue(conversation.isSubtreeFullyLoaded(d.id))
+        assertFalse(conversation.isSubtreeFullyLoaded(b.id))
+        assertFalse(conversation.isSubtreeFullyLoaded(a.id))
+    }
+
+    @Test
     fun `sparse conversation keeps boundary checkpoint valid via summaries`() {
         val (conversation, _) = sparseConversation()
 

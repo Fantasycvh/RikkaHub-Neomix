@@ -215,6 +215,25 @@ data class Conversation(
         }
 
     /**
+     * [rootId] 的子树是否整体落在已加载正文里（稀疏会话判断「切分支是否需要全量补齐」）。
+     * 用摘要的 parentId 算后代集合，全部命中已加载节点才为 true；摘要缺失时按全量语义判断。
+     */
+    fun isSubtreeFullyLoaded(rootId: Uuid): Boolean {
+        val loaded = messageNodes.mapTo(HashSet()) { it.id }
+        if (rootId !in loaded) return false
+        if (nodeSummaries.isEmpty()) return true
+        val childrenByParent = nodeSummaries.groupBy { it.parentId }
+        val stack = ArrayDeque<Uuid>()
+        stack.addLast(rootId)
+        while (stack.isNotEmpty()) {
+            val id = stack.removeLast()
+            if (id !in loaded) return false
+            childrenByParent[id]?.forEach { stack.addLast(it.id) }
+        }
+        return true
+    }
+
+    /**
      * [frozenAnchors] 的解码视图：`null` = 未冻结，空集 = 冻结且当时无锚点。
      *
      * 计算属性（无 backing field）⇒ 不参与序列化。

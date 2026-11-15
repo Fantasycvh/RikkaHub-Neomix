@@ -490,6 +490,9 @@ private fun ChatPageContent(
     val workspaceRepository: WorkspaceRepository = koinInject()
     // 树面板的轻量树信息（稀疏会话）；全量会话为空列表，面板按内存节点渲染
     val treeNodes by vm.treeNodes.collectAsStateWithLifecycle()
+    val switchingBranch by vm.switchingBranch.collectAsStateWithLifecycle()
+    // 树面板点选后保持打开、显示切换进度，切换完成再收起并定位
+    var pendingTreeSwitchNodeId by remember { mutableStateOf<Uuid?>(null) }
 
     /**
      * 执行重生成。scope B = **非破坏分支**（树形分支 P1）：旧时间线保留、新回复开新子树，
@@ -536,6 +539,14 @@ private fun ChatPageContent(
     // 会话树视图（树形分支 P2 §7.3）：顶栏菜单入口；剪枝确认待办挂在页面级
     var showTreeSheet by remember { mutableStateOf(false) }
     var treePruneConfirmFor by remember { mutableStateOf<MessageNode?>(null) }
+    // 树面板点选 → 切换分支完成后才收起面板并定位到该节点
+    LaunchedEffect(pendingTreeSwitchNodeId, switchingBranch) {
+        val nodeId = pendingTreeSwitchNodeId ?: return@LaunchedEffect
+        if (switchingBranch) return@LaunchedEffect
+        pendingTreeSwitchNodeId = null
+        showTreeSheet = false
+        chatListScrollController.scrollToMessage(nodeId)
+    }
     // 上下文容量面板 + 压缩参数对话框（压缩入口在面板里，参数界面与 + 菜单共用同一个）
     var showContextSheet by remember { mutableStateOf(false) }
     var showCompressDialog by remember { mutableStateOf(false) }
@@ -1066,15 +1077,15 @@ private fun ChatPageContent(
             ConversationTreeSheet(
                 conversation = conversation,
                 sparseTree = treeNodes,
+                switching = switchingBranch,
                 onDismissRequest = { showTreeSheet = false },
                 onSwitchToNode = { nodeId ->
-                    showTreeSheet = false
                     if (loadingJob != null) {
                         vm.showEditBlockedWhileGeneratingError()
                     } else {
+                        // 面板先留在原地显示切换进度，完成后由上面的 LaunchedEffect 收起并定位
+                        pendingTreeSwitchNodeId = nodeId
                         vm.switchMessageBranch(nodeId)
-                        // 锚点：滚到该子树根节点（quoteJump 管线兼容节点 id 寻址）
-                        chatListScrollController.scrollToMessage(nodeId)
                     }
                 },
                 onForkBranchAt = { message ->
