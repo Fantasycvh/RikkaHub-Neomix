@@ -2,11 +2,14 @@ package app.androidrik.rikkahub.ui.pages.backup.tabs
 
 import android.net.Uri
 import app.androidrik.rikkahub.ui.pages.backup.ConversationImportPreview
+import app.androidrik.rikkahub.ui.pages.backup.DeepSeekRestoreResult
 import app.androidrik.rikkahub.ui.pages.backup.ImportFormat
 import app.androidrik.rikkahub.ui.pages.backup.ImportFormatSpec
 import app.androidrik.rikkahub.ui.pages.backup.ImportFormatSpecs
 import app.androidrik.rikkahub.ui.pages.backup.specOf
 import app.androidrik.rikkahub.ui.pages.backup.components.ConversationImportConfirmDialog
+import app.androidrik.rikkahub.ui.pages.backup.components.DeepSeekImportConfirmDialog
+import app.androidrik.rikkahub.ui.pages.backup.components.DeepSeekImportResultDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.DuplicateImportRecord
 import app.androidrik.rikkahub.ui.pages.backup.components.ImportTargetAssistantDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.DowngradeQuarantineSection
@@ -84,6 +87,10 @@ fun ImportExportTab(
     var duplicateImportRecord by remember { mutableStateOf<DuplicateImportRecord?>(null) }
     // Chatbox 导入：已复制到本地的临时文件，等待用户选目标助手
     var pendingChatboxFile by remember { mutableStateOf<File?>(null) }
+    // DeepSeek 导出导入：临时文件（等待「助手 + 搜索轨迹」确认）/ 会话级进度 / 完成摘要
+    var pendingDeepSeekFile by remember { mutableStateOf<File?>(null) }
+    var deepSeekProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var deepSeekResult by remember { mutableStateOf<DeepSeekRestoreResult?>(null) }
     // 批次3 恢复预览：已巡检的本地备份（临时文件 + 巡检结果），等待用户在预览卡确认
     var pendingLocalRestore by remember { mutableStateOf<Pair<File, BackupInspection>?>(null) }
 
@@ -178,6 +185,11 @@ fun ImportExportTab(
                 pendingChatboxFile = tempFile
             }
 
+            ImportFormat.DEEPSEEK -> {
+                // 需先选目标助手 + 「保留搜索轨迹」→ 交给对话框，暂不删临时文件
+                pendingDeepSeekFile = tempFile
+            }
+
             ImportFormat.CONVERSATION -> {
                 // **先解析、不落库**：需先拿 sourceId 做重复检测、并让用户选目标助手，
                 // 确认后才提交（见设计稿 §十）。parse 已把附件读进内存，故可立即删临时文件。
@@ -217,6 +229,46 @@ fun ImportExportTab(
             )
             if (specOf(ImportFormat.CHATBOX).needsRestartDialog) onShowRestartDialog()
         } finally {
+            file.delete()
+        }
+    }
+
+    /**
+     * 目标助手与选项确定后真正执行 DeepSeek 导入。
+     *
+     * 全量成功走普通 toast；只要有任何「跳过/失败/丢弃」就弹摘要——这些是设计稿里
+     * 明确无法跨端还原的部分，不报出来用户会误以为导入有 bug。
+     */
+    suspend fun runDeepSeekImport(
+        file: File,
+        targetAssistantId: Uuid,
+        keepSearchTrails: Boolean,
+    ) {
+        try {
+            deepSeekProgress = 0 to 0
+            val result = vm.restoreFromDeepSeek(
+                file = file,
+                targetAssistantId = targetAssistantId,
+                keepSearchTrails = keepSearchTrails,
+                onProgress = { done, total -> deepSeekProgress = done to total },
+            )
+            val hasDetail = result.failedSessions > 0 ||
+                result.skippedExistingConversations > 0 ||
+                result.droppedFailedReplies > 0 ||
+                result.droppedSearchTrails > 0 ||
+                result.droppedTemplateResponses > 0 ||
+                result.droppedServiceTips > 0 ||
+                result.droppedReadLinks > 0 ||
+                result.droppedTokenUsageMessages > 0 ||
+                result.missingImages > 0 ||
+                result.nonImageAttachments > 0
+            if (hasDetail) {
+                deepSeekResult = result
+            } else {
+                toastSuccess()
+            }
+        } finally {
+            deepSeekProgress = null
             file.delete()
         }
     }
@@ -269,6 +321,21 @@ fun ImportExportTab(
         if (progress != null) {
             item {
                 BackupProgressRow(progress = progress, modifier = Modifier.padding(horizontal = 8.dp))
+            }
+        }
+
+        // DeepSeek 导入是**会话级**进度（字节数无意义）：已处理会话数 / 总数
+        deepSeekProgress?.let { (done, total) ->
+            item {
+                Text(
+                    text = if (total > 0) {
+                        stringResource(R.string.backup_page_import_deepseek_progress, done, total)
+                    } else {
+                        stringResource(R.string.backup_page_importing)
+                    },
+                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
             }
         }
 
@@ -378,6 +445,40 @@ fun ImportExportTab(
                 pendingChatboxFile = null
                 file.delete()
             },
+        )
+    }
+
+    // DeepSeek：目标助手 + 「保留搜索轨迹」确认
+    pendingDeepSeekFile?.let { file ->
+        DeepSeekImportConfirmDialog(
+            settings = settings,
+            onConfirm = { targetAssistantId, keepSearchTrails ->
+                pendingDeepSeekFile = null
+                scope.launch {
+                    isRestoring = true
+                    try {
+                        runDeepSeekImport(file, targetAssistantId, keepSearchTrails)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        toastFailure(e)
+                    } finally {
+                        isRestoring = false
+                    }
+                }
+            },
+            onDismiss = {
+                // 取消 → 清掉临时文件（不留垃圾）
+                pendingDeepSeekFile = null
+                file.delete()
+            },
+        )
+    }
+
+    // DeepSeek 导入完成摘要（仅在存在跳过/失败/丢弃时弹）
+    deepSeekResult?.let { result ->
+        DeepSeekImportResultDialog(
+            result = result,
+            onDismiss = { deepSeekResult = null },
         )
     }
 

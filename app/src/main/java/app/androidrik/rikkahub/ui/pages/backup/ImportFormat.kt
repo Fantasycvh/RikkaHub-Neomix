@@ -29,6 +29,9 @@ enum class ImportFormat {
 
     /** Cherry Studio 备份（**仅 providers**，不含会话）。 */
     CHERRY_STUDIO,
+
+    /** DeepSeek 官方导出（多个会话，含思考链；图片按条目存在性尽力还原）。 */
+    DEEPSEEK,
 }
 
 /**
@@ -100,6 +103,17 @@ val ImportFormatSpecs: List<ImportFormatSpec> = listOf(
         needsAssistant = false,
         needsPrePickConfirm = false,
         needsRestartDialog = true,
+    ),
+    ImportFormatSpec(
+        format = ImportFormat.DEEPSEEK,
+        mimes = listOf("application/zip"),
+        titleRes = R.string.backup_page_import_from_deepseek,
+        descRes = R.string.backup_page_import_deepseek_desc,
+        // 会话需归属到某个助手（对齐 CHATBOX）
+        needsAssistant = true,
+        needsPrePickConfirm = false,
+        // 只追加会话，不动设置/DB 结构 → 无需重启
+        needsRestartDialog = false,
     ),
 )
 

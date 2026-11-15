@@ -23,6 +23,8 @@ import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.sync.importer.ChatboxImporter
 import app.androidrik.rikkahub.data.sync.importer.CherryStudioProviderImporter
+import app.androidrik.rikkahub.data.sync.importer.DeepSeekImporter
+import app.androidrik.rikkahub.data.sync.importer.DeepSeekImportResult
 import app.androidrik.rikkahub.data.sync.webdav.WebDavBackupItem
 import app.androidrik.rikkahub.data.sync.webdav.WebDavSync
 import app.androidrik.rikkahub.data.sync.S3BackupItem
@@ -616,6 +618,78 @@ class BackupVM(
         )
     }
 
+    /**
+     * 导入 DeepSeek 官方导出包（zip：多会话 + 思考链，图片按 zip 条目尽力还原）。
+     *
+     * 对齐 [restoreFromChatBox]：逐会话判重后落库，不触碰 providers/assistants。
+     *
+     * @param targetAssistantId 用户选择的目标助手（导入会话都归属到它）。
+     * @param keepSearchTrails 是否把搜索轨迹保留为 Text（默认关；READ_LINK 的 signature 永不落库）。
+     * @param onProgress 会话级进度（done/total），供 UI 进度条。
+     */
+    suspend fun restoreFromDeepSeek(
+        file: File,
+        targetAssistantId: Uuid,
+        keepSearchTrails: Boolean = false,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): DeepSeekRestoreResult {
+        var importedConversations = 0
+        var skippedExistingConversations = 0
+        val result = DeepSeekImporter.importStreaming(
+            file = file,
+            assistantId = targetAssistantId,
+            keepSearchTrails = keepSearchTrails,
+            imageMaterializer = { bytes, displayName, mimeType ->
+                // 与 commitConversationImport 同纪律：走 FilesManager（登记 managed_files），
+                // 一律生成新文件名（真拷贝）——复用原路径会导致删副本连带删原件
+                runCatching {
+                    val saved = filesManager.saveManagedFromBytes(
+                        folder = FileFolders.UPLOAD,
+                        bytes = bytes,
+                        displayName = displayName,
+                        mimeType = mimeType,
+                    )
+                    "file://" + filesManager.getFile(saved).absolutePath
+                }.getOrNull()
+            },
+            onConversation = { conversation ->
+                if (conversationRepository.existsConversationById(conversation.id)) {
+                    skippedExistingConversations++
+                } else {
+                    conversationRepository.insertConversation(conversation)
+                    importedConversations++
+                }
+            },
+            onProgress = onProgress,
+        )
+
+        Log.i(
+            TAG,
+            "restoreFromDeepSeek: import $importedConversations conversations, " +
+                "skip $skippedExistingConversations existing, failed ${result.failedSessions} sessions, " +
+                "images ${result.restoredImages} restored / ${result.missingImages} missing, " +
+                "dropped: failedReplies=${result.droppedFailedReplies} " +
+                "searchTrails=${result.droppedSearchTrails} templates=${result.droppedTemplateResponses} " +
+                "tips=${result.droppedServiceTips} readLinks=${result.droppedReadLinks} " +
+                "tokenUsageMessages=${result.droppedTokenUsageMessages} " +
+                "nonImageAttachments=${result.nonImageAttachments}"
+        )
+        return DeepSeekRestoreResult(
+            importedConversations = importedConversations,
+            skippedExistingConversations = skippedExistingConversations,
+            failedSessions = result.failedSessions,
+            droppedFailedReplies = result.droppedFailedReplies,
+            droppedSearchTrails = result.droppedSearchTrails,
+            droppedTemplateResponses = result.droppedTemplateResponses,
+            droppedServiceTips = result.droppedServiceTips,
+            droppedReadLinks = result.droppedReadLinks,
+            droppedTokenUsageMessages = result.droppedTokenUsageMessages,
+            nonImageAttachments = result.nonImageAttachments,
+            restoredImages = result.restoredImages,
+            missingImages = result.missingImages,
+        )
+    }
+
     fun restoreFromCherryStudio(file: File) {
         val importProviders = CherryStudioProviderImporter.importProviders(file)
 
@@ -687,6 +761,31 @@ data class ChatboxRestoreResult(
     val skippedExistingConversations: Int,
     val skippedImageParts: Int,
     val skippedEmptyMessages: Int,
+)
+
+/**
+ * DeepSeek 导出包导入结果（完成摘要用）。
+ *
+ * `dropped*` 是「物理上无法跨端还原」的部分（设计稿 §7.4）：失败轮整条、
+ * 搜索轨迹（signature 无法还原正文）、服务端模板回复、提示条、READ_LINK 正文、
+ * 历史 token 用量。
+ */
+data class DeepSeekRestoreResult(
+    val importedConversations: Int,
+    /** 命中 `existsConversationById` 而跳过的会话（重复导入同一包）。 */
+    val skippedExistingConversations: Int,
+    val failedSessions: Int,
+    val droppedFailedReplies: Int,
+    val droppedSearchTrails: Int,
+    val droppedTemplateResponses: Int,
+    val droppedServiceTips: Int,
+    /** READ_LINK 块数：网页正文依赖服务端签名，跨端无法还原。 */
+    val droppedReadLinks: Int,
+    /** 携带历史 token 用量的消息数：口径不符，不导入。 */
+    val droppedTokenUsageMessages: Int,
+    val nonImageAttachments: Int,
+    val restoredImages: Int,
+    val missingImages: Int,
 )
 
 /**

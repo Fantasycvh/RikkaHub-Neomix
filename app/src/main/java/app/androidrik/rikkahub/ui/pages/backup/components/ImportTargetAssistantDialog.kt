@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
@@ -24,6 +25,7 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.ui.components.ai.AssistantPickerSheet
+import app.androidrik.rikkahub.ui.pages.backup.DeepSeekRestoreResult
 import kotlin.uuid.Uuid
 
 /**
@@ -103,6 +105,215 @@ fun ImportTargetAssistantDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+/**
+ * DeepSeek 官方导出包的导入确认：**目标助手 + 「保留搜索轨迹」开关**。
+ *
+ * 为什么不复用 [ImportTargetAssistantDialog]：这里多一个会改变导入内容形态的选项，且必须同时
+ * 说明「物理上无法跨端还原」的部分（失败轮、READ_LINK 签名正文）——不说明的话，用户会把
+ * 内容缺失当成导入 bug。
+ *
+ * 会话判重（`existsConversationById`）在导入过程中逐条进行，此处只能静态说明
+ * 「已导入过的会自动跳过」，不谎称已检测。
+ *
+ * @param onConfirm 目标助手 id + 是否把搜索轨迹保留为纯文本（默认关）。
+ */
+@Composable
+fun DeepSeekImportConfirmDialog(
+    settings: Settings,
+    onConfirm: (targetAssistantId: Uuid, keepSearchTrails: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val currentAssistant = settings.getCurrentAssistant()
+    var selected by remember { mutableStateOf<Assistant>(currentAssistant) }
+    var keepSearchTrails by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
+    val defaultName = stringResource(R.string.assistant_page_default_assistant)
+
+    if (showPicker) {
+        AssistantPickerSheet(
+            settings = settings,
+            currentAssistant = selected,
+            onAssistantSelected = {
+                selected = it
+                showPicker = false
+            },
+            onDismiss = { showPicker = false },
+            showDisabled = true,
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.backup_page_import_deepseek_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = stringResource(R.string.backup_page_import_deepseek_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showPicker = true }
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(R.string.backup_page_import_target_assistant),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = selected.name.ifEmpty { defaultName },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                // 搜索轨迹：默认关（signature 无法还原正文，只留标题/链接的纯文本痕迹）
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { keepSearchTrails = !keepSearchTrails },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = keepSearchTrails,
+                        onCheckedChange = { keepSearchTrails = it },
+                    )
+                    Column {
+                        Text(
+                            text = stringResource(R.string.backup_page_import_deepseek_keep_search),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text = stringResource(R.string.backup_page_import_deepseek_keep_search_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.backup_page_import_deepseek_limits),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selected.id, keepSearchTrails) }) {
+                Text(stringResource(R.string.backup_page_import_deepseek_start))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+/**
+ * DeepSeek 导入完成摘要：导入/跳过/失败会话数 + 各类不可还原内容的丢弃计数。
+ *
+ * 只在「有内容被丢弃」或「有会话失败」时才值得单开弹窗；全量成功时调用方走普通 toast。
+ */
+@Composable
+fun DeepSeekImportResultDialog(
+    result: DeepSeekRestoreResult,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.backup_page_import_deepseek_result_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = stringResource(
+                        R.string.backup_page_import_deepseek_result_imported,
+                        result.importedConversations,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (result.skippedExistingConversations > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_page_import_deepseek_result_skipped,
+                            result.skippedExistingConversations,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (result.failedSessions > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_page_import_deepseek_result_failed,
+                            result.failedSessions,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (result.restoredImages > 0 || result.missingImages > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_page_import_deepseek_result_images,
+                            result.restoredImages,
+                            result.missingImages,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (result.nonImageAttachments > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_page_import_deepseek_result_non_image,
+                            result.nonImageAttachments,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                val dropped = result.droppedFailedReplies + result.droppedSearchTrails +
+                    result.droppedTemplateResponses + result.droppedServiceTips
+                if (dropped > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_page_import_deepseek_result_dropped,
+                            result.droppedFailedReplies,
+                            result.droppedSearchTrails,
+                            result.droppedTemplateResponses,
+                            result.droppedServiceTips,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // 物理上无法跨端还原的两项：必须显式报出来，否则用户会当成导入 bug
+                if (result.droppedReadLinks > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_page_import_deepseek_result_read_link,
+                            result.droppedReadLinks,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (result.droppedTokenUsageMessages > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_page_import_deepseek_result_token_usage,
+                            result.droppedTokenUsageMessages,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.confirm)) }
         },
     )
 }
