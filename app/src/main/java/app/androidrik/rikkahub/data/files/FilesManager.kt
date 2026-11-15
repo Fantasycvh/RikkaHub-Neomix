@@ -672,8 +672,13 @@ class FilesManager(
     suspend fun syncFolder(folder: String = FileFolders.UPLOAD): SyncResult = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, folder)
         val diskFiles = if (dir.exists()) {
-            dir.listFiles()?.filter { it.isFile && !it.name.startsWith(ATOMIC_TEMP_PREFIX) }
-                ?: return@withContext SyncResult(inserted = 0, removed = 0)
+            // 跳过两类未登记的中间文件：AtomicFileWrite 的 `atomic-` 与
+            // saveExportAtomically 的 `.tmp-`（进程被杀时可能残留在 exports/ 里）。
+            dir.listFiles()?.filter {
+                it.isFile &&
+                    !it.name.startsWith(ATOMIC_TEMP_PREFIX) &&
+                    !it.name.startsWith(EXPORT_TEMP_PREFIX)
+            } ?: return@withContext SyncResult(inserted = 0, removed = 0)
         } else {
             emptyList()
         }

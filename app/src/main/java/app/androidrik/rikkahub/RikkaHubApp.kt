@@ -694,20 +694,38 @@ class RikkaHubApp : Application() {
                 // 残留临时文件无条件清（未登记、无引用价值）
                 dir.listFiles()
                     ?.filter { it.isFile && it.name.startsWith(EXPORT_TEMP_PREFIX) }
-                    ?.forEach { it.delete() }
+                    ?.forEach { file ->
+                        if (!file.delete()) {
+                            Log.w(TAG, "purgeExpiredExports: failed to delete temp ${file.name}")
+                        }
+                    }
 
                 val retentionDays = get<SettingsStore>().settingsFlowRaw.first().exportRetentionDays
                 val cutoff = exportRetentionCutoff(retentionDays, System.currentTimeMillis())
-                    ?: return@runCatching  // 0 = 不自动清理
-                var removed = 0
-                dir.listFiles()?.forEach { file ->
-                    if (file.isFile && isExportExpired(file.lastModified(), cutoff)) {
-                        if (file.delete()) removed++
+                // null = 用户在设置里关掉了 TTL：仍要对账库里的孤儿记录（见下方 syncFolder）
+                if (cutoff != null) {
+                    var removed = 0
+                    dir.listFiles()?.forEach { file ->
+                        if (file.isFile && isExportExpired(file.lastModified(), cutoff)) {
+                            if (file.delete()) {
+                                removed++
+                            } else {
+                                Log.w(TAG, "purgeExpiredExports: failed to delete ${file.name}")
+                            }
+                        }
+                    }
+                    if (removed > 0) {
+                        Log.i(TAG, "purgeExpiredExports: removed $removed expired export(s) " +
+                            "(retention=${retentionDays}d)")
                     }
                 }
-                if (removed > 0) {
-                    Log.i(TAG, "purgeExpiredExports: removed $removed expired export(s) " +
-                        "(retention=${retentionDays}d)")
+
+                // 删盘之后必须对账 managed_files：原实现只删文件、不删行，于是「文件管理 → 导出」
+                // 会一直显示已清理的幽灵条目（看起来像 TTL 没生效），这些行也永久留在数据库里。
+                // syncFolder 同时把磁盘上未登记的文件补录回来（写盘成功但落库失败的情况）。
+                val synced = get<FilesManager>().syncFolder(FileFolders.EXPORTS)
+                if (synced.removed > 0) {
+                    Log.i(TAG, "purgeExpiredExports: dropped ${synced.removed} stale managed_files row(s)")
                 }
             }.onFailure {
                 Log.e(TAG, "purgeExpiredExports failed", it)
