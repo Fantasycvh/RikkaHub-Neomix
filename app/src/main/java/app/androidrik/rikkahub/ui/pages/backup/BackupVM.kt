@@ -570,20 +570,36 @@ class BackupVM(
      *   此前隐式为「当前助手」（内部读 `settings.value.assistantId`），与自家格式导入
      *   「让用户选助手」的做法不一致；见设计稿 §八。
      */
-    suspend fun restoreFromChatBox(file: File, targetAssistantId: Uuid): ChatboxRestoreResult {
+    suspend fun restoreFromChatBox(file: File, targetAssistantId: Uuid): ChatboxRestoreResult =
+        withContext(Dispatchers.IO) {
         var importedConversations = 0
         var skippedExistingConversations = 0
         val result = ChatboxImporter.importStreaming(
             file = file,
             assistantId = targetAssistantId,
             providers = settings.value.providers,
+            // 判重提前到解析之前：已存在的会话连图片都不必解压
+            shouldImportConversation = { conversationId ->
+                val exists = conversationRepository.existsConversationById(conversationId)
+                if (exists) skippedExistingConversations++
+                !exists
+            },
+            saveImage = { resource ->
+                // 与 commitConversationImport 同纪律：走 FilesManager（登记 managed_files），
+                // 一律生成新文件名（真拷贝）——复用原路径会导致删副本连带删原件
+                runCatching {
+                    val saved = filesManager.saveManagedFromBytes(
+                        folder = FileFolders.UPLOAD,
+                        bytes = resource.bytes,
+                        displayName = resource.fileName,
+                        mimeType = resource.mimeType,
+                    )
+                    "file://" + filesManager.getFile(saved).absolutePath
+                }.getOrNull()
+            },
             onConversation = { conversation ->
-                if (conversationRepository.existsConversationById(conversation.id)) {
-                    skippedExistingConversations++
-                } else {
-                    conversationRepository.insertConversation(conversation)
-                    importedConversations++
-                }
+                conversationRepository.insertConversation(conversation)
+                importedConversations++
             }
         )
 
@@ -607,14 +623,18 @@ class BackupVM(
             TAG,
             "restoreFromChatBox: import ${result.providers.size} providers, " +
                 "$importedConversations conversations, skip $skippedExistingConversations existing, " +
-                "drop ${result.skippedImageParts} images"
+                "import ${result.importedImageParts} images, drop ${result.skippedImageParts} images, " +
+                "skip ${result.skippedForkMessages} fork messages and ${result.skippedSessions} sessions"
         )
-        return ChatboxRestoreResult(
+        ChatboxRestoreResult(
             importedProviders = result.providers.size,
             importedConversations = importedConversations,
             skippedExistingConversations = skippedExistingConversations,
+            importedImageParts = result.importedImageParts,
             skippedImageParts = result.skippedImageParts,
             skippedEmptyMessages = result.skippedEmptyMessages,
+            skippedForkMessages = result.skippedForkMessages,
+            skippedSessions = result.skippedSessions,
         )
     }
 
@@ -759,8 +779,14 @@ data class ChatboxRestoreResult(
     val importedProviders: Int,
     val importedConversations: Int,
     val skippedExistingConversations: Int,
+    /** 从备份 ZIP 的资源条目里真拷贝落库的图片 part 数。 */
+    val importedImageParts: Int,
     val skippedImageParts: Int,
     val skippedEmptyMessages: Int,
+    /** 分支（messageForks）里非当前分支的消息数：只保留首条作为候选，其余丢弃。 */
+    val skippedForkMessages: Int,
+    /** 无有效消息或会话 id 缺失而跳过的会话数。 */
+    val skippedSessions: Int,
 )
 
 /**

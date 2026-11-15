@@ -24,7 +24,7 @@ enum class ImportFormat {
     /** 本应用**单个会话**归档（zip / 兼容阶段 1 裸 JSON）。 */
     CONVERSATION,
 
-    /** Chatbox 导出（providers + 多个会话）。 */
+    /** Chatbox 备份 v2（zip：providers + 多会话 + 图片资源）。 */
     CHATBOX,
 
     /** Cherry Studio 备份（**仅 providers**，不含会话）。 */
@@ -86,7 +86,8 @@ val ImportFormatSpecs: List<ImportFormatSpec> = listOf(
     ),
     ImportFormatSpec(
         format = ImportFormat.CHATBOX,
-        mimes = listOf("application/json"),
+        // v2 起是 zip（manifest.json + sessions/ + resources/）；v1 的单体 JSON 已不支持
+        mimes = listOf("application/zip"),
         titleRes = R.string.backup_page_import_from_chatbox,
         descRes = R.string.backup_page_import_chatbox_desc,
         // 会话需归属到某个助手 → 本轮补上这一缺口（原先隐式用当前助手）

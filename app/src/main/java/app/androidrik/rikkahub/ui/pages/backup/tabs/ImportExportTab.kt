@@ -155,8 +155,7 @@ fun ImportExportTab(
 
     /** 分发一次导入（**共享管线**：复制到临时文件 → 按格式处理 → 收尾）。 */
     suspend fun runImport(format: ImportFormat, uri: Uri) {
-        val ext = if (format == ImportFormat.CHATBOX) "json" else "zip"
-        val tempFile = context.copyUriToTempFile(uri, ext)
+        val tempFile = context.copyUriToTempFile(uri, "zip")
         when (format) {
             ImportFormat.LOCAL_BACKUP -> {
                 // 批次3 预览（design-backup-manifest-and-safety §3.5）：先巡检（ZipFile 随机
@@ -181,7 +180,7 @@ fun ImportExportTab(
             }
 
             ImportFormat.CHATBOX -> {
-                // 需先选**目标助手**（会话归属）→ 交给对话框，暂不删临时文件
+                // Chatbox 备份 v2（zip）：需先选**目标助手**（会话归属）→ 交给对话框，暂不删临时文件
                 pendingChatboxFile = tempFile
             }
 
