@@ -541,6 +541,14 @@
   <string name="chat_page_compress_keep_recent">Keep recent %</string>
   <string name="chat_page_compress_keep_recent_count">Keep recent messages</string>
   <string name="chat_page_compress_keep_recent_count_desc">These messages are not compressed and stay after the summary. 0 compresses all messages (best prompt-cache reuse); increase it when compression fails because the conversation is too long.</string>
+  <string name="chat_page_compress_continue_new_window">Continue in a new conversation</string>
+  <string name="chat_page_compress_continue_new_window_desc">Copies the summary and the uncompressed messages into a new conversation and opens it. The current conversation is kept as an archive.</string>
+  <string name="chat_page_compress_new_window_failed">No messages remain outside the compressed range, so a new conversation cannot be started.</string>
+  <string name="chat_page_compress_stage_preparing">Preparing compression…</string>
+  <string name="chat_page_compress_stage_chunk">Summarizing chunk %1$d/%2$d…</string>
+  <string name="chat_page_compress_stage_validating">Checking summary coverage…</string>
+  <string name="chat_page_compress_stage_single_pass">Coverage is low, re-summarizing the whole history…</string>
+  <string name="chat_page_compress_stage_fallback">Summaries failed the check, building a fallback checkpoint…</string>
   <string name="chat_page_compress_not_enough_messages">Not enough history to compress yet — keep chatting and try again later.</string>
   <string name="chat_page_compress_not_enough_messages_keep_recent">Not enough messages to compress — reduce the number of recent messages to keep.</string>
   <string name="chat_page_compress_target_tokens">Target Token Size</string>

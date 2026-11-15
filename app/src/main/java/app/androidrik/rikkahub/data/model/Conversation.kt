@@ -306,12 +306,19 @@ data class Conversation(
         val window = compressionWindow() ?: return null
         if (!window.checkpointMessage.isContextCheckpoint) return activeCompression()
         val message = window.checkpointMessage
+        val nodes = pathNodes()
+        val boundaryNodeId = nodes[window.boundaryIndex].id.toString()
+        // 「压缩后在新会话继续」把摘要落成了根检查点节点：节点前计数为 0，
+        // 沿用随节点一起迁移过来的累计条数，折叠行才不会显示「已压缩 0 条」。
+        val storedCount = activeCompression()
+            ?.takeIf { it.boundaryNodeId == boundaryNodeId }
+            ?.messageCount
         return CompressionSummary(
             conversationId = id,
             content = message.toText(),
-            messageCount = pathNodes().take(window.boundaryIndex)
+            messageCount = storedCount ?: nodes.take(window.boundaryIndex)
                 .count { !it.currentMessage.isContextCheckpoint },
-            boundaryNodeId = pathNodes()[window.boundaryIndex].id.toString(),
+            boundaryNodeId = boundaryNodeId,
             // 检查点自身的生成时间：ContextLength 的 usage 陈旧判定与原生检查点同口径。
             createdAt = java.time.Instant.ofEpochMilli(
                 message.createdAt.toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds(),

@@ -13,6 +13,7 @@ import app.androidrik.rikkahub.utils.formatContextLength
 import app.androidrik.rikkahub.data.ai.computeContextCapacity
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
 import app.androidrik.rikkahub.data.ai.ContextCapacity
+import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.size
@@ -193,6 +194,18 @@ fun ChatPage(
     val voiceState by vm.voiceSession.state.collectAsStateWithLifecycle()
     val startVoiceMode = rememberVoiceModeStarter(vm, setting)
 
+    // 「压缩后在新会话继续」：新会话建好后替换当前会话页（返回仍回列表，不回到旧长会话）
+    val continueInNewWindowConversation by vm.continueInNewWindowConversation.collectAsStateWithLifecycle()
+    val compressProgress by vm.compressProgress.collectAsStateWithLifecycle()
+    LaunchedEffect(continueInNewWindowConversation) {
+        val newId = continueInNewWindowConversation ?: return@LaunchedEffect
+        vm.consumeContinueInNewWindowConversation()
+        navController.navigate(Screen.Chat(id = newId.toString())) {
+            popUpToScreen = Screen.Chat(id = id.toString())
+            popUpToInclusive = true
+        }
+    }
+
     // 上下文占用**只算一份**：标题旁读数、输入栏指示器、容量面板共用同一个来源（2026-10-02 决定）。
     // **计算必须离开主线程**（ANR 实测 2026-10-02，trace：main 线程 97s CPU 全在
     // ByteLevelBpe）：真 tokenizer 全窗分词 + 流式期间每个 chunk 都触发重组，在组合期
@@ -363,6 +376,7 @@ fun ChatPage(
                     drawerGlassState = drawerGlassState,
                     conversation = conversation,
                     contextUsage = contextUsage,
+                    compressProgress = compressProgress,
                     drawerOpen = false,
                     onOpenDrawer = {},
                     navController = navController,
@@ -404,6 +418,7 @@ fun ChatPage(
                         drawerGlassState = drawerGlassState,
                         conversation = conversation,
                         contextUsage = contextUsage,
+                        compressProgress = compressProgress,
                         drawerOpen = drawerOpen,
                         onOpenDrawer = { drawerOpen = true },
                         navController = navController,
@@ -436,6 +451,7 @@ private fun ChatPageContent(
     drawerGlassState: HazeState,
     conversation: Conversation,
     contextUsage: ContextUsage,
+    compressProgress: CompressionProgress?,
     drawerOpen: Boolean,
     onOpenDrawer: () -> Unit,
     navController: Navigator,
@@ -902,13 +918,15 @@ private fun ChatPageContent(
         // 压缩参数对话框：入口有两个（+ 菜单与容量面板），故渲染在页面级
         if (showCompressDialog) {
             CompressContextDialog(
+                progress = compressProgress,
                 onDismiss = { showCompressDialog = false },
-                onConfirm = { additionalPrompt, targetTokens, retainRatio, keepRecentMessages ->
+                onConfirm = { additionalPrompt, targetTokens, retainRatio, keepRecentMessages, continueInNewWindow ->
                     vm.handleCompressContext(
                         additionalPrompt = additionalPrompt,
                         targetTokens = targetTokens,
                         retainRatio = retainRatio,
                         keepRecentMessages = keepRecentMessages,
+                        continueInNewWindow = continueInNewWindow,
                     )
                 },
                 // 初值取当前设置（与 + 菜单里的入口同一约定）

@@ -578,6 +578,14 @@
   <string name="chat_page_compress_keep_recent">保留最近对话比例</string>
   <string name="chat_page_compress_keep_recent_count">保留最近消息数</string>
   <string name="chat_page_compress_keep_recent_count_desc">这些消息不参与压缩，原样保留在摘要之后。填 0 表示压缩全部消息（提示词缓存命中最好）；对话太长导致压缩失败时可多留几条。</string>
+  <string name="chat_page_compress_continue_new_window">压缩后在新会话继续</string>
+  <string name="chat_page_compress_continue_new_window_desc">把摘要与未压缩的原文复制到新会话并打开；当前会话保留为归档。</string>
+  <string name="chat_page_compress_new_window_failed">压缩边界后没有可保留的原文，无法开启新会话。</string>
+  <string name="chat_page_compress_stage_preparing">正在准备压缩…</string>
+  <string name="chat_page_compress_stage_chunk">正在摘要第 %1$d/%2$d 块…</string>
+  <string name="chat_page_compress_stage_validating">正在校验摘要覆盖率…</string>
+  <string name="chat_page_compress_stage_single_pass">覆盖率不足，正在整篇重摘…</string>
+  <string name="chat_page_compress_stage_fallback">自动摘要未通过校验，正在生成兜底摘要…</string>
   <string name="chat_page_compress_not_enough_messages">历史还不够长，暂无可压缩内容——继续对话后再试。</string>
   <string name="chat_page_compress_not_enough_messages_keep_recent">可压缩的消息不足——请减少保留的最近消息数。</string>
   <string name="chat_page_compress_target_tokens">目标Token大小</string>

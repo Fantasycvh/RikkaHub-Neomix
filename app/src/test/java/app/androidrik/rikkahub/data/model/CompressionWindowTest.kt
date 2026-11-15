@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.model
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import kotlinx.datetime.Clock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -65,6 +66,44 @@ class CompressionWindowTest {
         assertEquals(MessageRole.USER, window.first().role)
         assertTrue(window.first().toText().contains("summary"))
         assertEquals(2, conversation.windowNodes().size)
+    }
+
+    /**
+     * 「压缩后在新会话继续」：摘要是根检查点节点，节点前没有可计数的消息；
+     * 折叠行必须沿用随检查点迁移的累计条数，而不是显示 0。
+     */
+    @Test
+    fun `root checkpoint keeps carried message count for display`() {
+        val checkpointNode = MessageNode(
+            messages = listOf(
+                UIMessage(
+                    role = MessageRole.USER,
+                    parts = listOf(UIMessagePart.Text(buildCompactionCheckpointText("summary"))),
+                    isSynthetic = true,
+                    isContextCheckpoint = true,
+                )
+            )
+        )
+        val tail = MessageNode(
+            parentId = checkpointNode.id,
+            messages = listOf(
+                UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("b")))
+            ),
+        )
+        val base = conversation(listOf(checkpointNode, tail), emptyList())
+        val stored = CompressionSummary(
+            conversationId = base.id,
+            content = "summary",
+            messageCount = 7000,
+            boundaryNodeId = checkpointNode.id.toString(),
+            createdAt = java.time.Instant.now(),
+            areaFingerprint = base.areaFingerprintFor(0),
+        )
+        val conversation = base.copy(compressionSummaries = listOf(stored))
+
+        assertEquals(7000, conversation.displayCompression()?.messageCount)
+        // 发送窗口 = 根检查点 + 尾巴（检查点不重复）
+        assertEquals(2, conversation.requestWindowMessages().size)
     }
 
     @Test

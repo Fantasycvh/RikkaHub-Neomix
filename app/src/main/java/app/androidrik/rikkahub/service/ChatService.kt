@@ -105,6 +105,9 @@ import app.androidrik.rikkahub.data.ai.transformers.TransformerUse
 import app.androidrik.rikkahub.data.ai.transformers.defaultTransformerChainRegistry
 import app.androidrik.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import app.androidrik.rikkahub.data.ai.prompts.MID_TURN_COMPRESS_INSTRUCTION
+import app.androidrik.rikkahub.data.ai.prompts.buildCompactionCheckpointText
+import app.androidrik.rikkahub.data.ai.prompts.compactionCheckpointBody
+import app.androidrik.rikkahub.data.model.taskAnchorSuffix
 import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -127,6 +130,8 @@ import app.androidrik.rikkahub.utils.estimateWindowTokens
 import app.androidrik.rikkahub.data.ai.compression.shouldAutoCompress
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_SINGLE_STEP_MAX_CHARS
+import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
+import app.androidrik.rikkahub.data.ai.compression.CompressionProgressStage
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.CompressionTier
 import app.androidrik.rikkahub.data.ai.compression.attachTraceSection
@@ -168,6 +173,12 @@ import app.androidrik.rikkahub.web.BadRequestException
 import app.androidrik.rikkahub.web.NotFoundException
 import app.androidrik.rikkahub.utils.applyPlaceholders
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.uuid.Uuid
@@ -222,6 +233,12 @@ class ChatService(
 
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
+
+    /** 每会话的后台预压缩任务（自动压缩提前化；与发送路径的自动压缩串行） */
+    private val preCompressJobs = ConcurrentHashMap<Uuid, Job>()
+
+    /** 同一会话的压缩串行化：后台预压缩与手动/自动压缩不会并发改写检查点 */
+    private val compressionMutexes = ConcurrentHashMap<Uuid, Mutex>()
     private val _sessionsVersion = MutableStateFlow(0L)
 
     // 错误状态
@@ -400,6 +417,9 @@ class ChatService(
                     appScope.launch {
                         dispatchNextQueuedMessage(sessionId)
                         noticeRequests.trySend(Unit)
+                        // 自动压缩提前化：本轮正常结束后若已过阈值，先在后台压好，
+                        // 下一次发送不再把压缩耗时算进等待里
+                        if (cause == null) maybePreCompress(sessionId)
                     }
                 }
             )
@@ -2451,7 +2471,12 @@ class ChatService(
          * 调用方不必自己同步（也不会出现「同步后又被迟到旧快照覆盖」的窗口）。
          */
         midTurnMessages: List<UIMessage>? = null,
-    ): Result<CompressionSummary?> = runCatching {
+        /** 压缩阶段进度（手动压缩对话框展示；自动/中途压缩用默认空实现） */
+        onProgress: (CompressionProgress) -> Unit = {},
+    ): Result<CompressionSummary?> = compressionMutexes
+        .getOrPut(conversationId) { Mutex() }
+        .withLock {
+            runCatching {
         val settings = settingsStore.settingsFlow.first()
         val model = settings.resolveCompressionModel(followModel)
             ?: throw IllegalStateException("No model available for compression")
@@ -2495,6 +2520,7 @@ class ChatService(
 
         val messagesToCompress = plan.toCompress.map { it.currentMessage }.messagesForAuxGeneration()
         if (messagesToCompress.isEmpty()) return@runCatching null
+        onProgress(CompressionProgress(CompressionProgressStage.PREPARING))
         val priorSummary = conversation.displayCompression()?.content.orEmpty()
         // 旧检查点的**痕迹附录**不进模型视野（D296）：它是机械清单，模型看到只会原样抄进新摘要，
         // 层层压缩后叠成 N 份。摘掉后由 attachTraceSection 在代码侧接力（去重后并成一段）。
@@ -2559,12 +2585,25 @@ class ChatService(
         val ladder = runCompressionLadder(
             sourceText = sourceText,
             chunkedSummarize = {
+                val chunks = withContext(Dispatchers.IO) { splitIntoChunks(messagesToCompress) }
+                val finished = AtomicInteger(0)
                 coroutineScope {
-                    splitIntoChunks(messagesToCompress)
-                        .mapIndexed { index, chunk ->
-                            async { compressChunk(chunk, includePrior = index == 0) }
+                    chunks.mapIndexed { index, chunk ->
+                        async {
+                            try {
+                                compressChunk(chunk, includePrior = index == 0)
+                            } finally {
+                                // 并行分块按完成数报进度（并行启动时报「已启动」会瞬间跳满）
+                                onProgress(
+                                    CompressionProgress(
+                                        stage = CompressionProgressStage.CHUNK,
+                                        current = finished.incrementAndGet(),
+                                        total = chunks.size,
+                                    )
+                                )
+                            }
                         }
-                        .awaitAll()
+                    }.awaitAll()
                 }.joinToString("\n\n")
             },
             singleSummarize = if (sourceText.length <= COMPRESS_SINGLE_STEP_MAX_CHARS) {
@@ -2573,6 +2612,7 @@ class ChatService(
                 null
             },
             truncatedFallback = buildTruncatedFallback(sourceText),
+            onProgress = onProgress,
         )
         if (ladder.tier != CompressionTier.CHUNKED) {
             Log.w(TAG, "compressToCheckpoint fell to tier=${ladder.tier} for $conversationId (coverage gate / upstream failure)")
@@ -2626,9 +2666,10 @@ class ChatService(
         val saved = if (midTurn) withContext(NonCancellable) { commit() } else commit()
         noticeRequests.trySend(Unit)
         saved
-    }.onFailure {
-        Log.e(TAG, "compressToCheckpoint failed for $conversationId", it)
-    }
+            }.onFailure {
+                Log.e(TAG, "compressToCheckpoint failed for $conversationId", it)
+            }
+        }
 
     /**
      * 自动压缩：占用达到阈值时调用 [compressToCheckpoint]。
@@ -2643,6 +2684,8 @@ class ChatService(
         model: Model,
     ) {
         if (!settings.autoCompressEnabled) return
+        // 后台预压缩正在跑：等它结束再判断，避免同一会话并发两次压缩
+        preCompressJobs[conversationId]?.takeIf { it.isActive }?.join()
         val conversation = getConversationFlow(conversationId).value
         // 已有检查点时仍按窗口占用判断（检查点已把边界前内容移出窗口，不会重复压缩同一段）
         val windowTokens = model.effectiveContextLength(settings.contextLengthOverride)
@@ -2660,6 +2703,49 @@ class ChatService(
             // 失败静默：不打断发送（limitContext 兜底），仅记录
             Log.w(TAG, "auto compress failed for $conversationId", it)
         }
+    }
+
+    /**
+     * 自动压缩提前化：本轮正常结束后，若窗口占用已过阈值，立即在后台压缩。
+     *
+     * 与发送路径的 [maybeAutoCompress] 共用同一套阈值/参数；区别只是**触发时机**：
+     * 这里在生成结束后的空闲窗口里完成，下一次发送时检查点已就绪，用户不再等待。
+     * 仍要求 `autoCompressEnabled`（默认关）；生成中、已有任务时不触发。
+     */
+    private suspend fun maybePreCompress(conversationId: Uuid) {
+        val settings = settingsStore.settingsFlow.first()
+        if (!settings.autoCompressEnabled) return
+        val session = sessions[conversationId] ?: return
+        if (session.isGenerating) return
+        if (preCompressJobs[conversationId]?.isActive == true) return
+
+        val conversation = getConversationFlow(conversationId).value
+        val assistant = settings.getAssistantById(conversation.assistantId)
+        val model = settings.findModelById(assistant?.chatModelId ?: settings.chatModelId)
+            ?: settings.getCurrentChatModel()
+            ?: return
+        val windowTokens = model.effectiveContextLength(settings.contextLengthOverride)
+        val usedTokens = conversation.estimateWindowTokens(model)
+        if (!shouldAutoCompress(usedTokens, windowTokens, settings.autoCompressThresholdPercent)) return
+
+        Log.i(TAG, "auto pre-compress triggered: $usedTokens / $windowTokens tokens")
+        val job = appScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                compressToCheckpoint(
+                    conversationId = conversationId,
+                    windowTokens = windowTokens,
+                    targetTokens = settings.autoCompressTargetTokens,
+                    retainRatio = settings.autoCompressRetainPercent / 100.0,
+                    followModel = model,
+                ).onFailure {
+                    Log.w(TAG, "auto pre-compress failed for $conversationId", it)
+                }
+            } finally {
+                preCompressJobs.remove(conversationId)
+            }
+        }
+        preCompressJobs[conversationId] = job
+        job.start()
     }
 
     // ---- 对话状态更新 ----
@@ -3239,6 +3325,97 @@ class ChatService(
 
         saveConversation(forkConversation.id, forkConversation)
         return forkConversation
+    }
+
+    /**
+     * 「压缩后在新会话继续」（过渡措施）：把当前压缩窗口（摘要 + 边界之后的原文）整体复制成
+     * 一个新会话，旧会话原样保留为归档。
+     *
+     * 与 [forkConversationAtMessage] 的差别：复制的是窗口尾巴而非路径前缀，并在根部落一条
+     * 真正的检查点消息节点（[UIMessage.isContextCheckpoint]），新会话节点数从 N 降到
+     * 「尾巴 + 1」，旧会话的 7000 条历史不参与新会话的加载与路径计算。
+     *
+     * 返回 null 表示当前没有有效压缩窗口或边界后没有可保留原文。
+     */
+    suspend fun forkConversationFromCompressionWindow(conversationId: Uuid): Conversation? {
+        val source = getConversationFlow(conversationId).value
+        val window = source.compressionWindow() ?: return null
+        val summary = source.displayCompression() ?: return null
+        val path = source.pathNodes()
+        if (window.boundaryIndex !in path.indices) return null
+        val tail = path.drop(window.boundaryIndex + 1)
+        if (tail.isEmpty()) return null
+
+        val tailMessages = tail.map { it.currentMessage }
+        val checkpointMessage = UIMessage(
+            role = MessageRole.USER,
+            parts = listOf(
+                UIMessagePart.Text(
+                    buildCompactionCheckpointText(compactionCheckpointBody(summary.content)) +
+                        taskAnchorSuffix(tailMessages)
+                )
+            ),
+            isSynthetic = true,
+            isContextCheckpoint = true,
+        )
+        val checkpointNode = MessageNode(messages = listOf(checkpointMessage))
+
+        val copiedTail = mutableListOf<MessageNode>()
+        var parentId = checkpointNode.id
+        tail.forEach { node ->
+            val copied = node.copy(
+                id = Uuid.random(),
+                parentId = parentId,
+                messages = node.messages.map { message ->
+                    message.copy(parts = message.parts.map { it.copyWithForkedFileUrl() })
+                },
+            )
+            copiedTail += copied
+            parentId = copied.id
+        }
+
+        val existingTitles = conversationRepo.getTitlesOfAssistant(source.assistantId)
+        val base = createForkConversation(source, listOf(checkpointNode) + copiedTail, existingTitles)
+            .copy(
+                activeLeafNodeId = copiedTail.last().id,
+                upstreamConfig = source.upstreamConfig,
+                customSystemPrompt = source.customSystemPrompt,
+                modeInjectionIds = source.modeInjectionIds,
+                lorebookIds = source.lorebookIds,
+                workspaceCwd = source.workspaceCwd,
+                folderId = source.folderId,
+                goal = source.goal,
+                memoryDisabled = source.memoryDisabled,
+                frozenAnchors = source.frozenAnchors,
+                exportDisplayConfig = source.exportDisplayConfig,
+                exportDisplayOverrides = source.exportDisplayOverrides.filterKeys { key ->
+                    copiedTail.any { node -> node.messages.any { it.id.toString() == key } }
+                },
+                lastMessageAt = tailMessages.lastOrNull()?.let {
+                    Instant.ofEpochMilli(
+                        it.createdAt.toInstant(TimeZone.currentSystemDefault()).toEpochMilliseconds()
+                    )
+                },
+            )
+
+        saveConversation(base.id, base)
+
+        // 摘要随检查点节点迁移：boundary 指向根检查点节点并重算区域指纹，
+        // 折叠行才能继续显示原累计条数（见 Conversation.displayCompression）。
+        val carriedCount = summary.messageCount.takeIf { it > 0 }
+            ?: path.take(window.boundaryIndex).count { !it.currentMessage.isContextCheckpoint }
+        val checkpoint = CompressionSummary(
+            conversationId = base.id,
+            content = compactionCheckpointBody(summary.content),
+            messageCount = carriedCount,
+            boundaryNodeId = checkpointNode.id.toString(),
+            createdAt = Instant.now(),
+            areaFingerprint = base.areaFingerprintFor(0),
+        )
+        val saved = conversationRepo.addCompressionCheckpoint(checkpoint)
+        val fork = base.copy(compressionSummaries = listOf(saved))
+        updateConversation(fork.id, fork)
+        return fork
     }
 
     suspend fun selectMessageNode(

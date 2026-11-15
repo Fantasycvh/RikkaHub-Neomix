@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -37,12 +39,22 @@ import app.androidrik.rikkahub.data.ai.compression.COMPRESS_KEEP_RECENT_MESSAGES
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
 import app.androidrik.rikkahub.data.ai.compression.CompressPreset
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
+import app.androidrik.rikkahub.data.ai.compression.CompressionProgressStage
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
 
 @Composable
 fun CompressContextDialog(
+    /** 压缩阶段进度（ChatVM 提供；自动/中途压缩不经过本对话框） */
+    progress: CompressionProgress? = null,
     onDismiss: () -> Unit,
-    onConfirm: (additionalPrompt: String, targetTokens: Int, retainRatio: Double, keepRecentMessages: Int) -> Job,
+    onConfirm: (
+        additionalPrompt: String,
+        targetTokens: Int,
+        retainRatio: Double,
+        keepRecentMessages: Int,
+        continueInNewWindow: Boolean,
+    ) -> Job,
     /**
      * 初值：来自当前压缩设置（而不是每次重置为固定值）。
      *
@@ -60,6 +72,8 @@ fun CompressContextDialog(
     var selectedRetainPercent by remember { mutableIntStateOf(initialRetainPercent) }
     // 「保留最近 N 条」下限：默认 0 = 只按 token 比例切分（提示词缓存命中最好，与上游默认一致）
     var keepRecentMessages by remember { mutableIntStateOf(0) }
+    // 压缩后把整个窗口复制到新会话（旧会话保留）：长会话的过渡措施，默认关
+    var continueInNewWindow by remember { mutableStateOf(false) }
     var currentJob by remember { mutableStateOf<Job?>(null) }
     val isLoading = currentJob?.isActive == true
 
@@ -92,17 +106,27 @@ fun CompressContextDialog(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (isLoading) {
-                    // Loading state
-                    Row(
+                    // Loading state：显示阶段进度，避免长时间只转圈、用户以为卡死
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        RabbitLoadingIndicator(
-                            modifier = Modifier.size(32.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(stringResource(R.string.chat_page_compressing))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RabbitLoadingIndicator(
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(compressStageText(progress))
+                        }
+                        if (progress?.stage == CompressionProgressStage.CHUNK && progress.total > 1) {
+                            LinearProgressIndicator(
+                                progress = { progress.current.toFloat() / progress.total },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
                     }
                 } else {
                     Text(stringResource(R.string.chat_page_compress_context_desc))
@@ -146,6 +170,25 @@ fun CompressContextDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
+                    // 过渡措施：长会话压缩后窗口复制到新会话，旧会话原样保留为归档
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = continueInNewWindow,
+                            onCheckedChange = { continueInNewWindow = it },
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.chat_page_compress_continue_new_window),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                text = stringResource(R.string.chat_page_compress_continue_new_window_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
                     // Additional context input
                     OutlinedTextField(
                         value = additionalPrompt,
@@ -184,6 +227,7 @@ fun CompressContextDialog(
                         selectedTokens,
                         selectedRetainPercent / 100.0,
                         keepRecentMessages,
+                        continueInNewWindow,
                     )
                 }) {
                     Text(stringResource(R.string.confirm))
@@ -198,6 +242,19 @@ fun CompressContextDialog(
             }
         }
     )
+}
+
+@Composable
+private fun compressStageText(progress: CompressionProgress?): String = when (progress?.stage) {
+    CompressionProgressStage.CHUNK -> stringResource(
+        R.string.chat_page_compress_stage_chunk,
+        progress.current,
+        progress.total,
+    )
+    CompressionProgressStage.VALIDATING -> stringResource(R.string.chat_page_compress_stage_validating)
+    CompressionProgressStage.SINGLE_PASS -> stringResource(R.string.chat_page_compress_stage_single_pass)
+    CompressionProgressStage.FALLBACK -> stringResource(R.string.chat_page_compress_stage_fallback)
+    CompressionProgressStage.PREPARING, null -> stringResource(R.string.chat_page_compress_stage_preparing)
 }
 
 /**

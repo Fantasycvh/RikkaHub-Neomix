@@ -12,9 +12,11 @@ import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.datastore.findModelById
@@ -45,6 +47,7 @@ import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.InterruptReason
 import app.androidrik.rikkahub.data.ai.PromptInspection
+import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
 import app.androidrik.rikkahub.ui.pages.promptinspect.buildPromptInspectionLabels
 import app.androidrik.rikkahub.service.MessageQueueState
 import app.androidrik.rikkahub.service.QueuedMessage
@@ -338,13 +341,27 @@ class ChatVM(
         }
     }
 
+    /** 「压缩后在新会话继续」的目标会话 id（消费后置空，避免重组重复导航）。 */
+    private val _continueInNewWindowConversation = MutableStateFlow<Uuid?>(null)
+    val continueInNewWindowConversation: StateFlow<Uuid?> =
+        _continueInNewWindowConversation.asStateFlow()
+
+    fun consumeContinueInNewWindowConversation() {
+        _continueInNewWindowConversation.value = null
+    }
+
+    /** 手动压缩的阶段进度（对话框展示）；未压缩时为 null */
+    private val _compressProgress = MutableStateFlow<CompressionProgress?>(null)
+    val compressProgress: StateFlow<CompressionProgress?> = _compressProgress.asStateFlow()
+
     fun handleCompressContext(
         additionalPrompt: String,
         targetTokens: Int,
         retainRatio: Double,
         keepRecentMessages: Int = 0,
+        continueInNewWindow: Boolean = false,
     ): Job {
-        return viewModelScope.launch {
+        val job = viewModelScope.launch {
             // 检查点式压缩：切分由 token 驱动的保留比例决定（对齐 design-auto-compaction §4.1）；
             // keepRecentMessages > 0 时作为「保留最近 N 条」的下限
             val currentSettings = settings.value
@@ -360,6 +377,7 @@ class ChatVM(
                 keepRecentMessages = keepRecentMessages,
                 // 「跟随对话模型」时使用当前对话模型
                 followModel = model,
+                onProgress = { _compressProgress.value = it },
             )
             result
                 .onSuccess { checkpoint ->
@@ -377,6 +395,20 @@ class ChatVM(
                             conversationId = _conversationId,
                             title = context.getString(R.string.error_title_compress_conversation),
                         )
+                    } else if (continueInNewWindow) {
+                        // 过渡措施：压缩窗口整体复制到新会话，旧会话保留为归档
+                        val fork = chatService.forkConversationFromCompressionWindow(_conversationId)
+                        if (fork != null) {
+                            _continueInNewWindowConversation.value = fork.id
+                        } else {
+                            chatService.addError(
+                                IllegalStateException(
+                                    context.getString(R.string.chat_page_compress_new_window_failed)
+                                ),
+                                conversationId = _conversationId,
+                                title = context.getString(R.string.error_title_compress_conversation),
+                            )
+                        }
                     }
                 }
                 .onFailure {
@@ -387,6 +419,8 @@ class ChatVM(
                     )
                 }
         }
+        job.invokeOnCompletion { _compressProgress.value = null }
+        return job
     }
 
     /**

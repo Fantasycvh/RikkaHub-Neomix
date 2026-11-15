@@ -646,8 +646,14 @@ private fun ChatListNormal(
                             var showCheckpointBody by remember(node.currentMessage.id) { mutableStateOf(false) }
                             Column {
                                 CompactionCheckpointRow(
-                                    messageCount = conversation.pathNodes().takeWhile { it.id != node.id }
-                                        .count { !it.currentMessage.isContextCheckpoint },
+                                    // 根检查点（「压缩后在新会话继续」）前面没有节点，
+                                    // 沿用迁移过来的累计条数，避免展开历史时显示 0 条
+                                    messageCount = if (node.parentId == null) {
+                                        activeCheckpoint?.messageCount ?: 0
+                                    } else {
+                                        conversation.pathNodes().takeWhile { it.id != node.id }
+                                            .count { !it.currentMessage.isContextCheckpoint }
+                                    },
                                     summaryPreview = node.currentMessage.toText().lineSequence().firstOrNull().orEmpty(),
                                     expanded = showCheckpointBody,
                                     onToggle = { showCheckpointBody = !showCheckpointBody },

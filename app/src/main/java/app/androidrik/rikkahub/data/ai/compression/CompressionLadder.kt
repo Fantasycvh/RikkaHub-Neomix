@@ -113,17 +113,22 @@ suspend fun runCompressionLadder(
     chunkedSummarize: suspend () -> String,
     singleSummarize: (suspend () -> String)?,
     truncatedFallback: String,
+    onProgress: (CompressionProgress) -> Unit = {},
 ): CompressionLadderResult {
     val chunked = trySummarize(chunkedSummarize)
+    onProgress(CompressionProgress(CompressionProgressStage.VALIDATING))
     if (!chunked.isNullOrBlank() && coveragePassed(sourceText, chunked)) {
         return CompressionLadderResult(chunked, CompressionTier.CHUNKED)
     }
     if (singleSummarize != null) {
+        onProgress(CompressionProgress(CompressionProgressStage.SINGLE_PASS))
         val single = trySummarize(singleSummarize)
+        onProgress(CompressionProgress(CompressionProgressStage.VALIDATING))
         if (!single.isNullOrBlank() && coveragePassed(sourceText, single)) {
             return CompressionLadderResult(single, CompressionTier.SINGLE)
         }
     }
+    onProgress(CompressionProgress(CompressionProgressStage.FALLBACK))
     return CompressionLadderResult(truncatedFallback, CompressionTier.TRUNCATED)
 }
 

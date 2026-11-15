@@ -16,6 +16,28 @@ import org.junit.Test
  */
 class CompressionLadderTest {
 
+    /** 手动压缩对话框按阶段展示进度：校验 → 整篇重摘 → 兜底必须都报到。 */
+    @Test
+    fun `reports stage progress through the ladder`() = runBlocking {
+        val stages = mutableListOf<CompressionProgressStage>()
+        runCompressionLadder(
+            sourceText = factRichSource,
+            chunkedSummarize = { "" },
+            singleSummarize = { "" },
+            truncatedFallback = "fallback",
+            onProgress = { stages += it.stage },
+        )
+        assertEquals(
+            listOf(
+                CompressionProgressStage.VALIDATING,
+                CompressionProgressStage.SINGLE_PASS,
+                CompressionProgressStage.VALIDATING,
+                CompressionProgressStage.FALLBACK,
+            ),
+            stages,
+        )
+    }
+
     private val factRichSource = buildString {
         appendLine("部署在 192.168.1.100:8080，版本 2.5.1，日志路径 var/log/app.log")
         appendLine("处理了 12000 行，成功率 87.5%，包大小 63,262 字节，超时 30000 毫秒")
