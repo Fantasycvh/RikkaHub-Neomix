@@ -15,6 +15,7 @@ import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryMode
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -187,6 +188,86 @@ class MemoryFileInstrumentedTest {
                 assertEquals("original", file.content)
                 assertEquals("stable-revision", file.revision)
                 assertNull(file.anchorId)
+            }
+        } finally {
+            context.deleteDatabase(name)
+        }
+        Unit
+    }
+
+    @Test
+    fun historyFollowsRenameAndRestoresOriginalPathAsNewRevision() = runBlocking {
+        Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build().withClose { db ->
+            val files = MemoryFileRepository(db)
+            val original = files.writeFile("private", "/topics/project.md", null, pin = true) { "original" }
+            val moved = files.move("private", original.path, "/areas/project.md", original.revision, "edited", pin = false)
+            val old = files.observeHistory("private", moved.identity).first().single()
+            assertEquals(original.identity, moved.identity)
+            assertEquals(original.path, old.path)
+            assertNull(files.readVersion("other", old.id))
+            val occupant = files.write("private", original.path, null) { "different file" }
+            val conflict = runCatching { files.restoreVersion("private", old.id, moved.revision) }.exceptionOrNull()
+            assertEquals(MemoryFileError.PATH_OCCUPIED, (conflict as? MemoryFileException)?.reason)
+            files.delete("private", occupant.path, occupant.revision)
+            assertTrue(runCatching { files.restoreVersion("private", old.id, original.revision) }.isFailure)
+            val restored = files.restoreVersion("private", old.id, moved.revision)
+            assertEquals(original.identity, restored.identity)
+            assertEquals(original.content, restored.content)
+            assertEquals(original.anchorId, restored.anchorId)
+            assertNotEquals(original.revision, restored.revision)
+            assertNull(files.read("private", moved.path))
+            assertEquals(2, files.observeHistory("private", restored.identity).first().size)
+        }
+    }
+
+    @Test
+    fun trashCanRestoreOrPermanentlyDeleteAnIdentityWithoutTouchingOtherFiles() = runBlocking {
+        Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build().withClose { db ->
+            val files = MemoryFileRepository(db)
+            val original = files.write("private", "/profile.md", null) { "original" }
+            val changed = files.write("private", original.path, original.revision) { "updated" }
+            files.delete("private", changed.path, changed.revision)
+            val trash = files.observeTrash("private").first().single()
+            assertTrue(files.list("private").isEmpty())
+            assertTrue(files.observeTrash("other").first().isEmpty())
+            assertTrue(runCatching { files.restoreTrash("other", trash.id) }.isFailure)
+            val restored = files.restoreTrash("private", trash.id)
+            assertEquals(changed.identity, restored.identity)
+            assertEquals(changed.content, restored.content)
+            assertNotEquals(changed.revision, restored.revision)
+            assertTrue(files.observeTrash("private").first().isEmpty())
+            assertTrue(runCatching { files.permanentlyDelete("private", trash.id) }.isFailure)
+            files.delete("private", restored.path, restored.revision)
+            val deletedAgain = files.observeTrash("private").first().single()
+            val replacement = files.write("private", original.path, null) { "replacement" }
+            assertTrue(runCatching { files.restoreTrash("private", deletedAgain.id) }.isFailure)
+            files.permanentlyDelete("private", deletedAgain.id)
+            assertTrue(files.observeTrash("private").first().isEmpty())
+            assertTrue(files.observeHistory("private", original.identity).first().isEmpty())
+            assertEquals(replacement, files.read("private", replacement.path))
+        }
+    }
+
+    @Test
+    fun upgradeFrom73RetainsFilesAndTheirFirstEditKeepsTheLegacyIdentity() = runBlocking {
+        val name = "file-recovery-${UUID.randomUUID()}.db"
+        try {
+            migrations.createDatabase(name, 73).use { db ->
+                db.execSQL(
+                    "INSERT INTO assistant_memory_file(store_id, path, content, revision, updated_at, anchor_id) " +
+                        "VALUES ('private', '/profile.md', 'original', 'legacy-id', 1, 'pinned')",
+                )
+            }
+            openDatabase(name).withClose { db ->
+                val files = MemoryFileRepository(db)
+                val before = checkNotNull(files.read("private", "/profile.md"))
+                assertEquals("legacy-id", before.identity)
+                assertTrue(files.observeHistory("private", before.identity).first().isEmpty())
+                val updated = files.write("private", before.path, before.revision) { "edited" }
+                assertEquals(before.identity, updated.identity)
+                assertEquals("pinned", updated.anchorId)
+                val history = files.observeHistory("private", updated.identity).first().single()
+                assertEquals("original", files.readVersion("private", history.id)?.content)
             }
         } finally {
             context.deleteDatabase(name)

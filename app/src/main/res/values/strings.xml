@@ -2780,6 +2780,12 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="memory_recovery_trash_empty">Trash is empty</string>
   <string name="memory_recovery_view_and_restore">View and restore</string>
   <string name="memory_recovery_view_restore_this">View and restore this version</string>
+  <string name="memory_file_delete_to_trash">This file will be moved to Trash.</string>
+  <string name="memory_file_recovery_description">Restore a previous version or a deleted file to its original path. Recovery creates a new version. Up to 20 previous versions are kept per file.</string>
+  <string name="memory_file_purge_action">Delete permanently</string>
+  <string name="memory_file_purge_title">Permanently delete this file?</string>
+  <string name="memory_file_purge_description">Permanently delete %1$s and all of its previous versions?</string>
+  <string name="memory_file_restore_path_occupied">The original path is occupied. Move the file at that path before restoring.</string>
   <string name="plugin_capability_conversation_mutate">Modify conversations</string>
   <string name="plugin_capability_history_read">Read history</string>
   <string name="plugin_capability_network">Network</string>

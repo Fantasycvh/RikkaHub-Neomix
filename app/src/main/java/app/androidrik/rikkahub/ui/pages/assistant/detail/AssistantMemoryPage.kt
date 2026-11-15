@@ -127,7 +127,7 @@ fun AssistantMemoryPage(id: String) {
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val storeId = assistant.memoryId()
-    var showRecovery by remember(storeId) { mutableStateOf(false) }
+    var showRecovery by remember(storeId, assistant.memoryMode) { mutableStateOf(false) }
     fun launchMemoryAction(action: suspend () -> Unit) {
         scope.launch {
             try {
@@ -155,8 +155,8 @@ fun AssistantMemoryPage(id: String) {
                     BackButton()
                 },
                 actions = {
-                    if (assistant.memoryMode == MemoryMode.ENTRIES) {
-                        TextButton(onClick = { showRecovery = true }) { Text(stringResource(R.string.backup_page_restore)) }
+                    TextButton(onClick = { showRecovery = true }) {
+                        Text(stringResource(R.string.backup_page_restore))
                     }
                 },
                 scrollBehavior = scrollBehavior,
@@ -173,7 +173,7 @@ fun AssistantMemoryPage(id: String) {
         }
         if (assistant.memoryMode == MemoryMode.FILES) {
             key(storeId) {
-                AssistantFileMemoryContent(assistant, storeId, vm)
+                AssistantFileMemoryContent(assistant, storeId, vm, showRecovery) { showRecovery = false }
             }
         } else {
         AssistantMemoryContent(

@@ -20,6 +20,7 @@ import app.androidrik.rikkahub.data.db.dao.ManagedFileDAO
 import app.androidrik.rikkahub.data.db.dao.MediaCreationDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryFileDAO
+import app.androidrik.rikkahub.data.db.dao.MemoryFileVersionDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryFileProgressDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryHistoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
@@ -44,6 +45,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryConsolidationEntity
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
+import app.androidrik.rikkahub.data.db.entity.MemoryFileVersionEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryFileProgressEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryHistoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
@@ -67,6 +69,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ConversationEntity::class,
         MemoryEntity::class,
         MemoryFileEntity::class,
+        MemoryFileVersionEntity::class,
         MemoryFileProgressEntity::class,
         GenMediaEntity::class,
         MessageNodeEntity::class,
@@ -93,7 +96,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 73,
+    version = 74,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -220,6 +223,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 71→72 也不在这里：message_node.selected_message_id（懒加载阶段 11）需要 JSON1
         // **回填**旧行，由 Migration_71_72 负责。
         AutoMigration(from = 72, to = 73),
+        AutoMigration(from = 73, to = 74),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -228,6 +232,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     abstract fun memoryDao(): MemoryDAO
     abstract fun memoryFileDao(): MemoryFileDAO
+    abstract fun memoryFileVersionDao(): MemoryFileVersionDAO
     abstract fun memoryFileProgressDao(): MemoryFileProgressDAO
 
     abstract fun memoryHistoryDao(): MemoryHistoryDAO
@@ -279,7 +284,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 73
+        const val SCHEMA_VERSION = 74
     }
 }
 

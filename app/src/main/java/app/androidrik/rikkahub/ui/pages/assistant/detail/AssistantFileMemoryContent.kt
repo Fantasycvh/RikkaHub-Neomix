@@ -76,7 +76,13 @@ internal fun MemoryModeSelector(mode: MemoryMode, onSelect: (MemoryMode) -> Unit
 }
 
 @Composable
-internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, vm: AssistantDetailVM) {
+internal fun AssistantFileMemoryContent(
+    assistant: Assistant,
+    storeId: String,
+    vm: AssistantDetailVM,
+    showRecovery: Boolean,
+    onDismissRecovery: () -> Unit,
+) {
     val repository = vm.memoryFiles
     val files by remember(repository, storeId) { repository.observe(storeId) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
@@ -106,13 +112,7 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                error = when ((failure as? MemoryFileException)?.reason) {
-                    MemoryFileError.INVALID_PATH -> R.string.assistant_page_memory_file_path_invalid
-                    MemoryFileError.CHANGED -> R.string.assistant_page_memory_file_changed
-                    MemoryFileError.TOO_LARGE -> R.string.assistant_page_memory_file_too_large
-                    MemoryFileError.LIBRARY_FULL -> R.string.assistant_page_memory_file_library_full
-                    null -> R.string.assistant_page_memory_file_update_failed
-                }
+                error = failure.memoryFileErrorRes()
             } finally {
                 busy = false
             }
@@ -239,7 +239,7 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
                     style = MaterialTheme.typography.titleSmall,
                 )
             }
-            items(categoryFiles, key = { it.path }) { file ->
+            items(categoryFiles, key = { it.identity }) { file ->
                 ListItem(
                     headlineContent = { Text(file.path) },
                     supportingContent = if (file.anchorId != null) {
@@ -288,7 +288,12 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
         AlertDialog(
             onDismissRequest = { if (!busy) pendingDelete = null },
             title = { Text(stringResource(R.string.assistant_page_memory_file_delete_confirm)) },
-            text = { Text(error?.let { stringResource(it) } ?: file.path) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(file.path)
+                    Text(error?.let { stringResource(it) } ?: stringResource(R.string.memory_file_delete_to_trash))
+                }
+            },
             confirmButton = {
                 TextButton(enabled = !busy, onClick = {
                     runChange {
@@ -304,6 +309,16 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
             },
         )
     }
+    if (showRecovery) FileMemoryRecoverySheet(storeId, files, repository, onDismissRecovery)
+}
+
+internal fun Exception.memoryFileErrorRes(): Int = when ((this as? MemoryFileException)?.reason) {
+    MemoryFileError.INVALID_PATH -> R.string.assistant_page_memory_file_path_invalid
+    MemoryFileError.CHANGED -> R.string.assistant_page_memory_file_changed
+    MemoryFileError.PATH_OCCUPIED -> R.string.memory_file_restore_path_occupied
+    MemoryFileError.TOO_LARGE -> R.string.assistant_page_memory_file_too_large
+    MemoryFileError.LIBRARY_FULL -> R.string.assistant_page_memory_file_library_full
+    null -> R.string.assistant_page_memory_file_update_failed
 }
 
 @Composable

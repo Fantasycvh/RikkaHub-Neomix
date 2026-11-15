@@ -2803,6 +2803,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="memory_recovery_trash_empty">回收站为空</string>
   <string name="memory_recovery_view_and_restore">查看并恢复</string>
   <string name="memory_recovery_view_restore_this">查看并恢复此版本</string>
+  <string name="memory_file_delete_to_trash">此文件将移入回收站。</string>
+  <string name="memory_file_recovery_description">可将旧版本或已删除的文件恢复到原路径。恢复会生成新版本，每个文件最多保留 20 个旧版本。</string>
+  <string name="memory_file_purge_action">永久删除</string>
+  <string name="memory_file_purge_title">永久删除此文件？</string>
+  <string name="memory_file_purge_description">永久删除 %1$s 及其全部旧版本？</string>
+  <string name="memory_file_restore_path_occupied">原路径已被占用。请先移走该路径上的文件，再恢复。</string>
   <string name="plugin_capability_conversation_mutate">修改会话</string>
   <string name="plugin_capability_history_read">读取历史</string>
   <string name="plugin_capability_network">网络</string>

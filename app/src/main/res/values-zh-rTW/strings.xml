@@ -2789,6 +2789,12 @@
   <string name="memory_recovery_trash_empty">回收桶是空的</string>
   <string name="memory_recovery_view_and_restore">檢視並還原</string>
   <string name="memory_recovery_view_restore_this">檢視並還原此版本</string>
+  <string name="memory_file_delete_to_trash">此檔案將移至回收桶。</string>
+  <string name="memory_file_recovery_description">可將舊版本或已刪除的檔案還原至原路徑。還原會建立新版本，每個檔案最多保留 20 個舊版本。</string>
+  <string name="memory_file_purge_action">永久刪除</string>
+  <string name="memory_file_purge_title">要永久刪除此檔案嗎？</string>
+  <string name="memory_file_purge_description">要永久刪除 %1$s 及其所有舊版本嗎？</string>
+  <string name="memory_file_restore_path_occupied">原路徑已被占用。請先移走該路徑上的檔案，再還原。</string>
   <string name="plugin_capability_conversation_mutate">修改對話</string>
   <string name="plugin_capability_history_read">讀取歷史</string>
   <string name="plugin_capability_network">網路</string>

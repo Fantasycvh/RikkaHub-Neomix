@@ -17,6 +17,9 @@ interface MemoryFileDAO {
     @Query("SELECT * FROM assistant_memory_file WHERE store_id = :storeId AND path = :path")
     suspend fun get(storeId: String, path: String): MemoryFileEntity?
 
+    @Query("SELECT * FROM assistant_memory_file WHERE store_id = :storeId AND COALESCE(file_id, revision) = :fileId")
+    suspend fun getById(storeId: String, fileId: String): MemoryFileEntity?
+
     @Query("SELECT COUNT(*) FROM assistant_memory_file WHERE store_id = :storeId")
     suspend fun count(storeId: String): Int
 
@@ -24,12 +27,12 @@ interface MemoryFileDAO {
     suspend fun insert(file: MemoryFileEntity)
 
     @Query(
-        "UPDATE assistant_memory_file SET path = :destination, content = :content, revision = :revision, updated_at = :updatedAt, anchor_id = :anchorId " +
+        "UPDATE assistant_memory_file SET path = :destination, content = :content, revision = :revision, updated_at = :updatedAt, anchor_id = :anchorId, file_id = :fileId " +
             "WHERE store_id = :storeId AND path = :source AND revision = :expected"
     )
     suspend fun move(
         storeId: String, source: String, destination: String, expected: String,
-        content: String, revision: String, updatedAt: Long, anchorId: String?,
+        content: String, revision: String, updatedAt: Long, anchorId: String?, fileId: String,
     ): Int
 
     @Query("DELETE FROM assistant_memory_file WHERE store_id = :storeId AND path = :path AND revision = :expected")
