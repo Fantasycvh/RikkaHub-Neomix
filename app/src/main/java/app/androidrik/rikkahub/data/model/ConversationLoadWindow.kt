@@ -10,6 +10,8 @@ data class NodeSummary(
     val id: Uuid,
     val parentId: Uuid?,
     val nodeIndex: Int,
+    /** 选中候选下标。指纹摘要化（阶段 5）靠它覆盖分支切换/编辑/重新生成。 */
+    val selectIndex: Int = 0,
     val messageBytes: Long,
 )
 

@@ -142,6 +142,8 @@ suspend fun saveNodeChanges(
   1. 指纹改为 `node id + select_index`（分支切换/编辑后 selectIndex 必变，覆盖主要失效路径）；
   2. 新增 `selected_message_id` 列（DB v72），保存时写入，摘要直接带出。
   建议先做 1（零迁移），若发现「原地改内容不改下标」的漏网场景再升级 2。
+  **已实施（阶段 5）**：采用 1，指纹值加 `v2:` 前缀区分新算法；旧指纹保留原校验逻辑，
+  稀疏时仍按「信任落库值」处理，重新压缩即升级。
 - 检查点失效（边界缺失/指纹不符）→ 回退为「尾部预算加载」，不要求全量历史。
 
 ## 六、UI 行为
@@ -203,6 +205,21 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
 - **已知限制（留待阶段 5）**：稀疏时区域指纹无法在摘要层校验（编辑已 hydrate 的
   摘要区域节点不会立刻使检查点失效）；引用跳转到未加载节点仍会放弃（需按消息 id 查询
   → hydrate 的入口）。单测见 `ConversationSparseModeTest`。
+
+**阶段 5 指纹摘要化（2026-11-15）**：
+
+- `NodeSummary` 增加 `selectIndex`（DAO 摘要查询本来就带 `select_index`，只是此前没映射），
+  `ConversationNodeStore.loadNodeSummaries` 一并带出。
+- 新指纹算法 = `节点 id + selectIndex` 的拼接哈希，带 `v2:` 前缀（`areaFingerprintFor`
+  统一产出）。校验时按前缀分派：v2 用摘要路径 + 摘要 selectIndex 计算（已加载节点优先用
+  内存 selectIndex，未加载用落库摘要），因此**稀疏会话也能判失效**；旧指纹只在全量时校验，
+  稀疏时保持「信任落库值」，重新压缩后自动升级，无需 DB 迁移。
+- 覆盖失效路径：切换分支、编辑（候选追加并选中）、重新生成、删除——都改变 selectIndex 或
+  节点序列。已知盲区「原地改内容且候选数/index 不变」旧指纹同样覆盖不到，属存量行为。
+- 单测新增：v2 指纹在无正文的稀疏会话中有效、摘要 selectIndex 变化后失效、已 hydrate 节点
+  选中候选变化后失效；`ConversationSparseModeTest` 与全量单测通过。
+- 仍待办（阶段 6 选项）：引用/搜索跳转到未加载节点的「按消息 id → hydrate」入口；
+  「原地改内容」若要严格覆盖，需新增 `selected_message_id` 列（DB 迁移）。
 
 ## 八、兼容与迁移
 

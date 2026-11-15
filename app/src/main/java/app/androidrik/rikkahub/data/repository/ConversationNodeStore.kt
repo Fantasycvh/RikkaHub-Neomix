@@ -141,6 +141,7 @@ internal class ConversationNodeStore(
                 id = id,
                 parentId = row.parentId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
                 nodeIndex = row.nodeIndex,
+                selectIndex = row.selectIndex,
                 messageBytes = row.messageBytes,
             )
         }

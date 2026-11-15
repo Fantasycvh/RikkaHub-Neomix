@@ -33,7 +33,9 @@ class ConversationSparseModeTest {
     )
 
     private fun summariesOf(nodes: List<MessageNode>): List<NodeSummary> =
-        nodes.mapIndexed { index, node -> NodeSummary(node.id, node.parentId, index, messageBytes = 100) }
+        nodes.mapIndexed { index, node ->
+            NodeSummary(node.id, node.parentId, index, node.selectIndex, messageBytes = 100)
+        }
 
     /**
      * 线性链 a→b→c→d，检查点边界 = b；稀疏会话只加载 c/d（边界及之前按设计排除）。
@@ -126,6 +128,72 @@ class ConversationSparseModeTest {
 
         assertFalse(full.isSparse)
         assertNull("全量后指纹不符必须失效", full.activeCompression())
+    }
+
+    // ---- 阶段 5：摘要化指纹（id + selectIndex）----
+
+    private fun Conversation.withV2FingerprintAt(boundaryPathIndex: Int): Conversation {
+        val full = copy(messageNodes = fullNodes(), nodeSummaries = emptyList())
+        val fp = requireNotNull(full.areaFingerprintFor(boundaryPathIndex))
+        return copy(
+            compressionSummaries = compressionSummaries.map {
+                it.copy(areaFingerprint = fp)
+            }
+        )
+    }
+
+    private fun Conversation.fullNodes(): List<MessageNode> {
+        // 用摘要路径 id 重建同构完整链（selectIndex 与摘要一致，均为 0）。
+        var parentId: Uuid? = null
+        return summaryPathNodeIds().mapIndexed { index, id ->
+            node("n$index", parentId).copy(id = id).also { parentId = id }
+        }
+    }
+
+    @Test
+    fun `v2 fingerprint validates in sparse mode without bodies`() {
+        val (conversation, _) = sparseConversation()
+        val boundaryId = conversation.compressionSummaries.last().boundaryNodeId
+        val boundaryIndex = conversation.summaryPathNodeIds().indexOfFirst { it.toString() == boundaryId }
+        val stamped = conversation.withV2FingerprintAt(boundaryIndex)
+
+        assertTrue(stamped.compressionSummaries.last().areaFingerprint!!.startsWith(FINGERPRINT_V2_PREFIX))
+        assertNotNull("摘要层校验不得依赖区域正文", stamped.activeCompression())
+        assertEquals(1, boundaryIndex)
+    }
+
+    /** 未加载区域的 selectIndex 变了（例如别的会话/分支操作落库）：v2 指纹必须判失效。 */
+    @Test
+    fun `v2 fingerprint invalidates when summary selection changed`() {
+        val (conversation, _) = sparseConversation()
+        val stamped = conversation.withV2FingerprintAt(1)
+        val boundaryId = stamped.compressionSummaries.last().boundaryNodeId
+        val changed = stamped.copy(
+            nodeSummaries = stamped.nodeSummaries.map {
+                if (it.id.toString() == boundaryId) it.copy(selectIndex = 1) else it
+            }
+        )
+
+        assertNull(changed.activeCompression())
+    }
+
+    /** 已 hydrate 区域的节点改了选中候选（内存态）：v2 指纹同样要判失效。 */
+    @Test
+    fun `v2 fingerprint invalidates when loaded area selection changed`() {
+        val (conversation, _) = sparseConversation()
+        // 边界取 c（路径下标 2），c 已加载
+        val cId = conversation.summaryPathNodeIds()[2]
+        val stamped = conversation.copy(
+            compressionSummaries = listOf(checkpoint(boundaryNodeId = cId.toString()))
+        ).withV2FingerprintAt(2)
+        assertNotNull(stamped.activeCompression())
+
+        val edited = stamped.copy(
+            messageNodes = stamped.messageNodes.map {
+                if (it.id == cId) it.copy(selectIndex = 1) else it
+            }
+        )
+        assertNull("已加载节点的选中候选变化必须让检查点失效", edited.activeCompression())
     }
 
     @Test
