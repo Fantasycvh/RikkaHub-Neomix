@@ -1,6 +1,6 @@
 # 会话懒加载与保存契约改造（设计稿）
 
-> 状态：草案（2026-11-15）
+> 状态：**阶段 1–11 全部实施（2026-11-15，9d4a070f9→8f9532943 共 11 个提交，真机复测见 §9.2–§9.6）**；待决问题 1（窗口预算双阈值）与 4（触底加载形态）未决，本稿保留 in-progress
 > 关联：[design-auto-compaction.md](../completed/design-auto-compaction.md)、
 > [design-conversation-tree-branching.md](../completed/design-conversation-tree-branching.md)、
 > [design-conversation-import-export.md](../completed/design-conversation-import-export.md)

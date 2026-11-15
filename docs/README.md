@@ -17,11 +17,12 @@
 > **2026-11-14 整理**：已落地稿统一移入 `completed/`（84 篇）；`in-progress/` 保留有明确未完条目的稿；`drafts/` 保留评估/未立项稿。
 > 每篇头部状态行为该稿口径的真相源；目录归属只反映整理时点的状态。
 
-### design/in-progress/（进行中，7 篇）
+### design/in-progress/（进行中，8 篇）
 
 | 文档 | 内容 |
 |---|---|
 | [`design-agent-task-runtime.md`](design/in-progress/design-agent-task-runtime.md) | Agent 任务运行时：P0/P0.5/P1a/P1b/P3/P4a/P4b 已落地，**P2 嵌套派发待启动**（同时接管 design-subagent-context Phase 3） |
+| [`design-conversation-lazy-load.md`](design/in-progress/design-conversation-lazy-load.md) | 会话懒加载/稀疏加载：**阶段 1–11 已全部实施**（2026-11-15，DB v72）；待决问题 1（窗口预算）/4（触底加载形态）未决 |
 | [`design-context-purification.md`](design/in-progress/design-context-purification.md) | 上下文净化 rev8：P0 已随 beta.12 发布（观察期中），P1 暂缓（结构性） |
 | [`design-memory-consolidation-trigger.md`](design/in-progress/design-memory-consolidation-trigger.md) | 记忆整理触发器 rev4：P0+P1+cron 已落地；子代理执行/MONTHLY 缓做 |
 | [`design-memory-recycle-bin.md`](design/in-progress/design-memory-recycle-bin.md) | 记忆回收站：阶段 1/2/4 已落地（`1a910c620`）；**阶段 3 过期 sweep 未实现** |
@@ -29,11 +30,15 @@
 | [`design-storage-management.md`](design/in-progress/design-storage-management.md) | 缓存管理：Phase 1+2 已实现并真机验证；**Phase 3 部分** |
 | [`design-subagent-context.md`](design/in-progress/design-subagent-context.md) | 子代理上下文信封：Phase 1+2 已落地；Phase 3+ 由 agent-task-runtime P2 接续 |
 
-### design/drafts/（评估稿 / 未立项，5 篇）
+### design/drafts/（评估稿 / 未立项，10 篇）
 
 | 文档 | 内容 |
 |---|---|
-| [`design-ui-overhaul-research.md`](design/drafts/design-ui-overhaul-research.md) | UI 改造调研稿（dsh-go 补析 §10）：**A+G+D/C/B/I/F 七方向已于 2026-11-14 落地**；仅剩方向 E（Bento IA 三件） |
+| [`design-ui-overhaul-research.md`](design/drafts/design-ui-overhaul-research.md) | UI 改造调研稿（dsh-go 补析 §10）：A+G+D/C/B/I/F 七方向已于 2026-11-14 落地；第三轮 M1–M4 已于 2026-11-15 实施（正式稿见下），本稿归档为调研底稿 |
+| [`design-ui-round3-skins-geometry-motion.md`](design/drafts/design-ui-round3-skins-geometry-motion.md) | UI 第三轮：皮肤档位/气泡几何 v2/IA 三件/motion tokens——**M1+M2+M3/M4 已全部实施并提交**（dee8c09ce/eb2a675e0/cd26f2596）；挂账 = 设备颜色模式恢复深色真机验证 |
+| [`design-skins-batch2-engineering-ios.md`](design/drafts/design-skins-batch2-engineering-ios.md) | 皮肤第二批「工程感 / iOS 风」+ 分组容器形态：**M1–M3 已实施**（0d4262cf9），M4 真机验收中 |
+| [`design-deepseek-export-import.md`](design/drafts/design-deepseek-export-import.md) | DeepSeek 官方导出包导入：**implemented**（88e5718da），待真机全量导入验证 |
+| [`design-workspace-external-directories.md`](design/drafts/design-workspace-external-directories.md) | 工作区「访问外部指定目录」：LIVE/SNAPSHOT 两档挂载，**设计稿未实现** |
 | [`design-dshgo-kotlin-migration-assessment.md`](design/drafts/design-dshgo-kotlin-migration-assessment.md) | dsh-go → Kotlin 迁移评估：插件设计重构先行、引擎托管独立立项；**评估稿，未立项** |
 | [`design-history-tools-and-delta-emit.md`](design/drafts/design-history-tools-and-delta-emit.md) | 历史检索工具族 + 增量发送：**草案（暂不实现）**；若重启需先复核 §B.1（树语义重构已改变前提） |
 | [`design-tool-output-budget.md`](design/drafts/design-tool-output-budget.md) | 工具输出预算：阶段 1 变体已落地（`_meta` 完整性声明）；阶段 2/3 未做 |
@@ -81,7 +86,7 @@
 | [`deepseek-endpoint-notes-2026-10-28.md`](deepseek-endpoint-notes-2026-10-28.md) | DeepSeek 端点行为实测记录（证据时效留档） |
 | [`references/chat-generation-pipeline.md`](references/chat-generation-pipeline.md) | 上游：对话生成管线说明 |
 | [`references/other projects/`](references/other%20projects/) | 同类应用评估**原文**（按应用一文件）：rikkahub-agent / SoLab / Yuihub / SillyTavern / senera / 华灯 / agentd / bigeye / billion-context / archify / NMoi-Agent / BiliPai / Miffan / dsh-Go；索引入口见 `peer-apps-benchmark.md` |
-| [`releases/`](releases/) | **发布说明存档**（按 tag 存 release 正文原文；`1.0.28-beta.7` 起带 arm64-v8a APK，含 SHA-256 与签名指纹；最新见 [`1.0.28-beta.20.md`](releases/1.0.28-beta.20.md)，索引见 [`releases/README.md`](releases/README.md)） |
+| [`releases/`](releases/) | **发布说明存档**（按 tag 存 release 正文原文；`1.0.28-beta.7` 起带 arm64-v8a APK，含 SHA-256 与签名指纹；最新见 [`1.0.28-beta.22.md`](releases/1.0.28-beta.22.md)，索引见 [`releases/README.md`](releases/README.md)） |
 | `icon.png` / `img/` / `sponsors/` / `donate.png` | 上游：README 用图与赞助素材 |
 
 > 内部审计类记录（`turbo-*`）**未随本仓发布**；`roadmap.md` 等文中以「内部记录（未随本仓发布）」指代。
@@ -93,9 +98,9 @@
 
 | 文档 | 待办/状态最新刷新 | 说明 |
 |---|---|---|
-| `handoff-2026-09-04.md` | **2026-11-14**（§〇 快照 → beta.20 (323)/DB 71；§三 已落地待办逐项划掉） | **待办的第一真相源**；§三.1 表内**未划掉**的才是未完成项——长文本里的「YYYY-MM-DD 评估，未实现」多为**存档**，不代表当前状态 |
+| `handoff-2026-09-04.md` | **2026-11-15**（§〇 快照 → beta.22 (325)/DB 73） | **待办的第一真相源**；§三.1 表内**未划掉**的才是未完成项——长文本里的「YYYY-MM-DD 评估，未实现」多为**存档**，不代表当前状态 |
 | `roadmap.md` | **2026-11-14**（头部快照刷新；§八 日志索引） | §八 只保留**日志索引 + 追加约定**（最新条目见 `changelog/2026-11.md`）；§一~§七 的规划判断**可能已被日志推翻**，冲突时以 `changelog/` + handoff §三 为准 |
-| `changelog/2026-11.md` | **2026-11-14**（最后一条） | 逐日落地日志（**只追加**，最新月份文件为准）；查某功能全过程按关键词全文搜 `changelog/`，不要只看某月 |
+| `changelog/2026-11.md` | **2026-11-15**（最后一条） | 逐日落地日志（**只追加**，最新月份文件为准）；查某功能全过程按关键词全文搜 `changelog/`，不要只看某月 |
 | `peer-apps-benchmark.md` | **2026-11-14 晚**（§七+§八 两轮判决；上轮 2026-11-10） | 本页**只剩索引与汇总**：落地状态看「§三」（原 §五，唯一口径）；各应用评估原文已迁 `references/other projects/`；11-14 两轮明细见 peer-verdicts §七/§八与各台账当日节 |
 | `upstream-analysis.md` | **2026-11-14**（同步点 `64452581d`，tag `3.2.0`） | 已评估到上游 `64452581d`；issue 扫描至 #2312；唯一候选 c1c3c4d12 已落地（fork `0bf49eed4`）；**下次同步从 `64452581d` 往后取** |
 | `purrcat-analysis.md` | **2026-11-03**（状态回写；原评估 2026-10-30） | 全篇为**评估原文**；**A1/A3/A4.1/A4.2 已落地，A2 仍空**；引用第三方项目的说法一律标注「自述」并附源码核验 |
