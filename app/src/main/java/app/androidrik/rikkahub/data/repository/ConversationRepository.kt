@@ -36,6 +36,7 @@ import app.androidrik.rikkahub.data.model.buildConversationLoadWindow
 import app.androidrik.rikkahub.data.model.summaryPathIds
 import app.androidrik.rikkahub.data.model.prefixPruneCandidates
 import app.androidrik.rikkahub.data.model.summaryAreaFingerprint
+import app.androidrik.rikkahub.data.model.selectedMessageIdOrNull
 import app.androidrik.rikkahub.data.model.NodeSummary
 import app.androidrik.rikkahub.data.model.NodeTreeInfo
 import android.util.Log
@@ -698,6 +699,7 @@ class ConversationRepository(
                     // null（根/存量漏父）回退列表前驱（与 healMissingParents 同口径）
                     parentId = node.parentId?.toString()
                         ?: conversation.messageNodes.getOrNull(position - 1)?.id?.toString(),
+                    selectedMessageId = node.selectedMessageIdOrNull,
                 )
             )
             // 叶子推进与节点行同一事务（强杀恢复，树形分支）：流式中叶子只在内存推进，

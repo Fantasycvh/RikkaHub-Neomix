@@ -17,6 +17,7 @@ import app.androidrik.rikkahub.data.model.NodeSummary
 import app.androidrik.rikkahub.data.model.NodeTreeInfo
 import app.androidrik.rikkahub.data.model.healMissingParents
 import app.androidrik.rikkahub.data.model.repairCorruptedCandidates
+import app.androidrik.rikkahub.data.model.selectedMessageIdOrNull
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlin.uuid.Uuid
 
@@ -152,6 +153,7 @@ internal class ConversationNodeStore(
                     parentId = parentId,
                     nodeIndex = row.nodeIndex,
                     selectIndex = row.selectIndex,
+                    selectedMessageId = row.selectedMessageId,
                     messageBytes = row.messageBytes,
                 )
             }
@@ -298,6 +300,7 @@ internal fun computeNodeDiff(
             messages = messagesJson,
             selectIndex = node.selectIndex,
             parentId = node.parentId?.toString(),
+            selectedMessageId = node.selectedMessageIdOrNull,
         )
     }
     return NodeDiffPlan(toWrite = toWrite, removedIds = removedIds)

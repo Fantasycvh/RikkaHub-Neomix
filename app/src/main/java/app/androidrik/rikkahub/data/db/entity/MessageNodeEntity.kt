@@ -36,4 +36,11 @@ data class MessageNodeEntity(
      */
     @ColumnInfo("parent_id")
     val parentId: String? = null,
+    /**
+     * 选中候选的消息 id（DB v72）。摘要查询直接带出，稀疏会话的区域指纹才能覆盖
+     * 「原地替换选中候选、index 不变」——只用 select_index 会漏检该场景。
+     * 旧行由 Migration_71_72 用 JSON1 回填；messages 非法/下标越界时为 null。
+     */
+    @ColumnInfo("selected_message_id")
+    val selectedMessageId: String? = null,
 )

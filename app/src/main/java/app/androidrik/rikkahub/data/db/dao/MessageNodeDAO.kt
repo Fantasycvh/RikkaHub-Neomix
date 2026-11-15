@@ -32,6 +32,8 @@ data class MessageNodeSummaryRow(
     @ColumnInfo("node_index") val nodeIndex: Int,
     @ColumnInfo("select_index") val selectIndex: Int,
     @ColumnInfo("message_bytes") val messageBytes: Long,
+    /** 选中候选的消息 id（DB v72）；摘要化指纹 v3 靠它覆盖「原地替换候选、index 不变」。 */
+    @ColumnInfo("selected_message_id") val selectedMessageId: String? = null,
 )
 
 /**
@@ -68,7 +70,8 @@ interface MessageNodeDAO {
 
     /** 稀疏加载：全量摘要（不含 messages），用于建路径与窗口预算。 */
     @Query(
-        "SELECT id, parent_id, node_index, select_index, LENGTH(messages) AS message_bytes " +
+        "SELECT id, parent_id, node_index, select_index, selected_message_id, " +
+            "LENGTH(messages) AS message_bytes " +
             "FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index ASC"
     )
     suspend fun getNodeSummaries(conversationId: String): List<MessageNodeSummaryRow>

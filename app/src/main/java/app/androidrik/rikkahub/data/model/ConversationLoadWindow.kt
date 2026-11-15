@@ -12,6 +12,8 @@ data class NodeSummary(
     val nodeIndex: Int,
     /** 选中候选下标。指纹摘要化（阶段 5）靠它覆盖分支切换/编辑/重新生成。 */
     val selectIndex: Int = 0,
+    /** 选中候选的消息 id（DB v72）：指纹 v3 靠它覆盖「原地替换候选、下标不变」。 */
+    val selectedMessageId: String? = null,
     val messageBytes: Long,
 )
 

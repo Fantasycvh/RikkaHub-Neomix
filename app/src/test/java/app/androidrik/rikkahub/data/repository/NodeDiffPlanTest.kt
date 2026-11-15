@@ -78,6 +78,14 @@ class NodeDiffPlanTest {
         assertEquals(listOf(multi.id.toString()), plan.toWrite.map { it.id })
     }
 
+    /** DB v72：写入行必须带出选中消息 id（摘要化指纹 v3 依赖它校验稀疏会话）。 */
+    @Test fun `written rows carry the selected message id`() {
+        val multi = MessageNode(messages = listOf(msg("x"), msg("y")), selectIndex = 1)
+        val plan = computeNodeDiff(convId, emptyList(), listOf(multi).healMissingParents())
+
+        assertEquals(multi.messages[1].id.toString(), plan.toWrite.single().selectedMessageId)
+    }
+
     @Test fun `truncation removes explicitly deleted ids regardless of order`() {
         val a = node("a")
         val b = node("b")

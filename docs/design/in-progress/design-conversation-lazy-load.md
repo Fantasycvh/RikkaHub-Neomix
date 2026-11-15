@@ -144,6 +144,8 @@ suspend fun saveNodeChanges(
   建议先做 1（零迁移），若发现「原地改内容不改下标」的漏网场景再升级 2。
   **已实施（阶段 5）**：采用 1，指纹值加 `v2:` 前缀区分新算法；旧指纹保留原校验逻辑，
   稀疏时仍按「信任落库值」处理，重新压缩即升级。
+  **阶段 11 已升级到 2**：`selected_message_id`（DB v72，迁移 JSON1 回填）+ 指纹 `v3:`，
+  v2 仅保留校验兼容；细节见 §9.6。
 - 检查点失效（边界缺失/指纹不符）→ 回退为「尾部预算加载」，不要求全量历史。
 
 ## 六、UI 行为
@@ -215,11 +217,11 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
   内存 selectIndex，未加载用落库摘要），因此**稀疏会话也能判失效**；旧指纹只在全量时校验，
   稀疏时保持「信任落库值」，重新压缩后自动升级，无需 DB 迁移。
 - 覆盖失效路径：切换分支、编辑（候选追加并选中）、重新生成、删除——都改变 selectIndex 或
-  节点序列。已知盲区「原地改内容且候选数/index 不变」旧指纹同样覆盖不到，属存量行为。
+  节点序列。已知盲区「原地改内容且候选数/index 不变」旧指纹同样覆盖不到，属存量行为；
+  **已在阶段 11 用 `selected_message_id` + 指纹 v3 补齐（见 §9.6）**。
 - 单测新增：v2 指纹在无正文的稀疏会话中有效、摘要 selectIndex 变化后失效、已 hydrate 节点
   选中候选变化后失效；`ConversationSparseModeTest` 与全量单测通过。
-- 仍待办（阶段 6 选项）：引用/搜索跳转到未加载节点的「按消息 id → hydrate」入口；
-  「原地改内容」若要严格覆盖，需新增 `selected_message_id` 列（DB 迁移）。
+- 仍待办（阶段 6 选项）：引用/搜索跳转到未加载节点的「按消息 id → hydrate」入口。
 
 **阶段 6 跳转 hydrate + 压缩前缀物理清理（2026-11-15）**：
 
@@ -365,6 +367,26 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
   发请求依赖内存完整路径（`pathNodes()`），片段化会送出残缺上下文；`latestLeafIdOfSubtree`
   需要后代时间戳而摘要没有；切到压缩边界之前的分支会让检查点指纹失效，前缀仍需实体化。
 
+### 9.6 指纹 v3：`selected_message_id` 落地（2026-11-15，阶段 11）
+
+- **补的盲区**：阶段 5 的 v2 指纹只看 `selectIndex`，覆盖不到「原地替换选中候选、候选数/
+  下标不变」。修法是让摘要层直接带出选中消息 id，指纹升级为 v3。
+- **DB v72**：`message_node.selected_message_id`（TEXT，可空）。手写
+  `Migration_71_72`：先 `ADD COLUMN`，再用 JSON1 回填
+  `CASE WHEN json_valid(messages) THEN json_extract(messages, '$[' || select_index || '].id') END`。
+  回填失败（JSON 非法/下标越界）留 NULL，指纹侧用 `-` 占位并继续看 `selectIndex`，
+  不会因升级把存量检查点判失效。
+- **摘要链路**：`getNodeSummaries` 带出 `selected_message_id`；
+  `MessageNodeSummaryRow` / `NodeSummary` 新增 `selectedMessageId`。
+- **保存链路**：`computeNodeDiff` 与 `checkpointGeneratingNode` 都写
+  `node.messages.getOrNull(selectIndex)?.id`（与迁移回填同口径）。
+- **指纹 v3**：`v3:` 前缀 = `节点 id : 选中消息 id : selectIndex` 拼接哈希；已加载节点优先
+  用内存选中消息，未加载用摘要列。校验按前缀分派：`v3:` 走新算法，`v2:` 保留原算法做存量
+  兼容，无前缀仍只在全量时校验。`summaryAreaFingerprint`（物理清理后重写）同口径产出 v3。
+- **单测**：v3 在无正文稀疏会话中有效；摘要 `selectIndex` 变化、摘要选中消息 id 原地替换、
+  已 hydrate 节点选中候选变化三种情况都判失效；`computeNodeDiff` 写出行带
+  `selectedMessageId`。相关单测与编译通过。
+
 ## 十、测试数据与验证
 
 ### 10.1 夹具生成器
@@ -408,13 +430,16 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
 | 4 | 编辑/分支/树面板按需 hydrate | 中 | 是 |
 | 5 | 指纹摘要化 / 可选 `selected_message_id` | 低 | 是 |
 | 6 | （可选）压缩前缀物理清理 | 中高 | 独立开关（已实施，默认关） |
+| 11 | `selected_message_id`（DB v72）+ 指纹 v3 | 低 | 是（已实施） |
 
 阶段 3 之前不得把 ChatVM 的节点列表改成稀疏集，否则保存会误删未加载行。
 
 ## 十二、待决问题
 
 1. 窗口预算按节点数还是字节数？建议双阈值，字节优先（现有实测表明字节量才是驱动因素）。
-2. 摘要 `select_index` 是否足以替代指纹中的消息 id？需补一个「原地改内容」的回归用例。
+2. ~~摘要 `select_index` 是否足以替代指纹中的消息 id？需补一个「原地改内容」的回归用例。~~
+   **已解决（阶段 11）**：不足；新增 `selected_message_id`（DB v72）+ 指纹 v3，
+   回归用例见 `ConversationSparseModeTest` 的「selected message replaced in place」。
 3. ~~树面板是否需要显示未加载分支的消息预览？~~ **已解决（阶段 9）**：用 SQL 的
    `json_extract`/`json_array_length` 直接取角色、首段文本与候选数（[NodeTreeInfo]），
    树面板不再全量载入；未加载行的分叉/剪枝入口隐藏（需正文），点选分支仍走 `hydrateAll`

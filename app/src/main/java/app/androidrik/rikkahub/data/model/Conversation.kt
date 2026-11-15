@@ -24,7 +24,10 @@ private const val SPARSE_WINDOW_BOUNDARY = -1
 
 /**
  * 无正文场景的摘要化指纹（压缩前缀物理清理后重写用，阶段 6）：
- * 只看摘要路径与 selectIndex，与 [Conversation.areaFingerprintFor] 同源同格式。
+ * 只看摘要路径与选中候选，与 [Conversation.areaFingerprintFor] 同源同格式。
+ *
+ * 阶段 11 起为 v3：`id:选中消息 id:selectIndex`（选中消息缺失时用 `-` 占位）。
+ * 语义同 [NodeSummary.selectedMessageId]。
  */
 fun summaryAreaFingerprint(
     summaries: List<NodeSummary>,
@@ -38,16 +41,24 @@ fun summaryAreaFingerprint(
     val builder = StringBuilder()
     for (index in 0..boundaryIndex) {
         val id = path[index]
-        builder.append(id).append(':').append(byId[id]?.selectIndex ?: 0).append('|')
+        val summary = byId[id]
+        builder.append(id).append(':')
+            .append(summary?.selectedMessageId ?: "-")
+            .append(':').append(summary?.selectIndex ?: 0)
+            .append('|')
     }
-    return FINGERPRINT_V2_PREFIX + builder.toString().sha256()
+    return FINGERPRINT_V3_PREFIX + builder.toString().sha256()
 }
 
 /**
- * 摘要化指纹版本前缀（阶段 5）。带前缀 = `id + selectIndex` 形式，稀疏加载也能校验；
- * 无前缀 = 旧 `id + 选中消息 id` 形式（只在全量加载时校验）。
+ * 摘要化指纹版本前缀（阶段 5/11）：
+ * - `v3:` = `节点 id + 选中消息 id + selectIndex`——稀疏加载也能校验，
+ *   且覆盖「原地替换选中候选、index 不变」；
+ * - `v2:` = `节点 id + selectIndex`（阶段 5 落库的存量检查点，只保留校验兼容）；
+ * - 无前缀 = 旧 `id + 选中消息 id` 形式（只在全量加载时校验）。
  */
 internal const val FINGERPRINT_V2_PREFIX = "v2:"
+internal const val FINGERPRINT_V3_PREFIX = "v3:"
 
 /** Only selected messages count, matching the message-queue approval gate. */
 internal val Conversation.pendingToolCalls: List<UIMessagePart.Tool>
@@ -285,13 +296,17 @@ data class Conversation(
             // 摘要已过时 -> 失效回退全量发送（避免 AI 上下文与用户所见不一致）。
             // 指纹为 null（旧数据/未记录）时退化为仅边界存在性校验。
             val fingerprint = checkpoint.areaFingerprint ?: return@lastOrNull true
-            // 阶段 5 起落库的是摘要化指纹（id + selectIndex）：正文未加载也能校验，
-            // 覆盖分支切换/编辑/重新生成/删除的失效路径。
-            if (fingerprint.startsWith(FINGERPRINT_V2_PREFIX)) {
+            // 阶段 11 起落库的是 v3（id + 选中消息 id）：正文未加载也能校验，
+            // 且覆盖「原地替换选中候选、index 不变」。
+            if (fingerprint.startsWith(FINGERPRINT_V3_PREFIX)) {
                 return@lastOrNull computeSummaryAreaFingerprint(boundaryIndex) == fingerprint
             }
+            // 阶段 5 的 v2（id + selectIndex）：存量检查点只做校验兼容，重新压缩即升级 v3。
+            if (fingerprint.startsWith(FINGERPRINT_V2_PREFIX)) {
+                return@lastOrNull computeV2SummaryAreaFingerprint(boundaryIndex) == fingerprint
+            }
             // 旧指纹（id + 选中消息 id）：稀疏窗口没有消息 id，无法校验，信任落库值
-            // （DB = 最后一次保存状态）；重新压缩后即升级为 v2 指纹。
+            // （DB = 最后一次保存状态）；重新压缩后即升级为 v3 指纹。
             if (isSparse) return@lastOrNull true
             computeAreaFingerprint(boundaryIndex) == fingerprint
         }
@@ -319,16 +334,35 @@ data class Conversation(
     }
 
     /**
-     * **摘要化指纹**（阶段 5，设计稿 §五）：`节点 id + selectIndex` 的拼接哈希。
+     * **摘要化指纹 v3**（阶段 11，设计稿 §十二.2）：`节点 id + 选中消息 id + selectIndex` 的拼接哈希。
      *
-     * 摘要层（[nodeSummaries]）自带 selectIndex，所以稀疏加载也能校验：分支切换、编辑
-     * （候选追加并选中）、重新生成、删除都会改变下标或节点序列。已加载节点优先用内存里的
-     * selectIndex（覆盖本进程刚做的改动），未加载节点用落库摘要。
-     *
-     * 已知盲区：「原地改内容且候选数/index 不变」不会改变指纹——旧指纹（消息 id）同样
-     * 覆盖不到该场景，属存量行为，不因摘要化而恶化。
+     * 选中消息 id 来自摘要列 `selected_message_id`（DB v72，迁移时回填），所以稀疏加载也能
+     * 校验，并覆盖「原地替换选中候选、候选数/下标不变」——v2 只看 selectIndex 会漏检。
+     * 已加载节点优先用内存里的选中消息（覆盖本进程刚做的改动），未加载节点用落库摘要；
+     * 选中消息缺失时用 `-` 占位（迁移回填失败的行），selectIndex 仍参与哈希。
      */
     private fun computeSummaryAreaFingerprint(boundaryIndex: Int): String {
+        val pathIds = summaryPathNodeIds()
+        val loadedById = messageNodes.associateBy { it.id }
+        val summariesById = nodeSummaries.associateBy { it.id }
+        val builder = StringBuilder()
+        for (index in 0..boundaryIndex) {
+            val nodeId = pathIds.getOrNull(index) ?: break
+            val loaded = loadedById[nodeId]
+            val summary = summariesById[nodeId]
+            val selectIndex = loaded?.selectIndex ?: summary?.selectIndex ?: 0
+            val selected = loaded?.selectedMessageIdOrNull ?: summary?.selectedMessageId ?: "-"
+            builder.append(nodeId).append(':').append(selected).append(':').append(selectIndex).append('|')
+        }
+        return FINGERPRINT_V3_PREFIX + builder.toString().sha256()
+    }
+
+    /**
+     * **摘要化指纹 v2**（阶段 5）：`节点 id + selectIndex`。只为校验存量检查点保留，
+     * 新落库一律走 [computeSummaryAreaFingerprint]（v3）。分支切换、编辑（候选追加并选中）、
+     * 重新生成、删除都会改变下标或节点序列，但「原地替换候选」漏检。
+     */
+    private fun computeV2SummaryAreaFingerprint(boundaryIndex: Int): String {
         val pathIds = summaryPathNodeIds()
         val loadedById = messageNodes.associateBy { it.id }
         val summariesById = nodeSummaries.associateBy { it.id }
@@ -457,7 +491,7 @@ data class Conversation(
 
     /**
      * 以 [boundaryNodeIndex] 为边界时应记录的指纹（压缩落库时调用，与 [activeCompression] 校验同源）。
-     * 阶段 5 起返回**摘要化指纹**（带 [FINGERPRINT_V2_PREFIX]），稀疏加载也能校验。越界返回 null。
+     * 阶段 11 起返回**摘要化指纹 v3**（带 [FINGERPRINT_V3_PREFIX]），稀疏加载也能校验。越界返回 null。
      */
     fun areaFingerprintFor(boundaryNodeIndex: Int): String? =
         if (boundaryNodeIndex in pathNodes().indices) computeSummaryAreaFingerprint(boundaryNodeIndex) else null
@@ -562,6 +596,13 @@ data class MessageNode(
         )
     }
 }
+
+/**
+ * 选中候选的消息 id（落库列 `selected_message_id` 与指纹 v3 共用同一派生规则）。
+ * 无候选 / 下标越界返回 null（与迁移回填失败同语义，指纹侧退回 `#selectIndex`）。
+ */
+internal val MessageNode.selectedMessageIdOrNull: String?
+    get() = messages.getOrNull(selectIndex)?.id?.toString()
 
 /**
  * 把**流式中途**的节点标记为「未完成」，用于落库半截内容（流式检查点 / 用户停止）。
