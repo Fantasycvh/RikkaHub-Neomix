@@ -22,6 +22,18 @@ data class MessageNodeDiffRow(
     val signature: String,
 )
 
+/**
+ * 稀疏加载的轻量投影：不含 messages JSON，只带建路径所需的元数据与字节量。
+ * 见 `docs/design/in-progress/design-conversation-lazy-load.md` §三.1。
+ */
+data class MessageNodeSummaryRow(
+    val id: String,
+    @ColumnInfo("parent_id") val parentId: String?,
+    @ColumnInfo("node_index") val nodeIndex: Int,
+    @ColumnInfo("select_index") val selectIndex: Int,
+    @ColumnInfo("message_bytes") val messageBytes: Long,
+)
+
 @Dao
 interface MessageNodeDAO {
     /** 节点总数（统计页「总消息数」）。只数行，不碰 messages JSON。 */
@@ -39,6 +51,28 @@ interface MessageNodeDAO {
         conversationId: String,
         limit: Int,
         offset: Int
+    ): List<MessageNodeEntity>
+
+    /** 稀疏加载：全量摘要（不含 messages），用于建路径与窗口预算。 */
+    @Query(
+        "SELECT id, parent_id, node_index, select_index, LENGTH(messages) AS message_bytes " +
+            "FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index ASC"
+    )
+    suspend fun getNodeSummaries(conversationId: String): List<MessageNodeSummaryRow>
+
+    /** 稀疏加载：按 id 批量取正文。调用方负责把 id 分批到 SQLite 变量上限以内。 */
+    @Query("SELECT * FROM message_node WHERE id IN (:nodeIds)")
+    suspend fun getNodesByIds(nodeIds: List<String>): List<MessageNodeEntity>
+
+    /** 稀疏加载：向上翻页（创建序小于 beforeIndex 的最近一页）。 */
+    @Query(
+        "SELECT * FROM message_node WHERE conversation_id = :conversationId AND node_index < :beforeIndex " +
+            "ORDER BY node_index DESC LIMIT :limit"
+    )
+    suspend fun getNodesBefore(
+        conversationId: String,
+        beforeIndex: Int,
+        limit: Int,
     ): List<MessageNodeEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

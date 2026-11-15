@@ -12,6 +12,7 @@ import app.androidrik.rikkahub.data.db.dao.MessageNodeDiffRow
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.ai.prompts.filterOutCheckpointMessages
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.NodeSummary
 import app.androidrik.rikkahub.data.model.healMissingParents
 import app.androidrik.rikkahub.data.model.repairCorruptedCandidates
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -106,17 +107,7 @@ internal class ConversationNodeStore(
                 }
                 if (page.isEmpty()) break
                 page.forEach { entity ->
-                    val rawMessages = JsonInstant.decodeFromString<List<UIMessage>>(entity.messages)
-                    val nodeId = Uuid.parse(entity.id)
-                    nodes.add(
-                        MessageNode(
-                            id = nodeId,
-                            parentId = entity.parentId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
-                            messages = rawMessages,
-                            selectIndex = entity.selectIndex,
-                            isFavorite = favoriteNodeIds.contains(nodeId)
-                        )
-                    )
+                    nodes.add(entity.toMessageNode(favoriteNodeIds))
                 }
                 offset += page.size
                 if (pageSize == 1) {
@@ -137,6 +128,61 @@ internal class ConversationNodeStore(
             val ms = (System.nanoTime() - startNs) / 1_000_000
             Log.i(TAG, "loadMessageNodes: ${loaded.size} nodes in ${ms}ms (conv=$conversationId)")
         }
+    }
+
+    /**
+     * 稀疏加载阶段 2：只读摘要（不含 messages），用于建路径与窗口预算。
+     * 本方法尚不改变 [loadMessageNodes] 的现有行为，接线在阶段 3 完成。
+     */
+    internal suspend fun loadNodeSummaries(conversationId: String): List<NodeSummary> {
+        return messageNodeDAO.getNodeSummaries(conversationId).mapNotNull { row ->
+            val id = runCatching { Uuid.parse(row.id) }.getOrNull() ?: return@mapNotNull null
+            NodeSummary(
+                id = id,
+                parentId = row.parentId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
+                nodeIndex = row.nodeIndex,
+                messageBytes = row.messageBytes,
+            )
+        }
+    }
+
+    /** 稀疏加载阶段 2：按 id 批量取正文，返回 id→节点（便于调用方按路径序重组）。 */
+    internal suspend fun loadNodeBodies(
+        conversationId: String,
+        nodeIds: List<Uuid>,
+    ): Map<Uuid, MessageNode> {
+        if (nodeIds.isEmpty()) return emptyMap()
+        val favoriteNodeIds = favoriteDAO
+            .getFavoriteNodeIdsOfConversation(conversationId)
+            .mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
+            .toSet()
+        return database.withTransaction {
+            nodeIds
+                .map { it.toString() }
+                .chunked(SQLITE_VARIABLE_LIMIT)
+                .flatMap { chunk -> messageNodeDAO.getNodesByIds(chunk) }
+                .associate { entity ->
+                    val node = entity.toMessageNode(favoriteNodeIds)
+                    node.id to node
+                }
+        }
+    }
+
+    /** 稀疏加载阶段 2：向上翻页（返回创建序升序）。 */
+    internal suspend fun loadNodesBefore(
+        conversationId: String,
+        beforeIndex: Int,
+        limit: Int,
+    ): List<MessageNode> {
+        if (limit <= 0) return emptyList()
+        val favoriteNodeIds = favoriteDAO
+            .getFavoriteNodeIdsOfConversation(conversationId)
+            .mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
+            .toSet()
+        return messageNodeDAO
+            .getNodesBefore(conversationId, beforeIndex, limit)
+            .map { it.toMessageNode(favoriteNodeIds) }
+            .asReversed()
     }
 
     /**
@@ -210,4 +256,18 @@ internal fun computeNodeDiff(
         )
     }
     return NodeDiffPlan(toWrite = toWrite, removedIds = removedIds)
+}
+
+/** SQLite `IN (...)` 的保守分批上限（老版本变量上限 999）。 */
+private const val SQLITE_VARIABLE_LIMIT = 500
+
+private fun MessageNodeEntity.toMessageNode(favoriteNodeIds: Set<Uuid>): MessageNode {
+    val nodeId = Uuid.parse(id)
+    return MessageNode(
+        id = nodeId,
+        parentId = parentId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
+        messages = JsonInstant.decodeFromString<List<UIMessage>>(messages),
+        selectIndex = selectIndex,
+        isFavorite = favoriteNodeIds.contains(nodeId),
+    )
 }

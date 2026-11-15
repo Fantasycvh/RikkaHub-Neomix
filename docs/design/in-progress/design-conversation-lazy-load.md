@@ -167,6 +167,11 @@ suspend fun saveNodeChanges(
 p90 85 ms（基线 47.6% / 81 ms，在噪声范围内）。收益主要是消除重组期重复 O(n) 索引，
 并为阶段 2 的摘要索引提供承载点，帧时间改善要等稀疏加载落地后才会体现。
 
+**阶段 2 基础（2026-11-15）**：`MessageNodeSummaryRow` + `getNodeSummaries / getNodesByIds /
+getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩边界 + 尾部节点/字节预算」
+计算路径与正文集合，含断链/环回退；`ConversationNodeStore` 提供摘要、批量正文、向上翻页读取。
+本阶段**尚未接线**——按 §八 顺序，必须先完成阶段 3 的保存契约改造，才能让 ChatVM 使用稀疏列表。
+
 ## 八、兼容与迁移
 
 - 数据库：阶段 2 无 schema 变更（仅新增查询）；若采用 `selected_message_id` 则 v72。
