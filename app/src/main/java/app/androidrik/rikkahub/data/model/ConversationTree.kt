@@ -1,6 +1,9 @@
 package app.androidrik.rikkahub.data.model
 
+import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessageAnnotation
+import app.androidrik.ai.ui.isEmptyUIMessage
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlin.uuid.Uuid
@@ -260,6 +263,50 @@ fun Conversation.markGeneratingNodeIncompleteById(nodeId: Uuid): Conversation {
     val index = messageNodes.indexOfFirst { it.id == nodeId }
     if (index < 0) return this
     return markGeneratingNodeIncomplete(index)
+}
+
+/**
+ * #2317 治本（B）：摘掉「整轮零输出」的空候选（空回复补救重试后模型仍未产出任何可见内容）。
+ *
+ * 为什么不留着：`messagesForRequest` 不过滤空消息——空候选会被后续轮次当作上下文原样发出
+ * （部分 provider 直接报错）；UI 上它也是一条「隐形回复」（体验层已用占位文案兜底，
+ * 这里负责不让它进数据库、不进上下文）。空候选的典型来源：候选先建、内容后流（见
+ * [mergeGenerationMessages] 规则 2/3），模型零输出时就留下 selected 的空消息。
+ *
+ * 守卫（全部满足才摘）：
+ * - 只动 [replyMessageId] 落点的节点（本轮生成的落点，id 寻址不依赖列表下标）；
+ * - 该候选是 ASSISTANT 且 parts 为空（isEmptyUIMessage——工具调用/非空 reasoning 都不算空）；
+ * - 不带 PartialFailure 草稿标记（半截失败草稿有自己的恢复入口与横幅，不能摘）；
+ * - 整节点摘除时该节点必须是叶子（无任何子节点），并把 activeLeafNodeId 收回到父节点。
+ *
+ * 返回 null = 无需改动（调用方沿用原会话）。
+ */
+fun Conversation.withoutEmptyGenerationCandidate(replyMessageId: Uuid): Conversation? {
+    val nodeIndex = messageNodes.indexOfFirst { node -> node.messages.any { it.id == replyMessageId } }
+    if (nodeIndex < 0) return null
+    val node = messageNodes[nodeIndex]
+    val candidateIndex = node.messages.indexOfFirst { it.id == replyMessageId }
+    val candidate = node.messages[candidateIndex]
+    if (candidate.role != MessageRole.ASSISTANT) return null
+    if (!candidate.parts.isEmptyUIMessage()) return null
+    if (candidate.annotations.any { it is UIMessageAnnotation.PartialFailure }) return null
+
+    return if (node.messages.size > 1) {
+        // 规则 2 落点（重生成/THIS_ONLY）：节点还有别的候选，只摘空候选，选中位就近回落
+        val remaining = node.messages.filterIndexed { index, _ -> index != candidateIndex }
+        val replacement = node.copy(
+            messages = remaining,
+            selectIndex = candidateIndex.coerceIn(0, remaining.lastIndex),
+        )
+        copy(messageNodes = messageNodes.mapIndexed { i, n -> if (i == nodeIndex) replacement else n })
+    } else {
+        // 规则 3 落点（新节点）：无子节点才整节点摘除（刚生成的叶子天然满足，防御 off-path 子树）
+        if (messageNodes.any { it.parentId == node.id }) return null
+        copy(
+            messageNodes = messageNodes.filterIndexed { i, _ -> i != nodeIndex },
+            activeLeafNodeId = if (activeLeafNodeId == node.id) node.parentId else activeLeafNodeId,
+        )
+    }
 }
 
 /**

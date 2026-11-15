@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.model
 
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
@@ -402,5 +403,60 @@ class ConversationTreeTest {
         assertTrue(marked.messageNodes[1].currentMessage.finishIncomplete)
         assertTrue(!marked.messageNodes[0].currentMessage.finishIncomplete)
         assertSame(conversation, conversation.markGeneratingNodeIncompleteById(Uuid.random()))
+    }
+
+    // ---- 空候选摘除（#2317 治本 B） ----
+
+    private fun emptyAssistant() = UIMessage(role = MessageRole.ASSISTANT, parts = emptyList())
+
+    @Test fun `empty tail node is removed and leaf retracts to parent`() {
+        val user = msg("q").toMessageNode()
+        val empty = emptyAssistant().toMessageNode().copy(parentId = user.id)
+        val conversation = Conversation.ofId(Uuid.random()).copy(
+            messageNodes = listOf(user, empty),
+            activeLeafNodeId = empty.id,
+        )
+
+        val trimmed = conversation.withoutEmptyGenerationCandidate(empty.currentMessage.id)!!
+
+        assertEquals("空节点被摘除", listOf(user.id), trimmed.messageNodes.map { it.id })
+        assertEquals("叶子收回到父节点", user.id, trimmed.activeLeafNodeId)
+    }
+
+    @Test fun `empty candidate in a multi-candidate node is dropped with selection falling back`() {
+        val original = msg("original", MessageRole.ASSISTANT).toMessageNode()
+        val empty = emptyAssistant()
+        val node = original.copy(messages = original.messages + empty, selectIndex = 1)
+        val conversation = Conversation.ofId(Uuid.random()).copy(messageNodes = listOf(node))
+
+        val trimmed = conversation.withoutEmptyGenerationCandidate(empty.id)!!
+
+        val repaired = trimmed.messageNodes.single()
+        assertEquals("只剩有效候选", listOf(original.messages.single().id), repaired.messages.map { it.id })
+        assertEquals("选中位回落", 0, repaired.selectIndex)
+    }
+
+    @Test fun `non empty candidates partial failure drafts and child nodes are kept`() {
+        // 非空回复不摘
+        val withContent = Conversation.ofId(Uuid.random()).copy(
+            messageNodes = listOf(msg("a", MessageRole.ASSISTANT).toMessageNode()),
+        )
+        assertNull(withContent.withoutEmptyGenerationCandidate(withContent.messageNodes[0].currentMessage.id))
+
+        // 半截失败草稿不摘（有自己的恢复入口）
+        val draft = emptyAssistant().copy(
+            annotations = listOf(UIMessageAnnotation.PartialFailure),
+        ).toMessageNode()
+        val draftConversation = Conversation.ofId(Uuid.random()).copy(messageNodes = listOf(draft))
+        assertNull(draftConversation.withoutEmptyGenerationCandidate(draft.currentMessage.id))
+
+        // 有子节点的空节点不摘（防御 off-path 子树）
+        val emptyNode = emptyAssistant().toMessageNode()
+        val child = msg("child").toMessageNode().copy(parentId = emptyNode.id)
+        val withChild = Conversation.ofId(Uuid.random()).copy(messageNodes = listOf(emptyNode, child))
+        assertNull(withChild.withoutEmptyGenerationCandidate(emptyNode.currentMessage.id))
+
+        // 目标消息不存在 → 原样返回 null
+        assertNull(withContent.withoutEmptyGenerationCandidate(Uuid.random()))
     }
 }

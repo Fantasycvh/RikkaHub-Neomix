@@ -2747,6 +2747,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="chat_message_truncated_notice">\n\n[内容过长，已截断显示前 %1$d 字符]</string>
   <string name="chat_vm_stop_generation_before_delete">请先停止生成再删除消息</string>
   <string name="chat_vm_stop_generation_before_edit">请先停止生成再编辑消息</string>
+  <string name="message_empty_candidate_placeholder">（空回复——用下方箭头切换候选）</string>
+  <string name="chat_generation_empty_reply">模型返回了空回复，已移除该空候选，可重新生成</string>
   <string name="common_close">关闭</string>
   <string name="common_got_it">知道了</string>
   <string name="common_import">导入</string>

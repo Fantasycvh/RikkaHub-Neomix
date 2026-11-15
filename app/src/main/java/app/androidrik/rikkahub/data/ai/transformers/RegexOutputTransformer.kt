@@ -22,13 +22,13 @@ object RegexOutputTransformer : OutputMessageTransformer, KoinComponent {
             message.copy(
                 parts = message.parts.map { part ->
                     when (part) {
-                        is UIMessagePart.Text -> {
-                            part.copy(text = part.text.replaceRegexes(assistant, scope, visual = false))
-                        }
+                        is UIMessagePart.Text -> part.copy(
+                            text = replaceRegexesGuarded(part.text) { it.replaceRegexes(assistant, scope, visual = false) }
+                        )
 
-                        is UIMessagePart.Reasoning -> {
-                            part.copy(reasoning = part.reasoning.replaceRegexes(assistant, scope, visual = false))
-                        }
+                        is UIMessagePart.Reasoning -> part.copy(
+                            reasoning = replaceRegexesGuarded(part.reasoning) { it.replaceRegexes(assistant, scope, visual = false) }
+                        )
 
                         else -> part
                     }
@@ -36,4 +36,16 @@ object RegexOutputTransformer : OutputMessageTransformer, KoinComponent {
             )
         }
     }
+}
+
+/**
+ * #2317 治本（A）：非视觉正则的写回会落库（GenerationHandler 收尾把 visualTransforms 的结果
+ * 并入消息本体）。规则把**非空**内容整体替换成空白时保留原文——否则会留下一条空候选：
+ * UI 上整条回答连同工具栏一起消失（只剩用量行），且空消息会被后续轮次当作上下文发出
+ * （`messagesForRequest` 不过滤空消息，部分 provider 会直接报错）。
+ * 局部清空（消息里还有其他非空 part）不拦——那不构成空候选，属规则作者的表达自由。
+ */
+internal fun replaceRegexesGuarded(original: String, transform: (String) -> String): String {
+    val replaced = transform(original)
+    return if (replaced.isBlank() && original.isNotBlank()) original else replaced
 }

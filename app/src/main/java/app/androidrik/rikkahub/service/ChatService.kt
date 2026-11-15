@@ -166,6 +166,7 @@ import app.androidrik.rikkahub.data.model.regenerateBaselineRange
 import app.androidrik.rikkahub.data.model.regenerateReplyNodeIndex
 import app.androidrik.rikkahub.data.model.pruneSubtree
 import app.androidrik.rikkahub.data.model.withBranchForkAt
+import app.androidrik.rikkahub.data.model.withoutEmptyGenerationCandidate
 import app.androidrik.rikkahub.data.model.latestLeafIdOfSubtree
 import app.androidrik.rikkahub.data.model.replaceRegexes
 import app.androidrik.rikkahub.data.model.toMessageNode
@@ -1983,13 +1984,27 @@ class ChatService(
                 updateConversation(conversationId, current.mergeGenerationMessages(pending.messages))
             }).onCompletion {
                 // 可能被取消了，或者意外结束，兜底更新
-                val updatedConversation = getConversationFlow(conversationId).value.copy(
-                    messageNodes = getConversationFlow(conversationId).value.messageNodes.map { node ->
+                val flowValue = getConversationFlow(conversationId).value
+                val updatedConversation = flowValue.copy(
+                    messageNodes = flowValue.messageNodes.map { node ->
                         node.copy(messages = node.messages.map { it.finishReasoning() })
                     },
                     updateAt = Instant.now()
                 )
-                updateConversation(conversationId, updatedConversation)
+                // #2317 治本（B）：模型整轮零输出时空候选不落库——留着会被后续轮次当作上下文
+                // 原样发出（messagesForRequest 不过滤空消息），UI 上也是一条「隐形回复」。
+                // 摘除目标按 id 寻址（replyMessageId），守卫见 withoutEmptyGenerationCandidate；
+                // 摘除后补一条可见提示（空回复也是一次失败，不能静默）。
+                val trimmed = session.replyMessageId.value
+                    ?.let { updatedConversation.withoutEmptyGenerationCandidate(it) }
+                updateConversation(conversationId, trimmed ?: updatedConversation)
+                if (trimmed != null) {
+                    addError(
+                        IllegalStateException(context.getString(R.string.chat_generation_empty_reply)),
+                        conversationId,
+                        title = context.getString(R.string.error_title_operation),
+                    )
+                }
 
                 // 生成结束：取消 Live Update 通知，后台时发送完成通知
                 appEventBus.emit(

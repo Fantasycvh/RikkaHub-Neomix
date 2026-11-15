@@ -290,25 +290,36 @@ fun ChatMessage(
         body = {
             ProvideTextStyle(textStyle) {
                 if (slice == ChatMessageSlice.Preparing) Text("正在加载正文…", style = MaterialTheme.typography.bodySmall)
-                else if (slice != ChatMessageSlice.Translation) MessagePartsBlock(
-                    messageId = message.id,
-                    assistant = assistant,
-                    role = message.role,
-                    parts = message.parts,
-                    annotations = message.annotations,
-                    loading = loading,
-                    model = model,
-                    slice = slice,
-                    onReadFullText = { showSelectCopySheet = true },
-                    onToolApproval = onToolApproval,
-                    onToolAnswer = onToolAnswer,
-                    onToolSkip = onToolSkip,
-                    onApproveAll = onApproveAll,
-                    onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
-                    onReasoningEditRequest = if (onEditReasoning != null) {
-                        { editingReasoning = it }
-                    } else null,
-                )
+                else if (slice != ChatMessageSlice.Translation) {
+                    if (message.role == MessageRole.ASSISTANT && message.parts.isEmptyUIMessage()) {
+                        // #2317 体验层：空候选不再渲染成「整条消失」——给一行占位说明。
+                        // 切换箭头已由 footer 保底（空候选也显示），用户可以切回有效候选；
+                        // 生成中不占位：流式首轮内容未到时保持安静，避免闪烁。
+                        if (!loading) Text(
+                            text = stringResource(R.string.message_empty_candidate_placeholder),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else MessagePartsBlock(
+                        messageId = message.id,
+                        assistant = assistant,
+                        role = message.role,
+                        parts = message.parts,
+                        annotations = message.annotations,
+                        loading = loading,
+                        model = model,
+                        slice = slice,
+                        onReadFullText = { showSelectCopySheet = true },
+                        onToolApproval = onToolApproval,
+                        onToolAnswer = onToolAnswer,
+                        onToolSkip = onToolSkip,
+                        onApproveAll = onApproveAll,
+                        onUserMessageClick = if (message.role == MessageRole.USER) onEdit else null,
+                        onReasoningEditRequest = if (onEditReasoning != null) {
+                            { editingReasoning = it }
+                        } else null,
+                    )
+                }
 
                 message.translation?.takeIf { slice == null || slice is ChatMessageSlice.Prepared || slice == ChatMessageSlice.Translation }?.let { translation ->
                     CollapsibleTranslationText(

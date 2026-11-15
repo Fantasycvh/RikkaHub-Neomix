@@ -2724,6 +2724,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="chat_message_truncated_notice">\n\n[Content too long, showing first %1$d characters]</string>
   <string name="chat_vm_stop_generation_before_delete">Stop generation before deleting a message</string>
   <string name="chat_vm_stop_generation_before_edit">Stop generation before editing a message</string>
+  <string name="message_empty_candidate_placeholder">(Empty reply — switch candidates with the arrows below)</string>
+  <string name="chat_generation_empty_reply">The model returned an empty reply; the blank response was removed. Try generating again.</string>
   <string name="common_close">Close</string>
   <string name="common_got_it">Got it</string>
   <string name="common_import">Import</string>

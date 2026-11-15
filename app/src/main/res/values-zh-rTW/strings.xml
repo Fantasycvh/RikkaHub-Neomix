@@ -2733,6 +2733,8 @@
   <string name="chat_message_truncated_notice">\n\n[內容過長，已截斷顯示前 %1$d 字元]</string>
   <string name="chat_vm_stop_generation_before_delete">請先停止生成再刪除訊息</string>
   <string name="chat_vm_stop_generation_before_edit">請先停止生成再編輯訊息</string>
+  <string name="message_empty_candidate_placeholder">（空回覆——用下方箭頭切換候選）</string>
+  <string name="chat_generation_empty_reply">模型返回了空回覆，已移除該空候選，可重新生成</string>
   <string name="common_close">關閉</string>
   <string name="common_got_it">瞭解了</string>
   <string name="common_import">匯入</string>
