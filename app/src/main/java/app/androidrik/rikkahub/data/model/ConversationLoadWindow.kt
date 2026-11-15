@@ -46,10 +46,7 @@ fun buildConversationLoadWindow(
     if (summaries.isEmpty()) return ConversationLoadWindow(emptyList(), emptyList(), 0)
     val byId = HashMap<Uuid, NodeSummary>(summaries.size)
     summaries.forEach { byId[it.id] = it }
-    val ordered = summaries.sortedBy { it.nodeIndex }
-    val path = activeLeafNodeId
-        ?.let { leaf -> walkToRoot(leaf, byId) }
-        ?: ordered.map { it.id }
+    val path = summaryPathIds(summaries, activeLeafNodeId, byId)
     val boundaryIndex = boundaryNodeId?.let { id -> path.indexOf(id) } ?: -1
     val tailStart = (boundaryIndex + 1).coerceAtLeast(0)
     val tail = path.subList(tailStart, path.size)
@@ -70,6 +67,26 @@ fun buildConversationLoadWindow(
         loadedIds = loaded,
         omittedCount = path.size - loaded.size,
     )
+}
+
+/**
+ * root→activeLeaf 的摘要路径（只有 id，不含正文）。
+ *
+ * 稀疏模式下这是**唯一权威路径**：`Conversation.pathNodes()` 只能看到已加载正文的节点，
+ * 边界在路径上的判定必须用摘要，否则压缩检查点会因边界正文未加载而被误判失效。
+ * 叶子缺失 / 父链断裂 / 环 ⇒ 回退「创建序全量」（与 [Conversation.pathNodes] 的回退一致）。
+ */
+fun summaryPathIds(
+    summaries: List<NodeSummary>,
+    activeLeafNodeId: Uuid?,
+    byId: Map<Uuid, NodeSummary> = HashMap<Uuid, NodeSummary>(summaries.size).also { index ->
+        summaries.forEach { index[it.id] = it }
+    },
+): List<Uuid> {
+    if (summaries.isEmpty()) return emptyList()
+    return activeLeafNodeId
+        ?.let { leaf -> walkToRoot(leaf, byId) }
+        ?: summaries.sortedBy { it.nodeIndex }.map { it.id }
 }
 
 private fun walkToRoot(leafId: Uuid, byId: Map<Uuid, NodeSummary>): List<Uuid>? {

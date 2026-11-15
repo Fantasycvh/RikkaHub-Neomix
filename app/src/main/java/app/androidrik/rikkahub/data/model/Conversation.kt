@@ -19,6 +19,9 @@ import kotlinx.datetime.toInstant
 import java.time.Instant
 import kotlin.uuid.Uuid
 
+/** 稀疏窗口的边界哨兵：已加载的消息全部位于压缩检查点边界之后。 */
+private const val SPARSE_WINDOW_BOUNDARY = -1
+
 /** Only selected messages count, matching the message-queue approval gate. */
 internal val Conversation.pendingToolCalls: List<UIMessagePart.Tool>
     get() = currentMessages.flatMap { message ->
@@ -135,7 +138,18 @@ data class Conversation(
      */
     val frozenAnchors: String? = null,
     @Transient
-    val newConversation: Boolean = false
+    val newConversation: Boolean = false,
+    /**
+     * **稀疏加载的节点摘要**（阶段 4，设计稿 `design-conversation-lazy-load.md` §三）。
+     *
+     * 非空 = 稀疏模式：`messageNodes` 只含已加载正文的窗口（边界之后的尾巴 + 按需 hydrate 的节点），
+     * 摘要才是全量（路径/边界/「加载更早」计数都从它算）。空 = 全量加载（旧行为）。
+     *
+     * @Transient：不参与序列化与 `equals`；`copy` 原样保留（hydrate 只换 messageNodes）。
+     * 全量补齐（[ChatService.hydrateAll]）会换回不带摘要的对象，模式自动退出。
+     */
+    @Transient
+    val nodeSummaries: List<NodeSummary> = emptyList()
 ) {
     /**
      * 激活路径索引（阶段 1 性能优化）：每个 [Conversation] 实例只构建一次父索引与路径。
@@ -145,8 +159,33 @@ data class Conversation(
      * `docs/design/in-progress/design-conversation-lazy-load.md` §七。
      */
     internal val pathIndex: ConversationPathIndex by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        ConversationPathIndex(messageNodes, activeLeafNodeId)
+        ConversationPathIndex(messageNodes, activeLeafNodeId, nodeSummaries)
     }
+
+    /** 是否稀疏加载（摘要全量、正文只有窗口）。 */
+    val isSparse: Boolean
+        get() = nodeSummaries.isNotEmpty() && messageNodes.size < nodeSummaries.size
+
+    /**
+     * 激活路径的摘要 id 序列（稀疏模式下路径的权威来源）；非稀疏时等价于 [pathNodes] 的 id。
+     *
+     * 本轮新生成/新写入的节点尚未进入摘要（摘要只在打开会话时读一次），按创建序追加在末尾：
+     * 它们必然是尾部追加，跳过会让新消息从激活路径里消失。
+     */
+    fun summaryPathNodeIds(): List<Uuid> {
+        if (nodeSummaries.isEmpty()) return pathNodes().map { it.id }
+        val known = nodeSummaries.mapTo(HashSet()) { it.id }
+        return summaryPathIds(nodeSummaries, activeLeafNodeId) +
+            messageNodes.map { it.id }.filter { it !in known }
+    }
+
+    /** 路径上尚未加载正文的节点数（UI「加载更早」入口的计数）；非稀疏恒为 0。 */
+    val omittedNodeCount: Int
+        get() {
+            if (!isSparse) return 0
+            val loaded = messageNodes.mapTo(HashSet()) { it.id }
+            return summaryPathNodeIds().count { it !in loaded }
+        }
 
     /**
      * [frozenAnchors] 的解码视图：`null` = 未冻结，空集 = 冻结且当时无锚点。
@@ -193,12 +232,16 @@ data class Conversation(
     fun activeCompression(): CompressionSummary? {
         return compressionSummaries.lastOrNull { checkpoint ->
             val boundaryId = checkpoint.boundaryNodeId ?: return@lastOrNull true
-            val boundaryIndex = pathNodes().indexOfFirst { it.id.toString() == boundaryId }
+            // 稀疏模式：边界在摘要路径上判定（边界正文按设计被排除在窗口外）。
+            val boundaryIndex = summaryPathNodeIds().indexOfFirst { it.toString() == boundaryId }
             if (boundaryIndex < 0) return@lastOrNull false
             // 区域指纹校验：区域内节点或其选中消息被改动（编辑/删除/重新生成/切换分支）时，
             // 摘要已过时 -> 失效回退全量发送（避免 AI 上下文与用户所见不一致）。
             // 指纹为 null（旧数据/未记录）时退化为仅边界存在性校验。
             val fingerprint = checkpoint.areaFingerprint ?: return@lastOrNull true
+            // 稀疏窗口未加载摘要区域，摘要层没有「选中消息 id」→ 阶段 5 前无法校验指纹，
+            // 信任落库值（DB = 最后一次保存状态；本进程尚未改动未加载区域）。
+            if (isSparse) return@lastOrNull true
             computeAreaFingerprint(boundaryIndex) == fingerprint
         }
     }
@@ -244,6 +287,8 @@ data class Conversation(
          * 保留 turn-start 消息，边界下标的语义就不变，回合内新增的工具调用与结果因而自动带上。
          */
         fun applyTo(messages: List<UIMessage>): List<UIMessage> {
+            // 稀疏窗口哨兵：摘要区域未加载，传入的 messages 全都位于边界之后。
+            if (boundaryIndex < 0) return listOf(checkpointMessage) + messages
             if (boundaryIndex !in messages.indices) return messages
             // 外部结果不经摘要改写；压缩越过它时仍保留原文供主模型使用。
             return listOf(checkpointMessage) +
@@ -257,6 +302,7 @@ data class Conversation(
      * （= 直接发送 live messages）。
      */
     fun compressionWindow(): CompressionWindow? {
+        if (isSparse) return sparseCompressionWindow()
         val nodes = pathNodes()
         val importedIndex = nodes.indexOfLast { node ->
             node.messages.getOrNull(node.selectIndex)?.isContextCheckpoint == true
@@ -281,6 +327,41 @@ data class Conversation(
             isSynthetic = true,
         )
         return CompressionWindow(checkpointMessage, boundaryIndex)
+    }
+
+    /**
+     * 稀疏模式的压缩窗口：摘要区域**未加载正文**，边界之后的尾巴全部在窗口里。
+     *
+     * - 已 hydrated 的导入检查点节点仍在已加载路径上 ⇒ 沿用它的原文（不改正文/角色/标记）；
+     * - 否则用 [activeCompression] 的摘要正文合成检查点（与 native 同款包裹），
+     *   并以 [CompressionWindow.boundaryIndex] = -1 作为「传入消息全在边界之后」的哨兵。
+     *
+     * 注：合成正文不写回、不落库；仓库层只在边界节点不是导入检查点消息时启用稀疏加载。
+     */
+    private fun sparseCompressionWindow(): CompressionWindow? {
+        val nodes = pathNodes()
+        val importedIndex = nodes.indexOfLast { it.currentMessage.isContextCheckpoint }
+        if (importedIndex >= 0) {
+            return CompressionWindow(nodes[importedIndex].currentMessage, importedIndex)
+        }
+        val checkpoint = activeCompression() ?: return null
+        val boundaryId = checkpoint.boundaryNodeId ?: return null
+        val checkpointMessage = UIMessage(
+            role = MessageRole.USER,
+            parts = listOf(
+                UIMessagePart.Text(
+                    buildCompactionCheckpointText(checkpoint.content) + taskAnchorSuffix(currentMessages)
+                )
+            ),
+            isSynthetic = true,
+        )
+        // 「加载更早」可能已把边界节点本身 hydrate 回来：此时用真实下标，
+        // 否则哨兵会把边界的原文重复发送到检查点之后。
+        val boundaryIndex = nodes.indexOfFirst { it.id.toString() == boundaryId }
+        return CompressionWindow(
+            checkpointMessage,
+            if (boundaryIndex >= 0) boundaryIndex else SPARSE_WINDOW_BOUNDARY,
+        )
     }
 
     /**
@@ -314,6 +395,8 @@ data class Conversation(
 
     /** Display-only projection; imported checkpoints remain authoritative persisted message nodes. */
     fun displayCompression(): CompressionSummary? {
+        // 稀疏模式：摘要区域正文未加载，折叠行直接用检查点摘要（计数/正文都在库里）。
+        if (isSparse) return activeCompression()
         val window = compressionWindow() ?: return null
         if (!window.checkpointMessage.isContextCheckpoint) return activeCompression()
         val message = window.checkpointMessage

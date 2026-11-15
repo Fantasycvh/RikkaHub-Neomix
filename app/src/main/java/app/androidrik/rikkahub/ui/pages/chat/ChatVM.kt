@@ -544,6 +544,20 @@ class ChatVM(
         }
     }
 
+    /** 稀疏加载：「加载更早」按摘要路径向前补一页正文。 */
+    fun loadEarlierMessages() {
+        viewModelScope.launch {
+            chatService.loadEarlierMessages(_conversationId)
+        }
+    }
+
+    /** 稀疏加载：需要整棵树的操作/面板打开前补齐正文。 */
+    fun hydrateAllNodes() {
+        viewModelScope.launch {
+            chatService.hydrateAll(_conversationId)
+        }
+    }
+
     /**
      * 同步落库（供需要「会话必须已在 DB」的入口等待：如「为此会话创建定时任务」——
      * 未保存的新聊天直接跳转，创建页按 id 查不到会话，目标预选会静默落空）。

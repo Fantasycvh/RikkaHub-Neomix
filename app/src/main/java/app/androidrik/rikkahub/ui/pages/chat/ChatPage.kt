@@ -597,6 +597,8 @@ private fun ChatPageContent(
                         previewMode = !previewMode
                     },
                     onShowTreeView = {
+                        // 树面板要画全部分支：稀疏会话先补齐正文（摘要无法渲染节点预览）。
+                        vm.hydrateAllNodes()
                         showTreeSheet = true
                     },
                     onExport = {
@@ -768,6 +770,7 @@ private fun ChatPageContent(
                 glassHazeState = glassHazeState,
                 errors = errors,
                 onDismissError = onDismissError,
+                onLoadEarlierNodes = { vm.loadEarlierMessages() },
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = { message ->
                     // 有下游才需要选择/确认；无下游时两个 scope 等价，直接执行非破坏的 A

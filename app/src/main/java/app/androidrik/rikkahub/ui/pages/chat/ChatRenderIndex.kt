@@ -212,12 +212,15 @@ internal class ChatRenderIndex(
     val rows: List<ChatRenderRow>,
     val hasCheckpoint: Boolean,
     val tailKeys: List<String>,
+    /** 稀疏加载的「加载更早」行（列表最顶部的显式入口） */
+    val hasLoadEarlier: Boolean = false,
 ) {
-    val leadingCount = if (hasCheckpoint) 1 else 0
+    val leadingCount = (if (hasLoadEarlier) 1 else 0) + (if (hasCheckpoint) 1 else 0)
     val totalCount = leadingCount + rows.size + tailKeys.size
     val lastIndex = (totalCount - 1).coerceAtLeast(0)
     val keyToIndex = buildMap {
-        if (hasCheckpoint) put("CompactionCheckpoint", 0)
+        if (hasLoadEarlier) put(LOAD_EARLIER_KEY, 0)
+        if (hasCheckpoint) put("CompactionCheckpoint", if (hasLoadEarlier) 1 else 0)
         rows.forEachIndexed { index, row -> put(row.key, leadingCount + index) }
         tailKeys.forEachIndexed { index, key -> put(key, leadingCount + rows.size + index) }
     }
@@ -259,6 +262,7 @@ internal fun buildChatRenderIndex(
     hasCheckpoint: Boolean,
     tailKeys: List<String>,
     deferredNodes: Set<Uuid> = emptySet(),
+    hasLoadEarlier: Boolean = false,
 ): ChatRenderIndex {
     val rows = mutableListOf<ChatRenderRow>()
     val pending = documents.pending
@@ -267,7 +271,7 @@ internal fun buildChatRenderIndex(
         val document = documents.ready[node.id]
         val lazy = node.id !in deferredNodes && canSliceMessage(message, appearance) &&
             document?.display?.body?.any { it.textDocumentId?.partIndex?.let(document::lazyUnits) != null } == true
-        val boundaryGap = if (nodeIndex > 0 || hasCheckpoint) appearance.layout.listSpacingDp else 0f
+        val boundaryGap = if (nodeIndex > 0 || hasCheckpoint || hasLoadEarlier) appearance.layout.listSpacingDp else 0f
         fun add(suffix: String, slice: ChatMessageSlice?, gap: Float, first: Boolean = false) {
             rows += ChatRenderRow(if (first) node.id.toString() else "${node.id}:${message.id}:$suffix", nodeIndex, node.id, message.id, slice, gap, first)
         }
@@ -296,5 +300,8 @@ internal fun buildChatRenderIndex(
         if (message.translation != null && document != null) add("translation", ChatMessageSlice.Translation, appearance.layout.messageGapDp)
         add("footer", ChatMessageSlice.Footer, appearance.layout.messageGapDp)
     }
-    return ChatRenderIndex(nodes, rows, hasCheckpoint, tailKeys)
+    return ChatRenderIndex(nodes, rows, hasCheckpoint, tailKeys, hasLoadEarlier)
 }
+
+/** 稀疏加载「加载更早」行在渲染索引里的键（与 LazyColumn item key 一致）。 */
+internal const val LOAD_EARLIER_KEY = "LoadEarlierNodes"

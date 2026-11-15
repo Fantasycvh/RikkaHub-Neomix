@@ -75,12 +75,17 @@ class MessageFtsManager(private val database: AppDatabase) {
     /**
      * 增量更新会话的索引：只重写新增或内容变了的消息，删掉已不存在的消息。
      * 每次保存会话都会调用，长会话里大部分消息没变，不必整份删掉重新分词。
-     */
-    /**
+     *
      * @param incremental 正常保存时为 true：只重写新增/内容变化的消息；全量重建（索引刚清空）时
      *   为 false，跳过「先查旧行 + 反向差集」的整轮查询——重建大库时 269 次查询纯属浪费。
+     * @param removeMissing 是否删除「内存里不存在」的索引行。稀疏加载（会话只载入尾部窗口）时
+     *   必须为 false：未加载前缀的消息行仍在库里，删掉会让它们永久退出搜索结果。
      */
-    suspend fun indexConversation(conversation: Conversation, incremental: Boolean = true) = database.withTransaction {
+    suspend fun indexConversation(
+        conversation: Conversation,
+        incremental: Boolean = true,
+        removeMissing: Boolean = true,
+    ) = database.withTransaction {
         val conversationId = conversation.id.toString()
         val indexed = if (incremental) HashMap<String, IndexedMessage>() else null
         val stale = mutableListOf<Long>()
@@ -120,7 +125,7 @@ class MessageFtsManager(private val database: AppDatabase) {
                 }
             }
         }
-        indexed?.values?.forEach { stale.add(it.rowid) }
+        if (removeMissing) indexed?.values?.forEach { stale.add(it.rowid) }
         stale.forEach { rowid ->
             db.execSQL("DELETE FROM message_fts WHERE rowid = ?", arrayOf(rowid))
             db.execSQL("DELETE FROM message_fts_rowid WHERE fts_rowid = ?", arrayOf(rowid))

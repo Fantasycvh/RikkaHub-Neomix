@@ -35,6 +35,7 @@ fun Conversation.pathNodes(): List<MessageNode> = pathIndex.activePath()
 internal class ConversationPathIndex(
     private val rawNodes: List<MessageNode>,
     private val activeLeafNodeId: Uuid?,
+    private val summaries: List<NodeSummary> = emptyList(),
 ) {
     private val healedNodes: List<MessageNode> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         rawNodes.healMissingParents()
@@ -42,6 +43,17 @@ internal class ConversationPathIndex(
 
     private val path: List<MessageNode>? by lazy(LazyThreadSafetyMode.PUBLICATION) {
         val leafId = activeLeafNodeId ?: return@lazy null
+        // 稀疏模式：路径由摘要决定（正文可能有缺口），返回已加载的路径节点子序列。
+        // 这也避免「父链在未加载边界处断开 ⇒ 回退全量已加载节点」把旁支混进路径。
+        if (summaries.isNotEmpty()) {
+            val byId = HashMap<Uuid, MessageNode>(healedNodes.size)
+            healedNodes.forEach { byId[it.id] = it }
+            val known = summaries.mapTo(HashSet()) { it.id }
+            // 摘要只覆盖打开时的快照；本轮新生成/写入的尾部节点不在摘要里，按创建序追加。
+            val extras = healedNodes.filter { it.id !in known }
+            return@lazy (summaryPathIds(summaries, leafId).mapNotNull { byId[it] } + extras)
+                .ifEmpty { null }
+        }
         val nodes = healedNodes
         val byId = HashMap<Uuid, MessageNode>(nodes.size)
         nodes.forEach { byId[it.id] = it }

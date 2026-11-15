@@ -30,6 +30,8 @@ import app.androidrik.rikkahub.data.model.ConversationOrdering
 import app.androidrik.rikkahub.data.model.CompressionSummary
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.buildConversationLoadWindow
+import app.androidrik.rikkahub.data.model.summaryPathIds
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlin.uuid.Uuid
 
@@ -330,6 +332,51 @@ class ConversationRepository(
         } else null
     }
 
+    /**
+     * **稀疏加载**（懒加载阶段 4，设计稿 `design-conversation-lazy-load.md` §三.2）：
+     * 摘要全量、正文只读「压缩边界之后」的窗口。
+     *
+     * 只在**能确定安全窗口**时启用，其余一律回退 [getConversationById]（全量）：
+     * - 无检查点 / 检查点无边界（旧数据）⇒ 无边可依，全量；
+     * - 边界不在摘要路径上（已被剪枝）⇒ 检查点失效，全量；
+     * - 边界节点是**导入的原版检查点消息** ⇒ 稀疏窗口只能用摘要合成检查点，
+     *   会改写外部原文，故回退全量（P1 起仍按上游原文发送）；
+     * - 窗口为空 ⇒ 全量（避免空会话）。
+     *
+     * 导出/备份/Web 等需要完整历史的入口继续走 [getConversationById]。
+     */
+    suspend fun getConversationByIdSparse(uuid: Uuid): Conversation? {
+        val entity = conversationDAO.getConversationById(uuid.toString()) ?: return null
+        val summaries = nodeStore.loadNodeSummaries(entity.id)
+        val checkpoints = loadCompressionSummaries(entity.id)
+        suspend fun fullLoad(): Conversation =
+            conversationEntityToConversation(entity, loadMessageNodes(entity.id), checkpoints)
+        if (summaries.isEmpty() || checkpoints.isEmpty()) return fullLoad()
+        val leafId = entity.activeLeafNodeId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+        val boundaryId = checkpoints.last().boundaryNodeId
+            ?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+            ?: return fullLoad()
+        if (boundaryId !in summaryPathIds(summaries, leafId)) return fullLoad()
+        val boundaryNode = nodeStore.loadNodeBodies(entity.id, listOf(boundaryId))[boundaryId]
+            ?: return fullLoad()
+        if (boundaryNode.messages.any { it.isContextCheckpoint }) return fullLoad()
+        val window = buildConversationLoadWindow(
+            summaries = summaries,
+            activeLeafNodeId = leafId,
+            boundaryNodeId = boundaryId,
+        )
+        if (window.loadedIds.isEmpty()) return fullLoad()
+        val bodies = nodeStore.loadNodeBodies(entity.id, window.loadedIds)
+        val nodes = window.loadedIds.mapNotNull { bodies[it] }
+        if (nodes.isEmpty()) return fullLoad()
+        return conversationEntityToConversation(entity, nodes, checkpoints)
+            .copy(nodeSummaries = summaries)
+    }
+
+    /** 按 id 补齐正文（稀疏加载的 hydrate；返回顺序不保证，调用方按摘要序重排）。 */
+    suspend fun loadNodesByIds(conversationId: Uuid, nodeIds: Collection<Uuid>): List<MessageNode> =
+        nodeStore.loadNodeBodies(conversationId.toString(), nodeIds.toList()).values.toList()
+
     suspend fun existsConversationById(uuid: Uuid): Boolean {
         return conversationDAO.existsById(uuid.toString())
     }
@@ -507,7 +554,8 @@ class ConversationRepository(
                 )
             }
         }
-        messageFtsManager.indexConversation(conversation)
+        // 稀疏窗口只含尾部：FTS 不能把未加载前缀当成「已删除」。
+        messageFtsManager.indexConversation(conversation, removeMissing = !conversation.isSparse)
     }
 
     /**

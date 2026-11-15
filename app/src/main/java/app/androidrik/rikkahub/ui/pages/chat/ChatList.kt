@@ -49,6 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -190,6 +191,8 @@ fun ChatList(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     /** 会话长期目标（Conversation.goal）编辑回调；null = 不显示入口 */
     onConversationGoalChange: ((String?) -> Unit)? = null,
+    /** 稀疏加载：「加载更早」点击（把窗口外的更早消息正文补进内存） */
+    onLoadEarlierNodes: () -> Unit = {},
     scrollController: ChatListScrollController? = null,
 ) {
     // 「点击消息里的图片 ⇒ 全屏后在**本会话**的图片间左右切换」：
@@ -269,6 +272,7 @@ fun ChatList(
                     onToggleFavorite = onToggleFavorite,
                     onConversationSystemPromptChange = onConversationSystemPromptChange,
                     onConversationGoalChange = onConversationGoalChange,
+                    onLoadEarlierNodes = onLoadEarlierNodes,
                     scrollController = scrollController ?: defaultScrollController,
                 )
                 }
@@ -315,6 +319,8 @@ private fun ChatListNormal(
     onConversationSystemPromptChange: ((String?) -> Unit)? = null,
     /** 会话长期目标（Conversation.goal）编辑回调；null = 不显示入口 */
     onConversationGoalChange: ((String?) -> Unit)? = null,
+    /** 稀疏加载：「加载更早」点击 */
+    onLoadEarlierNodes: () -> Unit = {},
     scrollController: ChatListScrollController? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -411,8 +417,9 @@ private fun ChatListNormal(
             state.layoutInfo.visibleItemsInfo.firstOrNull()?.key == it.toString() }
     } }
     val deferredNodes = setOfNotNull(readingWholeTail).filterNot { it in alreadySplit }.toSet()
-    val renderIndex = remember(visibleNodes, staticDocuments, appearance.layout, activeCheckpoint != null, tailKeys, deferredNodes) {
-        buildChatRenderIndex(visibleNodes, staticDocuments, appearance, activeCheckpoint != null, tailKeys, deferredNodes)
+    val hasLoadEarlier = conversation.isSparse && conversation.omittedNodeCount > 0
+    val renderIndex = remember(visibleNodes, staticDocuments, appearance.layout, activeCheckpoint != null, tailKeys, deferredNodes, hasLoadEarlier) {
+        buildChatRenderIndex(visibleNodes, staticDocuments, appearance, activeCheckpoint != null, tailKeys, deferredNodes, hasLoadEarlier)
     }
     SideEffect { renderIndex.rows.filter { it.slice is app.androidrik.rikkahub.ui.components.message.ChatMessageSlice.Markdown }
         .forEach { alreadySplit += it.nodeId } }
@@ -608,6 +615,22 @@ private fun ChatListNormal(
                     .fillMaxSize()
                     .hazeSourceCompat(state = hazeState),
             ) {
+            // 稀疏加载入口（阶段 4）：显式按钮而非滚到顶自动加载——长会话打开就是尾巴，
+            // 自动加载会让「打开」逐渐退化回全量。点击后按摘要路径补一页，锚点由 LazyColumn
+            // 的稳定 key 维持（新行在上方插入，可见消息不跳）。
+            if (conversation.isSparse && conversation.omittedNodeCount > 0) {
+                item(key = LOAD_EARLIER_KEY) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        TextButton(onClick = onLoadEarlierNodes) {
+                            Text("加载更早的 ${conversation.omittedNodeCount} 条消息")
+                        }
+                    }
+                }
+            }
+
             // 压缩检查点折叠行：展开/收起切换 visibleNodes（历史消息仍是完整可操作的行）
             if (activeCheckpoint != null) {
                 item(key = "CompactionCheckpoint") {

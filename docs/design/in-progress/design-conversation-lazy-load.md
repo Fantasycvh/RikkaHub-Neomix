@@ -179,6 +179,31 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
 `messageNodes` 为空时仍跳过节点写入（保留轻量对象保护）。单测覆盖「稀疏窗口不误删」
 与「显式删除生效」；全量单测与装机通过。
 
+**阶段 4 稀疏接线与按需 hydrate（2026-11-15）**：
+
+- **启用条件**：`ChatService.initializeConversation / ensureConversationLoaded` 改走
+  `ConversationRepository.getConversationByIdSparse`。只有「最新检查点的边界在摘要路径上、
+  且边界节点不是导入的原版检查点消息」才稀疏；无检查点/无边/边界被剪枝/窗口为空一律
+  回退全量——宁可慢，不可静默截断发送上下文。导出/备份/Web 仍走全量 `getConversationById`。
+- **模型**：`Conversation.nodeSummaries`（`@Transient`，非空即稀疏）+ `summaryPathNodeIds()`；
+  `activeCompression()` 的边界存在性改在**摘要路径**上判定；稀疏且边界正文未加载时信任
+  落库指纹（摘要层无法校验，阶段 5 摘要化）。稀疏窗口用 `boundaryIndex = -1` 哨兵表示
+  「传入消息全在边界之后」；若「加载更早」把边界节点本身 hydrate 回来，则改用真实下标，
+  避免边界原文重复发送。本轮新生成/写入的尾部节点不在摘要快照里，按创建序追加到路径末尾。
+- **按需 hydrate**：`ChatService.hydrateNodes(ids)`（按 id 补正文并按摘要序合并）、
+  `loadEarlierMessages()`（按摘要路径向前补一页）、`hydrateAll()`（全量补齐）。
+  `editMessage / selectMessageNode` 目标缺失时自动全量补齐；树面板打开、分支切换、
+  树内分叉、剪枝/删除、整会话分叉、压缩（含中途压缩）与「压缩后在新会话继续」入口
+  在稀疏时先 `hydrateAll`——这些路径要么需要整棵树，要么需要完整路径前缀。
+- **保存侧**：`MessageFtsManager.indexConversation(..., removeMissing)`；稀疏保存传
+  `removeMissing = false`，否则未加载前缀的 FTS 行会被当作已删除，永久退出搜索。
+- **UI**：聊天列表顶部显式「加载更早的 N 条消息」（`omittedNodeCount`，不自动触底，
+  见 §十二.4）；`ChatRenderIndex` 增加 `hasLoadEarlier` 参与 leading 计数，
+  LazyColumn 稳定 key 保持可见消息不跳。
+- **已知限制（留待阶段 5）**：稀疏时区域指纹无法在摘要层校验（编辑已 hydrate 的
+  摘要区域节点不会立刻使检查点失效）；引用跳转到未加载节点仍会放弃（需按消息 id 查询
+  → hydrate 的入口）。单测见 `ConversationSparseModeTest`。
+
 ## 八、兼容与迁移
 
 - 数据库：阶段 2 无 schema 变更（仅新增查询）；若采用 `selected_message_id` 则 v72。

@@ -542,7 +542,8 @@ class ChatService(
 
     suspend fun initializeConversation(conversationId: Uuid) {
         val session = getOrCreateSession(conversationId) // 确保 session 存在
-        val conversation = conversationRepo.getConversationById(conversationId)
+        // 阶段 4：存在有效压缩检查点时只载入边界之后的窗口（摘要全量），其余情况回退全量。
+        val conversation = conversationRepo.getConversationByIdSparse(conversationId)
         if (session.isGenerating) {
             // **加载守卫**（b1273a72 同族）：生成中的会话内存态比 DB 新——流式内容只走
             // updateConversation 纯内存，落库点仅在轮次结束/取消收尾。此时无条件用 DB
@@ -616,7 +617,7 @@ class ChatService(
      * @return false 表示会话行已不存在（调用方据此记 TARGET_GONE）
      */
     suspend fun ensureConversationLoaded(conversationId: Uuid): Boolean {
-        val stored = conversationRepo.getConversationById(conversationId) ?: return false
+        val stored = conversationRepo.getConversationByIdSparse(conversationId) ?: return false
         val session = sessions[conversationId]
         if (session == null) {
             updateConversation(conversationId, stored)
@@ -652,6 +653,74 @@ class ChatService(
     private suspend fun awaitSettings(): Settings =
         withTimeoutOrNull(SETTINGS_AWAIT_TIMEOUT) { settingsStore.awaitLoaded() }
             ?: settingsStore.settingsFlow.value
+
+    // ---- 稀疏加载的按需 hydrate（阶段 4）----
+
+    /**
+     * 把指定节点的正文补进内存（已加载的忽略）。稀疏模式下路径/发送窗口据此扩展。
+     *
+     * 只在内存态替换 messageNodes（保留 nodeSummaries），不落库——hydrate 是读路径。
+     */
+    suspend fun hydrateNodes(conversationId: Uuid, nodeIds: Collection<Uuid>) {
+        val current = sessions[conversationId]?.state?.value ?: return
+        if (!current.isSparse) return
+        val missing = nodeIds.filter { id -> current.messageNodes.none { it.id == id } }
+        if (missing.isEmpty()) return
+        val loaded = conversationRepo.loadNodesByIds(conversationId, missing)
+        if (loaded.isEmpty()) return
+        updateConversationState(conversationId) { latest ->
+            val order = latest.nodeSummaries
+                .mapIndexed { index, summary -> summary.id to index }
+                .toMap()
+            val merged = (latest.messageNodes + loaded)
+                .distinctBy { it.id }
+                .sortedBy { order[it.id] ?: Int.MAX_VALUE }
+            latest.copy(messageNodes = merged)
+        }
+    }
+
+    /**
+     * 「加载更早」：按摘要路径向前补一页正文（不越过路径起点）。
+     *
+     * 用摘要路径而非 `node_index` 区间：分支会话里创建序含 off-path 节点，按创建序取页会把
+     * 旁支正文也拉进内存（占预算且不出现在激活路径上）。
+     */
+    suspend fun loadEarlierMessages(conversationId: Uuid, limit: Int = 80) {
+        val current = sessions[conversationId]?.state?.value ?: return
+        if (!current.isSparse) return
+        val loadedIds = current.messageNodes.mapTo(HashSet()) { it.id }
+        val pathIds = current.summaryPathNodeIds()
+        val firstLoaded = pathIds.indexOfFirst { it in loadedIds }
+        if (firstLoaded <= 0) return
+        val start = (firstLoaded - limit).coerceAtLeast(0)
+        hydrateNodes(conversationId, pathIds.subList(start, firstLoaded))
+    }
+
+    /**
+     * 全量补齐：把稀疏会话换回完整节点集（树面板/分支切换/剪枝/分叉等需要整棵树的入口）。
+     *
+     * 生成中不动内存态（DL 路径的守卫同款）——此时后续保存会以内存为唯一权威，
+     * 换掉它等于丢弃在途内容。
+     */
+    suspend fun hydrateAll(conversationId: Uuid) {
+        val session = sessions[conversationId] ?: return
+        if (!session.state.value.isSparse || session.isGenerating) return
+        val full = conversationRepo.getConversationById(conversationId) ?: return
+        updateConversation(conversationId, full)
+    }
+
+    /**
+     * 需要完整节点集的操作入口：稀疏且 [available] 不成立时先全量补齐，再返回最新内存态。
+     */
+    private suspend fun conversationWithFullNodesIfNeeded(
+        conversationId: Uuid,
+        available: (Conversation) -> Boolean,
+    ): Conversation {
+        val current = getConversationFlow(conversationId).value
+        if (!current.isSparse || available(current)) return current
+        hydrateAll(conversationId)
+        return getConversationFlow(conversationId).value
+    }
 
     // ---- 发送消息 ----
 
@@ -2477,6 +2546,8 @@ class ChatService(
         .getOrPut(conversationId) { Mutex() }
         .withLock {
             runCatching {
+        // 稀疏窗口只载入边界之后的尾巴：压缩要算完整区域的边界与指纹，先全量补齐再继续。
+        if (sessions[conversationId]?.state?.value?.isSparse == true) hydrateAll(conversationId)
         val settings = settingsStore.settingsFlow.first()
         val model = settings.resolveCompressionModel(followModel)
             ?: throw IllegalStateException("No model available for compression")
@@ -3222,7 +3293,11 @@ class ChatService(
     ) {
         if (parts.isEmptyInputMessage()) return
 
-        val currentConversation = getConversationFlow(conversationId).value
+        // 稀疏加载：目标消息可能在未加载窗口里（引用/搜索/树面板入口）——先补齐整棵树，
+        // 编辑/重新生成要写节点，绝不能只拿窗口当全量。
+        val currentConversation = conversationWithFullNodesIfNeeded(conversationId) { conv ->
+            conv.messageNodes.any { node -> node.messages.any { it.id == messageId } }
+        }
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(currentConversation.assistantId)
             ?: settings.getCurrentAssistant()
@@ -3295,6 +3370,8 @@ class ChatService(
         conversationId: Uuid,
         messageId: Uuid
     ): Conversation {
+        // 分叉复制的是激活路径前缀：稀疏窗口只有尾巴，必须全量补齐，否则新会话丢历史。
+        if (getConversationFlow(conversationId).value.isSparse) hydrateAll(conversationId)
         val currentConversation = getConversationFlow(conversationId).value
         // 分叉复制的是**激活路径前缀**（树形分支 P1：列表序 = 创建序 ≠ 路径序，
         // 用列表前缀会把 off-path 兄弟子树也带进新会话）
@@ -3345,6 +3422,8 @@ class ChatService(
      * 返回 null 表示当前没有有效压缩窗口或边界后没有可保留原文。
      */
     suspend fun forkConversationFromCompressionWindow(conversationId: Uuid): Conversation? {
+        // 稀疏会话的路径只有尾巴，边界下标/累计条数都算不出来——先补齐整条路径再分叉。
+        if (getConversationFlow(conversationId).value.isSparse) hydrateAll(conversationId)
         val source = getConversationFlow(conversationId).value
         val window = source.compressionWindow() ?: return null
         val summary = source.displayCompression() ?: return null
@@ -3430,7 +3509,9 @@ class ChatService(
         nodeId: Uuid,
         selectIndex: Int
     ) {
-        val currentConversation = getConversationFlow(conversationId).value
+        val currentConversation = conversationWithFullNodesIfNeeded(conversationId) { conversation ->
+            conversation.messageNodes.any { it.id == nodeId }
+        }
         val targetNode = currentConversation.messageNodes.firstOrNull { it.id == nodeId }
             ?: throw NotFoundException("Message node not found")
 
@@ -3463,6 +3544,8 @@ class ChatService(
         conversationId: Uuid,
         nodeId: Uuid,
     ) {
+        // 分支切换要算「子树最近更新叶子」，必须看到整棵树；稀疏窗口先全量补齐。
+        if (getConversationFlow(conversationId).value.isSparse) hydrateAll(conversationId)
         val currentConversation = getConversationFlow(conversationId).value
         val node = currentConversation.messageNodes.firstOrNull { it.id == nodeId }
             ?: throw NotFoundException("Message node not found")
@@ -3485,6 +3568,8 @@ class ChatService(
         conversationId: Uuid,
         messageId: Uuid,
     ) {
+        // 树内分叉要落兄弟节点并切叶子：稀疏窗口先补齐（父链/叶子推进依赖完整树元数据）。
+        if (getConversationFlow(conversationId).value.isSparse) hydrateAll(conversationId)
         val currentConversation = getConversationFlow(conversationId).value
         val updated = currentConversation.withBranchForkAt(messageId)
         if (updated !== currentConversation) {
@@ -3501,6 +3586,8 @@ class ChatService(
         conversationId: Uuid,
         nodeId: Uuid,
     ) {
+        // 剪枝必须看到整棵子树，否则会漏删未加载的后代（库中孤儿，不可逆）。
+        if (getConversationFlow(conversationId).value.isSparse) hydrateAll(conversationId)
         val currentConversation = getConversationFlow(conversationId).value
         val updated = currentConversation.pruneSubtree(nodeId) ?: return
         saveConversation(conversationId, updated)
@@ -3511,6 +3598,8 @@ class ChatService(
         messageId: Uuid,
         failIfMissing: Boolean = true,
     ) {
+        // 删除走「删候选 → 候选空则剪枝子树」，与剪枝同款：稀疏窗口先补齐整棵树。
+        if (getConversationFlow(conversationId).value.isSparse) hydrateAll(conversationId)
         val currentConversation = getConversationFlow(conversationId).value
         val updatedConversation = buildConversationAfterMessageDelete(currentConversation, messageId)
 
