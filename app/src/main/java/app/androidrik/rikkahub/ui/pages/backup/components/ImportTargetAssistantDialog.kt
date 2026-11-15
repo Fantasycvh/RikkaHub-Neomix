@@ -254,6 +254,15 @@ fun DeepSeekImportResultDialog(
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
+                if (result.failedInserts > 0) {
+                    Text(
+                        text = stringResource(
+                            R.string.backup_page_import_deepseek_result_insert_failed,
+                            result.failedInserts,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
                 if (result.restoredImages > 0 || result.missingImages > 0) {
                     Text(
                         text = stringResource(

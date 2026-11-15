@@ -335,6 +335,7 @@
   <string name="backup_page_import_deepseek_result_imported">已导入 %1$d 个会话。</string>
   <string name="backup_page_import_deepseek_result_skipped">跳过 %1$d 个已存在的会话。</string>
   <string name="backup_page_import_deepseek_result_failed">%1$d 个会话无法解析，已跳过。</string>
+  <string name="backup_page_import_deepseek_result_insert_failed">%1$d 个会话保存失败，已跳过。</string>
   <string name="backup_page_import_deepseek_result_images">图片：还原 %1$d 张，缺失 %2$d 张。</string>
   <string name="backup_page_import_deepseek_result_non_image">跳过 %1$d 个非图片附件（导出包未包含文件本体）。</string>
   <string name="backup_page_import_deepseek_result_dropped">已丢弃无法还原的内容：失败回复 %1$d 条、搜索轨迹 %2$d 条、模板回复 %3$d 条、提示条 %4$d 条。</string>

@@ -59,6 +59,8 @@ import android.net.Uri
 import app.androidrik.rikkahub.data.sync.repo.*
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 private const val TAG = "BackupVM"
 
@@ -90,6 +92,15 @@ class BackupVM(
     internal val snapshotPlan = backupRun.pendingPlan
     /** 本机保留策略：按设备保留最新 N 份快照（0 = 不限）。 */
     internal val snapshotRetention = MutableStateFlow(DEFAULT_SNAPSHOT_RETENTION)
+
+    /**
+     * 对话导入互斥（DeepSeek/Chatbox 共用）：导入不是原子操作（逐会话物化图片 + 落库），
+     * 两次导入并发会在前置判重上双双「查到不存在」→ 各自物化图片（资源重复）+ 落库撞
+     * 确定性主键。典型触发：上一次导入在后台还没跑完（离开页面不取消 `rememberCoroutineScope`
+     * 正在跑的 job），用户回到页面再次导入。串行化后，排队的那次跑判重时上一次已落库，
+     * 全部命中 skip → 零重复、零失败。
+     */
+    private val conversationImportMutex = Mutex()
 
     /** 当前 DB schema，用于在列表里标注「旧版本快照将按当前结构恢复」。 */
     internal val snapshotSchemaVersion: Int get() = incrementalBackup.currentSchemaVersion
@@ -571,7 +582,8 @@ class BackupVM(
      */
     suspend fun restoreFromChatBox(file: File, targetAssistantId: Uuid): ChatboxRestoreResult =
         withContext(Dispatchers.IO) {
-        var importedConversations = 0
+            conversationImportMutex.withLock {
+            var importedConversations = 0
         var skippedExistingConversations = 0
         val result = ChatboxImporter.importStreaming(
             file = file,
@@ -635,7 +647,8 @@ class BackupVM(
             skippedForkMessages = result.skippedForkMessages,
             skippedSessions = result.skippedSessions,
         )
-    }
+            }
+        }
 
     /**
      * 导入 DeepSeek 官方导出包（zip：多会话 + 思考链，图片按 zip 条目尽力还原）。
@@ -651,9 +664,10 @@ class BackupVM(
         targetAssistantId: Uuid,
         keepSearchTrails: Boolean = false,
         onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
-    ): DeepSeekRestoreResult {
+    ): DeepSeekRestoreResult = conversationImportMutex.withLock {
         var importedConversations = 0
         var skippedExistingConversations = 0
+        var failedInserts = 0
         val result = DeepSeekImporter.importStreaming(
             file = file,
             assistantId = targetAssistantId,
@@ -671,12 +685,26 @@ class BackupVM(
                     "file://" + filesManager.getFile(saved).absolutePath
                 }.getOrNull()
             },
+            // 前置判重：已导入过的会话在构建/物化图片**之前**跳过（图会重新真拷贝，
+            // 后判重 = 资源重复）。确定性 id：stableUuid("deepseek-session:$sid")。
+            shouldImportSession = { sessionId ->
+                val exists = conversationRepository.existsConversationById(
+                    DeepSeekImporter.stableUuid("deepseek-session:$sessionId")
+                )
+                if (exists) skippedExistingConversations++
+                !exists
+            },
             onConversation = { conversation ->
-                if (conversationRepository.existsConversationById(conversation.id)) {
-                    skippedExistingConversations++
-                } else {
+                // 逐会话隔离落库失败：任何单次 insert 异常（如两次导入并发撞确定性主键的
+                // 唯一约束）不得中止整包——中止 = 剩余会话全部不导入
+                try {
                     conversationRepository.insertConversation(conversation)
                     importedConversations++
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    failedInserts++
+                    Log.e(TAG, "restoreFromDeepSeek: failed to insert conversation ${conversation.id}", failure)
                 }
             },
             onProgress = onProgress,
@@ -686,6 +714,7 @@ class BackupVM(
             TAG,
             "restoreFromDeepSeek: import $importedConversations conversations, " +
                 "skip $skippedExistingConversations existing, failed ${result.failedSessions} sessions, " +
+                "failedInserts=$failedInserts, " +
                 "images ${result.restoredImages} restored / ${result.missingImages} missing, " +
                 "dropped: failedReplies=${result.droppedFailedReplies} " +
                 "searchTrails=${result.droppedSearchTrails} templates=${result.droppedTemplateResponses} " +
@@ -693,10 +722,11 @@ class BackupVM(
                 "tokenUsageMessages=${result.droppedTokenUsageMessages} " +
                 "nonImageAttachments=${result.nonImageAttachments}"
         )
-        return DeepSeekRestoreResult(
+        DeepSeekRestoreResult(
             importedConversations = importedConversations,
             skippedExistingConversations = skippedExistingConversations,
             failedSessions = result.failedSessions,
+            failedInserts = failedInserts,
             droppedFailedReplies = result.droppedFailedReplies,
             droppedSearchTrails = result.droppedSearchTrails,
             droppedTemplateResponses = result.droppedTemplateResponses,
@@ -781,9 +811,11 @@ data class ChatboxRestoreResult(
  */
 data class DeepSeekRestoreResult(
     val importedConversations: Int,
-    /** 命中 `existsConversationById` 而跳过的会话（重复导入同一包）。 */
+    /** 命中前置判重（`shouldImportSession` → `existsConversationById`）而跳过的会话（重复导入同一包）。 */
     val skippedExistingConversations: Int,
     val failedSessions: Int,
+    /** 落库阶段逐会话失败的次数（单会话失败不中止整包，计数上报）。 */
+    val failedInserts: Int,
     val droppedFailedReplies: Int,
     val droppedSearchTrails: Int,
     val droppedTemplateResponses: Int,

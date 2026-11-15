@@ -326,6 +326,7 @@
   <string name="backup_page_import_deepseek_result_imported">%1$d conversation(s) imported.</string>
   <string name="backup_page_import_deepseek_result_skipped">%1$d conversation(s) skipped (already imported).</string>
   <string name="backup_page_import_deepseek_result_failed">%1$d conversation(s) could not be read and were skipped.</string>
+  <string name="backup_page_import_deepseek_result_insert_failed">%1$d conversation(s) failed to save and were skipped.</string>
   <string name="backup_page_import_deepseek_result_images">Images: %1$d restored, %2$d missing from the archive.</string>
   <string name="backup_page_import_deepseek_result_non_image">%1$d non-image attachment(s) skipped (files are not included in the export).</string>
   <string name="backup_page_import_deepseek_result_dropped">Unrecoverable content dropped: %1$d failed replies, %2$d search trails, %3$d template replies, %4$d service tips.</string>

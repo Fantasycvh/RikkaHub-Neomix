@@ -243,6 +243,7 @@ fun ImportExportTab(
                 onProgress = { done, total -> deepSeekProgress = done to total },
             )
             val hasDetail = result.failedSessions > 0 ||
+                result.failedInserts > 0 ||
                 result.skippedExistingConversations > 0 ||
                 result.droppedFailedReplies > 0 ||
                 result.droppedSearchTrails > 0 ||

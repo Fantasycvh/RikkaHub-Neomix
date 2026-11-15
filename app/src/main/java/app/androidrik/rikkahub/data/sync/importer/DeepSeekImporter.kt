@@ -52,6 +52,15 @@ object DeepSeekImporter {
         suspend fun materialize(bytes: ByteArray, displayName: String, mimeType: String): String?
     }
 
+    /**
+     * 会话判重回调 [shouldImportSession]：返回 false = 该会话已导入过，直接跳过
+     * （不构建、不物化图片）。
+     *
+     * **必须在物化之前调用**：图片物化每次都生成新文件真拷贝，若等构建完再在
+     * `onConversation` 里判重，重复导入同一包会跳过会话却把全部图片重新落盘
+     * （upload/ 文件 + managed_files 行双重复制）。对齐 ChatboxImporter 的
+     * `shouldImportConversation` 前置判重纪律。
+     */
     suspend fun importStreaming(
         file: File,
         assistantId: Uuid,
@@ -59,6 +68,7 @@ object DeepSeekImporter {
         imageMaterializer: ImageMaterializer,
         onConversation: suspend (Conversation) -> Unit,
         onProgress: (done: Int, total: Int) -> Unit,
+        shouldImportSession: suspend (sessionId: String) -> Boolean = { true },
     ): DeepSeekImportResult {
         val stats = MutableStats()
         ZipFile(file, StandardCharsets.UTF_8).use { zip ->
@@ -96,6 +106,7 @@ object DeepSeekImporter {
                     imageEntries = imageEntries,
                     imageMaterializer = imageMaterializer,
                     seenSessionIds = seenSessionIds,
+                    shouldImportSession = shouldImportSession,
                     stats = stats,
                 )
                 if (conversation != null) {
@@ -117,6 +128,7 @@ object DeepSeekImporter {
         imageEntries: Map<String, ZipEntry>,
         imageMaterializer: ImageMaterializer,
         seenSessionIds: MutableSet<String>,
+        shouldImportSession: suspend (sessionId: String) -> Boolean,
         stats: MutableStats,
     ): Conversation? {
         try {
@@ -125,6 +137,11 @@ object DeepSeekImporter {
             // 会话 id 重复（同一包内两份同名会话）与容器非法同级别：只收首个
             if (session == null || !seenSessionIds.add(session.id)) {
                 stats.failedSessions++
+                return null
+            }
+            // 前置判重（调用方查库）：已导入过的会话在物化任何图片之前跳过
+            if (!shouldImportSession(session.id)) {
+                stats.skippedExistingSessions++
                 return null
             }
             return buildConversation(
@@ -418,6 +435,7 @@ object DeepSeekImporter {
     private class MutableStats {
         var parsedConversations = 0
         var failedSessions = 0
+        var skippedExistingSessions = 0
         var droppedFailedReplies = 0
         var droppedSearchTrails = 0
         var droppedTemplateResponses = 0
@@ -431,6 +449,7 @@ object DeepSeekImporter {
         fun toResult() = DeepSeekImportResult(
             parsedConversations = parsedConversations,
             failedSessions = failedSessions,
+            skippedExistingSessions = skippedExistingSessions,
             droppedFailedReplies = droppedFailedReplies,
             droppedSearchTrails = droppedSearchTrails,
             droppedTemplateResponses = droppedTemplateResponses,
@@ -448,6 +467,8 @@ data class DeepSeekImportResult(
     /** 解析成功并回调给调用方落库的会话数（去重在调用方，最终导入数 ≤ 此值）。 */
     val parsedConversations: Int,
     val failedSessions: Int,
+    /** 命中 [DeepSeekImporter.importStreaming] 的 shouldImportSession 判重而跳过的会话数。 */
+    val skippedExistingSessions: Int,
     /** FAILED/TIMEOUT/CONTEXT_LENGTH_EXCEEDED/CONTENT_FILTER 轮（整条丢弃）。 */
     val droppedFailedReplies: Int,
     /** 搜索轨迹块（TOOL_SEARCH/TOOL_OPEN/TOOL_FIND/READ_LINK），默认丢弃。 */

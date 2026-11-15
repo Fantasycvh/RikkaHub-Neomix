@@ -118,6 +118,7 @@ class DeepSeekImporterTest {
         zip: File,
         keepSearchTrails: Boolean = false,
         materializer: FakeMaterializer = FakeMaterializer(),
+        shouldImportSession: suspend (String) -> Boolean = { true },
     ): ImportOutcome = runBlocking {
         val conversations = mutableListOf<Conversation>()
         val result = DeepSeekImporter.importStreaming(
@@ -127,6 +128,7 @@ class DeepSeekImporterTest {
             imageMaterializer = materializer,
             onConversation = { conversations += it },
             onProgress = { _, _ -> },
+            shouldImportSession = shouldImportSession,
         )
         ImportOutcome(conversations, result, materializer)
     }
@@ -261,6 +263,59 @@ class DeepSeekImporterTest {
             second.messageNodes.flatMap { it.messages.map { m -> m.id } },
         )
         assertEquals(first.activeLeafNodeId, second.activeLeafNodeId)
+    }
+
+    /**
+     * 回归（退出再导入资源重复）：前置判重命中的会话必须在**物化任何图片之前**被跳过——
+     * 旧实现在 onConversation（构建完、图已真拷贝落盘）才判重，重复导入同一包
+     * 会跳过会话却把全部图片重新落盘（upload/ 文件 + managed_files 行双重复制）。
+     */
+    @Test
+    fun `gate rejected session skips before materializing images`() {
+        val imagePath = "chat_sessions/${sid}_files/f1_pic.png"
+        val zip = buildZip(
+            "manifest.json" to manifest(),
+            "chat_sessions/$sid.json" to session(
+                sid, 2,
+                msg(1, null, "USER", fragments = arrayOf(request("看图"), fileFragment(imagePath, true))),
+                msg(2, 1, "ASSISTANT", fragments = arrayOf(response("好的"))),
+            ),
+            imagePath to fakePng,
+        )
+        val (conversations, result, materializer) = import(zip, shouldImportSession = { false })
+
+        assertTrue(conversations.isEmpty())
+        assertTrue("命中判重的会话不得物化任何图片", materializer.calls.isEmpty())
+        assertEquals(1, result.skippedExistingSessions)
+        assertEquals(0, result.parsedConversations)
+    }
+
+    /** gate 只拦截命中的会话，同包其他会话正常导入。 */
+    @Test
+    fun `gate only blocks matched sessions`() {
+        val zip = buildZip(
+            "manifest.json" to manifest(),
+            "chat_sessions/$sid2.json" to session(
+                sid2, 2,
+                msg(1, null, "USER", fragments = arrayOf(request("问2"))),
+                msg(2, 1, "ASSISTANT", fragments = arrayOf(response("答2"))),
+            ),
+            "chat_sessions/$sid.json" to session(
+                sid, 2,
+                msg(1, null, "USER", fragments = arrayOf(request("问"))),
+                msg(2, 1, "ASSISTANT", fragments = arrayOf(response("答"))),
+            ),
+        )
+        val (conversations, result, _) =
+            import(zip, shouldImportSession = { it != sid })
+
+        assertEquals(1, conversations.size)
+        assertEquals(
+            DeepSeekImporter.stableUuid("deepseek-session:$sid2"),
+            conversations.single().id,
+        )
+        assertEquals(1, result.skippedExistingSessions)
+        assertEquals(1, result.parsedConversations)
     }
 
     // ---- 5. 容错 ----
