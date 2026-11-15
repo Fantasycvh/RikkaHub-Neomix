@@ -522,9 +522,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
             message["role"]?.jsonPrimitive?.contentOrNull ?: "model"
         )
         val content = message["content"]?.jsonObject ?: error("No content")
-        val parts = content["parts"]?.jsonArray?.map { part ->
-            parseMessagePart(part.jsonObject)
-        } ?: emptyList()
+        val parts = parseMessageParts(content["parts"]?.jsonArray)
 
         val groundingMetadata = message["groundingMetadata"]?.jsonObject
         Log.i(TAG, "parseMessage: $groundingMetadata")
@@ -553,6 +551,45 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         return chunks
     }
 
+    /**
+     * Gemini 新模型会把 thoughtSignature 放在**只含签名的独立 part**里（不再内嵌在
+     * functionCall/inlineData），直接解析会命中 unknown part 分支崩溃。这里把签名并入同批次中
+     * 前一个可承载签名的部件：既避免解析崩溃，也尽量保住函数调用续轮所需的签名。
+     */
+    private fun parseMessageParts(parts: JsonArray?): List<UIMessagePart> {
+        val parsed = mutableListOf<UIMessagePart>()
+        parts.orEmpty().forEach { element ->
+            val jsonObject = element.jsonObject
+            val hasContent = jsonObject.containsKey("text") || jsonObject.containsKey("functionCall") ||
+                jsonObject.containsKey("inlineData")
+            if (!hasContent) {
+                jsonObject["thoughtSignature"]?.jsonPrimitive?.contentOrNull?.let { signature ->
+                    val index = parsed.indexOfLast {
+                        it is UIMessagePart.Tool || it is UIMessagePart.Image || it is UIMessagePart.Reasoning
+                    }
+                    if (index >= 0) parsed[index] = parsed[index].attachThoughtSignature(signature)
+                }
+                return@forEach
+            }
+            parsed += parseMessagePart(jsonObject)
+        }
+        return parsed
+    }
+
+    private fun UIMessagePart.attachThoughtSignature(signature: String): UIMessagePart {
+        val existing = metadataAs<GoogleThoughtMetadata>()
+        val metadata = GoogleThoughtMetadata(
+            thoughtSignature = existing?.thoughtSignature ?: signature,
+            inlineDataMime = existing?.inlineDataMime,
+        ).toMetadata()
+        return when (this) {
+            is UIMessagePart.Tool -> copy(metadata = metadata)
+            is UIMessagePart.Image -> copy(metadata = metadata)
+            is UIMessagePart.Reasoning -> copy(metadata = metadata)
+            else -> this
+        }
+    }
+
     private fun parseMessagePart(jsonObject: JsonObject): UIMessagePart {
         return when {
             jsonObject.containsKey("text") -> {
@@ -561,7 +598,11 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
                 if (thought) UIMessagePart.Reasoning(
                     reasoning = text,
                     createdAt = Clock.System.now(),
-                    finishedAt = null
+                    finishedAt = null,
+                    // 签名推理块必须原样回传，挂上 metadata 后 UI 会禁用编辑（isProviderSigned）
+                    metadata = jsonObject["thoughtSignature"]?.jsonPrimitive?.contentOrNull?.let {
+                        GoogleThoughtMetadata(thoughtSignature = it).toMetadata()
+                    },
                 ) else UIMessagePart.Text(text)
             }
 

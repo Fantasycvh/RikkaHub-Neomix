@@ -4,9 +4,13 @@ import app.androidrik.ai.provider.stream.SseEvent
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.StreamChunkHandler
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isOutputLimitTruncation
+import app.androidrik.ai.ui.isProviderSigned
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -68,6 +72,75 @@ class GoogleStreamDecoderTest {
         assertEquals("resp_1", finish.responseId)
         // 本仓 helper 归一大小写后识别为输出上限截断（MAX_TOKENS → max_tokens）
         assertTrue(isOutputLimitTruncation(finish.finishReason))
+    }
+
+    /**
+     * Gemini 新模型会把 thoughtSignature 放进只含签名的独立 part（#2316）：
+     * 旧实现会命中 unknown part 分支抛异常；现在应并入前一个函数调用部件，保住续轮签名。
+     */
+    @Test
+    fun `standalone thoughtSignature part merges into preceding tool call`() {
+        val payload = buildJsonObject {
+            put("candidates", buildJsonArray {
+                add(buildJsonObject {
+                    put("content", buildJsonObject {
+                        put("parts", buildJsonArray {
+                            add(buildJsonObject {
+                                putJsonObject("functionCall") {
+                                    put("name", "workspace_read_file")
+                                    putJsonObject("args") { }
+                                }
+                            })
+                            add(buildJsonObject { put("thoughtSignature", "sig-tool") })
+                        })
+                    })
+                    put("finishReason", "STOP")
+                })
+            })
+        }.toString()
+
+        val toolStart = decoder().feed(payload)
+            .filterIsInstance<StreamChunk.ToolCallStart>()
+            .single()
+        assertTrue(
+            "独立签名 part 必须并入前一个工具调用",
+            toolStart.metadata.toString().contains("sig-tool"),
+        )
+    }
+
+    @Test
+    fun `signed thought text keeps signature metadata for edit gate`() {
+        val payload = buildJsonObject {
+            put("candidates", buildJsonArray {
+                add(buildJsonObject {
+                    put("content", buildJsonObject {
+                        put("parts", buildJsonArray {
+                            add(buildJsonObject {
+                                put("text", "thinking")
+                                put("thought", true)
+                                put("thoughtSignature", "sig-reason")
+                            })
+                        })
+                    })
+                    put("finishReason", "STOP")
+                })
+            })
+        }.toString()
+
+        val chunks = decoder().feed(payload)
+        val reasoningStart = chunks.filterIsInstance<StreamChunk.ReasoningStart>().single()
+        assertTrue(
+            "签名推理块必须携带 metadata（isProviderSigned 据此禁用编辑）",
+            reasoningStart.metadata.toString().contains("sig-reason"),
+        )
+
+        // 消费端合并后仍须判定为签名块，编辑入口才会置灰
+        val handler = StreamChunkHandler()
+        val messages = chunks.fold(listOf(UIMessage.user("hi"))) { list, chunk ->
+            handler.handle(list, chunk)
+        }
+        val reasoning = messages.last().parts.filterIsInstance<UIMessagePart.Reasoning>().single()
+        assertTrue("签名推理块必须命中编辑门禁", reasoning.isProviderSigned())
     }
 
     @Test
