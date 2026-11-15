@@ -360,6 +360,19 @@ class ConversationRepository(
      * 导出/备份/Web 等需要完整历史的入口继续走 [getConversationById]。
      */
     suspend fun getConversationByIdSparse(uuid: Uuid): Conversation? {
+        val startNs = System.nanoTime()
+        val conversation = loadConversationSparseOrFull(uuid)
+        // 耗时埋点：与 loadMessageNodes 同口径，稀疏/全量都打一条，便于对比打开会话的 DB 侧开销
+        val ms = (System.nanoTime() - startNs) / 1_000_000
+        Log.i(
+            TAG,
+            "getConversationByIdSparse: ${conversation?.messageNodes?.size ?: 0} nodes, " +
+                "sparse=${conversation?.isSparse == true} in ${ms}ms (conv=$uuid)",
+        )
+        return conversation
+    }
+
+    private suspend fun loadConversationSparseOrFull(uuid: Uuid): Conversation? {
         val entity = conversationDAO.getConversationById(uuid.toString()) ?: return null
         val summaries = nodeStore.loadNodeSummaries(entity.id)
         val checkpoints = loadCompressionSummaries(entity.id)
