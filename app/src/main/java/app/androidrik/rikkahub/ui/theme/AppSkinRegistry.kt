@@ -90,10 +90,39 @@ val builtInAppSkins = listOf(
         motion = AppSkinMotion.STANDARD,
         palette = CustomTheme(id = "builtin.paper.palette", name = "纸质感",
             primaryColorArgb = 0xFFA0522D, paletteStyle = ThemePaletteStyle.NEUTRAL))),
+    // 第二批档位：分组容器形态 + 排版细项（工程感 = 冷灰线框；iOS 风 = inset 分组底卡）
+    AppSkinPreset("builtin.engineering", "工程感", AppSkin(
+        typography = AppSkinTypography(sizeRatio = 0.98f, letterSpacingSp = 0.05f, tabularNumerals = true, monoLabels = true),
+        shapes = AppSkinShapes(extraSmallDp = 2f, smallDp = 4f, mediumDp = 6f, largeDp = 8f, extraLargeDp = 12f,
+            cardGroupOuterDp = 10f, cardGroupInnerDp = 0f, buttonDp = 6f, inputDp = 6f),
+        spacing = AppSkinSpacing(pageDp = 10f, sectionDp = 14f, groupItemDp = 0f,
+            formHorizontalDp = 14f, formVerticalDp = 10f, formGapDp = 10f),
+        motion = AppSkinMotion.STANDARD,
+        topBar = AppSkinTopBar(panel = AppSkinPanel(radiusDp = 0f, borderWidthDp = 1f)),
+        drawer = AppSkinDrawer(panel = AppSkinPanel(radiusDp = 0f, borderWidthDp = 1f), item = AppSkinPanel(radiusDp = 6f)),
+        groups = AppSkinGroups(style = AppSkinGroupStyle.OUTLINED, divider = AppSkinDividerStyle.FULL,
+            dividerWidthDp = 1f, borderWidthDp = 1f),
+        palette = CustomTheme(id = "builtin.engineering.palette", name = "工程感",
+            primaryColorArgb = 0xFF55606B, paletteStyle = ThemePaletteStyle.NEUTRAL))),
+    AppSkinPreset("builtin.ios", "iOS 风", AppSkin(
+        typography = AppSkinTypography(letterSpacingSp = -0.05f),
+        shapes = AppSkinShapes(extraSmallDp = 8f, smallDp = 10f, mediumDp = 12f, largeDp = 16f, extraLargeDp = 22f,
+            cardGroupOuterDp = 16f, cardGroupInnerDp = 16f, buttonDp = null, inputDp = 12f, continuous = true),
+        spacing = AppSkinSpacing(pageDp = 16f, sectionDp = 24f, groupItemDp = 0f,
+            formHorizontalDp = 16f, formVerticalDp = 12f, formGapDp = 12f),
+        motion = AppSkinMotion.STANDARD,
+        topBar = AppSkinTopBar(panel = AppSkinPanel(radiusDp = 0f)),
+        drawer = AppSkinDrawer(panel = AppSkinPanel(radiusDp = 0f), item = AppSkinPanel(radiusDp = 10f)),
+        groups = AppSkinGroups(style = AppSkinGroupStyle.INSET, divider = AppSkinDividerStyle.INSET,
+            dividerInsetDp = 56f, dividerWidthDp = 0.5f),
+        palette = CustomTheme(id = "builtin.ios.palette", name = "iOS 风",
+            primaryColorArgb = 0xFF0A84FF, paletteStyle = ThemePaletteStyle.FIDELITY))),
 )
 
 /** 皮肤档位 → 推荐聊天域方案（应用皮肤时联动写入；用户可随时改回）。 */
 val builtinSkinChatLink: Map<String, String> = mapOf(
     "builtin.squircle" to "builtin.chat:glass",
     "builtin.paper" to "builtin.chat:paper",
+    "builtin.engineering" to "builtin.chat:engineering",
+    "builtin.ios" to "builtin.chat:ios",
 )

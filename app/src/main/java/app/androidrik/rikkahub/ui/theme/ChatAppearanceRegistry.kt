@@ -75,6 +75,18 @@ val builtinChatAppearancePresets = listOf(
                 paddingHorizontalDp = 13f, paddingVerticalDp = 9f)),
         assistantBubble = ChatBubble(visible = false)),
     ),
+    ChatAppearancePreset("engineering", "工程感（平铺）", ChatAppearance(
+        userBubble = ChatBubble(
+            geometry = ChatBubbleGeometry(radiusDp = 8f, tailCornerDp = 3f,
+                paddingHorizontalDp = 12f, paddingVerticalDp = 8f)),
+        assistantBubble = ChatBubble(visible = false)),
+    ),
+    ChatAppearancePreset("ios", "iOS 风（平铺）", ChatAppearance(
+        userBubble = ChatBubble(
+            geometry = ChatBubbleGeometry(radiusDp = 18f, tailCornerDp = 6f,
+                paddingHorizontalDp = 12f, paddingVerticalDp = 8f)),
+        assistantBubble = ChatBubble(visible = false)),
+    ),
 )
 
 fun resolveChatAppearance(

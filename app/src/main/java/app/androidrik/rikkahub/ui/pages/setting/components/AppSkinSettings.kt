@@ -117,6 +117,13 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
                 }) }
             Text("标题和按钮使用 Google Sans Flex 的强调字阶（仅英文与数字生效，中文回退系统字体）。")
             SkinSlider("字号比例", draft.typography.sizeRatio, 0.75f..1.5f) { value -> draft = draft.copy(typography = draft.typography.copy(sizeRatio = value)) }
+            SkinSlider("字距微调", draft.typography.letterSpacingSp, -0.5f..1f) { value -> draft = draft.copy(typography = draft.typography.copy(letterSpacingSp = value)) }
+            SkinSlider("字重微调", draft.typography.weightDelta.toFloat(), -200f..200f) { value -> draft = draft.copy(typography = draft.typography.copy(weightDelta = value.toInt())) }
+            Row { Text("等宽数字"); Switch(draft.typography.tabularNumerals, onCheckedChange = { value ->
+                draft = draft.copy(typography = draft.typography.copy(tabularNumerals = value)) }) }
+            Row { Text("等宽标签"); Switch(draft.typography.monoLabels, onCheckedChange = { value ->
+                draft = draft.copy(typography = draft.typography.copy(monoLabels = value)) }) }
+            Text("等宽标签仅作用于 label 字阶，中文自动回退系统字体。")
             SkinSlider("全局圆角", draft.shapes.largeDp, 0f..32f) { value -> draft = draft.copy(shapes = draft.shapes.copy(
                 extraSmallDp = value / 4, smallDp = value / 2, mediumDp = value * 0.75f, largeDp = value, extraLargeDp = value * 1.75f)) }
             SkinSlider("卡片外圆角", draft.shapes.cardGroupOuterDp, 0f..48f) { value -> draft = draft.copy(shapes = draft.shapes.copy(cardGroupOuterDp = value)) }
@@ -131,6 +138,7 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
             SkinSlider("卡片间距", draft.spacing.groupItemDp, 0f..16f) { value -> draft = draft.copy(spacing = draft.spacing.copy(groupItemDp = value)) }
             SkinSlider("表单水平留白", draft.spacing.formHorizontalDp, 8f..32f) { value -> draft = draft.copy(spacing = draft.spacing.copy(formHorizontalDp = value)) }
             SkinSlider("表单垂直留白", draft.spacing.formVerticalDp, 4f..24f) { value -> draft = draft.copy(spacing = draft.spacing.copy(formVerticalDp = value, formGapDp = value)) }
+            SkinGroupControls(draft) { draft = it }
             Select(options = AppSkinMotion.entries, selectedOption = draft.motion,
                 onOptionSelected = { draft = draft.copy(motion = it) }, optionToString = { when (it) {
                     AppSkinMotion.EXPRESSIVE -> "灵动动效"
@@ -155,4 +163,39 @@ private fun SkinSlider(label: String, value: Float, range: ClosedFloatingPointRa
     Text("$label：${"%.2f".format(value)}")
     Slider(value, onValueChange = onChange, valueRange = range,
         modifier = Modifier.semantics { contentDescription = "皮肤 $label" })
+}
+
+@Composable
+private fun SkinGroupControls(draft: AppSkin, onChange: (AppSkin) -> Unit) {
+    val groups = draft.groups
+    Text("分组容器")
+    Select(options = AppSkinGroupStyle.entries, selectedOption = groups.style,
+        onOptionSelected = { onChange(draft.copy(groups = groups.copy(style = it))) },
+        optionToString = { when (it) {
+            AppSkinGroupStyle.FLAT -> "逐行卡片（现状）"
+            AppSkinGroupStyle.OUTLINED -> "整组线框"
+            AppSkinGroupStyle.INSET -> "分组底卡"
+        } })
+    if (groups.style == AppSkinGroupStyle.FLAT) {
+        Text("逐行卡片沿用第一批形态；分隔线在整组形态下可用。")
+        return
+    }
+    Select(options = AppSkinDividerStyle.entries, selectedOption = groups.divider,
+        onOptionSelected = { onChange(draft.copy(groups = groups.copy(divider = it))) },
+        optionToString = { when (it) {
+            AppSkinDividerStyle.NONE -> "无分隔线"
+            AppSkinDividerStyle.FULL -> "通栏分隔线"
+            AppSkinDividerStyle.INSET -> "内缩分隔线"
+        } })
+    if (groups.divider == AppSkinDividerStyle.INSET) {
+        SkinSlider("分隔线缩进", groups.dividerInsetDp, 0f..72f) { onChange(draft.copy(groups = groups.copy(dividerInsetDp = it))) }
+    }
+    if (groups.divider != AppSkinDividerStyle.NONE) {
+        SkinSlider("分隔线宽度", groups.dividerWidthDp, 0f..3f) { onChange(draft.copy(groups = groups.copy(dividerWidthDp = it))) }
+    }
+    SkinSlider("容器描边", groups.borderWidthDp, 0f..3f) { onChange(draft.copy(groups = groups.copy(borderWidthDp = it))) }
+    SkinSlider("容器内边距", groups.containerPaddingDp, 0f..16f) { onChange(draft.copy(groups = groups.copy(containerPaddingDp = it))) }
+    AppOutlinedTextField(value = groups.containerColorHex.orEmpty(), onValueChange = { raw ->
+        onChange(draft.copy(groups = groups.copy(containerColorHex = raw.ifBlank { null })))
+    }, label = { Text("容器底色（#RRGGBB，留空跟随主题）") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
 }

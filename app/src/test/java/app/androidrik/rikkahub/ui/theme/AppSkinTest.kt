@@ -4,6 +4,8 @@ import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.model.*
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
@@ -120,7 +122,26 @@ class AppSkinTest {
         // resolve 归一化后与预设等价（registered skins 不走 normalized，resolve 兜底）
         assertEquals(squircle.skin, resolveAppSkin(DisplaySetting(appSkinId = squircle.id), builtInAppSkins, emptyList()).skin)
         // 联动表覆盖两档且指向注册的聊天方案 id
-        assertEquals(setOf("builtin.squircle", "builtin.paper"), builtinSkinChatLink.keys)
+        assertEquals(setOf("builtin.squircle", "builtin.paper", "builtin.engineering", "builtin.ios"), builtinSkinChatLink.keys)
+    }
+
+    @Test fun `second batch presets carry group styles and typography tokens`() {
+        val engineering = builtInAppSkins.first { it.id == "builtin.engineering" }
+        val ios = builtInAppSkins.first { it.id == "builtin.ios" }
+        assertEquals(AppSkinGroupStyle.OUTLINED, engineering.skin.groups.style)
+        assertEquals(AppSkinDividerStyle.FULL, engineering.skin.groups.divider)
+        assertEquals(1f, engineering.skin.groups.borderWidthDp)
+        assertTrue(engineering.skin.typography.tabularNumerals)
+        assertTrue(engineering.skin.typography.monoLabels)
+        assertEquals(ThemePaletteStyle.NEUTRAL, engineering.skin.palette?.paletteStyle)
+        assertEquals(AppSkinGroupStyle.INSET, ios.skin.groups.style)
+        assertEquals(AppSkinDividerStyle.INSET, ios.skin.groups.divider)
+        assertEquals(56f, ios.skin.groups.dividerInsetDp)
+        // 深色可读优先：容器底色跟随主题 surfaceBright，浅色仍接近白卡
+        assertNull(ios.skin.groups.containerColorHex)
+        assertEquals(0f, ios.skin.spacing.groupItemDp)
+        assertEquals(ThemePaletteStyle.FIDELITY, ios.skin.palette?.paletteStyle)
+        assertEquals(ios.skin, resolveAppSkin(DisplaySetting(appSkinId = ios.id), builtInAppSkins, emptyList()).skin)
     }
 
     @Test fun `builtin chat appearance presets register and resolve by link`() {
@@ -181,5 +202,59 @@ class AppSkinTest {
         assertEquals(Typography.bodyLarge.fontSize.value * 1.25f, result.bodyLarge.fontSize.value)
         assertEquals(Typography.labelSmall.lineHeight.value * 1.25f, result.labelSmall.lineHeight.value)
         assertEquals(Typography.headlineMediumEmphasized.fontWeight, result.headlineMediumEmphasized.fontWeight)
+    }
+
+    @Test fun `second batch group tokens normalize and legacy json stays flat`() {
+        val flat = AppSkinGroups(divider = AppSkinDividerStyle.FULL, dividerInsetDp = 999f, dividerWidthDp = -1f,
+            borderWidthDp = 9f, containerPaddingDp = 99f, dividerColorHex = "red", containerColorHex = "#AABBCC").normalized()
+        assertEquals(AppSkinDividerStyle.NONE, flat.divider) // FLAT 逐行圆角下不画分隔线
+        assertEquals(72f, flat.dividerInsetDp)
+        assertEquals(0f, flat.dividerWidthDp)
+        assertEquals(3f, flat.borderWidthDp)
+        assertEquals(16f, flat.containerPaddingDp)
+        assertNull(flat.dividerColorHex)
+        assertEquals("#AABBCC", flat.containerColorHex)
+
+        val outlined = AppSkinGroups(style = AppSkinGroupStyle.OUTLINED, divider = AppSkinDividerStyle.FULL, borderWidthDp = 1f).normalized()
+        assertEquals(AppSkinDividerStyle.FULL, outlined.divider)
+        assertEquals(1f, outlined.borderWidthDp)
+        assertEquals(outlined, outlined.normalized())
+
+        // 旧皮肤 JSON 无 groups 字段 → 默认 FLAT / 无分隔线，行为与第一批一致
+        val legacy = Json { ignoreUnknownKeys = true }.decodeFromString<AppSkin>("""{"typography":{"sizeRatio":1.1}}""")
+        assertEquals(AppSkinGroups(), legacy.groups)
+        val json = Json { encodeDefaults = true }
+        assertEquals(outlined, json.decodeFromString<AppSkin>(json.encodeToString(AppSkin(groups = outlined))).groups)
+    }
+
+    @Test fun `group overrides ride along while untouched groups inherit`() {
+        val skin = AppSkin(groups = AppSkinGroups(style = AppSkinGroupStyle.INSET, divider = AppSkinDividerStyle.INSET))
+        assertEquals(skin.groups, AppSkinOverrides.from(skin).applyTo(AppSkin()).groups)
+        val base = AppSkin()
+        assertNull(AppSkinOverrides().withEdits(base, base.copy(shapes = base.shapes.copy(inputDp = 10f))).groups)
+        val edited = AppSkinOverrides.from(skin).withEdits(base, base.copy(groups = AppSkinGroups(style = AppSkinGroupStyle.OUTLINED)))
+        assertEquals(AppSkinGroupStyle.OUTLINED, edited.groups?.style)
+    }
+
+    @Test fun `second batch typography tokens reach weights spacing and mono labels`() {
+        val base = Typography.copy(
+            bodyLarge = Typography.bodyLarge.copy(fontWeight = FontWeight.W400, letterSpacing = 1.sp),
+            labelMedium = Typography.labelMedium.copy(fontWeight = FontWeight.W500),
+        )
+        val result = appSkinTypography(base,
+            AppSkinTypography(weightDelta = 100, letterSpacingSp = 0.5f, tabularNumerals = true, monoLabels = true), null)
+        assertEquals(FontWeight.W500, result.bodyLarge.fontWeight)
+        assertEquals("tnum", result.bodyLarge.fontFeatureSettings)
+        assertEquals(1.5f, result.bodyLarge.letterSpacing.value, .0001f)
+        assertEquals(FontWeight.W600, result.labelMedium.fontWeight)
+        assertEquals(FontFamily.Monospace, result.labelMedium.fontFamily)
+        assertEquals(base.bodyLarge.fontFamily, result.bodyLarge.fontFamily)
+        // 自定义字体族优先于等宽标签
+        assertEquals(FontFamily.Serif, appSkinTypography(base, AppSkinTypography(monoLabels = true), FontFamily.Serif).labelMedium.fontFamily)
+        // 默认参数逐字段不变；越界归一
+        assertEquals(Typography, appSkinTypography(Typography, AppSkinTypography(), null))
+        val clamped = AppSkinTypography(weightDelta = 999, letterSpacingSp = Float.NaN).normalized()
+        assertEquals(200, clamped.weightDelta)
+        assertEquals(0f, clamped.letterSpacingSp)
     }
 }

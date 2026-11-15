@@ -143,7 +143,7 @@ data class AppSkinMotionTokens(
 
 ## 7. 明确不做 / 后续批次
 
-- 工程感 / iOS 风皮肤档（描边卡 token、inset 分隔线形态随批）
+- 工程感 / iOS 风皮肤档（描边卡 token、inset 分隔线形态随批）→ **第二批已规划**：[design-skins-batch2-engineering-ios.md](design-skins-batch2-engineering-ios.md)
 - tail path、逐字打字机、正文扫光（dsh-go 反对 + 第一轮已划界）
 - 设置页全面 Bento（维持 E 收窄版结论）
 - IA 全仓铺开（首批四页验证后再扩，见 §8.2）

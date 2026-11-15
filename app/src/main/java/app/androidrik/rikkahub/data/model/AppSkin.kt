@@ -19,10 +19,13 @@ data class AppSkin(
     val cards: AppSkinCards = AppSkinCards(),
     val embedded: AppSkinEmbedded = AppSkinEmbedded(),
     val resources: AppSkinResources = AppSkinResources(),
+    /** 分组容器形态（CardGroup）；默认 FLAT = 第一批逐行卡片现状。 */
+    val groups: AppSkinGroups = AppSkinGroups(),
 ) {
     fun normalized() = copy(typography = typography.normalized(), shapes = shapes.normalized(), spacing = spacing.normalized(),
         motionTokens = motionTokens?.normalized(),
-        topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized(), embedded = embedded.normalized(), resources = resources.normalized())
+        topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized(), embedded = embedded.normalized(), resources = resources.normalized(),
+        groups = groups.normalized())
 }
 
 @Serializable
@@ -33,10 +36,20 @@ data class AppSkinTypography(
     val sizeRatio: Float = 1f,
     /** Expressive typography: emphasized styles switch to Google Sans Flex (Latin/digits only; CJK falls back to system font). */
     val expressive: Boolean = false,
+    /** 全局字重微调（-200..200，落在 100..900）；默认 0 保持现状。 */
+    val weightDelta: Int = 0,
+    /** 全局字距微调（sp，-0.5..1.0）；默认 0。 */
+    val letterSpacingSp: Float = 0f,
+    /** 等宽数字（fontFeatureSettings = "tnum"）。 */
+    val tabularNumerals: Boolean = false,
+    /** label* 系列改等宽族（CJK 自动回落系统字体）。 */
+    val monoLabels: Boolean = false,
 ) {
     fun normalized() = copy(sizeRatio = sizeRatio.bound(0.75f, 1.5f, 1f),
         customFontPath = customFontPath.takeIf { it.length <= 1024 }.orEmpty(),
-        customFontName = customFontName.take(256))
+        customFontName = customFontName.take(256),
+        weightDelta = weightDelta.coerceIn(-200, 200),
+        letterSpacingSp = letterSpacingSp.bound(-0.5f, 1f, 0f))
 }
 
 @Serializable
@@ -151,10 +164,12 @@ data class AppSkinOverrides(
     val cards: AppSkinCards? = null,
     val embedded: AppSkinEmbedded? = null,
     val resources: AppSkinResources? = null,
+    val groups: AppSkinGroups? = null,
 ) {
     fun applyTo(base: AppSkin) = AppSkin(typography ?: base.typography, shapes ?: base.shapes,
         spacing ?: base.spacing, motion ?: base.motion, motionTokens ?: base.motionTokens, palette ?: base.palette,
-        topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards, embedded ?: base.embedded, resources ?: base.resources).normalized()
+        topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards, embedded ?: base.embedded, resources ?: base.resources,
+        groups ?: base.groups).normalized()
 
     /** Only edited groups become overrides; untouched groups continue following the selected skin. */
     fun withEdits(before: AppSkin, after: AppSkin): AppSkinOverrides = after.normalized().let { value -> copy(
@@ -169,11 +184,12 @@ data class AppSkinOverrides(
         cards = if (before.cards != value.cards) value.cards else cards,
         embedded = if (before.embedded != value.embedded) value.embedded else embedded,
         resources = if (before.resources != value.resources) value.resources else resources,
+        groups = if (before.groups != value.groups) value.groups else groups,
     ) }
 
     companion object {
         fun from(skin: AppSkin) = AppSkinOverrides(skin.typography, skin.shapes, skin.spacing, skin.motion, skin.motionTokens,
-            skin.palette, skin.topBar, skin.drawer, skin.cards, skin.embedded, skin.resources)
+            skin.palette, skin.topBar, skin.drawer, skin.cards, skin.embedded, skin.resources, skin.groups)
     }
 }
 

@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.components.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,9 +24,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemColors
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
@@ -53,8 +56,12 @@ import androidx.compose.ui.util.fastForEachIndexed
 import androidx.compose.ui.util.fastForEach
 import com.composables.icons.lucide.ChevronDown
 import com.composables.icons.lucide.Lucide
+import app.androidrik.rikkahub.data.model.AppSkinDividerStyle
+import app.androidrik.rikkahub.data.model.AppSkinGroupStyle
+import app.androidrik.rikkahub.data.model.AppSkinGroups
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 
 private val CardGroupCorner @Composable get() = LocalAppSkin.current.skin.shapes.cardGroupOuterDp.dp
 private val CardGroupItemSpacing @Composable get() = LocalAppSkin.current.skin.spacing.groupItemDp.dp
@@ -250,12 +257,13 @@ private fun CardGroupFormItem(
     formContent: @Composable ColumnScope.() -> Unit,
     count: Int,
     index: Int,
+    flat: Boolean = true,
 ) {
     val spacing = LocalAppSkin.current.skin.spacing
     Surface(
         modifier = item.modifier.fillMaxWidth(),
-        shape = cardGroupItemShape(index, count),
-        color = CustomColors.listItemColors.containerColor,
+        shape = if (flat) cardGroupItemShape(index, count) else RoundedCornerShape(0.dp),
+        color = if (flat) CustomColors.listItemColors.containerColor else Color.Transparent,
     ) {
         Column(
             modifier = Modifier.padding(horizontal = spacing.formHorizontalDp.dp, vertical = spacing.formVerticalDp.dp),
@@ -296,6 +304,7 @@ private fun CardGroupListItem(
     item: CardGroupItem,
     count: Int,
     index: Int,
+    flat: Boolean = true,
 ) {
     val isFirst = index == 0
     val isLast = index == count - 1
@@ -304,11 +313,11 @@ private fun CardGroupListItem(
     val isPressed by interactionSource.collectIsPressedAsState()
 
     val topCorner by animateDpAsState(
-        targetValue = if (isPressed || count == 1 || isFirst) CardGroupCorner else CardGroupInnerCorner,
+        targetValue = if (!flat) 0.dp else if (isPressed || count == 1 || isFirst) CardGroupCorner else CardGroupInnerCorner,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
     )
     val bottomCorner by animateDpAsState(
-        targetValue = if (isPressed || count == 1 || isLast) CardGroupCorner else CardGroupInnerCorner,
+        targetValue = if (!flat) 0.dp else if (isPressed || count == 1 || isLast) CardGroupCorner else CardGroupInnerCorner,
         animationSpec = MaterialTheme.motionScheme.fastSpatialSpec(),
     )
 
@@ -349,7 +358,28 @@ private fun CardGroupListItem(
         } else item.supportingContent,
         leadingContent = item.leadingContent,
         trailingContent = trailing,
-        colors = item.colors ?: CustomColors.listItemColors,
+        colors = item.colors ?: if (flat) CustomColors.listItemColors else ListItemDefaults.colors(containerColor = Color.Transparent),
+    )
+}
+
+@Composable
+private fun CardGroupRow(item: CardGroupItem, count: Int, index: Int, flat: Boolean) {
+    val formContent = item.formContent
+    if (formContent != null) {
+        CardGroupFormItem(item = item, formContent = formContent, count = count, index = index, flat = flat)
+    } else {
+        CardGroupListItem(item = item, count = count, index = index, flat = flat)
+    }
+}
+
+@Composable
+private fun CardGroupDivider(groups: AppSkinGroups) {
+    HorizontalDivider(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = if (groups.divider == AppSkinDividerStyle.INSET) groups.dividerInsetDp.dp else 0.dp),
+        thickness = groups.dividerWidthDp.dp,
+        color = groups.dividerColorHex.toComposeColorOrNull() ?: MaterialTheme.colorScheme.outlineVariant,
     )
 }
 
@@ -433,15 +463,34 @@ fun CardGroup(
             }
         }
         val count = visible.size
-        visible.fastForEachIndexed { index, item ->
-            val formContent = item.formContent
-            if (formContent != null) {
-                CardGroupFormItem(item = item, formContent = formContent, count = count, index = index)
-            } else {
-                CardGroupListItem(item = item, count = count, index = index)
+        val groups = LocalAppSkin.current.skin.groups
+        if (groups.style == AppSkinGroupStyle.FLAT) {
+            visible.fastForEachIndexed { index, item ->
+                CardGroupRow(item = item, count = count, index = index, flat = true)
+                if (index != count - 1) {
+                    Spacer(modifier = Modifier.height(CardGroupItemSpacing))
+                }
             }
-            if (index != count - 1) {
-                Spacer(modifier = Modifier.height(CardGroupItemSpacing))
+        } else {
+            // 整组容器形态：行不再自带底色/圆角，由容器统一裁剪并插入分隔线。
+            val borderColor = groups.borderColorHex.toComposeColorOrNull() ?: MaterialTheme.colorScheme.outlineVariant
+            val containerShape = RoundedCornerShape(CardGroupCorner)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(containerShape),
+                shape = containerShape,
+                color = groups.containerColorHex.toComposeColorOrNull() ?: MaterialTheme.colorScheme.surfaceBright,
+                border = groups.borderWidthDp.takeIf { it > 0f }?.let { BorderStroke(it.dp, borderColor) },
+            ) {
+                Column(modifier = Modifier.padding(groups.containerPaddingDp.dp)) {
+                    visible.fastForEachIndexed { index, item ->
+                        CardGroupRow(item = item, count = count, index = index, flat = false)
+                        if (index != count - 1 && groups.divider != AppSkinDividerStyle.NONE) {
+                            CardGroupDivider(groups)
+                        }
+                    }
+                }
             }
         }
     }
