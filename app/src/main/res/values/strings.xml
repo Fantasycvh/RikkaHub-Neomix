@@ -139,7 +139,8 @@
   <string name="assistant_page_memory_file_category_areas">Projects</string>
   <string name="assistant_page_memory_file_category_people">People</string>
   <string name="assistant_page_memory_file_category_other">Other</string>
-  <string name="assistant_page_memory_file_auto">Organize memory files automatically</string>
+  <string name="assistant_page_memory_file_idle_desc">Organize memory files from recent conversations using the selected trigger. This uses model quota.</string>
+  <string name="assistant_page_memory_file_range_desc">By default, automatic review starts with turns after you enable it. All history also includes earlier turns from this file library. Manual review processes turns that have not been reviewed yet.</string>
   <string name="assistant_page_memory_file_review_desc">Review memory files by category. Automatic review follows the memory trigger settings. Changes that require approval appear here for review.</string>
   <string name="assistant_page_memory_file_review_failed">File memory review did not finish. Check your review model and try again.</string>
   <string name="assistant_page_memory_file_review_no_changes">No file changes needed.</string>

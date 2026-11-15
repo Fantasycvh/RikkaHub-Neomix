@@ -20,18 +20,28 @@ class MemoryFileRepository(private val database: AppDatabase) {
         path: String,
         expectedRevision: String?,
         transform: (String) -> String,
+    ): MemoryFileEntity = writeFile(storeId, path, expectedRevision, pin = null, transform = transform)
+
+    internal suspend fun writeFile(
+        storeId: String,
+        path: String,
+        expectedRevision: String?,
+        pin: Boolean?,
+        transform: (String) -> String,
     ): MemoryFileEntity = database.withTransaction {
         val key = normalizeMemoryFilePath(path)
         val current = dao.get(storeId, key)
         if (current?.revision != expectedRevision) throw MemoryFileException(MemoryFileError.CHANGED)
         val content = transform(current?.content.orEmpty())
         if (content.toByteArray().size > MAX_MEMORY_FILE_BYTES) throw MemoryFileException(MemoryFileError.TOO_LARGE)
-        val saved = MemoryFileEntity(storeId, key, content, Uuid.random().toString(), System.currentTimeMillis())
+        val saved = MemoryFileEntity(
+            storeId, key, content, Uuid.random().toString(), System.currentTimeMillis(), anchorId(pin, current),
+        )
         if (current == null) {
             if (!canCreate(storeId)) throw MemoryFileException(MemoryFileError.LIBRARY_FULL)
             dao.insert(saved)
-        } else if (dao.update(storeId, key, current.revision, content, saved.revision, saved.updatedAt) != 1) {
-            throw MemoryFileException(MemoryFileError.CHANGED)
+        } else {
+            update(current, saved)
         }
         saved
     }
@@ -48,6 +58,7 @@ class MemoryFileRepository(private val database: AppDatabase) {
         destination: String,
         expectedRevision: String,
         content: String? = null,
+        pin: Boolean? = null,
     ): MemoryFileEntity = database.withTransaction {
         val from = normalizeMemoryFilePath(source)
         val to = normalizeMemoryFilePath(destination)
@@ -57,13 +68,26 @@ class MemoryFileRepository(private val database: AppDatabase) {
         }
         val body = content ?: current.content
         if (body.toByteArray().size > MAX_MEMORY_FILE_BYTES) throw MemoryFileException(MemoryFileError.TOO_LARGE)
-        val saved = MemoryFileEntity(storeId, to, body, Uuid.random().toString(), System.currentTimeMillis())
-        if (dao.move(storeId, from, to, expectedRevision, body, saved.revision, saved.updatedAt) != 1) {
-            throw MemoryFileException(MemoryFileError.CHANGED)
-        }
+        val saved = MemoryFileEntity(
+            storeId, to, body, Uuid.random().toString(), System.currentTimeMillis(), anchorId(pin, current),
+        )
+        update(current, saved)
         saved
     }
 
+    private suspend fun update(current: MemoryFileEntity, saved: MemoryFileEntity) {
+        if (dao.move(saved.storeId, current.path, saved.path, current.revision, saved.content, saved.revision,
+                saved.updatedAt, saved.anchorId) != 1
+        ) {
+            throw MemoryFileException(MemoryFileError.CHANGED)
+        }
+    }
+
+    private fun anchorId(pin: Boolean?, current: MemoryFileEntity?): String? = when (pin) {
+        true -> current?.anchorId ?: Uuid.random().toString()
+        false -> null
+        null -> current?.anchorId
+    }
     suspend fun deleteStore(storeId: String) = dao.deleteStore(storeId)
 }
 

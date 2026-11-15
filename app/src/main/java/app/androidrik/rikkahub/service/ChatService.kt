@@ -89,6 +89,10 @@ import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.refineTokens
 import app.androidrik.rikkahub.data.ai.PromptInspectionLabels
 import app.androidrik.rikkahub.data.ai.anchorIdsOf
+import app.androidrik.rikkahub.data.ai.fileAnchorIds
+import app.androidrik.rikkahub.data.ai.fileAnchorSnapshot
+import app.androidrik.rikkahub.data.ai.frozenFileAnchorIds
+import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.ai.inspectPrompt
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
 import app.androidrik.rikkahub.data.ai.shouldGenerateTitle
@@ -1948,6 +1952,9 @@ class ChatService(
                 loopGate = session.turnLoopGate,
                 memoryDisabled = conversation.memoryDisabled,
                 frozenAnchorIds = frozenAnchorIds,
+                frozenFileAnchorIds = if (assistant.memoryMode == MemoryMode.FILES &&
+                    assistant.enableMemory && !conversation.memoryDisabled
+                ) ensureFrozenFileAnchors(conversation, assistant.memoryId()) else null,
                 // GenerationHandler logs the actual shared plan; no second selection/tokenization for logs.
                 memories = loadedMemories,
                 inputTransformers = transformerChains.inputTransformers,
@@ -3061,6 +3068,18 @@ class ChatService(
         return ids.toSet()
     }
 
+    private suspend fun ensureFrozenFileAnchors(conversation: Conversation, storeId: String): Set<String> {
+        conversation.frozenFileAnchorIds(storeId)?.let { return it }
+        val ids = fileAnchorIds(memoryFiles.list(storeId))
+        val frozen = fileAnchorSnapshot(storeId, ids)
+        updateConversationMetadata(
+            conversationId = conversation.id,
+            update = { it.copy(frozenFileAnchors = frozen) },
+            persist = { conversationRepo.updateConversationFrozenFileAnchors(conversation.id, frozen) },
+        )
+        return ids
+    }
+
     /**
      * **L1 锚点集合：助手指级的手动刷新点** —— 记忆页的「固化记忆」按钮。
      *
@@ -3085,6 +3104,18 @@ class ChatService(
     suspend fun refreshFrozenAnchorsForAssistant(assistantId: Uuid): Int {
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(assistantId) ?: return 0
+        if (assistant.memoryMode == MemoryMode.FILES) {
+            val storeId = assistant.memoryId()
+            val frozen = fileAnchorSnapshot(storeId, fileAnchorIds(memoryFiles.list(storeId)))
+            sessions.forEach { (conversationId, session) ->
+                if (session.state.value.assistantId != assistantId) return@forEach
+                session.updateMetadata(
+                    update = { it.copy(frozenFileAnchors = frozen) },
+                    persist = { conversationRepo.updateConversationFrozenFileAnchors(conversationId, frozen) },
+                )
+            }
+            return conversationRepo.updateFrozenFileAnchorsForAssistant(assistantId, frozen)
+        }
         val frozen = anchorIdsOf(currentMemoriesFor(assistant)).joinToString(",")
         sessions.forEach { (conversationId, session) ->
             if (session.state.value.assistantId != assistantId) return@forEach
@@ -3111,6 +3142,17 @@ class ChatService(
     suspend fun freezeAnchorsForConversation(conversationId: Uuid, assistantId: Uuid): Int {
         val settings = settingsStore.settingsFlow.first()
         val assistant = settings.getAssistantById(assistantId) ?: return 0
+        if (assistant.memoryMode == MemoryMode.FILES) {
+            val storeId = assistant.memoryId()
+            val ids = fileAnchorIds(memoryFiles.list(storeId))
+            val frozen = fileAnchorSnapshot(storeId, ids)
+            updateConversationMetadata(
+                conversationId = conversationId,
+                update = { it.copy(frozenFileAnchors = frozen) },
+                persist = { conversationRepo.updateConversationFrozenFileAnchors(conversationId, frozen) },
+            )
+            return ids.size
+        }
         val ids = anchorIdsOf(currentMemoriesFor(assistant))
         val frozen = ids.joinToString(",")
         updateConversationMetadata(
@@ -3147,7 +3189,7 @@ class ChatService(
             conversationId = conversationId,
             // 换助手 ⇒ 锚点来源换了人：一并清空冻结快照，下一次生成按**新助手**的锚点重新冻结。
             // 不清空就会把上一个助手的锚点继续当成本会话的「既定事实」（跨助手串味）。
-            update = { it.copy(assistantId = assistantId, folderId = null, frozenAnchors = null) },
+            update = { it.copy(assistantId = assistantId, folderId = null, frozenAnchors = null, frozenFileAnchors = null) },
             persist = { conversationRepo.updateConversationAssistant(conversationId, it.assistantId) },
         )
         // 冻结快照单独清（同一原语：内存态上面已置 null，库侧单列补齐）
@@ -3499,6 +3541,7 @@ class ChatService(
                 goal = source.goal,
                 memoryDisabled = source.memoryDisabled,
                 frozenAnchors = source.frozenAnchors,
+                frozenFileAnchors = source.frozenFileAnchors,
                 exportDisplayConfig = source.exportDisplayConfig,
                 exportDisplayOverrides = source.exportDisplayOverrides.filterKeys { key ->
                     copiedTail.any { node -> node.messages.any { it.id.toString() == key } }

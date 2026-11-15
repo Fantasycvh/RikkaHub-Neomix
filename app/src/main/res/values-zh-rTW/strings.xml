@@ -146,7 +146,8 @@
   <string name="assistant_page_memory_file_category_areas">專案</string>
   <string name="assistant_page_memory_file_category_people">人物</string>
   <string name="assistant_page_memory_file_category_other">其他</string>
-  <string name="assistant_page_memory_file_auto">自動整理記憶檔案</string>
+  <string name="assistant_page_memory_file_idle_desc">依所選觸發方式整理近期對話中的檔案記憶。會使用模型額度。</string>
+  <string name="assistant_page_memory_file_range_desc">預設自動整理啟用後的內容。「全部歷史」也納入此檔案庫啟用前的歷史輪次。手動整理會處理尚未整理的輪次。</string>
   <string name="assistant_page_memory_file_review_desc">依分類複核記憶檔案。自動整理遵循記憶觸發設定，需要核准的變更會在此列出。</string>
   <string name="assistant_page_memory_file_review_failed">檔案記憶整理未完成。請檢查整理模型後再試一次。</string>
   <string name="assistant_page_memory_file_review_no_changes">無須調整檔案。</string>

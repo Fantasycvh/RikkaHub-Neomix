@@ -95,6 +95,8 @@ class ConversationSchemaGuardsTest {
             "nodes",
             "sort_order",
             "frozen_anchors",
+            // File anchors also use dedicated snapshot writes, including clearing on assistant changes.
+            "frozen_file_anchors",
             "export_display_config",
             "export_display_overrides",
         )

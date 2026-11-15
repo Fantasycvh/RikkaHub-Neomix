@@ -265,6 +265,9 @@ interface ConversationDAO {
     @Query("UPDATE conversationentity SET frozen_anchors = :frozen WHERE id = :id")
     suspend fun updateFrozenAnchors(id: String, frozen: String?)
 
+    @Query("UPDATE conversationentity SET frozen_file_anchors = :frozen WHERE id = :id")
+    suspend fun updateFrozenFileAnchors(id: String, frozen: String?)
+
     /**
      * **会话级导出显示覆盖**的唯一写入点（`null` = 恢复跟随全局设置）。
      *
@@ -300,6 +303,9 @@ interface ConversationDAO {
      */
     @Query("UPDATE conversationentity SET frozen_anchors = :frozen WHERE assistant_id = :assistantId")
     suspend fun updateFrozenAnchorsOfAssistant(assistantId: String, frozen: String?): Int
+
+    @Query("UPDATE conversationentity SET frozen_file_anchors = :frozen WHERE assistant_id = :assistantId")
+    suspend fun updateFrozenFileAnchorsOfAssistant(assistantId: String, frozen: String?): Int
 
     /** 自定义顺序：**唯一**的位置值写入点（见 [CONVERSATION_ORDER_BY] 与设计稿 §三.1）。 */
     @Query("UPDATE conversationentity SET sort_order = :sortOrder WHERE id = :id")
@@ -396,7 +402,7 @@ interface ConversationDAO {
      * 换助手时**一并清空 folder_id**：文件夹是助手内分组，换了助手后原文件夹在新助手下不可见，
      * 留着归属会让会话在列表里「消失」。两条列一起更新，避免中间态。
      */
-    @Query("UPDATE conversationentity SET assistant_id = :assistantId, folder_id = '' WHERE id = :id")
+    @Query("UPDATE conversationentity SET assistant_id = :assistantId, folder_id = '', frozen_file_anchors = NULL WHERE id = :id")
     suspend fun updateAssistantId(id: String, assistantId: String)
 
     @Query("UPDATE conversationentity SET folder_id = :folderId WHERE id = :id")

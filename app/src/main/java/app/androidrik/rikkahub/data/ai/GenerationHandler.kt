@@ -376,6 +376,7 @@ class GenerationHandler(
          * 传 null = 未冻结 ⇒ 实时渲染，与改动前逐字节一致。
          */
         frozenAnchorIds: Set<String>? = null,
+        frozenFileAnchorIds: Set<String>? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
         /**
@@ -620,6 +621,7 @@ class GenerationHandler(
                         memoryDisabled = memoryDisabled,
                         memoryToolBinding = memoryToolBinding,
                         frozenAnchorIds = frozenAnchorIds,
+                        frozenFileAnchorIds = frozenFileAnchorIds,
                         debugKey = debugKey,
                         sessionId = sessionId,
                         onUpdateMessages = { updated, coalescible ->
@@ -1496,6 +1498,7 @@ class GenerationHandler(
         memoryToolBinding: String? = null,
         /** L1 冻结的锚点 id 集合：非 null 时只渲染这些锚点（见 [generateText] 同名参数）。 */
         frozenAnchorIds: Set<String>? = null,
+        frozenFileAnchorIds: Set<String>? = null,
         debugKey: String? = null,
         /** 请求级会话 id（见 [generateText] 同名参数）；null = 不带。 */
         sessionId: String? = null,
@@ -1530,6 +1533,7 @@ class GenerationHandler(
             memoryDisabled = memoryDisabled,
             memoryToolBinding = memoryToolBinding,
             frozenAnchorIds = frozenAnchorIds,
+            frozenFileAnchorIds = frozenFileAnchorIds,
             memoryFiles = if (assistant.enableMemory && !memoryDisabled && assistant.memoryMode == MemoryMode.FILES) {
                 memoryFiles?.list(assistant.memoryId()).orEmpty()
             } else {

@@ -323,6 +323,7 @@ internal fun buildInternalMessagesWithPlan(
      */
     purgeObserver: ((ContextPurifier.Result) -> Unit)? = null,
     memoryFiles: List<MemoryFileEntity> = emptyList(),
+    frozenFileAnchorIds: Set<String>? = null,
     memoryToolBinding: String? = null,
 ): AssembledRequest {
     val windowRaw = buildSendWindowMessages(
@@ -344,6 +345,7 @@ internal fun buildInternalMessagesWithPlan(
             memoryFiles,
             settings.memoryInjectBudgetTokens,
             ModelAbility.TOOL in model.abilities && tools.any { it.name == FILE_MEMORY_TOOL },
+            frozenFileAnchorIds,
         )
     } else {
         buildMemoryInjectionPlan(

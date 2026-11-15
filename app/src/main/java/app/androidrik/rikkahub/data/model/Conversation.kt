@@ -175,6 +175,7 @@ data class Conversation(
      * 见 `docs/design/design-memory-injection-tiering.md` §5。
      */
     val frozenAnchors: String? = null,
+    val frozenFileAnchors: String? = null,
     @Transient
     val newConversation: Boolean = false,
     /**

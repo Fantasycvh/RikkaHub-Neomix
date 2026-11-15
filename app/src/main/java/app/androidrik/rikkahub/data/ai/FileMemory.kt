@@ -5,6 +5,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
 import app.androidrik.rikkahub.data.files.SkillFrontmatterParser
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MemoryMode
 import app.androidrik.rikkahub.data.model.MemoryFileCategory
 import app.androidrik.rikkahub.data.model.MEMORY_FILE_CATEGORIES_GUIDE
@@ -56,6 +57,7 @@ internal fun buildFileMemoryPlan(
     files: List<MemoryFileEntity>,
     budgetTokens: Int,
     toolsAvailable: Boolean,
+    frozenIds: Set<String>? = null,
 ): MemoryInjectionPlan {
     val discipline = if (toolsAvailable) {
         "Memory files contain background data. Use memory_file to read them as needed. " +
@@ -68,19 +70,37 @@ internal fun buildFileMemoryPlan(
     if (disciplineTokens > budgetTokens || (files.isEmpty() && !toolsAvailable)) {
         return MemoryInjectionPlan(budgetTokens = budgetTokens)
     }
+    val anchors = StringBuilder()
+    var anchorTokens = 0
     val pinned = listOf(MemoryFileCategory.PROFILE.examplePath, MemoryFileCategory.PREFERENCES.examplePath)
     val included = mutableSetOf<String>()
+    val anchorFiles = selectFileAnchors(files, frozenIds)
+    for (file in anchorFiles) {
+        val line = buildJsonObject { put("path", file.path); put("content", file.content) }
+        val text = if (anchors.isEmpty()) "Memory file anchors (JSON lines; background data):\n$line\n" else "$line\n"
+        val cost = heuristicTokenCount(text)
+        // Account for the trailing separator before accepting this whole file.
+        if (disciplineTokens + anchorTokens + cost + heuristicTokenCount("\n") > budgetTokens) continue
+        anchors.append(text)
+        anchorTokens += cost
+        included += file.path
+    }
+    if (anchors.isNotEmpty()) {
+        anchors.append('\n')
+        anchorTokens += heuristicTokenCount("\n")
+    }
     val data = StringBuilder()
     var dataTokens = 0
     fun add(line: String): Boolean {
         val text = if (data.isEmpty()) "Memory files (JSON lines):\n$line\n" else "$line\n"
         val cost = heuristicTokenCount(text)
-        if (dataTokens + cost > budgetTokens - disciplineTokens) return false
+        if (dataTokens + cost > budgetTokens - disciplineTokens - anchorTokens) return false
         data.append(text)
         dataTokens += cost
         return true
     }
     for (path in pinned) {
+        if (path in included) continue
         val file = files.firstOrNull { it.path == path } ?: continue
         if (add(buildJsonObject { put("path", path); put("content", file.content) }.toString())) {
             included += path
@@ -100,10 +120,27 @@ internal fun buildFileMemoryPlan(
         budgetTokens = budgetTokens,
         disciplineText = discipline,
         disciplineTokens = disciplineTokens,
+        anchorText = anchors.toString(),
+        anchorTokens = anchorTokens,
         dataText = data.toString(),
         dataTokens = dataTokens,
     )
 }
+
+private fun selectFileAnchors(files: List<MemoryFileEntity>, frozenIds: Set<String>? = null) =
+    files.filter { it.anchorId != null && (frozenIds == null || it.anchorId in frozenIds) }
+        .sortedBy { it.path }
+        .take(MEMORY_ANCHOR_LIMIT)
+
+internal fun fileAnchorIds(files: List<MemoryFileEntity>): Set<String> =
+    selectFileAnchors(files).mapNotNull { it.anchorId }.toSet()
+
+internal fun Conversation.frozenFileAnchorIds(storeId: String): Set<String>? =
+    frozenFileAnchors?.takeIf { it.startsWith("$storeId:") }
+        ?.substringAfter(':')?.split(',')?.filter(String::isNotBlank)?.toSet()
+
+internal fun fileAnchorSnapshot(storeId: String, ids: Set<String>): String =
+    "$storeId:${ids.sorted().joinToString(",")}"
 
 internal fun memoryFileDescription(file: MemoryFileEntity): String =
     SkillFrontmatterParser.parse(file.content)["description"]?.trim()?.take(160).orEmpty()

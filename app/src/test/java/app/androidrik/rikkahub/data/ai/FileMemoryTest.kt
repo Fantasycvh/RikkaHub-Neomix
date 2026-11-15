@@ -8,6 +8,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryMode
 import app.androidrik.rikkahub.data.model.MemoryFileCategory
+import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -16,6 +17,28 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FileMemoryTest {
+    @Test
+    fun fileAnchorSnapshotSurvivesRenameAndExcludesNewPins() {
+        val original = MemoryFileEntity("private", "/topics/old.md", "old body", "r1", 0, anchorId = "anchor")
+        val snapshot = fileAnchorSnapshot("private", fileAnchorIds(listOf(original)))
+        val chat = Conversation(assistantId = Assistant().id, messageNodes = emptyList(), frozenFileAnchors = snapshot)
+        val renamed = original.copy(path = "/areas/new.md", content = "current body", revision = "r2")
+        val added = original.copy(path = "/topics/added.md", anchorId = "new-anchor", content = "newly pinned")
+        val files = listOf(renamed, added)
+        val plan = buildFileMemoryPlan(files, 300, toolsAvailable = true, frozenIds = chat.frozenFileAnchorIds("private"))
+        assertTrue(plan.anchorText.contains("/areas/new.md"))
+        assertTrue(plan.anchorText.contains("current body"))
+        assertFalse(plan.anchorText.contains("newly pinned"))
+        assertTrue(plan.dataText.contains("/topics/added.md"))
+        assertFalse(plan.dataText.contains("/areas/new.md"))
+        assertTrue(plan.totalEstimatedTokens <= 300)
+        assertNull(chat.frozenFileAnchorIds("__global__"))
+        assertEquals(emptySet<String>(), chat.copy(frozenFileAnchors = fileAnchorSnapshot("private", emptySet()))
+            .frozenFileAnchorIds("private"))
+        val unpinned = buildFileMemoryPlan(listOf(renamed.copy(anchorId = null)), 300, false, setOf("anchor"))
+        assertTrue(unpinned.anchorText.isEmpty())
+    }
+
     @Test
     fun fileCategoriesAreDerivedFromTheExactCanonicalPath() {
         val paths = mapOf(

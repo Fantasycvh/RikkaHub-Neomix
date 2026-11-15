@@ -34,9 +34,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.data.ai.MEMORY_CONSOLIDATION_ALL_HISTORY
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationStatus
 import app.androidrik.rikkahub.data.ai.consolidationMemoryId
 import app.androidrik.rikkahub.data.db.entity.MemoryFileEntity
@@ -45,6 +48,10 @@ import app.androidrik.rikkahub.data.model.MemoryMode
 import app.androidrik.rikkahub.data.model.MemoryFileCategory
 import app.androidrik.rikkahub.data.repository.MemoryFileError
 import app.androidrik.rikkahub.data.repository.MemoryFileException
+import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.pages.setting.titleRes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -78,11 +85,16 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
     val status by remember(vm, libraryId) { vm.consolidationStatusOf(libraryId) }
         .collectAsStateWithLifecycle(initialValue = MemoryConsolidationStatus())
     val scope = rememberCoroutineScope()
+    val navController = LocalNavController.current
+    val triggerModeTitle = LocalSettings.current.memoryTriggerConfig.mode.titleRes()
+    val resources = LocalResources.current
+    val toaster = LocalToaster.current
     var editing by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<MemoryFileEntity?>(null) }
     var pendingDelete by remember { mutableStateOf<MemoryFileEntity?>(null) }
     var error by remember { mutableStateOf<Int?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var showTimeInterval by remember { mutableStateOf(false) }
 
     fun runChange(action: suspend () -> Unit) {
         if (busy) return
@@ -121,14 +133,53 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
             FileMemorySwitch(stringResource(R.string.assistant_page_memory_modify_approval), assistant.memoryModifyApproval) { checked ->
                 vm.updateMemorySettings { it.copy(memoryModifyApproval = checked) }
             }
+            if (assistant.enableMemory) {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.memory_trigger_page_title)) },
+                    supportingContent = { Text(stringResource(triggerModeTitle)) },
+                    modifier = Modifier.clickable { navController.navigate(Screen.SettingMemoryTrigger) },
+                )
+            }
             FileMemorySwitch(
-                label = stringResource(R.string.assistant_page_memory_file_auto),
+                label = stringResource(R.string.assistant_page_memory_consolidation),
                 checked = assistant.fileMemoryConsolidationSince > 0,
                 enabled = assistant.enabled && assistant.enableMemory,
+                description = stringResource(R.string.assistant_page_memory_file_idle_desc),
             ) { checked ->
                 vm.updateMemorySettings {
                     it.copy(fileMemoryConsolidationSince = if (checked) System.currentTimeMillis() else 0)
                 }
+            }
+            if (assistant.enableMemory && assistant.fileMemoryConsolidationSince > 0L) {
+                val allHistory = assistant.fileMemoryConsolidationSince == MEMORY_CONSOLIDATION_ALL_HISTORY
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_memory_consolidation_range)) },
+                    supportingContent = {
+                        Column {
+                            Text(stringResource(R.string.assistant_page_memory_file_range_desc))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FilterChip(
+                                    selected = !allHistory,
+                                    onClick = {
+                                        if (allHistory) vm.updateMemorySettings {
+                                            it.copy(fileMemoryConsolidationSince = System.currentTimeMillis())
+                                        }
+                                    },
+                                    label = { Text(stringResource(R.string.assistant_page_memory_consolidation_range_new)) },
+                                )
+                                FilterChip(
+                                    selected = allHistory,
+                                    onClick = {
+                                        if (!allHistory) vm.updateMemorySettings {
+                                            it.copy(fileMemoryConsolidationSince = MEMORY_CONSOLIDATION_ALL_HISTORY)
+                                        }
+                                    },
+                                    label = { Text(stringResource(R.string.assistant_page_memory_consolidation_range_all)) },
+                                )
+                            }
+                        }
+                    },
+                )
             }
             FileMemoryReviewStatus(
                 status = status,
@@ -136,6 +187,42 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
                 libraryId = libraryId,
                 vm = vm,
             )
+            if (assistant.enableMemory) {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_memory_freeze)) },
+                    supportingContent = { Text(stringResource(R.string.assistant_page_memory_freeze_desc)) },
+                    trailingContent = {
+                        TextButton(onClick = {
+                            scope.launch {
+                                val count = vm.freezeMemoryAnchors()
+                                toaster.show(resources.getString(R.string.assistant_page_memory_freeze_done, count))
+                            }
+                        }) { Text(stringResource(R.string.assistant_page_memory_freeze_action)) }
+                    },
+                )
+            }
+            FileMemorySwitch(
+                stringResource(R.string.assistant_page_recent_chats),
+                assistant.enableRecentChatsReference,
+                description = stringResource(R.string.assistant_page_recent_chats_desc),
+            ) { checked -> vm.updateMemorySettings { it.copy(enableRecentChatsReference = checked) } }
+            FileMemorySwitch(
+                stringResource(R.string.assistant_page_time_reminder),
+                assistant.enableTimeReminder,
+                description = stringResource(R.string.assistant_page_time_reminder_desc),
+            ) { checked -> vm.updateMemorySettings { it.copy(enableTimeReminder = checked) } }
+            if (assistant.enableTimeReminder) {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.assistant_page_time_reminder_interval)) },
+                    supportingContent = { Text(stringResource(R.string.assistant_page_time_reminder_interval_desc)) },
+                    trailingContent = {
+                        Text(stringResource(R.string.assistant_page_time_reminder_interval_value, assistant.timeReminderIntervalMinutes))
+                    },
+                    modifier = Modifier.clickable { showTimeInterval = true },
+                )
+            }
+        }
+        item(key = "new-file") {
             TextButton(onClick = { selected = null; error = null; editing = true }) {
                 Text(stringResource(R.string.assistant_page_memory_file_new))
             }
@@ -155,6 +242,9 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
             items(categoryFiles, key = { it.path }) { file ->
                 ListItem(
                     headlineContent = { Text(file.path) },
+                    supportingContent = if (file.anchorId != null) {
+                        { Text(stringResource(R.string.assistant_page_memory_anchor)) }
+                    } else null,
                     modifier = Modifier.clickable { selected = file; error = null; editing = true },
                     trailingContent = {
                         TextButton(onClick = { error = null; pendingDelete = file }) {
@@ -165,19 +255,29 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
             }
         }
     }
+    if (showTimeInterval) {
+        MemoryTimeReminderIntervalDialog(
+            initialMinutes = assistant.timeReminderIntervalMinutes,
+            onDismiss = { showTimeInterval = false },
+            onSave = { minutes ->
+                vm.updateMemorySettings { it.copy(timeReminderIntervalMinutes = minutes) }
+                showTimeInterval = false
+            },
+        )
+    }
     if (editing) {
         FileMemoryEditor(
             file = selected,
             error = error?.let { stringResource(it) },
             busy = busy,
             onDismiss = { if (!busy) editing = false },
-            onSave = { path, content ->
+            onSave = { path, content, pin ->
                 val file = selected
                 runChange {
                     if (file == null) {
-                        repository.write(storeId, path, null) { content }
+                        repository.writeFile(storeId, path, null, pin) { content }
                     } else {
-                        repository.move(storeId, file.path, path, file.revision, content)
+                        repository.move(storeId, file.path, path, file.revision, content, pin)
                     }
                     editing = false
                 }
@@ -207,9 +307,12 @@ internal fun AssistantFileMemoryContent(assistant: Assistant, storeId: String, v
 }
 
 @Composable
-private fun FileMemorySwitch(label: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+private fun FileMemorySwitch(
+    label: String, checked: Boolean, enabled: Boolean = true, description: String? = null, onChange: (Boolean) -> Unit,
+) {
     ListItem(
         headlineContent = { Text(label) },
+        supportingContent = description?.let { { Text(it) } },
         trailingContent = { Switch(checked = checked, onCheckedChange = onChange, enabled = enabled) },
     )
 }
@@ -221,10 +324,11 @@ private fun FileMemoryEditor(
     error: String?,
     busy: Boolean,
     onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit,
+    onSave: (String, String, Boolean) -> Unit,
 ) {
     val path = rememberTextFieldState(file?.path.orEmpty())
     val content = rememberTextFieldState(file?.content.orEmpty())
+    var pinned by remember { mutableStateOf(file?.anchorId != null) }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -262,11 +366,18 @@ private fun FileMemoryEditor(
                 label = { Text(stringResource(R.string.chat_page_export_markdown)) },
             )
             error?.let { Text(it) }
+            FileMemorySwitch(
+                stringResource(R.string.assistant_page_memory_anchor),
+                pinned,
+                enabled = !busy,
+                description = stringResource(R.string.assistant_page_memory_anchor_hint),
+                onChange = { pinned = it },
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(enabled = !busy, onClick = onDismiss) {
                     Text(stringResource(R.string.assistant_page_cancel))
                 }
-                TextButton(enabled = !busy, onClick = { onSave(path.text.toString(), content.text.toString()) }) {
+                TextButton(enabled = !busy, onClick = { onSave(path.text.toString(), content.text.toString(), pinned) }) {
                     Text(stringResource(R.string.assistant_page_save))
                 }
             }

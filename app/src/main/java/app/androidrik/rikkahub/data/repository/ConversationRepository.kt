@@ -948,6 +948,12 @@ class ConversationRepository(
     suspend fun updateFrozenAnchorsForAssistant(assistantId: Uuid, frozen: String?): Int =
         conversationDAO.updateFrozenAnchorsOfAssistant(assistantId.toString(), frozen)
 
+    suspend fun updateConversationFrozenFileAnchors(conversationId: Uuid, frozen: String) =
+        conversationDAO.updateFrozenFileAnchors(conversationId.toString(), frozen)
+
+    suspend fun updateFrozenFileAnchorsForAssistant(assistantId: Uuid, frozen: String): Int =
+        conversationDAO.updateFrozenFileAnchorsOfAssistant(assistantId.toString(), frozen)
+
     /**
      * 会话级导出显示覆盖的**单列**写入点（`null` = 恢复跟随全局设置）。
      *

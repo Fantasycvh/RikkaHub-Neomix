@@ -7,6 +7,10 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.rikkahub.data.ai.tools.buildFileMemoryTool
 import app.androidrik.rikkahub.data.ai.MemoryConsolidationProposal
 import app.androidrik.rikkahub.data.db.AppDatabase
+import app.androidrik.rikkahub.data.db.migrations.Migration_68_69
+import app.androidrik.rikkahub.data.db.migrations.Migration_69_70
+import app.androidrik.rikkahub.data.db.migrations.Migration_70_71
+import app.androidrik.rikkahub.data.db.migrations.Migration_71_72
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.MemoryMode
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -36,7 +40,7 @@ class MemoryFileInstrumentedTest {
             migrations.createDatabase(name, 66).use { db ->
                 db.execSQL("INSERT INTO MemoryEntity(id, assistant_id, content, public_id) VALUES (3, 'private', 'old entry', '00000003')")
             }
-            Room.databaseBuilder(context, AppDatabase::class.java, name).build().withClose { db ->
+            openDatabase(name).withClose { db ->
                 val files = MemoryFileRepository(db)
                 assertEquals("old entry", db.memoryDao().getMemoriesOfAssistant("private").single().content)
                 assertTrue(files.list("private").isEmpty())
@@ -44,7 +48,7 @@ class MemoryFileInstrumentedTest {
                 files.write(MemoryRepository.GLOBAL_MEMORY_ID, "/profile.md", null) { "shared file" }
                 assertNull(files.read("other", "/profile.md"))
             }
-            Room.databaseBuilder(context, AppDatabase::class.java, name).build().withClose { db ->
+            openDatabase(name).withClose { db ->
                 val files = MemoryFileRepository(db)
                 assertEquals("old entry", db.memoryDao().getMemoriesOfAssistant("private").single().content)
                 assertEquals("private file", files.read("private", "/profile.md")?.content)
@@ -139,7 +143,7 @@ class MemoryFileInstrumentedTest {
                         "VALUES ('private', '/profile.md', 'original', 'stable-revision', 1)",
                 )
             }
-            Room.databaseBuilder(context, AppDatabase::class.java, name).build().withClose { db ->
+            openDatabase(name).withClose { db ->
                 val file = MemoryFileRepository(db).read("private", "/profile.md")
                 assertEquals("original", file?.content)
                 assertEquals("stable-revision", file?.revision)
@@ -150,6 +154,50 @@ class MemoryFileInstrumentedTest {
         }
         Unit
     }
+
+    @Test
+    fun anchorIdentitySurvivesEditsAndMovesAndIsClearedByUnpinning() = runBlocking {
+        Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build().withClose { db ->
+            val files = MemoryFileRepository(db)
+            val created = files.writeFile("private", "/profile.md", null, pin = true) { "profile" }
+            val anchor = checkNotNull(created.anchorId)
+            val edited = files.write("private", created.path, created.revision) { "edited profile" }
+            val moved = files.move("private", edited.path, "/areas/profile.md", edited.revision)
+            assertEquals(anchor, moved.anchorId)
+            assertEquals(anchor, files.read("private", moved.path)?.anchorId)
+            assertTrue(runCatching { files.move("private", moved.path, moved.path, edited.revision, pin = false) }.isFailure)
+            val unpinned = files.move("private", moved.path, moved.path, moved.revision, pin = false)
+            assertNull(unpinned.anchorId)
+            assertNull(files.read("private", moved.path)?.anchorId)
+        }
+    }
+
+    @Test
+    fun upgradeFrom72KeepsExistingFilesUnpinned() = runBlocking {
+        val name = "file-anchor-${UUID.randomUUID()}.db"
+        try {
+            migrations.createDatabase(name, 72).use { old ->
+                old.execSQL(
+                    "INSERT INTO assistant_memory_file(store_id, path, content, revision, updated_at) " +
+                        "VALUES ('private', '/profile.md', 'original', 'stable-revision', 1)",
+                )
+            }
+            openDatabase(name).withClose { db ->
+                val file = checkNotNull(MemoryFileRepository(db).read("private", "/profile.md"))
+                assertEquals("original", file.content)
+                assertEquals("stable-revision", file.revision)
+                assertNull(file.anchorId)
+            }
+        } finally {
+            context.deleteDatabase(name)
+        }
+        Unit
+    }
+
+    private fun openDatabase(name: String): AppDatabase =
+        Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(Migration_68_69, Migration_69_70, Migration_70_71, Migration_71_72)
+            .build()
 
     private inline fun <T> AppDatabase.withClose(block: (AppDatabase) -> T): T =
         try {

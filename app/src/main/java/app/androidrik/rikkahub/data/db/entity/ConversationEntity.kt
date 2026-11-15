@@ -92,6 +92,8 @@ data class ConversationEntity(
      */
     @ColumnInfo("frozen_anchors")
     val frozenAnchors: String? = null,
+    @ColumnInfo("frozen_file_anchors")
+    val frozenFileAnchors: String? = null,
     /** Upstream 3.1 frozen configuration; null keeps native conversations following the assistant. */
     @ColumnInfo("upstream_config")
     val upstreamConfig: String? = null,

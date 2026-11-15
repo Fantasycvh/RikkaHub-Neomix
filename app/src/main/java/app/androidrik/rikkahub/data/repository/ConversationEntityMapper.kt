@@ -43,6 +43,7 @@ internal fun conversationToConversationEntity(conversation: Conversation): Conve
         memoryDisabled = conversation.memoryDisabled,
         hidden = conversation.hidden,
         frozenAnchors = conversation.frozenAnchors,
+        frozenFileAnchors = conversation.frozenFileAnchors,
         upstreamConfig = conversation.upstreamConfig?.let { JsonInstant.encodeToString(it) },
         exportDisplayConfig = conversation.exportDisplayConfig?.let { JsonInstant.encodeToString(it) },
         // 空 map 存 null（列里「没有覆盖」的规范形态），解码时 null ⇒ emptyMap
@@ -92,6 +93,7 @@ internal fun conversationEntityToConversation(
         memoryDisabled = conversationEntity.memoryDisabled,
         hidden = conversationEntity.hidden,
         frozenAnchors = conversationEntity.frozenAnchors,
+        frozenFileAnchors = conversationEntity.frozenFileAnchors,
         upstreamConfig = conversationEntity.upstreamConfig?.let { JsonInstant.decodeFromString(it) },
         exportDisplayConfig = conversationEntity.exportDisplayConfig?.let { JsonInstant.decodeFromString(it) },
         exportDisplayOverrides = conversationEntity.exportDisplayOverrides

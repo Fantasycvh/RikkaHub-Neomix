@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -67,7 +66,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEach
@@ -184,6 +182,9 @@ fun AssistantMemoryPage(id: String) {
             memories = memories,
             onMoveMemory = { memoryId, beforeId -> vm.moveMemory(storeId, memoryId, beforeId) },
             onUpdateAssistant = { vm.update(it) },
+            onUpdateTimeReminderInterval = { minutes ->
+                vm.updateMemorySettings { it.copy(timeReminderIntervalMinutes = minutes) }
+            },
             onDeleteMemory = { memory -> launchMemoryAction { vm.deleteMemory(storeId, memory) } },
             onAddMemory = { memory ->
                 scope.launch {
@@ -281,6 +282,7 @@ internal fun AssistantMemoryContent(
     memories: List<AssistantMemory>,
     onMoveMemory: suspend (String, String?) -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
+    onUpdateTimeReminderInterval: (Int) -> Unit = { onUpdateAssistant(assistant.copy(timeReminderIntervalMinutes = it)) },
     onAddMemory: (AssistantMemory) -> Unit,
     onUpdateMemory: (AssistantMemory) -> Unit,
     onDeleteMemory: (AssistantMemory) -> Unit,
@@ -333,7 +335,6 @@ internal fun AssistantMemoryContent(
         }
     }
     var showTimeReminderIntervalDialog by remember(assistant.id) { mutableStateOf(false) }
-    var timeReminderIntervalInput by remember(assistant.id) { mutableStateOf("") }
     // 被点开看详情的建议。按建议本身记住，弹层只读。
     var detailProposal by remember(assistant.id) {
         mutableStateOf<MemoryConsolidationProposal?>(null)
@@ -453,38 +454,12 @@ internal fun AssistantMemoryContent(
     }
 
     if (showTimeReminderIntervalDialog) {
-        val interval = timeReminderIntervalInput.toIntOrNull()?.takeIf { it > 0 }
-        AlertDialog(
-            onDismissRequest = { showTimeReminderIntervalDialog = false },
-            title = { Text(stringResource(R.string.assistant_page_time_reminder_interval)) },
-            text = {
-                TextField(
-                    value = timeReminderIntervalInput,
-                    onValueChange = { timeReminderIntervalInput = it },
-                    label = { Text(stringResource(R.string.assistant_page_time_reminder_interval_label)) },
-                    supportingText = { Text(stringResource(R.string.assistant_page_time_reminder_interval_hint)) },
-                    isError = interval == null,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = interval != null,
-                    onClick = {
-                        interval?.let {
-                            onUpdateAssistant(assistant.copy(timeReminderIntervalMinutes = it))
-                        }
-                        showTimeReminderIntervalDialog = false
-                    },
-                ) {
-                    Text(stringResource(R.string.assistant_page_save))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showTimeReminderIntervalDialog = false }) {
-                    Text(stringResource(R.string.assistant_page_cancel))
-                }
+        MemoryTimeReminderIntervalDialog(
+            initialMinutes = assistant.timeReminderIntervalMinutes,
+            onDismiss = { showTimeReminderIntervalDialog = false },
+            onSave = { minutes ->
+                onUpdateTimeReminderInterval(minutes)
+                showTimeReminderIntervalDialog = false
             },
         )
     }
@@ -1030,7 +1005,6 @@ internal fun AssistantMemoryContent(
                     supportingContent = { Text(stringResource(R.string.assistant_page_time_reminder_interval_desc)) },
                     trailingContent = { Text(stringResource(R.string.assistant_page_time_reminder_interval_value, assistant.timeReminderIntervalMinutes)) },
                     onClick = {
-                        timeReminderIntervalInput = assistant.timeReminderIntervalMinutes.toString()
                         showTimeReminderIntervalDialog = true
                     },
                 )

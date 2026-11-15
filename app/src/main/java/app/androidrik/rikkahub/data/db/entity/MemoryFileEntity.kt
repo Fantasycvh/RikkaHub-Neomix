@@ -10,4 +10,5 @@ data class MemoryFileEntity(
     val content: String,
     val revision: String,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    @ColumnInfo(name = "anchor_id") val anchorId: String? = null,
 )

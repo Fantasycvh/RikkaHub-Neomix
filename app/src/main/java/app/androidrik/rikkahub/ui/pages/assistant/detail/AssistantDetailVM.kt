@@ -353,13 +353,7 @@ class AssistantDetailVM(
     }
 
     fun updateMemorySettings(transform: (Assistant) -> Assistant) {
-        viewModelScope.launch {
-            settingsStore.update { current ->
-                current.copy(assistants = current.assistants.map {
-                    if (it.id == assistantId) transform(it) else it
-                })
-            }
-        }
+        updateAssistantField(transform)
     }
 
     /** The UI owns error feedback and cancellation; do not hide failures in a detached launch. */

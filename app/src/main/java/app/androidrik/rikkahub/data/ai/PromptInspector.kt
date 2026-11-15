@@ -341,6 +341,7 @@ suspend fun inspectPrompt(
         timing = timing,
         precomputedMemoryEntryCosts = precomputedMemoryCosts,
         memoryFiles = memoryFiles,
+        frozenFileAnchorIds = conversation.frozenFileAnchorIds(assistant.memoryId()),
     )
 
     timing?.mark("assembly")
