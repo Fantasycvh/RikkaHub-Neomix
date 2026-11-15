@@ -31,8 +31,8 @@ android {
         }
         minSdk = 26
         targetSdk = 37
-        versionCode = 324
-        versionName = "1.0.28-beta.21"
+        versionCode = 325
+        versionName = "1.0.28-beta.22"
 
         // Database/storage tests can opt out of production Application/DI/background initialization.
         // The regular UI test runner remains the default.
