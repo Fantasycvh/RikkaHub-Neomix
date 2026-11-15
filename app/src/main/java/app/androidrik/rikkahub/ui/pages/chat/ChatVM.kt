@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -157,6 +158,10 @@ class ChatVM(
 
     // 生成完成
     val generationDoneFlow: SharedFlow<Uuid> = chatService.generationDoneFlow
+
+    /** 「压缩后开新会话」前置校验失败：属于用户可理解的输入条件，不写入聊天错误卡。 */
+    private val _compressNewWindowFailure = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val compressNewWindowFailure: SharedFlow<Unit> = _compressNewWindowFailure
 
     // MCP管理器
     val mcpManager = chatService.mcpManager
@@ -401,13 +406,7 @@ class ChatVM(
                         if (fork != null) {
                             _continueInNewWindowConversation.value = fork.id
                         } else {
-                            chatService.addError(
-                                IllegalStateException(
-                                    context.getString(R.string.chat_page_compress_new_window_failed)
-                                ),
-                                conversationId = _conversationId,
-                                title = context.getString(R.string.error_title_compress_conversation),
-                            )
+                            _compressNewWindowFailure.tryEmit(Unit)
                         }
                     }
                 }

@@ -2635,8 +2635,11 @@ class ChatService(
         val boundaryNode = plan.toCompress.lastOrNull() ?: return@runCatching null
         val boundaryNodeId = boundaryNode.id.toString()
         // 区域指纹：记录被摘要区域（含边界）的节点/选中消息状态，供 activeCompression 检测
-        // 后续改动（编辑/删除/重生成/切分支）使检查点失效
-        val boundaryIndex = conversation.messageNodes.indexOfFirst { it.id == boundaryNode.id }
+        // 后续改动（编辑/删除/重生成/切分支）使检查点失效。
+        // 下标必须取**激活路径**（pathNodes）而非 messageNodes：后者是含旁支的扁平列表，
+        // 分支会话里同一节点的两个下标不相等，用前者算出的指纹在 activeCompression 里
+        // 永远校验不过 —— 压缩刚落库就被判「摘要过时」，窗口/新会话 fork 全部失效。
+        val boundaryIndex = conversation.pathNodes().indexOfFirst { it.id == boundaryNode.id }
         val areaFingerprint = conversation.areaFingerprintFor(boundaryIndex)
         // 被压缩条数按「有效窗口内普通消息」计：此前若是导入的原版检查点（其正文也是被摘要区），
         // 该计入累计数；仅取 compressionSummaries 会漏掉它，导致「已压缩 N 条」显示偏少。
@@ -3115,12 +3118,14 @@ class ChatService(
         // 差集，删消息、压缩截断、重新生成截断等所有经 saveConversation 的移除路径都覆盖。
         // 重新生成的撤销恢复虽会把节点写回，但收藏已随移除清理（上游同语义）。
         val previousNodes = getConversationFlow(conversationId).value.messageNodes
-        if (previousNodes.isNotEmpty()) {
+        val removedNodeIds = if (previousNodes.isEmpty()) {
+            emptyList()
+        } else {
             val currentNodeIds = conversation.messageNodes.mapTo(HashSet()) { it.id }
-            val removedNodeIds = previousNodes.map { it.id }.filterNot { it in currentNodeIds }
-            if (removedNodeIds.isNotEmpty()) {
-                conversationRepo.deleteNodeFavorites(conversation.id, removedNodeIds)
-            }
+            previousNodes.map { it.id }.filterNot { it in currentNodeIds }
+        }
+        if (removedNodeIds.isNotEmpty()) {
+            conversationRepo.deleteNodeFavorites(conversation.id, removedNodeIds)
         }
 
         updateConversation(conversationId, updatedConversation)
@@ -3128,7 +3133,9 @@ class ChatService(
         if (!exists) {
             conversationRepo.insertConversation(updatedConversation)
         } else {
-            conversationRepo.updateConversation(updatedConversation)
+            // 阶段 3：删除只来自本处显式差集；repo 不再用「库 − 内存」推导，
+            // 否则稀疏加载后未加载的前缀会被误删。
+            conversationRepo.updateConversation(updatedConversation, removedNodeIds)
         }
     }
 

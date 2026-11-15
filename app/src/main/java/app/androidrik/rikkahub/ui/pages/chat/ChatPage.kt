@@ -206,6 +206,18 @@ fun ChatPage(
         }
     }
 
+    // 前置校验失败（如压缩边界后无原文）用 toast 提示，不写入聊天区错误卡
+    val compressFailureToaster = LocalToaster.current
+    val compressFailureResources = LocalResources.current
+    LaunchedEffect(vm) {
+        vm.compressNewWindowFailure.collect {
+            compressFailureToaster.show(
+                compressFailureResources.getString(R.string.chat_page_compress_new_window_failed),
+                type = ToastType.Error,
+            )
+        }
+    }
+
     // 上下文占用**只算一份**：标题旁读数、输入栏指示器、容量面板共用同一个来源（2026-10-02 决定）。
     // **计算必须离开主线程**（ANR 实测 2026-10-02，trace：main 线程 97s CPU 全在
     // ByteLevelBpe）：真 tokenizer 全窗分词 + 流式期间每个 chunk 都触发重组，在组合期

@@ -18,7 +18,8 @@ import kotlin.uuid.Uuid
  * 核心性质：
  * - 常规场景（尾部追加 / 原地编辑）只写 1 行——与前缀版同成本；
  * - 存活行保持原 node_index（创建序），新行 max+1，**永不复用**旧下标；
- * - 消失行按 id 删除（与列表顺序解耦，P1 分支乱序存储无需再改）。
+ * - 删除只来自调用方显式传入的 id（阶段 3：内存列表可以只是稀疏窗口）；
+ * - 未出现在内存中的库中行**永远不会**被自动删除。
  */
 class NodeDiffPlanTest {
 
@@ -77,14 +78,42 @@ class NodeDiffPlanTest {
         assertEquals(listOf(multi.id.toString()), plan.toWrite.map { it.id })
     }
 
-    @Test fun `truncation removes missing ids regardless of order`() {
+    @Test fun `truncation removes explicitly deleted ids regardless of order`() {
         val a = node("a")
         val b = node("b")
         val c = node("c")
         val existing = listOf(row(a, 0), row(b, 1), row(c, 2))
-        val plan = computeNodeDiff(convId, existing, listOf(a).healMissingParents())
+        val plan = computeNodeDiff(
+            convId,
+            existing,
+            listOf(a).healMissingParents(),
+            deletedNodeIds = listOf(c.id, b.id),
+        )
         assertEquals(setOf(b.id.toString(), c.id.toString()), plan.removedIds.toSet())
         assertTrue(plan.toWrite.isEmpty())
+    }
+
+    @Test fun `sparse window never deletes rows that were not loaded`() {
+        val a = node("a")
+        val b = node("b")
+        val c = node("c")
+        val existing = listOf(row(a, 0), row(b, 1), row(c, 2))
+        // 只加载尾部窗口 [c]：a、b 未加载，不得被当成删除
+        val plan = computeNodeDiff(convId, existing, listOf(c).healMissingParents())
+        assertTrue("未显式声明删除时 removedIds 必须为空", plan.removedIds.isEmpty())
+        assertTrue("未变更的窗口节点不重写", plan.toWrite.isEmpty())
+    }
+
+    @Test fun `deleted id conflicting with incoming node is ignored`() {
+        val a = node("a")
+        val existing = listOf(row(a, 0))
+        val plan = computeNodeDiff(
+            convId,
+            existing,
+            listOf(a).healMissingParents(),
+            deletedNodeIds = listOf(a.id),
+        )
+        assertTrue(plan.removedIds.isEmpty())
     }
 
     @Test fun `new index never reuses removed tail indices`() {
@@ -93,7 +122,12 @@ class NodeDiffPlanTest {
         val existing = listOf(row(a, 0), row(b, 1))
         // 截断掉 b 后追加新节点：新下标 = max(0,1)+1 = 2，不复用 1
         val fresh = node("fresh")
-        val plan = computeNodeDiff(convId, existing, listOf(a, fresh).healMissingParents())
+        val plan = computeNodeDiff(
+            convId,
+            existing,
+            listOf(a, fresh).healMissingParents(),
+            deletedNodeIds = listOf(b.id),
+        )
         assertEquals(listOf(b.id.toString()), plan.removedIds)
         assertEquals(2, plan.toWrite.single().nodeIndex)
     }

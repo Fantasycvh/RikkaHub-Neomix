@@ -172,6 +172,13 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
 计算路径与正文集合，含断链/环回退；`ConversationNodeStore` 提供摘要、批量正文、向上翻页读取。
 本阶段**尚未接线**——按 §八 顺序，必须先完成阶段 3 的保存契约改造，才能让 ChatVM 使用稀疏列表。
 
+**阶段 3 保存契约（2026-11-15）**：`computeNodeDiff` 的删除集合改为调用方显式传入
+`deletedNodeIds`，不再用「库 − 内存」推导；未出现在内存中的库中行永不删除，冲突 id 忽略。
+`ConversationRepository.updateConversation(conversation, deletedNodeIds)` 透传，
+`ChatService.saveConversation` 用内存态 previous/current 差集作为唯一删除来源。
+`messageNodes` 为空时仍跳过节点写入（保留轻量对象保护）。单测覆盖「稀疏窗口不误删」
+与「显式删除生效」；全量单测与装机通过。
+
 ## 八、兼容与迁移
 
 - 数据库：阶段 2 无 schema 变更（仅新增查询）；若采用 `selected_message_id` 则 v72。

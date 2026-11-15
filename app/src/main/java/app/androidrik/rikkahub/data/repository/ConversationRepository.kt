@@ -72,8 +72,11 @@ class ConversationRepository(
     private suspend fun loadMessageNodes(conversationId: String): List<MessageNode> =
         nodeStore.loadMessageNodes(conversationId)
 
-    private suspend fun saveMessageNodes(conversationId: String, nodes: List<MessageNode>) =
-        nodeStore.saveMessageNodes(conversationId, nodes)
+    private suspend fun saveMessageNodes(
+        conversationId: String,
+        nodes: List<MessageNode>,
+        deletedNodeIds: Collection<Uuid> = emptyList(),
+    ) = nodeStore.saveMessageNodes(conversationId, nodes, deletedNodeIds)
 
     /**
      * 最近会话。[加载节点] 默认 false（仅需 id/标题/时间的调用方不应付出
@@ -458,7 +461,16 @@ class ConversationRepository(
         }
     }
 
-    suspend fun updateConversation(conversation: Conversation) {
+    /**
+     * 更新会话元数据与已加载节点。
+     *
+     * [deletedNodeIds] 必须是**调用方显式声明**的删除集合（阶段 3）：稀疏加载下
+     * `conversation.messageNodes` 只是窗口，未出现的库中行不能被当作删除。
+     */
+    suspend fun updateConversation(
+        conversation: Conversation,
+        deletedNodeIds: Collection<Uuid> = emptyList(),
+    ) {
         database.withTransaction {
             // 目标列 UPDATE（不是全行）——见 ConversationDAO.updateMetadata 的注释：
             // 全行覆盖会把 sort_order 写回内存态的旧值，把刚拖好的顺序改回去。
@@ -488,7 +500,11 @@ class ConversationRepository(
             // **保护**：messageNodes 为空时不动节点——避免误传「轻量 Conversation」
             // （如 conversationSummaryToConversation 产物）导致整会话节点被清空（不可逆）。
             if (conversation.messageNodes.isNotEmpty()) {
-                saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
+                saveMessageNodes(
+                    conversation.id.toString(),
+                    conversation.messageNodes,
+                    deletedNodeIds,
+                )
             }
         }
         messageFtsManager.indexConversation(conversation)

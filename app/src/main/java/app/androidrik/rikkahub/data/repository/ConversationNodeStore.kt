@@ -190,8 +190,11 @@ internal class ConversationNodeStore(
      * 设计稿 design-conversation-tree-branching.md §五.2）。
      *
      * **为何换**：前缀 diff 假定「内存列表 ≡ 库中全量线性序」，树形分支（P1）下不再成立。
-     * id 键 diff 只依赖节点身份：变更 upsert、消失 delete、新增分配新创建序——
-     * 与列表顺序解耦，P1 分支乱序存储无需再改本算法。
+     * id 键 diff 只依赖节点身份：变更 upsert、新增分配新创建序——与列表顺序解耦。
+     *
+     * **阶段 3（稀疏加载前置）**：删除不再由「库 − 内存」推导，必须由调用方显式传入
+     * [deletedNodeIds]。原因是内存列表将只含已加载窗口，未加载前缀不能被当成删除。
+     * 未声明删除时，库中其余行原样保留；与 `nodes` 冲突的删除 id 会被忽略以防误删。
      *
      * `node_index` 语义 = **全局创建序**（append-only、永不复用）：存活行保持原值，
      * 新行取 max+1。加载按它排序（列表序 = 创建序 ≠ 路径序，路径由 activeLeafNodeId 决定）。
@@ -200,11 +203,16 @@ internal class ConversationNodeStore(
      *
      * 常见场景（尾部追加/修改最后一条）仍只写 1 行；签名计算量与前缀版同量级。
      */
-    internal suspend fun saveMessageNodes(conversationId: String, nodes: List<MessageNode>) {
+    internal suspend fun saveMessageNodes(
+        conversationId: String,
+        nodes: List<MessageNode>,
+        deletedNodeIds: Collection<Uuid> = emptyList(),
+    ) {
         val plan = computeNodeDiff(
             conversationId = conversationId,
             existing = messageNodeDAO.getNodeDiffRows(conversationId),
             chain = nodes.healMissingParents(),
+            deletedNodeIds = deletedNodeIds,
         )
         if (plan.removedIds.isNotEmpty()) {
             messageNodeDAO.deleteByIds(conversationId, plan.removedIds)
@@ -227,17 +235,22 @@ internal data class NodeDiffPlan(
  * 签名 = select_index + messages JSON（盖住「编辑后候选变但 id 不变」）。
  * **不比 parent_id**：它由内存树原样落库，签名不变就不重写（避免无谓行写放大）；
  * 语义变更（换父/建分支）必然伴随消息或新增节点变化，不会漏写。
- * **removedIds 语义**：调用方传的 `chain` 是**全量节点集**（含 off-path 兄弟子树），
- * 因此只有剪枝/删除真正缩小集合时才会产生删除——P1 激活路径切换不删任何节点。
+ * **removedIds 语义**：只来自调用方显式传入的 `deletedNodeIds`（阶段 3 起）。
+ * `chain` 可以只是已加载窗口；未出现在 `chain` 的库中行不会被删除。与 `chain` 冲突的
+ * 删除 id 会被忽略，防止一次误传把刚写入的节点删掉。
  */
 internal fun computeNodeDiff(
     conversationId: String,
     existing: List<MessageNodeDiffRow>,
     chain: List<MessageNode>,
+    deletedNodeIds: Collection<Uuid> = emptyList(),
 ): NodeDiffPlan {
     val existingById = existing.associateBy { it.id }
     val incomingIds = chain.mapTo(HashSet()) { it.id.toString() }
-    val removedIds = existing.map { it.id }.filter { it !in incomingIds }
+    val removedIds = deletedNodeIds
+        .map { it.toString() }
+        .distinct()
+        .filter { it !in incomingIds }
     var nextIndex = (existing.maxOfOrNull { it.nodeIndex } ?: -1) + 1
     val toWrite = ArrayList<MessageNodeEntity>()
     chain.forEach { node ->
