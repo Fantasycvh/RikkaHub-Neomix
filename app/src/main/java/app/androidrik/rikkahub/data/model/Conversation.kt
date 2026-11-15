@@ -138,6 +138,17 @@ data class Conversation(
     val newConversation: Boolean = false
 ) {
     /**
+     * 激活路径索引（阶段 1 性能优化）：每个 [Conversation] 实例只构建一次父索引与路径。
+     *
+     * 放在类体内而非构造参数：不参与 `equals`/序列化；所有变更都走 `copy` 产生新实例，
+     * 缓存自然失效，无需手工版本号。设计见
+     * `docs/design/in-progress/design-conversation-lazy-load.md` §七。
+     */
+    internal val pathIndex: ConversationPathIndex by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        ConversationPathIndex(messageNodes, activeLeafNodeId)
+    }
+
+    /**
      * [frozenAnchors] 的解码视图：`null` = 未冻结，空集 = 冻结且当时无锚点。
      *
      * 计算属性（无 backing field）⇒ 不参与序列化。

@@ -24,10 +24,44 @@ import kotlin.uuid.Uuid
  * 零开销。**安全前提**：根 = 首个创建节点（分支只在非根节点间发生，见 mergeGenerationMessages
  * 与 editMessage 的根退化规则）⇒ null 父只可能是遗留线性链的未回填行。
  */
-fun Conversation.pathNodes(): List<MessageNode> {
-    val leafId = activeLeafNodeId ?: return messageNodes
-    val nodes = messageNodes.healMissingParents()
-    return nodes.pathToLeaf(leafId) ?: nodes
+fun Conversation.pathNodes(): List<MessageNode> = pathIndex.activePath()
+
+/**
+ * [Conversation.pathNodes] 的实例级索引：父表、heal 结果与激活路径各只算一次。
+ *
+ * 生命周期跟随 [Conversation] 实例；任何变更都经 `copy` 生成新实例，故无需显式失效。
+ * 线程安全交给 `lazy(PUBLICATION)`：并发首访可能重复构建，但结果一致且无共享可变状态。
+ */
+internal class ConversationPathIndex(
+    private val rawNodes: List<MessageNode>,
+    private val activeLeafNodeId: Uuid?,
+) {
+    private val healedNodes: List<MessageNode> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        rawNodes.healMissingParents()
+    }
+
+    private val path: List<MessageNode>? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        val leafId = activeLeafNodeId ?: return@lazy null
+        val nodes = healedNodes
+        val byId = HashMap<Uuid, MessageNode>(nodes.size)
+        nodes.forEach { byId[it.id] = it }
+        val visited = HashSet<Uuid>()
+        val out = ArrayList<MessageNode>()
+        var current = byId[leafId] ?: return@lazy null
+        while (true) {
+            if (!visited.add(current.id)) return@lazy null // 环防御
+            out.add(current)
+            val parentId = current.parentId ?: break
+            current = byId[parentId] ?: return@lazy null // 父链断裂
+        }
+        out.reverse()
+        out
+    }
+
+    fun activePath(): List<MessageNode> {
+        if (activeLeafNodeId == null) return rawNodes
+        return path ?: healedNodes
+    }
 }
 
 /**

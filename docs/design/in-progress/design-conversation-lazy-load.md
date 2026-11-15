@@ -1,0 +1,254 @@
+# 会话懒加载与保存契约改造（设计稿）
+
+> 状态：草案（2026-11-15）
+> 关联：[design-auto-compaction.md](../completed/design-auto-compaction.md)、
+> [design-conversation-tree-branching.md](../completed/design-conversation-tree-branching.md)、
+> [design-conversation-import-export.md](../completed/design-conversation-import-export.md)
+> 代码现状：[ConversationNodeStore.kt](../../../app/src/main/java/app/androidrik/rikkahub/data/repository/ConversationNodeStore.kt)、
+> [ConversationTree.kt](../../../app/src/main/java/app/androidrik/rikkahub/data/model/ConversationTree.kt)、
+> [ChatList.kt](../../../app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ChatList.kt)
+
+## 一、问题与目标
+
+### 1.1 现状
+
+- [loadMessageNodes](../../../app/src/main/java/app/androidrik/rikkahub/data/repository/ConversationNodeStore.kt#L67-L140)
+  用 64 行分页读 `message_node`，但**所有页都进内存**：分页只规避 SQLite cursor 窗口，不是懒加载。
+  7000 节点会话的 `messages` JSON 总量可达数 MB，打开会话即全量 decode。
+- `pathNodes()` 每次调用都遍历 `messageNodes` 建 `parentById` 索引；ChatList、窗口计算、
+  树面板、统计、发送组装都会调用，且 Compose 重组会重复触发。
+- UI 已用 `windowNodes()` 折叠压缩边界前的内容，但只省渲染，不省加载/内存/保存。
+- 保存侧 [computeNodeDiff](../../../app/src/main/java/app/androidrik/rikkahub/data/repository/ConversationNodeStore.kt#L187-L213)
+  按「库中行 − 内存行」求删除，**隐含契约：内存 ≡ 全量节点集**。
+
+### 1.2 目标
+
+1. 打开长会话的耗时与内存与「窗口大小」相关，而不是与历史总量线性相关。
+2. 不破坏历史可回溯性（删除历史是独立的可选能力，不在本稿范围内）。
+3. 压缩检查点作为默认加载边界：模型只需要「摘要 + 窗口」，UI 默认也只加载这一段。
+4. 分支树、编辑、重新生成、分支切换、导出、备份、统计行为不退化。
+
+### 1.3 非目标
+
+- 不改变 `message_node` 的 JSON 存储格式。
+- 不做物理删除历史（另见后续「压缩后清理」方案）。
+- 不引入分页 LazyColumn 之外的虚拟化渲染改造。
+
+## 二、方案对比
+
+| 方案 | 做法 | 优点 | 缺点 | 结论 |
+|---|---|---|---|---|
+| A. 仅优化缓存 | 缓存 `pathNodes()` 索引，避免重复遍历 | 改动小、零数据风险 | 全量 decode 仍在，大会话冷启动仍慢 | **先做**（阶段 1） |
+| B. UI 分页但数据全量 | LazyColumn 分页渲染 | 渲染流畅 | 内存/加载/保存不变 | 已具备，不够 |
+| C. 稀疏加载 + 变更集保存 | 摘要全量、正文按需；保存只写显式变更 | 直击瓶颈 | 改持久化契约，面大 | **本稿主方案**（阶段 2） |
+| D. 物理删除已压缩前缀 | 删表行 | DB 变小 | 不可回溯、检查点迁移风险 | 阶段 3 可选 |
+
+## 三、核心设计：稀疏加载
+
+### 3.1 两层数据
+
+1. **节点摘要（全量、轻量）**
+   `id / parent_id / node_index / select_index / is_favorite / message_bytes`。
+   不含 `messages`，7000 行也只有几百 KB 级。
+2. **节点正文（按需）**
+   `messages` 完整 JSON，按 id 或 `node_index` 区间批量取。
+
+DAO 新增（示意）：
+
+```kotlin
+@Query("""
+  SELECT id, parent_id, node_index, select_index, LENGTH(messages) AS message_bytes
+  FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index
+""")
+suspend fun getNodeSummaries(conversationId: String): List<MessageNodeSummaryRow>
+
+@Query("SELECT * FROM message_node WHERE conversation_id = :cid AND id IN (:ids)")
+suspend fun getNodesByIds(cid: String, ids: List<String>): List<MessageNodeEntity>
+
+@Query("""
+  SELECT * FROM message_node WHERE conversation_id = :cid AND node_index < :beforeIndex
+  ORDER BY node_index DESC LIMIT :limit
+""")
+suspend fun getNodesBefore(cid: String, beforeIndex: Int, limit: Int): List<MessageNodeEntity>
+```
+
+收藏 id 仍走 `FavoriteDAO` 一次查询；摘要层不 JOIN，避免重复行。
+
+### 3.2 初始加载集
+
+以激活叶片 `activeLeafNodeId` 为锚：
+
+1. 摘要全量加载，构建 `parentById`，求激活路径（仅 id 序列，不 decode 正文）。
+2. 计算加载起点：
+   - 有**有效**压缩检查点 → 起点 = 边界节点之后（与 `compressionWindow()` 语义一致）；
+   - 无检查点 → 从路径尾部向前累计，直到达到**预算**（节点数 300 或正文字节 1 MB，先到者停）。
+3. 只 decode 起点之后的正文；检查点消息由 `compressionWindow()` 合成，不需要正文。
+4. 更早的节点保留摘要，UI 显示「加载更早的 N 条消息」占位行。
+
+### 3.3 向上加载
+
+- 滚动到占位行或用户点击 → 按 `node_index < 当前最早` 取一页（同样按预算），合并进 loaded 集。
+- 跳转（引用、搜索命中、树面板定位）→ 若目标节点未加载，先按 id 加载该节点及其激活路径上下文，
+  再滚动。
+- 加载失败（坏行/超大 blob）沿用现有「收窄到单行隔离」策略，最坏只丢一行。
+
+### 3.4 分支语义
+
+- 路径计算只用摘要（`parent_id` + `select_index`），不再依赖正文。
+- 树面板展示全部分支的元数据；点选未加载分支时按需 hydrate 该路径。
+- 编辑/重新生成/删除针对未加载节点时，先按 id hydrate 该节点，再执行现有逻辑。
+- `pathNodes()` 改为基于摘要，返回 `List<MessageNodeRef>`；需要正文的调用方显式 `hydrate(ids)`。
+
+## 四、保存契约改造（最高风险项）
+
+### 4.1 新 API
+
+```kotlin
+suspend fun saveNodeChanges(
+    conversationId: String,
+    upserts: List<MessageNode>,
+    deletedIds: Set<Uuid>,
+)
+```
+
+- 只 upsert 显式变更的节点，只删除显式声明的 id。
+- **禁止**再以「内存节点集」推断删除；`computeNodeDiff` 降级为「全量模式」内部实现
+  （导出/备份/整树重写等场景），并加参数 `fullSet: Boolean` 强制调用方表态。
+
+### 4.2 变更来源审计
+
+需要逐点确认「变更点是否知道自己的 upsert/delete」：
+
+| 位置 | 现状 | 改造 |
+|---|---|---|
+| 发送追加消息 | 构造新节点 | 直接 upsert 新节点 |
+| 编辑/重新生成 | 修改节点 `messages` + `selectIndex` | upsert 该节点 |
+| 分支切换 | 改 `activeLeafNodeId`（会话行） | 不写节点 |
+| 删除节点/子树 | 从列表移除 | 显式收集被删 id |
+| 压缩检查点 | 新增检查点行（独立表） | 不写节点 |
+| 导入/恢复 | 全量写入 | 保持全量模式 |
+
+任何无法明确列出变更点的旧路径，改造期回退到 `loadAll + fullSet` 并打日志，逐步收敛。
+
+### 4.3 会话行与节点的一致性
+
+`activeLeafNodeId` 与会话元数据仍在 `conversations` 表；节点保存只写 `message_node`，
+沿用现有「会话更新 + 节点保存」事务边界（`ConversationRepository.saveConversation`）。
+
+## 五、压缩检查点的配合
+
+- 有效检查点直接作为默认加载起点，实现「模型上下文 = UI 默认视图」。
+- 指纹校验目前需要区域内每个节点的**选中消息 id**；摘要层没有该字段，两个选项：
+  1. 指纹改为 `node id + select_index`（分支切换/编辑后 selectIndex 必变，覆盖主要失效路径）；
+  2. 新增 `selected_message_id` 列（DB v72），保存时写入，摘要直接带出。
+  建议先做 1（零迁移），若发现「原地改内容不改下标」的漏网场景再升级 2。
+- 检查点失效（边界缺失/指纹不符）→ 回退为「尾部预算加载」，不要求全量历史。
+
+## 六、UI 行为
+
+- 打开会话：默认渲染窗口（现有 `windowNodes()` 逻辑不变）+ 顶部「加载更早」入口。
+- 展开「压缩检查点」折叠行：只展开检查点摘要文本，不自动加载边界前正文；
+  再点「查看原文」才分页加载。
+- 树面板：摘要即可绘制；分支内容未加载时显示骨架，点选后加载。
+- 会话内搜索/引用跳转：命中未加载节点时按 id 加载并定位。
+- 导出/分享/备份：显式 `loadAll`，进度提示沿用备份页。
+
+## 七、缓存与派生计算
+
+- `Conversation` 增加按版本缓存的 `PathIndex`（`activeLeafNodeId + summaries revision`），
+  `pathNodes()` / `windowNodes()` 命中缓存，避免每次重组 O(n)。
+- `healMissingParents()` 只在摘要加载时执行一次；派生计算不再调用。
+- 变更后递增 revision（新增/删除节点、切换叶片），缓存失效。
+- 阶段 1 可先只做这一项，独立上线验证收益。
+
+**实施记录（2026-11-15）**：`Conversation.pathIndex`（实例级 `lazy(PUBLICATION)`）已落地，
+`pathNodes()` 复用同一份父索引/heal 结果/路径；`copy()` 产生新实例自动失效。同一夹具复测：
+加载 655 ms（基线 623 ms，持平，符合预期——本阶段不减少 decode）；滚动掉帧 50.7% /
+p90 85 ms（基线 47.6% / 81 ms，在噪声范围内）。收益主要是消除重组期重复 O(n) 索引，
+并为阶段 2 的摘要索引提供承载点，帧时间改善要等稀疏加载落地后才会体现。
+
+## 八、兼容与迁移
+
+- 数据库：阶段 2 无 schema 变更（仅新增查询）；若采用 `selected_message_id` 则 v72。
+- 导入/导出：`Conversation` 序列化格式不变；导入仍走全量。
+- Web/备份：走全量加载，语义不变。
+- 旧版本回退：无新列则完全兼容；有 v72 需按现有降级策略处理。
+
+## 九、验收指标
+
+用本稿配套夹具（§十）在真机测量：
+
+1. 7000 节点 / ~4.8 MB 会话：打开到可交互 < 500 ms（现状基线先记录）。
+2. `loadMessageNodes` 日志耗时只与窗口预算相关；窗口 300 节点时 < 100 ms。
+3. 进入会话后首帧渲染节点数 ≤ 预算 + 占位行。
+4. 发送一轮消息只写 1–2 行节点（沿用现有 id-key diff 的常规场景）。
+5. 树面板打开 < 200 ms（摘要全量）。
+6. 编辑/重新生成/切换分支/导出/备份回归通过。
+
+### 9.1 现状基线（2026-11-15，PJX110 / debug）
+
+方法：每轮 `am force-stop` 后冷启动 → 打开会话抽屉 → 记录打开前 PSS → 点入夹具 →
+`logcat` 取 `loadMessageNodes` → 记录打开后 PSS → `gfxinfo reset` 后固定 6 次上滑 → 取掉帧与分位。
+
+| 夹具 | 节点 | 加载耗时 | PSS 增量 | 掉帧率 | p50 | p90 |
+|---|---|---|---|---|---|---|
+| 线性 7000（4.85 MB） | 7000 | 623 ms | +75.0 MB | 47.6% | 36 ms | 81 ms |
+| 分支 7000（4.87 MB） | 7027 | 716 ms | +74.3 MB | 36.9% | 23 ms | 85 ms |
+| 压缩 7000（4.85 MB） | 7000 | 651 ms | +23.8 MB | 46.7% | 32 ms | 150 ms |
+
+补充：打开前进程 PSS 约 324–331 MB（debug 构建、含启动与列表缓存）；压缩夹具 PSS 增量较低，
+但 `loadMessageNodes` 仍解全部 7000 节点，说明内存差异主要来自渲染窗口与 GC 时机，不是加载量。
+掉帧率方差约 ±10 个百分点，纵向对比需同设备、同构建类型、同滑动脚本。
+
+## 十、测试数据与验证
+
+### 10.1 夹具生成器
+
+`app/src/test/java/app/androidrik/rikkahub/data/export/ConversationFixtureGeneratorTest.kt`
+（只在测试源集，不打包进 APK）：
+
+```bash
+./gradlew :app:testDebugUnitTest --tests "*ConversationFixtureGeneratorTest*"
+```
+
+输出到 `app/build/test-fixtures/`：
+
+| 文件 | 规模 | 用途 |
+|---|---|---|
+| `conversation-linear-7000.json` | 7000 节点线性，4.85 MB | 冷启动、`pathNodes()`、保存 diff |
+| `conversation-branched-7000.json` | 7000 节点 + 每 250 节点一个兄弟分支，4.87 MB | 树面板、分支切换 |
+| `conversation-compressed-7000.json` | 6800 压缩前缀 + 200 尾巴 + 检查点，4.85 MB | 压缩边界懒加载 |
+
+生成器在写入前用 `ConversationSerializer.parse` 回读校验节点数、激活路径长度与检查点有效性。
+
+### 10.2 导入方式
+
+1. `adb push app/build/test-fixtures/*.json /sdcard/Download/neomix-fixtures/`
+2. App → 设置 → 备份/恢复 → 导入对话 → 选择文件 → 选择目标助手。
+3. 打开会话，观察首屏、向上加载、树面板、编辑与发送。
+
+### 10.3 自动化测试
+
+- 纯函数：摘要路径计算、窗口预算裁剪、`saveNodeChanges` 只删显式 id。
+- 回归：导入夹具后 `pathNodes()` 数量与原始一致；压缩窗口与 `compressionWindow()` 一致。
+- 真机：按 §九 的指标记录 before/after。
+
+## 十一、实施阶段
+
+| 阶段 | 内容 | 风险 | 可独立上线 |
+|---|---|---|---|
+| 1 | `pathNodes()` 索引缓存 + `healMissingParents` 只跑一次 | 低 | 是 |
+| 2 | 摘要 DAO + 稀疏加载（只读路径） | 中 | 是（先只影响打开） |
+| 3 | 保存契约改 `saveNodeChanges`，逐点审计 | **高** | 是（需全量回归） |
+| 4 | 编辑/分支/树面板按需 hydrate | 中 | 是 |
+| 5 | 指纹摘要化 / 可选 `selected_message_id` | 低 | 是 |
+| 6 | （可选）压缩前缀物理清理 | 中高 | 独立开关 |
+
+阶段 3 之前不得把 ChatVM 的节点列表改成稀疏集，否则保存会误删未加载行。
+
+## 十二、待决问题
+
+1. 窗口预算按节点数还是字节数？建议双阈值，字节优先（现有实测表明字节量才是驱动因素）。
+2. 摘要 `select_index` 是否足以替代指纹中的消息 id？需补一个「原地改内容」的回归用例。
+3. 树面板是否需要显示未加载分支的消息预览？建议首版只显示角色/时间/摘要。
+4. 是否把「加载更早」做成自动触底加载还是显式按钮？建议显式按钮，避免长会话误触发全量加载。

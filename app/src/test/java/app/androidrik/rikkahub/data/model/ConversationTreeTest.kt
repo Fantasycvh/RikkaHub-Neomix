@@ -117,6 +117,22 @@ class ConversationTreeTest {
         assertEquals("断链回退全量", conversation.messageNodes, broken.pathNodes())
     }
 
+    @Test fun `pathNodes reuses the index per instance and rebuilds on copy`() {
+        val root = msg("root").toMessageNode()
+        val a1 = msg("a1").toMessageNode().copy(parentId = root.id)
+        val b1 = msg("b1").toMessageNode().copy(parentId = root.id)
+        val conversation = Conversation.ofId(Uuid.random()).copy(
+            messageNodes = listOf(root, a1, b1),
+            activeLeafNodeId = b1.id,
+        )
+        assertSame("同一实例复用索引结果", conversation.pathNodes(), conversation.pathNodes())
+        assertEquals(
+            "copy 后按新叶子重建",
+            listOf(root.id, a1.id),
+            conversation.copy(activeLeafNodeId = a1.id).pathNodes().map { it.id },
+        )
+    }
+
     // ---- mergeGenerationMessages：线性场景（与旧索引制等价） ----
 
     @Test fun `equal snapshots retain the conversation and every node`() {
