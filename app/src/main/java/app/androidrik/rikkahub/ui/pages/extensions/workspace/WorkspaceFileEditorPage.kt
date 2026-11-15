@@ -5,12 +5,15 @@ import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
 import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -19,6 +22,7 @@ import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import app.androidrik.rikkahub.ui.components.ui.AppTextField as TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,9 +41,11 @@ import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import app.androidrik.rikkahub.ui.components.webview.WebView
 import app.androidrik.rikkahub.ui.components.webview.rememberWebViewState
 import app.androidrik.rikkahub.ui.context.LocalToaster
+import app.androidrik.rikkahub.ui.context.LocalWorkspaceId
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
 import app.androidrik.workspace.WorkspaceStorageArea
@@ -62,7 +68,8 @@ fun WorkspaceFileEditorPage(
     val editable = area == WorkspaceStorageArea.FILES
     val fileName = path.substringAfterLast('/').ifBlank { path }
     val extension = fileName.substringAfterLast('.', "").lowercase()
-    val supportsPreview = extension in setOf("html", "htm", "svg")
+    val isMarkdown = extension in setOf("md", "markdown")
+    val supportsPreview = isMarkdown || extension in setOf("html", "htm", "svg")
     var showPreview by rememberSaveable(id, area, path) { mutableStateOf(supportsPreview) }
 
     // 不能用 rememberTextFieldState()：它把**全文**写进 saved state Bundle，编辑大文件时
@@ -162,6 +169,12 @@ fun WorkspaceFileEditorPage(
                 )
             }
 
+            showPreview && isMarkdown -> WorkspaceMarkdownPreview(
+                workspaceId = id,
+                content = textState.text.toString(),
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+            )
+
             showPreview -> WorkspaceWebPreview(
                 content = textState.text.toString(),
                 isSvg = extension == "svg",
@@ -182,6 +195,36 @@ fun WorkspaceFileEditorPage(
                     lineHeight = appSkinTextSize(18.sp),
                 ),
             )
+        }
+    }
+}
+
+/**
+ * Markdown 文件预览：直接复用聊天渲染链（标题/列表/表格/代码高亮/LaTeX）。
+ *
+ * 渲染的是编辑器当前文本，因此预览里看到的就是待保存内容；切回源码不会丢未保存的修改。
+ */
+@Composable
+private fun WorkspaceMarkdownPreview(
+    workspaceId: String,
+    content: String,
+    modifier: Modifier = Modifier,
+) {
+    // Markdown 里的工作区绝对路径图片（如 /images/a.png）靠 LocalWorkspaceId 解析；
+    // 该 CompositionLocal 目前只在聊天页提供，工作区页面需自行补上
+    CompositionLocalProvider(LocalWorkspaceId provides workspaceId) {
+        Box(modifier) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
+            ) {
+                MarkdownBlock(
+                    content = content,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
         }
     }
 }
