@@ -315,6 +315,14 @@ data class Settings(
     /** 摘要目标 token（默认 2000） */
     val autoCompressTargetTokens: Int = DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
     /**
+     * **压缩前缀物理清理**（懒加载阶段 6，默认关）。
+     *
+     * 开启后，检查点落库时删除「边界节点的子树之外」的全部消息节点与 FTS 行——那段历史已由
+     * 摘要覆盖，继续留在库里只是占空间。**不可回溯**：历史正文、导出、树面板都只能看到
+     * 边界之后的部分；因此默认关闭，设置页需要二次确认。
+     */
+    val pruneCompressedPrefix: Boolean = false,
+    /**
      * 自定义压缩配置档（用户命名，可增/改/删）。
      *
      * **不是真相源**：真正决定压缩行为的是上面三个数值，档只是「一键填入保留比例 + 摘要目标」

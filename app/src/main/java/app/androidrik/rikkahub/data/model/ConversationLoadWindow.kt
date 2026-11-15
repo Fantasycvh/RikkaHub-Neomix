@@ -107,3 +107,23 @@ private fun walkToRoot(leafId: Uuid, byId: Map<Uuid, NodeSummary>): List<Uuid>? 
 
 const val DEFAULT_MAX_NODES = 300
 const val DEFAULT_MAX_BYTES = 1_000_000L
+
+/**
+ * **压缩前缀物理清理**的删除集合（阶段 6，纯函数）：边界节点**子树之外**的全部节点。
+ *
+ * 边界本身与其后代保留——边界是检查点的锚（路径/指纹/折叠行都靠它），后代是未压缩原文。
+ * 父链断裂/环的节点永远进不了子树，按「可删」处理；调用方还需叠加收藏/在途生成等守卫。
+ */
+fun prefixPruneCandidates(summaries: List<NodeSummary>, boundaryNodeId: Uuid): Set<Uuid> {
+    if (summaries.isEmpty()) return emptySet()
+    val children = summaries.groupBy { it.parentId }
+    val keep = HashSet<Uuid>()
+    val stack = ArrayDeque<Uuid>()
+    stack.addLast(boundaryNodeId)
+    while (stack.isNotEmpty()) {
+        val id = stack.removeLast()
+        if (!keep.add(id)) continue
+        children[id]?.forEach { stack.addLast(it.id) }
+    }
+    return summaries.asSequence().map { it.id }.filter { it !in keep }.toSet()
+}

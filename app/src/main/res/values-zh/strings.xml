@@ -1331,6 +1331,10 @@
   <string name="compress_preset_values">保留 %1$d%%，摘要 %2$d token</string>
   <string name="compress_preset_range_hint">范围 %1$d–%2$d</string>
   <string name="setting_model_page_auto_compress_hint">对被压缩的消息做编辑、重新生成、删除或切换分支，会自动取消压缩</string>
+  <string name="setting_model_page_prune_compressed_prefix">删除已压缩的历史</string>
+  <string name="setting_model_page_prune_compressed_prefix_desc">每次压缩后永久删除检查点之前的消息正文，只保留摘要。导出与树面板将不再包含这些消息。</string>
+  <string name="setting_model_page_prune_compressed_prefix_confirm_title">永久删除已压缩的历史？</string>
+  <string name="setting_model_page_prune_compressed_prefix_confirm_message">此操作不可撤销。压缩边界之前的消息会被从数据库删除（含收藏的区域会整体跳过），只留下摘要。</string>
   <string name="setting_model_page_chat_model_desc">全局默认的聊天模型</string>
   <string name="setting_model_page_fallback_model">默认备用模型</string>
   <string name="setting_model_page_fallback_model_desc">助手未配置备用模型、且主模型重试耗尽后使用</string>

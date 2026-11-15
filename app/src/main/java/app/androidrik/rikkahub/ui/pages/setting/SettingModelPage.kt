@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -37,6 +38,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import kotlin.math.roundToInt
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -443,6 +445,28 @@ private fun AutoCompressSetting(
 ) {
     val builtInNames = builtInCompressPresetNames()
     var showPresetManager by remember { mutableStateOf(false) }
+    var showPruneConfirm by remember { mutableStateOf(false) }
+
+    if (showPruneConfirm) {
+        AlertDialog(
+            onDismissRequest = { showPruneConfirm = false },
+            title = { Text(stringResource(R.string.setting_model_page_prune_compressed_prefix_confirm_title)) },
+            text = { Text(stringResource(R.string.setting_model_page_prune_compressed_prefix_confirm_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.updateSettings(settings.copy(pruneCompressedPrefix = true))
+                        showPruneConfirm = false
+                    }
+                ) { Text(stringResource(R.string.common_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPruneConfirm = false }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            },
+        )
+    }
 
     if (showPresetManager) {
         CompressPresetManageDialog(
@@ -538,6 +562,24 @@ private fun AutoCompressSetting(
                 }
             }
         }
+        // 与自动压缩开关独立：手动压缩同样生效；开启需二次确认（不可回溯）。
+        item(
+            headlineContent = {
+                Text(stringResource(R.string.setting_model_page_prune_compressed_prefix))
+            },
+            supportingContent = {
+                Text(stringResource(R.string.setting_model_page_prune_compressed_prefix_desc))
+            },
+            trailingContent = {
+                Switch(
+                    checked = settings.pruneCompressedPrefix,
+                    onCheckedChange = { enabled ->
+                        if (enabled) showPruneConfirm = true
+                        else vm.updateSettings(settings.copy(pruneCompressedPrefix = false))
+                    },
+                )
+            },
+        )
     }
 }
 

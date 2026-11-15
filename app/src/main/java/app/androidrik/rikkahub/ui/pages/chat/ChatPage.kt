@@ -357,6 +357,10 @@ fun ChatPage(
     LaunchedEffect(nodeId, conversation.messageNodes.size) {
         if (!vm.chatListInitialized && conversation.messageNodes.isNotEmpty()) {
             if (nodeId != null) {
+                // 稀疏会话的目标可能在窗口外（搜索/引用直达）：先按 id 补齐，滚动请求挂起后消费。
+                if (conversation.isSparse && conversation.messageNodes.none { it.id == nodeId }) {
+                    vm.ensureNodeLoaded(nodeId)
+                }
                 chatListScrollController.scrollToMessage(nodeId)
             } else if (chatListScrollController.readAnchor == null) {
                 chatListScrollController.scrollToBottom()
@@ -771,6 +775,7 @@ private fun ChatPageContent(
                 errors = errors,
                 onDismissError = onDismissError,
                 onLoadEarlierNodes = { vm.loadEarlierMessages() },
+                onHydrateNode = { vm.ensureNodeLoaded(it) },
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = { message ->
                     // 有下游才需要选择/确认；无下游时两个 scope 等价，直接执行非破坏的 A

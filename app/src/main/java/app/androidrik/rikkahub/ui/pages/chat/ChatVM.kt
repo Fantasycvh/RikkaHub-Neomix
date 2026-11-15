@@ -558,6 +558,13 @@ class ChatVM(
         }
     }
 
+    /** 稀疏加载：跳转目标（搜索/引用直达）未加载时按节点 id 补齐。 */
+    fun ensureNodeLoaded(nodeId: Uuid) {
+        viewModelScope.launch {
+            chatService.hydrateNodes(_conversationId, listOf(nodeId))
+        }
+    }
+
     /**
      * 同步落库（供需要「会话必须已在 DB」的入口等待：如「为此会话创建定时任务」——
      * 未保存的新聊天直接跳转，创建页按 id 查不到会话，目标预选会静默落空）。

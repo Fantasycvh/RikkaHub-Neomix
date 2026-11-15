@@ -31,4 +31,18 @@ interface CompressionCheckpointDAO {
             "AND id < (SELECT MAX(id) FROM compression_checkpoint WHERE conversation_id = :conversationId)"
     )
     suspend fun trimToLatest(conversationId: String)
+
+    /**
+     * 压缩前缀物理清理后重写指纹：被摘要区域的节点行已删除，原指纹（含前缀节点序列）必然
+     * 校验不过，需按「保留子树」重新计算，否则检查点刚落库就自我失效。
+     */
+    @Query(
+        "UPDATE compression_checkpoint SET area_fingerprint = :fingerprint " +
+            "WHERE conversation_id = :conversationId AND boundary_node_id = :boundaryNodeId"
+    )
+    suspend fun updateAreaFingerprint(
+        conversationId: String,
+        boundaryNodeId: String,
+        fingerprint: String?,
+    )
 }

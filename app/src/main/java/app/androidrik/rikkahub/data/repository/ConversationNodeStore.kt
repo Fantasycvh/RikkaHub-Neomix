@@ -135,16 +135,24 @@ internal class ConversationNodeStore(
      * 本方法尚不改变 [loadMessageNodes] 的现有行为，接线在阶段 3 完成。
      */
     internal suspend fun loadNodeSummaries(conversationId: String): List<NodeSummary> {
-        return messageNodeDAO.getNodeSummaries(conversationId).mapNotNull { row ->
-            val id = runCatching { Uuid.parse(row.id) }.getOrNull() ?: return@mapNotNull null
-            NodeSummary(
-                id = id,
-                parentId = row.parentId?.let { runCatching { Uuid.parse(it) }.getOrNull() },
-                nodeIndex = row.nodeIndex,
-                selectIndex = row.selectIndex,
-                messageBytes = row.messageBytes,
-            )
-        }
+        // parent_id 为 null 的存量行按创建序补前驱（与 healMissingParents 同语义）：
+        // 否则「边界子树」只剩边界自己，物理清理会把边界之后的正文全删掉。
+        var previousId: Uuid? = null
+        return messageNodeDAO.getNodeSummaries(conversationId)
+            .sortedBy { it.nodeIndex }
+            .mapNotNull { row ->
+                val id = runCatching { Uuid.parse(row.id) }.getOrNull() ?: return@mapNotNull null
+                val parentId = row.parentId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+                    ?: previousId
+                previousId = id
+                NodeSummary(
+                    id = id,
+                    parentId = parentId,
+                    nodeIndex = row.nodeIndex,
+                    selectIndex = row.selectIndex,
+                    messageBytes = row.messageBytes,
+                )
+            }
     }
 
     /** 稀疏加载阶段 2：按 id 批量取正文，返回 id→节点（便于调用方按路径序重组）。 */

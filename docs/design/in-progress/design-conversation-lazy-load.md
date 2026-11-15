@@ -221,6 +221,36 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
 - 仍待办（阶段 6 选项）：引用/搜索跳转到未加载节点的「按消息 id → hydrate」入口；
   「原地改内容」若要严格覆盖，需新增 `selected_message_id` 列（DB 迁移）。
 
+**阶段 6 跳转 hydrate + 压缩前缀物理清理（2026-11-15）**：
+
+- **引用/搜索跳转**：`ChatVM.ensureNodeLoaded(nodeId)` → `ChatService.hydrateNodes`；`ChatList`
+  的 `pendingQuoteJump` 在目标缺失且仍在摘要快照里时先 `onHydrateNode(targetId)` 再返回，
+  **不清空 pending**——正文加载后 `LaunchedEffect` 重跑并完成定位。`ChatPage` 初始化时若
+  `nodeId` 未加载也先补拉再 `scrollToMessage`。这补上了阶段 4 的「跳转到未加载节点会放弃」。
+- **物理清理（独立开关，默认关）**：`Settings.pruneCompressedPrefix`（DataStore
+  `prune_compressed_prefix`），设置页模型 Tab 的自动压缩卡片末尾有独立开关，**开启需二次
+  确认**（文案明示不可回溯）。压缩落库后 `ChatService.commit()` 若开关开启则调用
+  `ConversationRepository.pruneCompressedPrefix`。
+- **删除范围**：`prefixPruneCandidates(summaries, boundary)` 取「边界节点的子树之外」的节点，
+  而不是简单 `nodeIndex < 边界`——分支树里更早的旁支同样属于被摘要覆盖的前缀，一并清理；
+  边界自身及其子树保留（检查点仍需要边界节点存在）。
+- **数据安全守卫**（任一不满足整体放弃，绝不部分删除）：边界必须在摘要路径上；候选节点的
+  `nodeIndex` 不得晚于边界（父链异常拒绝）；边界与激活叶子必须在保留集内；被删区域不能含
+  收藏节点；重写指纹必须可计算。父链异常的主要来源是存量 `parent_id = null` 行，已在
+  `ConversationNodeStore.loadNodeSummaries` 按创建序回填前驱（与 `healMissingParents` 同语义）。
+- **指纹重写**：删除后原 v2 指纹（含前缀节点序列）必然失效，用
+  `summaryAreaFingerprint(remaining, activeLeaf, boundary)` 按保留子树重算，事务内
+  `UPDATE compression_checkpoint`，避免检查点刚落库就自我失效。
+- **FTS**：`MessageFtsManager.deleteNodes` 按节点 id 先删 `message_fts_rowid` 映射再删 FTS 行
+  （分块 500，规避 SQLite 变量上限），与节点删除同事务。
+- **内存态收窄**：`commit()` 在清理成功后同时把 `messageNodes` 过滤到保留集、
+  `nodeSummaries` 换成 `remainingSummaries`（仍为稀疏模式），UI 不再持有已删节点。
+- **不可回溯**：清理掉的正文无法恢复；关闭开关只停止后续清理，不影响已删数据。导出/备份
+  仍走全量（此时已只剩保留子树）。
+- 单测新增：`prefix prune keeps boundary subtree only`（线性链 + 旁支，只删边界之外）、
+  `pruned checkpoint stays valid with rewritten fingerprint`（重写指纹后稀疏会话仍能算出
+  压缩窗口）。`ConversationSparseModeTest` 与全量单测、装机通过。
+
 ## 八、兼容与迁移
 
 - 数据库：阶段 2 无 schema 变更（仅新增查询）；若采用 `selected_message_id` 则 v72。
@@ -296,7 +326,7 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
 | 3 | 保存契约改 `saveNodeChanges`，逐点审计 | **高** | 是（需全量回归） |
 | 4 | 编辑/分支/树面板按需 hydrate | 中 | 是 |
 | 5 | 指纹摘要化 / 可选 `selected_message_id` | 低 | 是 |
-| 6 | （可选）压缩前缀物理清理 | 中高 | 独立开关 |
+| 6 | （可选）压缩前缀物理清理 | 中高 | 独立开关（已实施，默认关） |
 
 阶段 3 之前不得把 ChatVM 的节点列表改成稀疏集，否则保存会误删未加载行。
 

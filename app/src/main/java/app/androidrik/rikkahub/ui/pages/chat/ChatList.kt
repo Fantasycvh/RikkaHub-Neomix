@@ -193,6 +193,8 @@ fun ChatList(
     onConversationGoalChange: ((String?) -> Unit)? = null,
     /** 稀疏加载：「加载更早」点击（把窗口外的更早消息正文补进内存） */
     onLoadEarlierNodes: () -> Unit = {},
+    /** 稀疏加载：跳转目标不在窗口内时按节点 id 补齐正文 */
+    onHydrateNode: (Uuid) -> Unit = {},
     scrollController: ChatListScrollController? = null,
 ) {
     // 「点击消息里的图片 ⇒ 全屏后在**本会话**的图片间左右切换」：
@@ -273,6 +275,7 @@ fun ChatList(
                     onConversationSystemPromptChange = onConversationSystemPromptChange,
                     onConversationGoalChange = onConversationGoalChange,
                     onLoadEarlierNodes = onLoadEarlierNodes,
+                    onHydrateNode = onHydrateNode,
                     scrollController = scrollController ?: defaultScrollController,
                 )
                 }
@@ -321,6 +324,8 @@ private fun ChatListNormal(
     onConversationGoalChange: ((String?) -> Unit)? = null,
     /** 稀疏加载：「加载更早」点击 */
     onLoadEarlierNodes: () -> Unit = {},
+    /** 稀疏加载：跳转目标不在窗口内时按节点 id 补齐正文 */
+    onHydrateNode: (Uuid) -> Unit = {},
     scrollController: ChatListScrollController? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -526,6 +531,11 @@ private fun ChatListNormal(
             // 跨分支（P2 §7.2）：目标存在于节点集但不在激活路径 ⇒ 先切到目标所在子树
             // （服务端落到该子树最近更新叶子），保留待办，待 renderIndex（新路径）重算重试。
             // 目标已删除、或生成中（切分支被守卫拒绝）时放弃。
+            // 稀疏窗口：目标可能只是正文未加载（搜索/引用直达）⇒ 按 id 补齐，保留待办。
+            if (conversation.isSparse && conversation.nodeSummaries.any { it.id == targetId }) {
+                onHydrateNode(targetId)
+                return@LaunchedEffect
+            }
             val targetNode = conversation.messageNodes.firstOrNull {
                 it.id == targetId || it.messages.any { message -> message.id == targetId }
             }

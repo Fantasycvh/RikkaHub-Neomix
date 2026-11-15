@@ -23,6 +23,27 @@ import kotlin.uuid.Uuid
 private const val SPARSE_WINDOW_BOUNDARY = -1
 
 /**
+ * 无正文场景的摘要化指纹（压缩前缀物理清理后重写用，阶段 6）：
+ * 只看摘要路径与 selectIndex，与 [Conversation.areaFingerprintFor] 同源同格式。
+ */
+fun summaryAreaFingerprint(
+    summaries: List<NodeSummary>,
+    activeLeafNodeId: Uuid?,
+    boundaryNodeId: Uuid,
+): String? {
+    val path = summaryPathIds(summaries, activeLeafNodeId)
+    val boundaryIndex = path.indexOf(boundaryNodeId)
+    if (boundaryIndex < 0) return null
+    val byId = summaries.associateBy { it.id }
+    val builder = StringBuilder()
+    for (index in 0..boundaryIndex) {
+        val id = path[index]
+        builder.append(id).append(':').append(byId[id]?.selectIndex ?: 0).append('|')
+    }
+    return FINGERPRINT_V2_PREFIX + builder.toString().sha256()
+}
+
+/**
  * 摘要化指纹版本前缀（阶段 5）。带前缀 = `id + selectIndex` 形式，稀疏加载也能校验；
  * 无前缀 = 旧 `id + 选中消息 id` 形式（只在全量加载时校验）。
  */

@@ -2726,11 +2726,31 @@ class ChatService(
 
         // 轨迹只追加：落库新检查点（含自增 id），清理更早的检查点行（摘要已合并）
         suspend fun commit(): CompressionSummary {
-            val saved = conversationRepo.addCompressionCheckpoint(checkpoint)
+            var saved = conversationRepo.addCompressionCheckpoint(checkpoint)
             conversationRepo.trimCompressionCheckpoints(conversationId)
-            // 更新内存态：发送窗口与 UI 据此生效（不改 messageNodes——历史可回溯）
+            // 阶段 6（默认关）：物理清理被摘要覆盖的前缀节点行与搜索索引。清理会按保留子树
+            // 重写检查点指纹，并把内存态同步收窄为稀疏窗口——否则内存里仍是已删除的正文。
+            val prune = if (settings.pruneCompressedPrefix) {
+                conversationRepo.pruneCompressedPrefix(
+                    conversationId = conversationId,
+                    boundaryNodeId = boundaryNode.id,
+                    activeLeafNodeId = conversation.activeLeafNodeId,
+                )
+            } else null
+            if (prune?.fingerprint != null && prune.deletedIds.isNotEmpty()) {
+                saved = saved.copy(areaFingerprint = prune.fingerprint)
+            }
+            // 更新内存态：发送窗口与 UI 据此生效
             updateConversationState(conversationId) { latest ->
-                latest.copy(compressionSummaries = listOf(saved))
+                if (prune == null || prune.deletedIds.isEmpty()) {
+                    latest.copy(compressionSummaries = listOf(saved))
+                } else {
+                    latest.copy(
+                        compressionSummaries = listOf(saved),
+                        messageNodes = latest.messageNodes.filter { it.id !in prune.deletedIds },
+                        nodeSummaries = prune.remainingSummaries,
+                    )
+                }
             }
             return saved
         }

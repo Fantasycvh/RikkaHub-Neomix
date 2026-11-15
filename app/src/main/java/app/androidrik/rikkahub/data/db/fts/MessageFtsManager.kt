@@ -28,6 +28,9 @@ enum class MessageSearchSort(val orderBy: String) {
 
 private const val TAG = "MessageFtsManager"
 
+/** DELETE ... IN (?) 的分批上限（SQLite 变量数上限 999，留余量）。 */
+private const val SQLITE_CHUNK = 500
+
 /**
  * 建立消息索引用到的表，每次打开数据库时调用。
  *
@@ -139,6 +142,25 @@ class MessageFtsManager(private val database: AppDatabase) {
         )
         db.execSQL("DELETE FROM message_fts_rowid WHERE conversation_id = ?", arrayOf(conversationId))
     }
+
+    /** 删除指定节点的索引行（压缩前缀物理清理；节点正文已从 message_node 删除）。 */
+    suspend fun deleteNodes(conversationId: String, nodeIds: Collection<String>) =
+        database.withTransaction {
+            if (nodeIds.isEmpty()) return@withTransaction
+            nodeIds.chunked(SQLITE_CHUNK).forEach { chunk ->
+                val placeholders = chunk.joinToString(",") { "?" }
+                val args = (listOf(conversationId) + chunk).toTypedArray()
+                db.execSQL(
+                    "DELETE FROM message_fts_rowid WHERE fts_rowid IN " +
+                        "(SELECT rowid FROM message_fts WHERE conversation_id = ? AND node_id IN ($placeholders))",
+                    args
+                )
+                db.execSQL(
+                    "DELETE FROM message_fts WHERE conversation_id = ? AND node_id IN ($placeholders)",
+                    args
+                )
+            }
+        }
 
     suspend fun deleteAll() = database.withTransaction {
         db.execSQL("DELETE FROM message_fts")

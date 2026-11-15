@@ -196,6 +196,46 @@ class ConversationSparseModeTest {
         assertNull("已加载节点的选中候选变化必须让检查点失效", edited.activeCompression())
     }
 
+    // ---- 阶段 6：压缩前缀物理清理 ----
+
+    @Test
+    fun `prefix prune keeps boundary subtree only`() {
+        val a = node("a")
+        val b = node("b", a.id)
+        val c = node("c", b.id)
+        val d = node("d", c.id)
+        val sibling = node("sib", b.id) // 边界之外的旁支：同样要删
+
+        val candidates = prefixPruneCandidates(summariesOf(listOf(a, b, c, d, sibling)), c.id)
+
+        assertEquals(setOf(a.id, b.id, sibling.id), candidates)
+    }
+
+    /** 清理后按保留子树重写指纹：稀疏会话（正文只剩边界之后）仍判定检查点有效。 */
+    @Test
+    fun `pruned checkpoint stays valid with rewritten fingerprint`() {
+        val (conversation, _) = sparseConversation()
+        val boundaryId = requireNotNull(conversation.compressionSummaries.last().boundaryNodeId)
+        val boundaryUuid = Uuid.parse(boundaryId)
+        val candidates = prefixPruneCandidates(conversation.nodeSummaries, boundaryUuid)
+        val kept = conversation.nodeSummaries.filter { it.id !in candidates }
+        val fingerprint = requireNotNull(
+            summaryAreaFingerprint(kept, conversation.activeLeafNodeId, boundaryUuid)
+        )
+
+        val pruned = conversation.copy(
+            messageNodes = conversation.messageNodes.filter { it.id !in candidates },
+            nodeSummaries = kept,
+            compressionSummaries = listOf(
+                checkpoint(boundaryId).copy(areaFingerprint = fingerprint)
+            ),
+        )
+
+        assertNotNull(pruned.activeCompression())
+        assertEquals(listOf("c", "d"), pruned.pathNodes().map { it.currentMessage.toText() })
+        assertEquals(3, pruned.requestWindowMessages().size) // 摘要检查点 + 已加载的 c、d
+    }
+
     @Test
     fun `omitted count ignores already hydrated prefix`() {
         val (conversation, all) = sparseConversation()

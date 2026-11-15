@@ -437,6 +437,8 @@ class SettingsStore(
         val EXPORT_DISPLAY_CONFIG = stringPreferencesKey("export_display_config")
         val EXPORT_DISPLAY_SCHEMES = stringPreferencesKey("export_display_schemes")
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
+        // 压缩前缀物理清理（默认关；不可回溯，见 Settings.pruneCompressedPrefix）
+        val PRUNE_COMPRESSED_PREFIX = booleanPreferencesKey("prune_compressed_prefix")
         val CONTEXT_IMAGE_LIMIT = intPreferencesKey("context_image_limit")
         // 自定义压缩配置档（用户命名、可增改删；单 key 存 JSON 列表，与 modeInjections 同款）
         val COMPRESS_PRESETS = stringPreferencesKey("compress_presets")
@@ -693,6 +695,7 @@ class SettingsStore(
                 } ?: emptyList(),
                 autoCompressTargetTokens = preferences[AUTO_COMPRESS_TARGET_TOKENS]
                     ?: DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
+                pruneCompressedPrefix = preferences[PRUNE_COMPRESSED_PREFIX] ?: false,
                 compressPresets = preferences[COMPRESS_PRESETS]?.let {
                     JsonInstant.decodeFromString<List<CompressPreset>>(it)
                 } ?: emptyList(),
@@ -1001,6 +1004,7 @@ class SettingsStore(
             preferences[EXPORT_DISPLAY_CONFIG] = JsonInstant.encodeToString(settings.exportDisplayConfig)
             preferences[EXPORT_DISPLAY_SCHEMES] = JsonInstant.encodeToString(settings.exportDisplaySchemes)
             preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
+            preferences[PRUNE_COMPRESSED_PREFIX] = settings.pruneCompressedPrefix
             preferences[COMPRESS_PRESETS] = JsonInstant.encodeToString(settings.compressPresets)
             preferences[IMPORTED_SOURCES] = JsonInstant.encodeToString(settings.importedSources)
             preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled

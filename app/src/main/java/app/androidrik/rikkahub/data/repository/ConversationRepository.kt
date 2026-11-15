@@ -32,8 +32,22 @@ import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.buildConversationLoadWindow
 import app.androidrik.rikkahub.data.model.summaryPathIds
+import app.androidrik.rikkahub.data.model.prefixPruneCandidates
+import app.androidrik.rikkahub.data.model.summaryAreaFingerprint
+import app.androidrik.rikkahub.data.model.NodeSummary
+import android.util.Log
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlin.uuid.Uuid
+
+/** 压缩前缀物理清理的结果；[deletedIds] 为空且 [fingerprint] 为 null 表示「无需清理」。 */
+data class PrefixPruneResult(
+    val deletedIds: Set<Uuid>,
+    val remainingSummaries: List<NodeSummary>,
+    val fingerprint: String?,
+)
+
+/** 日志 TAG：沿用历史名（诊断脚本按它 grep），不随类拆分改名。 */
+private const val TAG = "ConversationRepository"
 
 class ConversationRepository(
     private val conversationDAO: ConversationDAO,
@@ -376,6 +390,61 @@ class ConversationRepository(
     /** 按 id 补齐正文（稀疏加载的 hydrate；返回顺序不保证，调用方按摘要序重排）。 */
     suspend fun loadNodesByIds(conversationId: Uuid, nodeIds: Collection<Uuid>): List<MessageNode> =
         nodeStore.loadNodeBodies(conversationId.toString(), nodeIds.toList()).values.toList()
+
+    /**
+     * **压缩前缀物理清理**（阶段 6，`Settings.pruneCompressedPrefix` 开启时调用）：
+     * 删除「边界节点子树之外」的节点行与 FTS 行，并按保留子树重写检查点指纹。
+     *
+     * 安全守卫（任一不满足即整体放弃，绝不部分删除）：
+     * - 边界必须在摘要路径上，且激活叶子仍在保留集合内；
+     * - 被删区域不能含收藏节点（删除会留下悬空收藏）；
+     * - 重写指纹必须可计算（否则检查点会立刻自我失效，等于静默丢上下文）。
+     */
+    suspend fun pruneCompressedPrefix(
+        conversationId: Uuid,
+        boundaryNodeId: Uuid,
+        activeLeafNodeId: Uuid?,
+    ): PrefixPruneResult? {
+        val summaries = nodeStore.loadNodeSummaries(conversationId.toString())
+        if (summaries.isEmpty()) return null
+        // 边界必须在摘要路径上（检查点确实覆盖前缀）；否则整批放弃。
+        if (boundaryNodeId !in summaryPathIds(summaries, activeLeafNodeId)) return null
+        val boundaryIndex = summaries.firstOrNull { it.id == boundaryNodeId }?.nodeIndex ?: return null
+        val indexById = summaries.associate { it.id to it.nodeIndex }
+        val candidates = prefixPruneCandidates(summaries, boundaryNodeId)
+        if (candidates.any { (indexById[it] ?: Int.MAX_VALUE) > boundaryIndex }) {
+            // 出现「比边界更晚却不在其子树」的节点 = 父链异常，拒绝清理（宁可留数据）。
+            Log.w(TAG, "pruneCompressedPrefix skipped: inconsistent tree (conv=$conversationId)")
+            return null
+        }
+        if (candidates.isEmpty()) return PrefixPruneResult(emptySet(), summaries, null)
+        val remaining = summaries.filter { it.id !in candidates }
+        val remainingIds = remaining.mapTo(HashSet()) { it.id }
+        if (boundaryNodeId !in remainingIds) return null
+        if (activeLeafNodeId != null && activeLeafNodeId !in remainingIds) return null
+        val favoriteIds = favoriteDAO.getFavoriteNodeIdsOfConversation(conversationId.toString())
+            .mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
+        if (favoriteIds.any { it in candidates }) {
+            Log.w(TAG, "pruneCompressedPrefix skipped: favorited node in prefix (conv=$conversationId)")
+            return null
+        }
+        val fingerprint = summaryAreaFingerprint(remaining, activeLeafNodeId, boundaryNodeId)
+            ?: return null
+        database.withTransaction {
+            messageNodeDAO.deleteByIds(conversationId.toString(), candidates.map { it.toString() })
+            messageFtsManager.deleteNodes(conversationId.toString(), candidates.map { it.toString() })
+            checkpointDAO.updateAreaFingerprint(
+                conversationId = conversationId.toString(),
+                boundaryNodeId = boundaryNodeId.toString(),
+                fingerprint = fingerprint,
+            )
+        }
+        Log.i(
+            TAG,
+            "pruneCompressedPrefix: removed ${candidates.size}/${summaries.size} nodes (conv=$conversationId)",
+        )
+        return PrefixPruneResult(candidates, remaining, fingerprint)
+    }
 
     suspend fun existsConversationById(uuid: Uuid): Boolean {
         return conversationDAO.existsById(uuid.toString())

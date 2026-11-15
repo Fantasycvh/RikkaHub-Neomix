@@ -1293,6 +1293,10 @@
   <string name="compress_preset_values">Retain %1$d%%, summary %2$d tokens</string>
   <string name="compress_preset_range_hint">Range: %1$d–%2$d</string>
   <string name="setting_model_page_auto_compress_hint">Editing, regenerating, deleting or switching the branch of a compressed message cancels compression</string>
+  <string name="setting_model_page_prune_compressed_prefix">Delete compressed history</string>
+  <string name="setting_model_page_prune_compressed_prefix_desc">Permanently removes messages before the checkpoint after each compression. Their text is kept only in the summary; exporting and the tree view will no longer include them.</string>
+  <string name="setting_model_page_prune_compressed_prefix_confirm_title">Delete compressed history permanently?</string>
+  <string name="setting_model_page_prune_compressed_prefix_confirm_message">This cannot be undone. Messages before the compression boundary are deleted from the database (except when they contain favorites); only the summary remains.</string>
   <string name="setting_model_page_chat_model_desc">Global default chat model</string>
   <string name="setting_model_page_fallback_model">Default fallback model</string>
   <string name="setting_model_page_fallback_model_desc">Used when the assistant has no fallback configured and the primary model fails after retries</string>
