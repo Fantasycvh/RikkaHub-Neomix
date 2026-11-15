@@ -488,6 +488,8 @@ private fun ChatPageContent(
     val context = LocalContext.current
     val resources = LocalResources.current
     val workspaceRepository: WorkspaceRepository = koinInject()
+    // 树面板的轻量树信息（稀疏会话）；全量会话为空列表，面板按内存节点渲染
+    val treeNodes by vm.treeNodes.collectAsStateWithLifecycle()
 
     /**
      * 执行重生成。scope B = **非破坏分支**（树形分支 P1）：旧时间线保留、新回复开新子树，
@@ -601,8 +603,9 @@ private fun ChatPageContent(
                         previewMode = !previewMode
                     },
                     onShowTreeView = {
-                        // 树面板要画全部分支：稀疏会话先补齐正文（摘要无法渲染节点预览）。
-                        vm.hydrateAllNodes()
+                        // 树面板：稀疏会话用轻量树信息（SQL 抽取角色/预览/候选数）渲染，
+                        // 不再全量补齐正文；未加载节点的分叉/剪枝入口置灰（需正文）。
+                        vm.prepareTreeView()
                         showTreeSheet = true
                     },
                     onExport = {
@@ -1062,6 +1065,7 @@ private fun ChatPageContent(
         if (showTreeSheet) {
             ConversationTreeSheet(
                 conversation = conversation,
+                sparseTree = treeNodes,
                 onDismissRequest = { showTreeSheet = false },
                 onSwitchToNode = { nodeId ->
                     showTreeSheet = false

@@ -705,9 +705,15 @@ class ChatService(
     suspend fun hydrateAll(conversationId: Uuid) {
         val session = sessions[conversationId] ?: return
         if (!session.state.value.isSparse || session.isGenerating) return
-        val full = conversationRepo.getConversationById(conversationId) ?: return
+        // 全量载入的解码/映射在 Default 上跑：入口多在 Main（树面板、压缩、分叉），不卸载会卡 UI
+        val full = withContext(Dispatchers.Default) {
+            conversationRepo.getConversationById(conversationId)
+        } ?: return
         updateConversation(conversationId, full)
     }
+
+    /** 树面板：稀疏会话的轻量树信息（不解码正文）。 */
+    suspend fun loadNodeTreeInfo(conversationId: Uuid) = conversationRepo.loadNodeTreeInfo(conversationId)
 
     /**
      * 需要完整节点集的操作入口：稀疏且 [available] 不成立时先全量补齐，再返回最新内存态。

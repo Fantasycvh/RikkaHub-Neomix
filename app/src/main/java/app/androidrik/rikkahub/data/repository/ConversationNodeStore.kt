@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteBlobTooBigException
 import android.util.Log
 import androidx.room.withTransaction
 import kotlinx.coroutines.CancellationException
+import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
@@ -13,6 +14,7 @@ import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.ai.prompts.filterOutCheckpointMessages
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.NodeSummary
+import app.androidrik.rikkahub.data.model.NodeTreeInfo
 import app.androidrik.rikkahub.data.model.healMissingParents
 import app.androidrik.rikkahub.data.model.repairCorruptedCandidates
 import app.androidrik.rikkahub.utils.JsonInstant
@@ -151,6 +153,27 @@ internal class ConversationNodeStore(
                     nodeIndex = row.nodeIndex,
                     selectIndex = row.selectIndex,
                     messageBytes = row.messageBytes,
+                )
+            }
+    }
+
+    /** 稀疏加载（树面板）：轻量树信息，parent_id 缺失行同样按创建序回填。 */
+    internal suspend fun loadNodeTreeInfo(conversationId: String): List<NodeTreeInfo> {
+        var previousId: Uuid? = null
+        return messageNodeDAO.getNodeTreeRows(conversationId)
+            .sortedBy { it.nodeIndex }
+            .mapNotNull { row ->
+                val id = runCatching { Uuid.parse(row.id) }.getOrNull() ?: return@mapNotNull null
+                val parentId = row.parentId?.let { runCatching { Uuid.parse(it) }.getOrNull() }
+                    ?: previousId
+                previousId = id
+                NodeTreeInfo(
+                    id = id,
+                    parentId = parentId,
+                    // JSON 里的 role 是 @SerialName 小写（user/assistant/…），统一成枚举名给 UI 比对
+                    role = MessageRole.fromValueOrNull(row.role)?.name,
+                    preview = row.preview,
+                    candidateCount = row.candidateCount,
                 )
             }
     }

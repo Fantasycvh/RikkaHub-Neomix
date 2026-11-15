@@ -16,6 +16,19 @@ data class NodeSummary(
 )
 
 /**
+ * 树面板渲染用的轻量节点信息（稀疏会话专用）：拓扑 + 选中消息的角色/预览 + 候选数，
+ * 由 SQL 的 `json_extract` 直接取得，不解码整份 messages，因此打开树面板无需全量载入正文。
+ * 正文未加载的节点 [role] 可能为空（选中消息首段非文本时 [preview] 也为空）。
+ */
+data class NodeTreeInfo(
+    val id: Uuid,
+    val parentId: Uuid?,
+    val role: String?,
+    val preview: String,
+    val candidateCount: Int,
+)
+
+/**
  * 一次稀疏加载的窗口计划。
  *
  * @property pathIds root→activeLeaf 的完整路径（摘要级，不含正文）

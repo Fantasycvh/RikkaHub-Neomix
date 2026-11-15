@@ -40,6 +40,7 @@ import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.NodeTreeInfo
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.NodeFavoriteTarget
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -551,10 +552,19 @@ class ChatVM(
         }
     }
 
-    /** 稀疏加载：需要整棵树的操作/面板打开前补齐正文。 */
-    fun hydrateAllNodes() {
+    private val _treeNodes = MutableStateFlow<List<NodeTreeInfo>>(emptyList())
+
+    /** 树面板的轻量树信息：稀疏会话用它渲染，打开面板无需全量载入正文。 */
+    val treeNodes: StateFlow<List<NodeTreeInfo>> = _treeNodes.asStateFlow()
+
+    /** 树面板打开前准备数据：全量会话直接返回空（面板按内存节点渲染）。 */
+    fun prepareTreeView() {
+        if (!conversation.value.isSparse) {
+            _treeNodes.value = emptyList()
+            return
+        }
         viewModelScope.launch {
-            chatService.hydrateAll(_conversationId)
+            _treeNodes.value = chatService.loadNodeTreeInfo(_conversationId)
         }
     }
 

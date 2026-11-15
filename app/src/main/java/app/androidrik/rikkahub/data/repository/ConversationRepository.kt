@@ -37,6 +37,7 @@ import app.androidrik.rikkahub.data.model.summaryPathIds
 import app.androidrik.rikkahub.data.model.prefixPruneCandidates
 import app.androidrik.rikkahub.data.model.summaryAreaFingerprint
 import app.androidrik.rikkahub.data.model.NodeSummary
+import app.androidrik.rikkahub.data.model.NodeTreeInfo
 import android.util.Log
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlin.uuid.Uuid
@@ -373,6 +374,15 @@ class ConversationRepository(
         )
         return conversation
     }
+
+    /**
+     * 树面板：稀疏会话的轻量树信息（拓扑 + 角色/预览 + 候选数），SQL 侧抽取，不解码整份正文。
+     * 返回列表按创建序；在 Default 上执行，避免 7000 行的 JSON 抽取占住主线程。
+     */
+    suspend fun loadNodeTreeInfo(conversationId: Uuid): List<NodeTreeInfo> =
+        withContext(Dispatchers.Default) {
+            nodeStore.loadNodeTreeInfo(conversationId.toString())
+        }
 
     private suspend fun loadConversationSparseOrFull(uuid: Uuid): Conversation? =
         // 打开会话由 ChatVM init（Main）触发。Room 的 suspend 查询本身在查询线程执行，但续体与

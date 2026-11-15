@@ -34,6 +34,19 @@ data class MessageNodeSummaryRow(
     @ColumnInfo("message_bytes") val messageBytes: Long,
 )
 
+/**
+ * 树面板用的轻量投影：拓扑 + 选中消息的角色/首段文本 + 候选数。
+ * 用 JSON1 在 SQL 侧抽取，避免为画树解码整份 messages（稀疏会话不再全量载入）。
+ */
+data class MessageNodeTreeRow(
+    val id: String,
+    @ColumnInfo("parent_id") val parentId: String?,
+    @ColumnInfo("node_index") val nodeIndex: Int,
+    @ColumnInfo("candidate_count") val candidateCount: Int,
+    val role: String?,
+    val preview: String,
+)
+
 @Dao
 interface MessageNodeDAO {
     /** 节点总数（统计页「总消息数」）。只数行，不碰 messages JSON。 */
@@ -59,6 +72,19 @@ interface MessageNodeDAO {
             "FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index ASC"
     )
     suspend fun getNodeSummaries(conversationId: String): List<MessageNodeSummaryRow>
+
+    /**
+     * 稀疏加载（树面板）：不取 messages 全文，只用 JSON1 抽取选中消息的角色与首段文本。
+     * `select_index` 越界时 `json_extract` 返回 NULL，`json_array_length` 仍给候选数。
+     */
+    @Query(
+        "SELECT id, parent_id, node_index, " +
+            "json_array_length(CASE WHEN json_valid(messages) THEN messages ELSE '[]' END) AS candidate_count, " +
+            "json_extract(messages, '\$[' || select_index || '].role') AS role, " +
+            "COALESCE(json_extract(messages, '\$[' || select_index || '].parts[0].text'), '') AS preview " +
+            "FROM message_node WHERE conversation_id = :conversationId ORDER BY node_index ASC"
+    )
+    suspend fun getNodeTreeRows(conversationId: String): List<MessageNodeTreeRow>
 
     /** 稀疏加载：按 id 批量取正文。调用方负责把 id 分批到 SQLite 变量上限以内。 */
     @Query("SELECT * FROM message_node WHERE id IN (:nodeIds)")

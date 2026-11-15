@@ -335,6 +335,24 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
 - 滚动未回归：24.3% / p50 22 ms / p90 48 ms，与 9.2 的 22.7% / 20 ms / 46 ms 在 ±10pp 噪声内；
   全量单测通过。
 
+### 9.4 树面板摘要化 + Lazy 化（2026-11-15）
+
+- **问题**：稀疏会话打开树面板前会 `hydrateAll`，把懒加载的收益整个抵消（7000 节点全量
+  载入 + 会话退出稀疏态）；同时树面板用 `Column + verticalScroll` 一次性组合全部行，
+  全量会话 7000 节点（每行两个 IconButton）实测 **ANR**。
+- **改法**：
+  - 新增 `MessageNodeDAO.getNodeTreeRows`：用 JSON1 在 SQL 侧抽 `json_array_length(messages)`
+    与 `json_extract(messages, '$[select_index].role / .parts[0].text')`，返回
+    `NodeTreeInfo`（拓扑 + 角色 + 预览 + 候选数），7000 行不解码正文；`role` 统一转成枚举名
+    （`MessageRole.fromValueOrNull`，JSON 里是 `@SerialName` 小写）。
+  - `ConversationTreeSheet` 稀疏时按 `sparseTree` 渲染，未加载行隐藏分叉/剪枝（缺正文），
+    点选分支仍走 `hydrateAll`（已卸载 Default）。
+  - 行列表改 `LazyColumn`（`key = node id`）；面板内无 TextField，不涉 IME 宿主坑。
+  - `ChatService.hydrateAll` 的全量载入移入 `Dispatchers.Default`。
+- **实测（PJX110）**：稀疏会话打开树面板**无全量载入**（logcat 无 `loadMessageNodes`），
+  7000 行正常渲染、无 ANR；点选未加载分支触发全量补齐 492 ms，界面不卡；全量会话树面板
+  分叉/剪枝图标正常、无 ANR。
+
 ## 十、测试数据与验证
 
 ### 10.1 夹具生成器
@@ -385,5 +403,8 @@ getNodesBefore` 已加入 DAO；`ConversationLoadWindow` 纯函数按「压缩�
 
 1. 窗口预算按节点数还是字节数？建议双阈值，字节优先（现有实测表明字节量才是驱动因素）。
 2. 摘要 `select_index` 是否足以替代指纹中的消息 id？需补一个「原地改内容」的回归用例。
-3. 树面板是否需要显示未加载分支的消息预览？建议首版只显示角色/时间/摘要。
+3. ~~树面板是否需要显示未加载分支的消息预览？~~ **已解决（阶段 9）**：用 SQL 的
+   `json_extract`/`json_array_length` 直接取角色、首段文本与候选数（[NodeTreeInfo]），
+   树面板不再全量载入；未加载行的分叉/剪枝入口隐藏（需正文），点选分支仍走 `hydrateAll`
+   （已卸载到 Default，实测 7000 节点全量补齐 492 ms、不卡 UI）。
 4. 是否把「加载更早」做成自动触底加载还是显式按钮？建议显式按钮，避免长会话误触发全量加载。
