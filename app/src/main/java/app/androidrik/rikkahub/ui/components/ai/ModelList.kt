@@ -838,7 +838,9 @@ private fun ModelItem(
                         Text(
                             text = model.displayName,
                             style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1,
+                            // 最多两行：长模型名/ID（如带域名的中转站模型）单行会被尾部图标挤到只剩
+                            // 十几个字符；两行仍截断，避免个别超长名把卡片撑得过高
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
 
