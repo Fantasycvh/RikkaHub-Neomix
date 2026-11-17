@@ -29,6 +29,17 @@ enum class ImportFormat {
 
     /** DeepSeek 官方导出（多个会话，含思考链；图片按条目存在性尽力还原）。 */
     DEEPSEEK,
+
+    /**
+     * **原版（上游 me.rerere）RikkaHub** 的整库备份 zip。
+     *
+     * 与 [LOCAL_BACKUP] 走同一条恢复管线（staged 换库 + settings 迁移），差异只在入口：
+     * 上游包没有 manifest.json（inspect 返回 manifest=null、sections 按条目推断），
+     * settings 经 [app.androidrik.rikkahub.data.datastore.migration.SettingsJsonMigrator]
+     * 迁移、不认识的多态子类由 SettingsCompatDecoder 逐条降级。拆成独立卡片是为了
+     * 可发现性——原版用户迁入时不用猜「备份文件导入」收不收原版的包。
+     */
+    UPSTREAM,
 }
 
 /**
@@ -81,17 +92,8 @@ val ImportFormatSpecs: List<ImportFormatSpec> = listOf(
         needsPrePickConfirm = true,   // 覆盖且不可逆 → 先确认
         needsRestartDialog = true,
     ),
-    ImportFormatSpec(
-        format = ImportFormat.CHATBOX,
-        // v2 起是 zip（manifest.json + sessions/ + resources/）；v1 的单体 JSON 已不支持
-        mimes = listOf("application/zip"),
-        titleRes = R.string.backup_page_import_from_chatbox,
-        descRes = R.string.backup_page_import_chatbox_desc,
-        // 会话需归属到某个助手 → 本轮补上这一缺口（原先隐式用当前助手）
-        needsAssistant = true,
-        needsPrePickConfirm = false,
-        needsRestartDialog = true,
-    ),
+    // 「从其他APP导入」分组按此列表顺序渲染（filterNot 掉 CONVERSATION/LOCAL_BACKUP）：
+    // DeepSeek → 原版 RikkaHub → ChatBox
     ImportFormatSpec(
         format = ImportFormat.DEEPSEEK,
         mimes = listOf("application/zip"),
@@ -102,6 +104,26 @@ val ImportFormatSpecs: List<ImportFormatSpec> = listOf(
         needsPrePickConfirm = false,
         // 只追加会话，不动设置/DB 结构 → 无需重启
         needsRestartDialog = false,
+    ),
+    ImportFormatSpec(
+        format = ImportFormat.UPSTREAM,
+        mimes = listOf("application/zip"),
+        titleRes = R.string.backup_page_import_from_upstream,
+        descRes = R.string.backup_page_import_upstream_desc,
+        needsAssistant = false,
+        needsPrePickConfirm = true,   // 整库覆盖且不可逆 → 先确认（对齐 LOCAL_BACKUP）
+        needsRestartDialog = true,
+    ),
+    ImportFormatSpec(
+        format = ImportFormat.CHATBOX,
+        // v2 起是 zip（manifest.json + sessions/ + resources/）；v1 的单体 JSON 已不支持
+        mimes = listOf("application/zip"),
+        titleRes = R.string.backup_page_import_from_chatbox,
+        descRes = R.string.backup_page_import_chatbox_desc,
+        // 会话需归属到某个助手 → 本轮补上这一缺口（原先隐式用当前助手）
+        needsAssistant = true,
+        needsPrePickConfirm = false,
+        needsRestartDialog = true,
     ),
 )
 

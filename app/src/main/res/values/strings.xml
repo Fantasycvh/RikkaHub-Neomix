@@ -314,6 +314,8 @@
   <string name="backup_page_import_chatbox_done">Imported %1$s conversation(s) and %2$s provider(s).</string>
   <string name="backup_page_import_from_chatbox">Import from ChatBox</string>
   <string name="backup_page_import_from_deepseek">Import from DeepSeek</string>
+  <string name="backup_page_import_from_upstream">Import from original RikkaHub</string>
+  <string name="backup_page_import_upstream_desc">Full backup exported by the original RikkaHub app (overwrite restore, restart required)</string>
   <string name="backup_page_import_deepseek_desc">Import chat history exported from deepseek.com (.zip)</string>
   <string name="backup_page_import_deepseek_title">Import DeepSeek export</string>
   <string name="backup_page_import_deepseek_message">Every conversation in this archive is added to the selected assistant. Conversations already imported are skipped automatically.</string>

@@ -80,8 +80,8 @@ fun ImportExportTab(
     // 当前正在进行的导入格式（卡片 spinner 与 SAF 回调分发都用它）。
     // 用类型化的 ImportFormat 取代原先的 `importType: String`（stringly-typed，易拼错且分支散落）
     var pendingFormat by remember { mutableStateOf<ImportFormat?>(null) }
-    // 整库恢复：**选文件之前**的覆盖确认（不可逆）
-    var pendingLocalImport by remember { mutableStateOf(false) }
+    // 整库恢复（LOCAL_BACKUP / UPSTREAM）：**选文件之前**的覆盖确认（不可逆），值 = 待导入格式
+    var pendingFullRestore by remember { mutableStateOf<ImportFormat?>(null) }
     // 整库恢复模式：首个确认框选定（默认覆盖），随选文件流程带到 restoreFromLocalFile
     var pendingRestoreMode by remember { mutableStateOf(RestoreMode.OVERWRITE) }
     // 「对话归档」导入：解析出的预览（非空 = 待确认）与其重复导入记录
@@ -96,6 +96,8 @@ fun ImportExportTab(
     var deepSeekResult by remember { mutableStateOf<DeepSeekRestoreResult?>(null) }
     // 批次3 恢复预览：已巡检的本地备份（临时文件 + 巡检结果），等待用户在预览卡确认
     var pendingLocalRestore by remember { mutableStateOf<Pair<File, BackupInspection>?>(null) }
+    // 上面这份备份属于哪种整库导入（LOCAL_BACKUP 或 UPSTREAM），确认后用于收尾分发
+    var pendingRestoreFormat by remember { mutableStateOf(ImportFormat.LOCAL_BACKUP) }
 
     fun toastSuccess() = toaster.show(
         resources.getString(R.string.backup_page_restore_success),
@@ -160,16 +162,18 @@ fun ImportExportTab(
     suspend fun runImport(format: ImportFormat, uri: Uri) {
         val tempFile = context.copyUriToTempFile(uri, "zip")
         when (format) {
-            ImportFormat.LOCAL_BACKUP -> {
-                // 批次3 预览（design-backup-manifest-and-safety §3.5）：先巡检（ZipFile 随机
-                // 访问，不全量解压）→ 预览卡 → 用户确认后才真正恢复。文件生命周期移交给
-                // 预览弹窗（确认后恢复、取消即删）。
+            // 整库恢复（本应用备份 / 原版上游备份）：同一条管线，入口卡片不同。
+            // 批次3 预览（design-backup-manifest-and-safety §3.5）：先巡检（ZipFile 随机
+            // 访问，不全量解压）→ 预览卡 → 用户确认后才真正恢复。文件生命周期移交给
+            // 预览弹窗（确认后恢复、取消即删）。上游包无 manifest，巡检按 legacy 推断 sections。
+            ImportFormat.LOCAL_BACKUP, ImportFormat.UPSTREAM -> {
                 val inspection = try {
                     vm.inspectLocalBackup(tempFile)
                 } catch (e: Throwable) {
                     tempFile.delete()
                     throw e
                 }
+                pendingRestoreFormat = format
                 pendingLocalRestore = tempFile to inspection
             }
 
@@ -375,7 +379,7 @@ fun ImportExportTab(
                     spec = specOf(ImportFormat.LOCAL_BACKUP),
                     busy = isRestoring && pendingFormat == ImportFormat.LOCAL_BACKUP,
                     enabled = !isRestoring && !taskBusy,
-                    onClick = { pendingLocalImport = true },
+                    onClick = { pendingFullRestore = ImportFormat.LOCAL_BACKUP },
                 )
             }
         }
@@ -514,16 +518,16 @@ fun ImportExportTab(
         )
     }
 
-    if (pendingLocalImport) {
+    // 整库恢复入口确认（LOCAL_BACKUP / UPSTREAM 共用）：模式在此选定，随选文件流程带到 restoreFromLocalFile
+    pendingFullRestore?.let { fullRestoreFormat ->
         RestoreConfirmDialog(
             items = settings.backupItems,
             onConfirm = { mode ->
-                // 模式在首个确认框选定，随选文件流程带到 restoreFromLocalFile
                 pendingRestoreMode = mode
-                pendingLocalImport = false
-                launchPicker(ImportFormat.LOCAL_BACKUP)
+                pendingFullRestore = null
+                launchPicker(fullRestoreFormat)
             },
-            onDismissRequest = { pendingLocalImport = false },
+            onDismissRequest = { pendingFullRestore = null },
         )
     }
 
@@ -537,7 +541,7 @@ fun ImportExportTab(
                     isRestoring = true
                     try {
                         val outcome = vm.restoreFromLocalFile(file, pendingRestoreMode)
-                        finishImport(ImportFormat.LOCAL_BACKUP)
+                        finishImport(pendingRestoreFormat)
                         showSettingsDroppedWarning(outcome.settingsWarnings)
                         if (outcome.mergedConversations > 0 || outcome.skippedConversations > 0) {
                             toaster.show(

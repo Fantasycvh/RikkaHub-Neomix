@@ -323,6 +323,8 @@
   <string name="backup_page_import_chatbox_done">已导入 %1$s 个对话、%2$s 个提供商。</string>
   <string name="backup_page_import_from_chatbox">从ChatBox导入</string>
   <string name="backup_page_import_from_deepseek">从 DeepSeek 导入</string>
+  <string name="backup_page_import_from_upstream">从原版 RikkaHub 导入</string>
+  <string name="backup_page_import_upstream_desc">导入原版（me.rerere）导出的整库备份包，覆盖式恢复并需重启</string>
   <string name="backup_page_import_deepseek_desc">导入从 deepseek.com 导出的聊天记录（.zip）</string>
   <string name="backup_page_import_deepseek_title">导入 DeepSeek 导出包</string>
   <string name="backup_page_import_deepseek_message">压缩包中的会话都会归属到所选助手；已导入过的会话会自动跳过。</string>
