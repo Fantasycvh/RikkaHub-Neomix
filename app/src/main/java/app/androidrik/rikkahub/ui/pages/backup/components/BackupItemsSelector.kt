@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.sync.BackupCategory
+import app.androidrik.rikkahub.data.sync.BackupFileGroup
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupScope
 import com.composables.icons.lucide.ChevronDown
@@ -97,7 +98,10 @@ private fun BackupScopeAdvancedSection(
                 Text(text = stringResource(R.string.backup_page_scope_advanced))
                 val excludedNames = BackupCategory.entries
                     .filter { it in scope.excluded && it.isSettingsCategory }
-                    .map { backupCategoryLabel(it) }
+                    .map { backupCategoryLabel(it) } +
+                    BackupFileGroup.entries
+                        .filter { it in scope.excludedFileGroups }
+                        .map { backupFileGroupLabel(it) }
                 val summary = excludedNames.joinToString(", ").takeIf { it.isNotEmpty() }
                     ?: stringResource(R.string.backup_page_scope_full)
                 Text(
@@ -115,6 +119,7 @@ private fun BackupScopeAdvancedSection(
         }
         AnimatedVisibility(visible = expanded) {
             Column {
+                // 设置类别（v4 起细分为 12 个）
                 BackupCategory.entries.filter { it.isSettingsCategory }.forEach { category ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -129,6 +134,26 @@ private fun BackupScopeAdvancedSection(
                         Text(text = backupCategoryLabel(category))
                     }
                 }
+                // 文件分组（v4：FILES 内部按组排除；打包/恢复两侧同一份目录→组映射）
+                Text(
+                    text = stringResource(R.string.backup_page_scope_file_groups),
+                    style = MaterialTheme.typography.labelLarge,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                BackupFileGroup.entries.forEach { group ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = scope.includesFileGroup(group),
+                            onCheckedChange = { checked ->
+                                onScopeChange(scope.withFileGroup(group, checked))
+                            },
+                        )
+                        Text(text = backupFileGroupLabel(group))
+                    }
+                }
                 Text(
                     text = stringResource(R.string.backup_page_scope_hint),
                     style = MaterialTheme.typography.bodySmall,
@@ -139,11 +164,23 @@ private fun BackupScopeAdvancedSection(
     }
 }
 
-private val BackupCategory.isSettingsCategory: Boolean
-    get() = this == BackupCategory.ASSISTANTS ||
-        this == BackupCategory.PROVIDERS ||
-        this == BackupCategory.DISPLAY ||
-        this == BackupCategory.ABOUT
+internal val BackupCategory.isSettingsCategory: Boolean
+    get() = when (this) {
+        BackupCategory.ASSISTANTS,
+        BackupCategory.PROVIDERS,
+        BackupCategory.DISPLAY,
+        BackupCategory.SPEECH,
+        BackupCategory.SEARCH,
+        BackupCategory.MCP,
+        BackupCategory.REMOTE_BACKUP,
+        BackupCategory.TOOLS,
+        BackupCategory.MEMORY,
+        BackupCategory.TRANSLATE,
+        BackupCategory.WEB_SERVER,
+        BackupCategory.ABOUT,
+        -> true
+        else -> false
+    }
 
 /** settings 类别的展示名（scope 编辑 + 恢复提示共用单一来源） */
 @Composable
@@ -152,11 +189,30 @@ fun backupCategoryLabel(category: BackupCategory): String = stringResource(
         BackupCategory.ASSISTANTS -> R.string.backup_page_scope_assistants
         BackupCategory.PROVIDERS -> R.string.backup_page_scope_providers
         BackupCategory.DISPLAY -> R.string.backup_page_scope_display
+        BackupCategory.SPEECH -> R.string.backup_page_scope_category_speech
+        BackupCategory.SEARCH -> R.string.backup_page_scope_category_search
+        BackupCategory.MCP -> R.string.backup_page_scope_category_mcp
+        BackupCategory.REMOTE_BACKUP -> R.string.backup_page_scope_category_remote_backup
+        BackupCategory.TOOLS -> R.string.backup_page_scope_category_tools
+        BackupCategory.MEMORY -> R.string.backup_page_scope_category_memory
+        BackupCategory.TRANSLATE -> R.string.backup_page_scope_category_translate
+        BackupCategory.WEB_SERVER -> R.string.backup_page_scope_category_web_server
         BackupCategory.ABOUT -> R.string.backup_page_scope_about
         // 归档三档不进高级组；标签仅用于恢复提示的完整性
         BackupCategory.DATABASE -> R.string.backup_page_chat_records
         BackupCategory.FILES -> R.string.backup_page_files
         BackupCategory.WORKSPACE_FILES -> R.string.backup_page_workspace_files
+    }
+)
+
+/** 文件分组的展示名（scope 编辑 + 恢复提示共用单一来源） */
+@Composable
+fun backupFileGroupLabel(group: BackupFileGroup): String = stringResource(
+    when (group) {
+        BackupFileGroup.MEDIA -> R.string.backup_page_scope_file_group_media
+        BackupFileGroup.PROFILE -> R.string.backup_page_scope_file_group_profile
+        BackupFileGroup.SKILLS_FONTS -> R.string.backup_page_scope_file_group_skills_fonts
+        BackupFileGroup.MISC -> R.string.backup_page_scope_file_group_misc
     }
 )
 

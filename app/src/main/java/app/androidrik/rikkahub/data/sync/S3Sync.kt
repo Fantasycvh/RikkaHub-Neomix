@@ -95,7 +95,13 @@ class S3Sync(
             .sortedByDescending { it.lastModified }
     }
 
-    suspend fun restoreFromS3(config: S3Config, item: S3BackupItem, mode: RestoreMode = RestoreMode.OVERWRITE, onProgress: (BackupProgress) -> Unit = {}) =
+    suspend fun restoreFromS3(
+        config: S3Config,
+        item: S3BackupItem,
+        mode: RestoreMode = RestoreMode.OVERWRITE,
+        scopeOverride: BackupScope? = null,
+        onProgress: (BackupProgress) -> Unit = {},
+    ) =
         withContext(Dispatchers.IO) {
             val client = getS3Client(config)
             val backupFile = File(context.cacheDir, item.displayName)
@@ -110,7 +116,7 @@ class S3Sync(
                 Log.i(TAG, "restoreFromS3: Downloaded ${backupFile.length().fileSizeToString()}")
 
                 // Restore from backup file
-                restoreFromBackupFile(backupFile, config, mode, onProgress)
+                restoreFromBackupFile(backupFile, config, mode, scopeOverride, onProgress)
             } finally {
                 // Clean up temp file
                 if (backupFile.exists()) {
@@ -135,13 +141,15 @@ class S3Sync(
         backupFile: File,
         config: S3Config,
         mode: RestoreMode,
+        scopeOverride: BackupScope?,
         onProgress: (BackupProgress) -> Unit,
     ): RestoreOutcome =
         archiveEngine.restoreFromBackupFile(
             backupFile,
             settingsStore.settingsFlow.value.backupItems,
             mode,
-            onProgress,
+            scopeOverride = scopeOverride,
+            onProgress = onProgress,
         )
 
                 }

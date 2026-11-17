@@ -5,6 +5,7 @@ import app.androidrik.rikkahub.data.sync.BackupInspection
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupPhase
 import app.androidrik.rikkahub.data.sync.BackupProgress
+import app.androidrik.rikkahub.data.sync.BackupScope
 import app.androidrik.rikkahub.data.sync.RestoreMode
 import app.androidrik.rikkahub.data.sync.RestoreOutcome
 import android.content.Context
@@ -103,6 +104,7 @@ class WebDavSync(
         config: WebDavConfig,
         item: WebDavBackupItem,
         mode: RestoreMode = RestoreMode.OVERWRITE,
+        scopeOverride: BackupScope? = null,
         onProgress: (BackupProgress) -> Unit = {},
     ) =
         withContext(Dispatchers.IO) {
@@ -119,7 +121,7 @@ class WebDavSync(
                 Log.i(TAG, "restore: Downloaded ${backupFile.length().fileSizeToString()}")
 
                 // Restore from backup file
-                restoreFromBackupFile(backupFile, config, mode, onProgress)
+                restoreFromBackupFile(backupFile, config, mode, scopeOverride, onProgress)
             } finally {
                 // Clean up temp file
                 if (backupFile.exists()) {
@@ -139,6 +141,7 @@ class WebDavSync(
         file: File,
         config: WebDavConfig,
         mode: RestoreMode = RestoreMode.OVERWRITE,
+        scopeOverride: BackupScope? = null,
         onProgress: (BackupProgress) -> Unit = {},
     ): RestoreOutcome = withContext(Dispatchers.IO) {
         Log.i(TAG, "restoreFromLocalFile: Starting restore from ${file.absolutePath}")
@@ -152,7 +155,7 @@ class WebDavSync(
         }
 
         try {
-            val outcome = restoreFromBackupFile(file, config, mode, onProgress)
+            val outcome = restoreFromBackupFile(file, config, mode, scopeOverride, onProgress)
             Log.i(TAG, "restoreFromLocalFile: Restore completed successfully")
             outcome
         } catch (e: Exception) {
@@ -177,13 +180,15 @@ class WebDavSync(
         backupFile: File,
         config: WebDavConfig,
         mode: RestoreMode,
+        scopeOverride: BackupScope?,
         onProgress: (BackupProgress) -> Unit,
     ): RestoreOutcome =
         archiveEngine.restoreFromBackupFile(
             backupFile,
             settingsStore.settingsFlow.value.backupItems,
             mode,
-            onProgress,
+            scopeOverride = scopeOverride,
+            onProgress = onProgress,
         )
 
                 }

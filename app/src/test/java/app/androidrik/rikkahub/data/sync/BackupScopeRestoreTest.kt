@@ -110,8 +110,9 @@ class BackupScopeRestoreTest {
     }
 
     @Test
-    fun `manifest serializes with format version 3`() {
-        assertEquals(3, BackupManifest.FORMAT_VERSION)
+    fun `manifest serializes with format version 4`() {
+        // v4：BackupScope 增加 excludedFileGroups + 8 个 settings 细分类别（见 BackupScopeGranularityTest）
+        assertEquals(4, BackupManifest.FORMAT_VERSION)
     }
 
     // ===== BackupContentFilter：打包过滤 =====

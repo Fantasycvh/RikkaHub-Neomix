@@ -38,12 +38,14 @@ internal enum class BackupRestoreKind {
  * @param folder `FileFolders` 中的目录名，也是 zip 条目前缀的来源（前缀不允许硬编码）
  * @param recursive 打包是否递归（`true` = 保留子目录层级）
  * @param restoreKind 恢复分派方式（见 [BackupRestoreKind]）
+ * @param group 文件分组（v4 备份范围按组排除，见 [BackupFileGroup]）；豁免目录填 null
  * @param excludedReason null = 进备份；非 null = 豁免理由（测试强制非空）
  */
 internal data class BackupFolderSpec(
     val folder: String,
     val recursive: Boolean,
     val restoreKind: BackupRestoreKind = BackupRestoreKind.FLAT,
+    val group: BackupFileGroup? = null,
     val excludedReason: String? = null,
 ) {
     val backedUp: Boolean get() = excludedReason == null
@@ -57,18 +59,18 @@ internal data class BackupFolderSpec(
  */
 internal val BACKUP_FOLDER_SPECS: List<BackupFolderSpec> = listOf(
     // ---- 进备份 ----
-    BackupFolderSpec(FileFolders.UPLOAD, recursive = false, restoreKind = BackupRestoreKind.FLAT),
-    BackupFolderSpec(FileFolders.IMAGES, recursive = true, restoreKind = BackupRestoreKind.FLAT),
-    BackupFolderSpec(FileFolders.AVATARS, recursive = false, restoreKind = BackupRestoreKind.FLAT),
-    BackupFolderSpec(FileFolders.BACKGROUNDS, recursive = false, restoreKind = BackupRestoreKind.FLAT),
+    BackupFolderSpec(FileFolders.UPLOAD, recursive = false, restoreKind = BackupRestoreKind.FLAT, group = BackupFileGroup.MISC),
+    BackupFolderSpec(FileFolders.IMAGES, recursive = true, restoreKind = BackupRestoreKind.FLAT, group = BackupFileGroup.MEDIA),
+    BackupFolderSpec(FileFolders.AVATARS, recursive = false, restoreKind = BackupRestoreKind.FLAT, group = BackupFileGroup.PROFILE),
+    BackupFolderSpec(FileFolders.BACKGROUNDS, recursive = false, restoreKind = BackupRestoreKind.FLAT, group = BackupFileGroup.PROFILE),
     // 2026-11-03（P0）：头像框素材此前既不进备份也不在豁免清单，属「静默不备份」。
     // 它是用户配置的持久图片，体积小，按平铺进备份（旧的备份包没有该目录，恢复时自然跳过）。
-    BackupFolderSpec(FileFolders.AVATAR_FRAMES, recursive = false, restoreKind = BackupRestoreKind.FLAT),
-    BackupFolderSpec(FileFolders.BUBBLE_TEXTURES, recursive = false, restoreKind = BackupRestoreKind.FLAT),
-    BackupFolderSpec(FileFolders.SKIN_PACKAGES, recursive = false, restoreKind = BackupRestoreKind.FLAT),
-    BackupFolderSpec(FileFolders.FONTS, recursive = false, restoreKind = BackupRestoreKind.FONTS),
-    BackupFolderSpec(FileFolders.SKILLS, recursive = true, restoreKind = BackupRestoreKind.SKILLS),
-    BackupFolderSpec(FileFolders.MEDIA_CREATION, recursive = true, restoreKind = BackupRestoreKind.FLAT),
+    BackupFolderSpec(FileFolders.AVATAR_FRAMES, recursive = false, restoreKind = BackupRestoreKind.FLAT, group = BackupFileGroup.PROFILE),
+    BackupFolderSpec(FileFolders.BUBBLE_TEXTURES, recursive = false, restoreKind = BackupRestoreKind.FLAT, group = BackupFileGroup.PROFILE),
+    BackupFolderSpec(FileFolders.SKIN_PACKAGES, recursive = false, restoreKind = BackupRestoreKind.FLAT, group = BackupFileGroup.PROFILE),
+    BackupFolderSpec(FileFolders.FONTS, recursive = false, restoreKind = BackupRestoreKind.FONTS, group = BackupFileGroup.SKILLS_FONTS),
+    BackupFolderSpec(FileFolders.SKILLS, recursive = true, restoreKind = BackupRestoreKind.SKILLS, group = BackupFileGroup.SKILLS_FONTS),
+    BackupFolderSpec(FileFolders.MEDIA_CREATION, recursive = true, restoreKind = BackupRestoreKind.FLAT, group = BackupFileGroup.MEDIA),
 
     // ---- 豁免（理由必填）----
     BackupFolderSpec(
@@ -130,6 +132,17 @@ internal val EXCLUDED_FILE_FOLDERS: Map<String, String> =
 /** 按目录名取规格（含豁免目录；找不到返回 null）。 */
 internal fun backupFolderSpec(folder: String): BackupFolderSpec? =
     BACKUP_FOLDER_SPECS.firstOrNull { it.folder == folder }
+
+/** 按目录名取文件分组（进备份的目录必有组；未登记目录返回 null = 不过滤）。 */
+internal fun backupFileGroupFor(folder: String): BackupFileGroup? =
+    BACKUP_FOLDER_SPECS.firstOrNull { it.folder == folder }?.group
+
+/**
+ * 按 zip 条目名反查文件分组（只匹配 `<folder>/` 前缀，与 [backupFolderSpecFor] 同口径）；
+ * 未登记前缀返回 null = 不过滤。
+ */
+internal fun backupFileGroupForEntry(entryName: String): BackupFileGroup? =
+    backupFolderSpecFor(entryName)?.group
 
 /**
  * 按 zip 条目名反查**进备份**目录的规格；只匹配 `<folder>/` 前缀，避免把 `upload2/x` 误判成 `upload`。

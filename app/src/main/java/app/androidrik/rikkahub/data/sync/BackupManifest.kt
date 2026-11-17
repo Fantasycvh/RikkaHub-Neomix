@@ -26,11 +26,13 @@ data class BackupManifest(
     /**
      * v3：备份范围（excluded-set 语义，见 [BackupScope]）。null = v2 旧包，按「全类别」处理——
      * 旧包的 settings.json 是整份写出的，恢复时不做键级回填（历史行为不变）。
+     * v4：[BackupScope] 增加 `excludedFileGroups` 与 8 个 settings 细分类别；scope 挂容错
+     * 序列化器，旧版本读到新枚举名按「包含」降级。
      */
     val scope: BackupScope? = null,
 ) {
     companion object {
-        const val FORMAT_VERSION = 3
+        const val FORMAT_VERSION = 4
         const val ZIP_ENTRY = "manifest.json"
 
         /** 恢复侧单条目解压上限（zip 炸弹兜底；ZipEntry.size 常为 -1，必须边拷边数）。 */
@@ -87,6 +89,7 @@ data class BackupInspection(
  * 校验语义（版本/双 SHA-256/条目数）又是本批次的核心安全逻辑，必须在 JVM 直测。
  *
  * @param restoreDatabase 恢复项是否含 DATABASE（含才核对主库哈希）
+ * @param verifySettings 是否核对 settings 双校验（「仅恢复对话对象」不读 settings 条目，置 false）
  * @param sectionEntries 恢复侧按条目名归类的条目计数（与打包侧同一份 classify）
  */
 internal fun verifyBackupManifest(
@@ -97,6 +100,7 @@ internal fun verifyBackupManifest(
     stagedMainBytes: Long,
     restoreDatabase: Boolean,
     sectionEntries: Map<BackupManifestSection, Int>,
+    verifySettings: Boolean = true,
 ) {
     if (manifest.formatVersion > BackupManifest.FORMAT_VERSION) {
         throw Exception(
@@ -104,14 +108,16 @@ internal fun verifyBackupManifest(
                 "(${BackupManifest.FORMAT_VERSION}); update the app first"
         )
     }
-    manifest.settingsSha256?.let { expected ->
-        if (settingsSha256 != expected) {
-            throw Exception("Backup settings checksum mismatch (corrupted or tampered backup)")
+    if (verifySettings) {
+        manifest.settingsSha256?.let { expected ->
+            if (settingsSha256 != expected) {
+                throw Exception("Backup settings checksum mismatch (corrupted or tampered backup)")
+            }
         }
-    }
-    manifest.settingsBytes?.let { expected ->
-        if (settingsBytes != expected) {
-            throw Exception("Backup settings size mismatch: expected $expected, got $settingsBytes")
+        manifest.settingsBytes?.let { expected ->
+            if (settingsBytes != expected) {
+                throw Exception("Backup settings size mismatch: expected $expected, got $settingsBytes")
+            }
         }
     }
     if (restoreDatabase) {

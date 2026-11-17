@@ -454,7 +454,7 @@ fun WebDavTab(
     pendingRestoreItem?.let { item ->
         RestoreConfirmDialog(
             items = settings.backupItems,
-            onConfirm = { mode ->
+            onConfirm = { mode, _ ->
                 pendingRestoreItem = null
                 performRestore(item, mode)
             },

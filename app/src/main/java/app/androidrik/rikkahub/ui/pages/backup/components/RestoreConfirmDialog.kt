@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -21,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.sync.BackupCategory
+import app.androidrik.rikkahub.data.sync.BackupFileGroup
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupScope
 import app.androidrik.rikkahub.data.sync.RestoreMode
@@ -32,22 +34,27 @@ import app.androidrik.rikkahub.data.sync.RestoreMode
  * 「恢复」只是补数据，或没意识到勾了「对话记录」= 覆盖全部聊天。此弹窗在恢复前明确列出
  * 将被覆盖的内容范围，并提供恢复模式选择（借鉴 Kelivo 的 overwrite/merge 双模式）。
  *
+ * v4：包内包含的 settings 类别与文件分组逐项可取消勾选（**只能缩小不能扩大**——manifest
+ * 排除的项不出现），勾选结果合成 [onConfirm] 的 scopeOverride（exclusion 与 manifest 并集）。
+ *
  * @param items 本次恢复会处理的项（= 当前「备份内容」勾选）
- * @param scope 备份包记录的范围（manifest v3）；被排除的类别恢复时保留本机值。null = v2 旧包
+ * @param scope 备份包记录的范围（manifest v4）；被排除的类别/分组恢复时保留本机值。null = 旧包
  * @param databaseWarning 数据库跨版本恢复提示（null = 同版本）；旧版本快照按当前结构恢复，
  *   新增/改名字段无法自动迁移，必须让用户看到。
- * @param onConfirm 确认回调，携带用户选定的恢复模式
+ * @param onConfirm 确认回调，携带用户选定的恢复模式与临时缩小的范围（无裁剪 = null）
  */
 @Composable
 fun RestoreConfirmDialog(
     items: List<BackupItem>,
-    onConfirm: (RestoreMode) -> Unit,
+    onConfirm: (RestoreMode, BackupScope?) -> Unit,
     onDismissRequest: () -> Unit,
     databaseWarning: String? = null,
     scope: BackupScope? = null,
 ) {
     var mode by remember { mutableStateOf(RestoreMode.OVERWRITE) }
+    var overrideScope by remember { mutableStateOf(BackupScope()) }
     val hasDatabase = BackupItem.DATABASE in items
+    val hasFiles = BackupItem.FILES in items
     AlertDialog(
         onDismissRequest = onDismissRequest,
         title = { Text(stringResource(R.string.backup_page_restore_confirm_title)) },
@@ -90,9 +97,60 @@ fun RestoreConfirmDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // 包内包含的 settings 类别：可取消勾选以缩小恢复范围（恢复 = manifest 排除 ∪ 本次排除）
+                val includedSettings = BackupCategory.entries.filter {
+                    it.isSettingsCategory && (scope?.includes(it) ?: false)
+                }
+                val includedFileGroups = if (hasFiles) {
+                    BackupFileGroup.entries.filter { scope?.includesFileGroup(it) ?: false }
+                } else {
+                    emptyList()
+                }
+                if (includedSettings.size + includedFileGroups.size > 1) {
+                    Text(
+                        text = stringResource(R.string.backup_page_restore_scope_trim_title),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    includedSettings.forEach { category ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = overrideScope.includes(category),
+                                onCheckedChange = { checked ->
+                                    overrideScope = overrideScope.withCategory(category, checked)
+                                },
+                            )
+                            Text(
+                                text = backupCategoryLabel(category),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    includedFileGroups.forEach { group ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(
+                                checked = overrideScope.includesFileGroup(group),
+                                onCheckedChange = { checked ->
+                                    overrideScope = overrideScope.withFileGroup(group, checked)
+                                },
+                            )
+                            Text(
+                                text = backupFileGroupLabel(group),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
                 // 备份包未包含的 settings 类别（恢复时保留本机值）
                 val excludedSettingsLabels = scope?.excluded
-                    ?.filter { it == BackupCategory.ASSISTANTS || it == BackupCategory.PROVIDERS || it == BackupCategory.DISPLAY || it == BackupCategory.ABOUT }
+                    ?.filter { it.isSettingsCategory }
                     ?.map { backupCategoryLabel(it) }
                     .orEmpty()
                 if (excludedSettingsLabels.isNotEmpty()) {
@@ -118,7 +176,12 @@ fun RestoreConfirmDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(mode) }) {
+            TextButton(onClick = {
+                val trimmed = overrideScope.takeIf {
+                    it.excluded.isNotEmpty() || it.excludedFileGroups.isNotEmpty()
+                }
+                onConfirm(mode, trimmed)
+            }) {
                 Text(
                     text = stringResource(R.string.backup_page_restore_confirm_action),
                     color = MaterialTheme.colorScheme.error,

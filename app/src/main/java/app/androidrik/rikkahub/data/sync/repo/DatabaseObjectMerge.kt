@@ -43,13 +43,35 @@ internal object DatabaseObjectMerge {
      *
      * @return (新插入会话数, 跳过会话数)
      */
-    fun mergeMissingConversations(baseDb: File, objects: List<Pair<String, File>>): Pair<Int, Int> {
+    fun mergeMissingConversations(baseDb: File, objects: List<Pair<String, File>>): Pair<Int, Int> =
+        openAndMergeMissingConversations(baseDb, objects, live = false)
+
+    /**
+     * 「仅恢复对话对象」（不换库）：把会话对象幂等并入**现库文件**——通过第二连接直写
+     * （WAL 多连接安全：读写互不阻塞，写写由 `busy_timeout` 排队；单事务原子，
+     * FK 失败回滚 = 现库无痕）。复用 [mergeMissingConversations] 的同一套核心。
+     *
+     * 与换库路径的差异：不动 journal_mode（现库保持 WAL，Room 连接仍在使用），
+     * FK 关闭只作用于本连接（父表先行的插入顺序本就满足 FK，关闭仅是双保险）。
+     */
+    fun mergeMissingConversationsLive(liveDbFile: File, objects: List<Pair<String, File>>): Pair<Int, Int> =
+        openAndMergeMissingConversations(liveDbFile, objects, live = true)
+
+    private fun openAndMergeMissingConversations(
+        dbFile: File,
+        objects: List<Pair<String, File>>,
+        live: Boolean,
+    ): Pair<Int, Int> {
         require(objects.isNotEmpty()) { "No database objects to merge" }
-        require(baseDb.isFile && baseDb.length() > 0) { "Missing base database copy" }
+        require(dbFile.isFile && dbFile.length() > 0) { "Missing base database copy" }
         objects.forEach { (key, _) ->
             require(dbObjectKind(key) == "conversation") { "Non-conversation object in merge restore: $key" }
         }
-        val database = SQLiteDatabase.openDatabase(baseDb.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        val database = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        if (live) {
+            // 第二连接直写现库：等 Room 主连接的偶发写锁（会话对象量级很小，不会久等）
+            database.execSQL("PRAGMA busy_timeout = 10000")
+        }
         try {
             val actualTables = readTables(database)
             val conversationTable = actualTables["conversationentity"]
@@ -89,8 +111,11 @@ internal object DatabaseObjectMerge {
             require(violations.isEmpty()) {
                 "Merged database violates foreign keys: ${violations.take(5).joinToString("; ")}"
             }
-            // 换库管线只搬运主库文件（+wal/-shm），确保 WAL 已落盘并切回单文件模式。
-            database.rawQuery("PRAGMA journal_mode = DELETE", null).use { it.moveToFirst() }
+            // 换库管线只搬运主库文件（+wal/-shm），确保 WAL 已落盘并切回单文件模式；
+            // live（直写现库）绝不能动 journal_mode——Room 主连接还在 WAL 上跑。
+            if (!live) {
+                database.rawQuery("PRAGMA journal_mode = DELETE", null).use { it.moveToFirst() }
+            }
             return merged to skipped
         } finally {
             database.close()

@@ -74,6 +74,7 @@ import app.androidrik.rikkahub.data.ai.catalog.FileCatalogSnapshotStore
 import app.androidrik.rikkahub.data.network.SettingsProxyAuthenticator
 import app.androidrik.rikkahub.data.network.SettingsProxySelector
 import app.androidrik.rikkahub.data.network.SocksCredentialRegistry
+import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
 import app.androidrik.rikkahub.data.sync.webdav.WebDavSync
 import app.androidrik.search.SearchService
 import app.androidrik.rikkahub.data.sync.S3Sync
@@ -352,6 +353,16 @@ val dataSourceModule = module {
 
     single {
         MediaGenerationManager(client = get())
+    }
+
+    single {
+        // 独立暴露给 BackupVM（「仅恢复对话对象」直用引擎，不借道 WebDavSync）
+        BackupArchiveEngine(
+            settingsStore = get(),
+            json = get(),
+            context = get(),
+            appDatabase = get(),
+        )
     }
 
     single {

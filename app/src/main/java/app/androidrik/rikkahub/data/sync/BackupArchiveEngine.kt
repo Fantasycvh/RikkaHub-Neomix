@@ -40,7 +40,7 @@ import java.util.zip.ZipOutputStream
  *
  * 设计见 `docs/design/design-backup-workspace-files.md`。
  */
-internal class BackupArchiveEngine(
+class BackupArchiveEngine(
     private val settingsStore: SettingsStore,
     private val json: Json,
     private val context: Context,
@@ -76,7 +76,7 @@ internal class BackupArchiveEngine(
         if (backupFile.exists()) backupFile.delete()
 
         // 空间预检：保守按「输入不压缩」估算；不足则提前失败（2.8GB 跑到一半失败代价太大）
-        val plannedInputs = collectBackupInputs(items)
+        val plannedInputs = collectBackupInputs(items, scope)
         val estimatedBytes = BackupSpaceCheck.estimateBackupBytes(plannedInputs)
         val available = context.cacheDir.usableSpace
         if (!BackupSpaceCheck.hasEnoughSpace(available, estimatedBytes)) {
@@ -131,7 +131,7 @@ internal class BackupArchiveEngine(
                 // 校验永远失败（空库备份变成死包），见 verifyBackupManifest 的可空约定
             }
             if (BackupItem.FILES in items) {
-                addAppFilesToZip(zipOut, ::report)
+                addAppFilesToZip(zipOut, scope, ::report)
             }
             if (BackupItem.WORKSPACE_FILES in items) {
                 val wsDir = WorkspaceBackupHelper.workspacesDir(context)
@@ -184,7 +184,7 @@ internal class BackupArchiveEngine(
      * 备份将读取的源（用于空间预检与进度分母）。
      * 与打包分支一一对应：DB 三件套 / 应用文件区 / 工作区文件区。
      */
-    private fun collectBackupInputs(items: Collection<BackupItem>): List<File> {
+    private fun collectBackupInputs(items: Collection<BackupItem>, scope: BackupScope): List<File> {
         val inputs = mutableListOf<File>()
         if (BackupItem.DATABASE in items) {
             val dbFile = context.getDatabasePath(AppDatabase.NAME)
@@ -194,8 +194,10 @@ internal class BackupArchiveEngine(
             }
         }
         if (BackupItem.FILES in items) {
-            // 目录清单统一由 BACKED_UP_FILE_FOLDERS 驱动（见其注释），三处共用不再手列
+            // 目录清单统一由 BACKED_UP_FILE_FOLDERS 驱动（见其注释），三处共用不再手列；
+            // v4 起再按 BackupScope 的文件分组过滤（空间预检与打包同一口径）
             BACKED_UP_FILE_FOLDERS
+                .filter { scope.includesFileFolder(it, ::backupFileGroupFor) }
                 .forEach { inputs += File(context.filesDir, it) }
         }
         if (BackupItem.WORKSPACE_FILES in items) {
@@ -212,6 +214,8 @@ internal class BackupArchiveEngine(
      *
      * @param mode 恢复模式（默认 OVERWRITE = 历史行为）；MERGE 时数据库按会话幂等合并、
      *   settings 的 providers/assistants 按 id 合并，仍走 staged 换库与安全备份
+     * @param scopeOverride 用户在恢复确认框临时勾掉的类别/文件分组（exclusion 并入 manifest
+     *   scope——只能缩小不能扩大）；null = 按 manifest 原样
      * @param onProgress 解压阶段进度回调（按已处理的未压缩字节计，总量取自 zip 中央目录）
      * @return 恢复结果（工作区文件数 + 设置降级提示 + merge 统计）
      * @throws IllegalStateException 空间不足（解压产物 + zip 需同时存在于 cacheDir，见 §9.1）
@@ -220,15 +224,17 @@ internal class BackupArchiveEngine(
         backupFile: File,
         items: Collection<BackupItem>,
         mode: RestoreMode = RestoreMode.OVERWRITE,
+        scopeOverride: BackupScope? = null,
         onProgress: (BackupProgress) -> Unit = {},
     ): RestoreOutcome = DataOperationLock.runWaiting(DataOperation.RESTORE) {
-        restoreFromBackupFileLocked(backupFile, items, mode, onProgress)
+        restoreFromBackupFileLocked(backupFile, items, mode, scopeOverride, onProgress)
     }
 
     private suspend fun restoreFromBackupFileLocked(
         backupFile: File,
         items: Collection<BackupItem>,
         mode: RestoreMode,
+        scopeOverride: BackupScope?,
         onProgress: (BackupProgress) -> Unit = {},
     ): RestoreOutcome =
         withContext(Dispatchers.IO) {
@@ -296,12 +302,18 @@ internal class BackupArchiveEngine(
 
             // FILES / WORKSPACE_FILES 条目的落盘逻辑，第二遍（校验通过后）调用；
             // 第一遍对这两类条目只记账、不写任何用户文件（见下方 else 分支注释）。
+            // 生效排除组在 manifest 校验后赋值（zip 读序 manifest 在前、文件条目第二遍在后）。
+            var effectiveExcludedFileGroups: Set<BackupFileGroup> = emptySet()
             fun restoreUserFileEntry(zipIn: ZipInputStream, zipEntry: ZipEntry) {
                 val bounded = boundedEntryStream(zipIn)
                 // 恢复分派由 BackupFolderRegistry 的规格驱动：新增目录只要登记就会自动获得恢复分支，
                 // 避免旧实现「打包清单 / 恢复 when / 测试集合」三份清单漂移（backgrounds 曾因此恢复丢文件）。
                 val spec = backupFolderSpecFor(zipEntry.name)
                 if (spec != null && BackupItem.FILES in items) {
+                    // v4：manifest scope（∪ 用户裁剪）排除的文件分组，条目直接跳过。
+                    // 旧包的条目组映射照常解析（目录→组是静态登记），被排除的组同样跳过。
+                    val group = spec.group
+                    if (group != null && group in effectiveExcludedFileGroups) return
                     when (spec.restoreKind) {
                         BackupRestoreKind.FLAT -> restoreFlatEntry(bounded, zipEntry.name, spec.folder)
                         BackupRestoreKind.FONTS -> restoreFontEntry(bounded, zipEntry.name)
@@ -404,6 +416,21 @@ internal class BackupArchiveEngine(
 
                 // ---- 校验通过，破坏性步骤开始 ----
 
+                // 生效范围 = manifest scope ∪ 用户临时勾掉的类别/分组（exclusion 并集：
+                // 用户只能缩小，不能把 manifest 排除的内容勾回来）。
+                // legacy：v3 及更早的包用旧类别映射（v4 拆出的细分类别键按 ABOUT 处理）。
+                val manifestScope = manifest?.scope ?: BackupScope()
+                val effectiveScope = if (scopeOverride != null) {
+                    manifestScope.copy(
+                        excluded = manifestScope.excluded + scopeOverride.excluded,
+                        excludedFileGroups = manifestScope.excludedFileGroups + scopeOverride.excludedFileGroups,
+                    )
+                } else {
+                    manifestScope
+                }
+                val legacyScope = (manifest?.formatVersion ?: BackupManifest.FORMAT_VERSION) < 4
+                effectiveExcludedFileGroups = effectiveScope.excludedFileGroups
+
                 // FILES / WORKSPACE_FILES 第二遍流式写入（第一遍只记账，见上）：
                 // 「校验通过才破坏」由此覆盖用户文件区，而不只 settings+数据库
                 if (BackupItem.FILES in items || BackupItem.WORKSPACE_FILES in items) {
@@ -477,14 +504,19 @@ internal class BackupArchiveEngine(
                         val incomingJson = Json.parseToJsonElement(migratedJson).jsonObject
                         // v3 scope：被排除的类别保留本机值；v2 旧包 scope=null 按全类别处理（历史行为）。
                         // 回填在 update transform 内取 current 计算（单向数据流，禁锁外快照写）。
-                        val scope = manifest?.scope ?: BackupScope()
+                        val scope = effectiveScope
                         var droppedEntries: List<String> = emptyList()
                         settingsStore.update { current ->
                             val currentJson = json.encodeToJsonElement(current).jsonObject
                             // 设备态字段（launchCount/importedSources/lastBackupTime）一律保留本机值，
                             // 即使旧包（本阶段之前）未清洗过也以本机为准（BackupPortability）。
                             val mergedJson = BackupPortability.preserveDeviceState(
-                                incoming = BackupContentFilter.preserveUnselected(incomingJson, currentJson, scope),
+                                incoming = BackupContentFilter.preserveUnselected(
+                                    incomingJson,
+                                    currentJson,
+                                    scope,
+                                    legacy = legacyScope,
+                                ),
                                 current = currentJson,
                             )
                             // 原版 3.1.0 可能带本应用没有的多态子类（chatgpt/grok/volcengine…）：
@@ -694,21 +726,9 @@ internal class BackupArchiveEngine(
             )
             check(base.exists() && base.length() > 0) { "Cannot snapshot current database for merge restore" }
 
-            // staged 快照 checkpoint：旧格式备份是热拷 db+wal 三件套，读前必须把 wal 合入主文件
-            android.database.sqlite.SQLiteDatabase.openDatabase(
-                stagedSnapshot.path, null, android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
-            ).use { db ->
-                db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { cursor ->
-                    check(cursor.moveToFirst() && cursor.getInt(0) == 0) { "Merge snapshot WAL recovery failed" }
-                }
-                db.rawQuery("PRAGMA journal_mode = DELETE", null).use { cursor ->
-                    check(cursor.moveToFirst() && cursor.getString(0).equals("delete", ignoreCase = true))
-                }
-            }
-
             val objectsDir = File(workDir, "objects")
             check(objectsDir.isDirectory || objectsDir.mkdirs()) { "Cannot create merge staging directory" }
-            val objects = DatabaseObjectCapture.captureConversationsOnly(stagedSnapshot, objectsDir)
+            val objects = captureConversationObjectsFromSnapshot(stagedSnapshot, objectsDir)
             if (objects.isEmpty()) {
                 // 快照无会话（空库备份 + merge）：无新增内容，stage 现库副本 = 无损空操作
                 Log.i(TAG, "mergeStagedDatabaseIntoCurrent: snapshot has no conversations; staging current copy")
@@ -723,6 +743,164 @@ internal class BackupArchiveEngine(
             listOf("-wal", "-shm").forEach { suffix -> File(stagedSnapshot.path + suffix).delete() }
         }
     }
+
+    /**
+     * 从 staged 快照捕获会话逻辑对象（merge 换库路径与「仅恢复对话对象」共用）。
+     *
+     * 快照先 checkpoint（旧格式备份是热拷 db+wal 三件套，读前必须把 wal 合入主文件），
+     * 再用增量备份的 [DatabaseObjectCapture] 底座捕获（VACUUM 快照无 wal，自然跳过）。
+     * @return 对象列表（key → 载荷文件），可能为空（空库备份）
+     */
+    private fun captureConversationObjectsFromSnapshot(
+        stagedSnapshot: File,
+        objectsDir: File,
+    ): List<Pair<String, File>> {
+        android.database.sqlite.SQLiteDatabase.openDatabase(
+            stagedSnapshot.path, null, android.database.sqlite.SQLiteDatabase.OPEN_READWRITE,
+        ).use { db ->
+            db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { cursor ->
+                check(cursor.moveToFirst() && cursor.getInt(0) == 0) { "Merge snapshot WAL recovery failed" }
+            }
+            db.rawQuery("PRAGMA journal_mode = DELETE", null).use { cursor ->
+                check(cursor.moveToFirst() && cursor.getString(0).equals("delete", ignoreCase = true))
+            }
+        }
+        return DatabaseObjectCapture.captureConversationsOnly(stagedSnapshot, objectsDir)
+    }
+
+    /**
+     * 「仅恢复对话对象」（不换库）：只从备份库读会话对象幂等并入**当前库**，
+     * settings/文件/其余表全部不动，也不走 staged 换库与重启应用。
+     *
+     * 流程：单遍流式读 zip（只暂存数据库家族条目）→ manifest 校验（免 settings 双校验，
+     * settings 条目不读）→ 安全备份 → 家族分流/迁移（兼容原版库）→ checkpoint + 捕获会话对象 →
+     * [DatabaseObjectMerge.mergeMissingConversationsLive] 经第二连接直写现库（WAL 多连接安全，
+     * 单事务原子，FK 失败回滚 = 现库无痕）。
+     *
+     * 并发口径：[DataOperationLock.RESTORE] 串行化恢复族操作；与聊天期间的会话写入由
+     * SQLite 写锁 + busy_timeout 排队，事务原子性兜底。
+     */
+    suspend fun restoreConversationsFromBackupFile(
+        backupFile: File,
+        onProgress: (BackupProgress) -> Unit = {},
+    ): RestoreOutcome = DataOperationLock.runWaiting(DataOperation.RESTORE) {
+        restoreConversationsLocked(backupFile, onProgress)
+    }
+
+    private suspend fun restoreConversationsLocked(
+        backupFile: File,
+        onProgress: (BackupProgress) -> Unit = {},
+    ): RestoreOutcome =
+        withContext(Dispatchers.IO) {
+            Log.i(TAG, "restoreConversationsFromBackupFile: starting (conversations-only)")
+            val stagedDatabaseFiles = linkedMapOf<String, File>()
+            var stagedMainSha256: String? = null
+            var stagedMainBytes = 0L
+            var manifest: BackupManifest? = null
+            val seenEntries = mutableSetOf<String>()
+            val sectionEntries = mutableMapOf<BackupManifestSection, Int>()
+
+            // 空间预检：本路径只暂存数据库条目，但保险按整包未压缩体积把关（与整库恢复同口径）
+            val uncompressedTotal = BackupSpaceCheck.uncompressedSizeOfZip(backupFile)
+            if (uncompressedTotal != null && uncompressedTotal > BackupManifest.MAX_TOTAL_BYTES) {
+                throw IllegalStateException(
+                    "Backup decompressed size ${uncompressedTotal.fileSizeToString()} exceeds the " +
+                        "${BackupManifest.MAX_TOTAL_BYTES.fileSizeToString()} restore limit"
+                )
+            }
+
+            val throttle = ProgressThrottle()
+            val archiveTotal = backupFile.length()
+            val countingIn = CountingInputStream(FileInputStream(backupFile)) { consumed ->
+                val progress = BackupProgress(BackupPhase.EXTRACTING, consumed, archiveTotal)
+                if (throttle.shouldEmit(progress)) onProgress(progress)
+            }
+
+            try {
+                ZipInputStream(countingIn).use { zipIn ->
+                    var entry: ZipEntry?
+                    while (zipIn.nextEntry.also { entry = it } != null) {
+                        val zipEntry = entry ?: continue
+                        if (!seenEntries.add(zipEntry.name)) {
+                            throw Exception("Duplicate backup entry: ${zipEntry.name}")
+                        }
+                        classifyBackupEntry(zipEntry.name)?.let { section ->
+                            sectionEntries.merge(section, 1, Int::plus)
+                        }
+                        when (zipEntry.name) {
+                            BackupManifest.ZIP_ENTRY -> {
+                                manifest = json.decodeFromString<BackupManifest>(zipIn.readBytes().decodeToString())
+                            }
+
+                            "rikka_hub.db", "rikka_hub-wal", "rikka_hub-shm" -> {
+                                val staged = File(context.cacheDir, "restore_conv_${zipEntry.name}")
+                                boundedEntryCopy(zipIn, zipEntry) { FileOutputStream(staged) }
+                                stagedDatabaseFiles[zipEntry.name] = staged
+                                if (zipEntry.name == "rikka_hub.db") {
+                                    stagedMainSha256 = sha256Of(staged)
+                                    stagedMainBytes = staged.length()
+                                }
+                            }
+
+                            else -> {
+                                // settings/FILES/WORKSPACE_FILES：仅记账（classify 已计数），
+                                // closeEntry 消费内容，不落盘
+                            }
+                        }
+                        zipIn.closeEntry()
+                    }
+                }
+
+                // manifest 校验（restoreDatabase=true 核对主库哈希；settings 条目未读，免双校验）
+                val m = manifest ?: throw Exception("Backup manifest missing (legacy packages are not supported here)")
+                verifyBackupManifest(
+                    manifest = m,
+                    settingsSha256 = null,
+                    settingsBytes = 0L,
+                    stagedMainSha256 = stagedMainSha256,
+                    stagedMainBytes = stagedMainBytes,
+                    restoreDatabase = true,
+                    sectionEntries = sectionEntries,
+                    verifySettings = false,
+                )
+
+                if (stagedDatabaseFiles.isEmpty()) {
+                    Log.w(TAG, "restoreConversationsFromBackupFile: backup has no database entries")
+                    return@withContext RestoreOutcome()
+                }
+
+                // A 档安全备份：合并是现库写操作，先留后悔药（失败降级不阻断，同整库恢复）
+                createSafetyBackup()
+
+                // 家族分流/迁移（原版库的 schema 转换与整库恢复同一口径），失败则现库未动
+                prepareStagedDatabase(stagedDatabaseFiles)
+                val stagedMain = stagedDatabaseFiles["rikka_hub.db"]
+                    ?: return@withContext RestoreOutcome()
+
+                val workDir = java.nio.file.Files.createTempDirectory(context.cacheDir.toPath(), "restore-conv-").toFile()
+                try {
+                    val objectsDir = File(workDir, "objects")
+                    check(objectsDir.isDirectory || objectsDir.mkdirs()) { "Cannot create staging directory" }
+                    val objects = captureConversationObjectsFromSnapshot(stagedMain, objectsDir)
+                    if (objects.isEmpty()) {
+                        Log.i(TAG, "restoreConversationsFromBackupFile: snapshot has no conversations")
+                        return@withContext RestoreOutcome()
+                    }
+                    val liveDb = context.getDatabasePath(AppDatabase.NAME)
+                    val (merged, skipped) = DatabaseObjectMerge.mergeMissingConversationsLive(liveDb, objects)
+                    Log.i(
+                        TAG,
+                        "restoreConversationsFromBackupFile: merged into live db " +
+                            "(+$merged new, $skipped skipped)",
+                    )
+                    RestoreOutcome(mergedConversations = merged, skippedConversations = skipped)
+                } finally {
+                    workDir.deleteRecursively()
+                }
+            } finally {
+                stagedDatabaseFiles.values.forEach { it.takeIf(File::exists)?.delete() }
+            }
+        }
 
     private data class MergeDatabaseOutcome(
         val mergedDb: File,
@@ -842,12 +1020,15 @@ internal class BackupArchiveEngine(
      * zip 体积。历史消息里 `/tool_outputs/<id>.txt` 的引用本就可能悬空，截断消息已内联前 4KB
      * 预览（`TOOL_OUTPUT_PREVIEW_CHARS`）兜底。
      */
-    private fun addAppFilesToZip(zipOut: ZipOutputStream, onBytes: (Long) -> Unit) {
+    private fun addAppFilesToZip(zipOut: ZipOutputStream, scope: BackupScope, onBytes: (Long) -> Unit) {
         // 打包实现移到顶层 packAppFiles（可注入 filesDir ⇒ 能被 JVM 测试覆盖，
-        // 见 AppFilesPacking.kt 顶部记录的真机事故）
+        // 见 AppFilesPacking.kt 顶部记录的真机事故）；v4 起按 BackupScope 文件分组过滤
         packAppFiles(
             filesDir = context.filesDir,
             zipOut = zipOut,
+            plan = appFilesPackingPlan(
+                folders = BACKED_UP_FILE_FOLDERS.filter { scope.includesFileFolder(it, ::backupFileGroupFor) },
+            ),
             onBytes = onBytes,
             onLog = { message -> Log.i(TAG, message) },
         )

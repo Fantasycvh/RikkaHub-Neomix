@@ -31,6 +31,8 @@ internal object BackupContentFilter {
         "legacyDefaultAssistantMerged",
         "promptPresets",
         "lorebooks",
+        // 聊天辅助资产，与提示词预设/世界书同域（v4 起从 ABOUT 移入）
+        "quickMessages",
     )
 
     private val PROVIDER_KEYS = setOf(
@@ -66,19 +68,120 @@ internal object BackupContentFilter {
         "exportDisplaySchemes",
     )
 
-    /** JSON 属性名 → 类别；未列入显式清单的字段一律 [BackupCategory.ABOUT]（兜底）。 */
-    internal fun categoryOfSettingKey(name: String): BackupCategory = when (name) {
-        in ASSISTANT_KEYS -> BackupCategory.ASSISTANTS
-        in PROVIDER_KEYS -> BackupCategory.PROVIDERS
-        in DISPLAY_KEYS -> BackupCategory.DISPLAY
-        else -> BackupCategory.ABOUT
+    /** v4 起从 ABOUT 兜底拆出的细分类别键集（用户数据域）。 */
+    private val SPEECH_KEYS = setOf(
+        "ttsProviders",
+        "removedTtsProviderIds",
+        "selectedTTSProviderId",
+        "defaultTTSPlaybackSpeed",
+        "asrProviders",
+        "selectedASRProviderId",
+    )
+
+    private val SEARCH_KEYS = setOf(
+        "searchServices",
+        "searchCommonOptions",
+        "searchServiceSelected",
+    )
+
+    private val MCP_KEYS = setOf(
+        "mcpServers",
+        "mcpDynamicSchemaLoading",
+    )
+
+    private val REMOTE_BACKUP_KEYS = setOf(
+        "webDavConfig",
+        "s3Config",
+        "uploadS3Config",
+    )
+
+    /** v4 起从 ABOUT 兜底拆出的细分类别键集（行为/服务域）。 */
+    private val TOOLS_KEYS = setOf(
+        "toolSchemaCompactLevel",
+        "workspaceTurnBudgetChars",
+        "workspaceTurnMaxSteps",
+        "workspaceTaskMaxDurationMinutes",
+        "phoneUseTurnMaxSteps",
+        "subagentMaxConcurrentRuns",
+        "loopGuardSensitivity",
+        "loopGuardRepeatLimit",
+        "ruleReminderEnabled",
+        "ruleReminderSensitivity",
+        "logToFileEnabled",
+        "recordRequestsEnabled",
+        "contextLengthOverride",
+        "contextImageLimit",
+    )
+
+    private val MEMORY_KEYS = setOf(
+        "memoryTriggerConfig",
+        "memoryInjectBudgetTokens",
+        "lorebookInjectBudgetTokens",
+        "memoryConsolidationPrompt",
+        "memoryConsolidationReasoningLevel",
+    )
+
+    private val TRANSLATE_KEYS = setOf(
+        "translatePrompt",
+        "translateThinkingBudget",
+        "ocrPrompt",
+        "ocrBackend",
+        "ocrDeepSeekBaseUrl",
+        "ocrDeepSeekPurpose",
+        "ocrDeepSeekIncludeLayout",
+        "ocrDeepSeekMaxPages",
+    )
+
+    private val WEB_SERVER_KEYS = setOf(
+        "webServerEnabled",
+        "webServerPort",
+        "webServerJwtEnabled",
+        "webServerAccessPassword",
+        "webServerLocalhostOnly",
+    )
+
+    /**
+     * JSON 属性名 → 类别；未列入显式清单的字段一律 [BackupCategory.ABOUT]（兜底）。
+     *
+     * @param legacy v3 及更早的包恢复时置 true：v4 拆出的细分类别键按 ABOUT 处理——
+     *   旧包的「排除 ABOUT」语义下这些键本就该保留本机值，不能因新映射被恢复覆盖。
+     *   打包侧恒为 false（新版按新语义写出）。
+     */
+    internal fun categoryOfSettingKey(name: String, legacy: Boolean = false): BackupCategory {
+        val category = when (name) {
+            in ASSISTANT_KEYS -> BackupCategory.ASSISTANTS
+            in PROVIDER_KEYS -> BackupCategory.PROVIDERS
+            in DISPLAY_KEYS -> BackupCategory.DISPLAY
+            in SPEECH_KEYS -> BackupCategory.SPEECH
+            in SEARCH_KEYS -> BackupCategory.SEARCH
+            in MCP_KEYS -> BackupCategory.MCP
+            in REMOTE_BACKUP_KEYS -> BackupCategory.REMOTE_BACKUP
+            in TOOLS_KEYS -> BackupCategory.TOOLS
+            in MEMORY_KEYS -> BackupCategory.MEMORY
+            in TRANSLATE_KEYS -> BackupCategory.TRANSLATE
+            in WEB_SERVER_KEYS -> BackupCategory.WEB_SERVER
+            else -> BackupCategory.ABOUT
+        }
+        return if (legacy && category in V4_NEW_CATEGORIES) BackupCategory.ABOUT else category
     }
 
     private val BackupCategory.isSettingsCategory: Boolean
-        get() = this == BackupCategory.ASSISTANTS ||
-            this == BackupCategory.PROVIDERS ||
-            this == BackupCategory.DISPLAY ||
-            this == BackupCategory.ABOUT
+        get() = when (this) {
+            BackupCategory.ASSISTANTS,
+            BackupCategory.PROVIDERS,
+            BackupCategory.DISPLAY,
+            BackupCategory.SPEECH,
+            BackupCategory.SEARCH,
+            BackupCategory.MCP,
+            BackupCategory.REMOTE_BACKUP,
+            BackupCategory.TOOLS,
+            BackupCategory.MEMORY,
+            BackupCategory.TRANSLATE,
+            BackupCategory.WEB_SERVER,
+            BackupCategory.ABOUT,
+            -> true
+            else -> false
+        }
 
     /**
      * 打包侧：剔除 scope 排除的类别键（纯函数）。
@@ -100,14 +203,15 @@ internal object BackupContentFilter {
         incoming: JsonObject,
         current: JsonObject,
         scope: BackupScope,
+        legacy: Boolean = false,
     ): JsonObject {
         if (scope.excluded.none { it.isSettingsCategory }) return incoming
         val merged = LinkedHashMap<String, JsonElement>()
         incoming.forEach { (key, value) ->
-            if (scope.includes(categoryOfSettingKey(key))) merged[key] = value
+            if (scope.includes(categoryOfSettingKey(key, legacy))) merged[key] = value
         }
         current.forEach { (key, value) ->
-            if (!scope.includes(categoryOfSettingKey(key))) merged[key] = value
+            if (!scope.includes(categoryOfSettingKey(key, legacy))) merged[key] = value
         }
         return JsonObject(merged)
     }

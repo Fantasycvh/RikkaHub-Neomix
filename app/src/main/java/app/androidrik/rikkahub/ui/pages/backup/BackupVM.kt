@@ -1,11 +1,13 @@
 package app.androidrik.rikkahub.ui.pages.backup
 
+import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
 import app.androidrik.rikkahub.data.sync.BackupInspection
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupProgress
 import app.androidrik.rikkahub.data.sync.BackupRunCoordinator
 import app.androidrik.rikkahub.data.sync.BackupRunKind
 import app.androidrik.rikkahub.data.sync.BackupRunState
+import app.androidrik.rikkahub.data.sync.BackupScope
 import app.androidrik.rikkahub.data.sync.RestoreMode
 import app.androidrik.rikkahub.data.sync.RestoreOutcome
 import android.app.Application
@@ -70,6 +72,7 @@ class BackupVM(
     private val settingsStore: SettingsStore,
     private val webDavSync: WebDavSync,
     private val s3Sync: S3Sync,
+    private val archiveEngine: BackupArchiveEngine,
     private val conversationRepository: ConversationRepository,
     private val filesManager: FilesManager,
     private val incrementalBackup: IncrementalBackupService,
@@ -396,9 +399,19 @@ class BackupVM(
         }
     }
 
-    suspend fun restore(item: WebDavBackupItem, mode: RestoreMode = RestoreMode.OVERWRITE): RestoreOutcome =
+    suspend fun restore(
+        item: WebDavBackupItem,
+        mode: RestoreMode = RestoreMode.OVERWRITE,
+        scopeOverride: BackupScope? = null,
+    ): RestoreOutcome =
         backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
-            webDavSync.restore(config = settings.value.webDavConfig, item = item, mode = mode, onProgress = report)
+            webDavSync.restore(
+                config = settings.value.webDavConfig,
+                item = item,
+                mode = mode,
+                scopeOverride = scopeOverride,
+                onProgress = report,
+            )
         }
 
     suspend fun deleteWebDavBackupFile(item: WebDavBackupItem) {
@@ -425,14 +438,36 @@ class BackupVM(
     }
 
     /** 从本地 ZIP 恢复；临时文件的删除移到与任务同生命周期，避免任务仍在读时被页面删掉。 */
-    suspend fun restoreFromLocalFile(file: File, mode: RestoreMode = RestoreMode.OVERWRITE): RestoreOutcome {
+    suspend fun restoreFromLocalFile(
+        file: File,
+        mode: RestoreMode = RestoreMode.OVERWRITE,
+        scopeOverride: BackupScope? = null,
+    ): RestoreOutcome {
         if (backupRun.state.value != null) {
             file.delete()
             error("已有备份任务正在进行")
         }
         return backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
             try {
-                webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, mode, report)
+                webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, mode, scopeOverride, report)
+            } finally {
+                withContext(NonCancellable + Dispatchers.IO) { file.delete() }
+            }
+        }
+    }
+
+    /**
+     * 「仅恢复对话对象」（不换库）：只把备份库中的会话对象幂等并入当前库，
+     * settings/文件/其余表全部不动。临时文件的删除移到与任务同生命周期。
+     */
+    suspend fun restoreConversationsFromLocalFile(file: File): RestoreOutcome {
+        if (backupRun.state.value != null) {
+            file.delete()
+            error("已有备份任务正在进行")
+        }
+        return backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
+            try {
+                archiveEngine.restoreConversationsFromBackupFile(file, report)
             } finally {
                 withContext(NonCancellable + Dispatchers.IO) { file.delete() }
             }

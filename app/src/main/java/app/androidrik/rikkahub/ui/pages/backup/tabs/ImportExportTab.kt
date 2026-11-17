@@ -522,7 +522,7 @@ fun ImportExportTab(
     pendingFullRestore?.let { fullRestoreFormat ->
         RestoreConfirmDialog(
             items = settings.backupItems,
-            onConfirm = { mode ->
+            onConfirm = { mode, _ ->
                 pendingRestoreMode = mode
                 pendingFullRestore = null
                 launchPicker(fullRestoreFormat)
@@ -531,16 +531,21 @@ fun ImportExportTab(
         )
     }
 
-    // 批次3 恢复预览：覆盖确认与选文件之后，展示这份备份实际包含什么，再确认一次才恢复
+    // 批次3 恢复预览：覆盖确认与选文件之后，展示这份备份实际包含什么，再确认一次才恢复。
+    // v4：预览卡内可临时缩小恢复范围（scopeOverride）或改走「仅恢复对话对象」（不换库）。
     pendingLocalRestore?.let { (file, inspection) ->
         BackupRestorePreviewDialog(
             inspection = inspection,
-            onConfirm = {
+            onConfirm = { conversationsOnly, scopeOverride ->
                 pendingLocalRestore = null
                 scope.launch {
                     isRestoring = true
                     try {
-                        val outcome = vm.restoreFromLocalFile(file, pendingRestoreMode)
+                        val outcome = if (conversationsOnly) {
+                            vm.restoreConversationsFromLocalFile(file)
+                        } else {
+                            vm.restoreFromLocalFile(file, pendingRestoreMode, scopeOverride)
+                        }
                         finishImport(pendingRestoreFormat)
                         showSettingsDroppedWarning(outcome.settingsWarnings)
                         if (outcome.mergedConversations > 0 || outcome.skippedConversations > 0) {

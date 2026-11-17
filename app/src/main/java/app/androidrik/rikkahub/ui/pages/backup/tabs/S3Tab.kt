@@ -486,7 +486,7 @@ fun S3Tab(
     pendingRestoreItem?.let { item ->
         RestoreConfirmDialog(
             items = settings.backupItems,
-            onConfirm = { mode ->
+            onConfirm = { mode, _ ->
                 pendingRestoreItem = null
                 performRestore(item, mode)
             },

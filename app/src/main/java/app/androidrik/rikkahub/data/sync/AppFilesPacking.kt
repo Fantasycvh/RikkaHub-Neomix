@@ -30,8 +30,9 @@ internal fun packAppFiles(
     zipOut: ZipOutputStream,
     onBytes: (Long) -> Unit,
     onLog: (String) -> Unit = {},
+    plan: List<AppFolderPacking> = appFilesPackingPlan(),
 ) {
-    appFilesPackingPlan().forEach { packing ->
+    plan.forEach { packing ->
         val dir = File(filesDir, packing.folder)
         if (!dir.isDirectory) {
             onLog("prepareBackupFile: ${packing.folder} does not exist")
