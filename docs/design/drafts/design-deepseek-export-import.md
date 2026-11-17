@@ -1,6 +1,7 @@
 # design-deepseek-export-import：DeepSeek 官方导出包导入
 
-> 状态：implemented（编译 + 单测 + assembleDebug 通过，待真机全量导入验证）
+> 状态：implemented（编译 + 单测 + assembleDebug 通过，待真机全量导入验证）。
+> **2026-11-16 加固（`599be9044`）**：导入前置判重（解析出会话 ID 后、物化图片前）、单会话落库异常隔离（失败计数后继续）、备份页导入互斥锁（DeepSeek 与 Chatbox 串行）。
 > 参考：官方 web 端同格式参考实现 `F:\build\projects\chat-demo`（`src/services/chat/history/`，export_format_version 3）；
 > 实测样本 `deepseek_data-2026-11-15.zip`（570MB / 1071 会话 / 无图片原件）。
 > 复用管线：备份页导入（`design-conversation-import-export.md` §八 的 ImportFormat 描述符体系）。

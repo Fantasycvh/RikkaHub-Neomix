@@ -1938,7 +1938,7 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 | `14d60e44e` / `d3f128f34` | Gemini trace 回放测试（thoughtSignature 完整回传 / Gemini 4 混用本地函数与 Google Search 流式 trace） | **不移植（2026-11-17 定案）** | 修复已落，但本仓无整套 trace 录制/回放基建（`tools/trace/traces.yml`/`StreamTraceReplayTest` 均不存在），超出 test-only 范围；thoughtSignature 已有 `GoogleStreamDecoderTest` 等覆盖 |
 | `a75f3f9cd` | 测试连接弹窗点搜索框后自动关闭：dialog 挂在 AnimatedVisibility 工具栏下，键盘弹出宿主被移出 composition | **不同构免疫** | 本仓 `ProviderConnectionTester` 宿主在 CardGroup/FlowRow 常驻节点（`SettingProviderDetailPage.kt:281`），无 AnimatedVisibility 宿主链；AGENTS.md TextField 宿主规则覆盖此坑族 |
 | `8e2afbd3c` | 后台任务详情长命令展开后无法滚动（#2335，命令块限半高内部滚动） | **不适用** | 本仓后台任务 UI 为自研任务中心（领先上游一代），无 `BackgroundTasksSheet` |
-| `90ef90b76` | Vertex 服务账号支持 Interactions API | **不跟** | 本仓未跟 Interactions API 线，上游继续沿该线推进 |
+| `90ef90b76` | Vertex 服务账号支持 Interactions API | **自研落地（同日晚）** | 判「不跟」当晚本仓自研接入 Vertex Gemini Interactions API（`e9569d4db`，默认关、无状态开关，复用 OAuth 与提供商代理，保留流式思考签名与工具续轮、省略无参工具 parameters），后续 `d73a6735c`/`de89a7105`/`484107bb5` 补 Deep Research 与增量续接——与上游该线**殊途同归**，后续上游在此线的新提交改按「已有等价」复核 |
 | `7677f649f` | Phone Use：后台生成期间悬浮窗保持亮屏 | **不适用** | Phone Use 线本仓不跟（github 渠道专属） |
 | `eb33917e4` / `bfac2440c` | bump 3.3.0 / 发布 skill 压缩 mapping 再上传 | **不适用** | 版本号与发布基础设施，本仓发布流程独立 |
 

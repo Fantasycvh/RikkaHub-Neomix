@@ -16,6 +16,8 @@
 
 > **2026-11-14 晚全量克隆同步**：15 个来源全部复检（上游/bigeye/Yuihub/senera/SoLab/rikkahub-agent/agentd/SillyTavern 八源零新增；NMoi 2 / BiliPai 5 / PurrCat 24 / 华灯 96 / dsh-Go fp 311 / Miffan 远端 87 / billion-context 远端 ≥400 / archify 1）。**候选池 5 条（P3 为主）**，销上游 lastUsage 挂账一处；判决汇总见 [peer-verdicts §八](peer-verdicts-2026-11-08.md)，明细在各台账当日节。
 
+> **2026-11-17 增量同步**：上游 `64452581d..bfac2440c`（14 提交 + tag **3.3.0**，候选 5：工作区共享存储挂载/安全模式清超大设置两件 P2 + DeepSeek TTS/ASR、段落拆气泡、Gemini trace 三件 P3；DeepSeek 导入与 thoughtSignature 兜底两件与 11-15 本仓独立实现正面互证判已有等价）；NMoi 24（超窗撤回重发 P2 + tool_call_* 覆写 P3）/ BiliPai ~50（v0.8.0–0.8.5，判据 3）/ PurrCat ~36（MCP Apps+GenUI 域外）/ dsh-Go ~80（v1.1.0，候选 1）/ 华灯 ~15 / SillyTavern ~30 / billion-context ~50 抽样（dispatch purpose 判据 P2 级）/ archify 7（GEO 营销线）；Miffan + 六源零新增。**吸收 0 / 候选 8 / 判据记账 ~10**。本轮起 https 代理全挂，**全部改走 SSH fetch**（不改各仓 remote 配置）。判决汇总见 [peer-verdicts §九](peer-verdicts-2026-11-08.md)，上游逐条见 [upstream-analysis 11-17 节](upstream-analysis.md)。
+
 **怎么读这份文档**：
 
 1. 要**做事** → 直接看 §三「落地顺序与状态」（唯一口径的当前状态）。

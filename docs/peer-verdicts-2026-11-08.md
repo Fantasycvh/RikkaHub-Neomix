@@ -132,6 +132,7 @@
 - BiliPai 门控层零改动；nmoi/BiliPai 本轮全部细节见 [nmoi-agent.md §13.4](references/other%20projects/nmoi-agent.md) / [bilipai.md](references/other%20projects/bilipai.md)。
 - **2026-11-10 同步**：upstream 同步点 `8a837b27e`（issue 扫描到 #2310）；peer 侧 NMoi 到 `92585e8`、BiliPai 到 `05c4e2ac5`、PurrCat 到 `7cd7134`、Miffan 远端 `11b8fb55b`、billion-context `4dea18ea`、dsh-Go `8f31b2e`；仍然只评不施。**新增两个本仓实证项**：CI 零测试门禁（purrcat F1）、3 个 .so 未 16 KB 页对齐（dsh-Go 引出的静态核验）。候选池见 §六。
 - **2026-11-14 晚全量克隆同步**：15 个来源全部复检（上游 0 新）；候选池刷新见 §八.1（5 条，P3 为主）；**「921427f95 lastUsage 旧账」销账**（本仓 `GenerationHandler` 双口径已覆盖）。
+- **2026-11-17 全量克隆同步**：上游 14 提交（3.3.0，候选 5，见 upstream-analysis 11-17 节）；peer 侧 NMoi 24 / BiliPai ~50 / PurrCat ~36 / dsh-Go ~80（v1.1.0）/ 华灯 ~15 / SillyTavern ~30 / billion-context ~50（抽样）/ archify 7（GEO 营销线）；Miffan + bigeye/Yuihub/senera/SoLab/rikkahub-agent/agentd **零新增**。判决汇总见 §九。fetch 方式变更：https 代理全挂，本轮全部走 SSH。
 
 ## 五、本轮增量判决（2026-11-08：NMoi 173 提交 + BiliPai 108 提交）
 
@@ -339,3 +340,52 @@ arm64 debug）走查通知权限卡与世界书编辑对话框，logcat 无新�
 - agentd / SillyTavern / bigeye / Yuihub / senera / SoLab / rikkahub-agent 七源零新增，下轮可直接从本轮锚点起查。
 
 > 同步细节与同步方式（代理/直连/SSH 哪条通）见各来源文件对应节。
+
+## 九、2026-11-17 全量克隆同步轮判决（上游 14 提交 3.3.0 + 15 来源复检）
+
+> 同步方式：本机 7890 代理挂，https remote 全部连不上（127.0.0.1 拒连）——**本轮起全部改走 SSH fetch**（`git fetch git@github.com:OWNER/REPO.git "+refs/heads/*:refs/remotes/ssh-up/*"`，不动各仓 remote 配置；SillyTavern 的 fork origin SSH 无权限，改 fetch 上游 `SillyTavern/SillyTavern`；无克隆四源用 Neomix 仓内浅 fetch `ro-*` refs）。总评：**吸收 0 / 候选 8（上游 5 + peer 3）/ 已有等价 ~10 / 判据记账 ~10 / 不适用其余**。上游逐条见 [upstream-analysis 11-17 节](upstream-analysis.md)；peer 本轮多为抽样判决（dsh-Go/BiliPai/PurrCat 量大），未逐条立台账节。
+
+| 来源 | 锚点 → HEAD | 新增 | 判决摘要 |
+|---|---|---|---|
+| 上游 rikkahub | `64452581d` → `bfac2440c`（tag `3.3.0`） | 14 | 候选 5：共享存储挂载 P2（与本仓 `design-workspace-external-directories.md` 草稿同题）/ 安全模式清超大设置 P2 / DeepSeek TTS+ASR P3 / 段落拆多气泡 P3 / Gemini trace 回归 P3；已有等价 2（DeepSeek 导入本仓更强、thoughtSignature 兜底与 d6f8140d1 同日互证）；不同构免疫 1（弹窗宿主坑）；不适用 6 |
+| NMoi | `122fe5a` → `cc9911a` | 24 | **候选 2**：超窗撤回最大工具结果重发（P2，与挂账「一轮中途压缩」互补）+ `tool_call_*` 世界书覆写工具定义（P3）；文件只存芯片（D337）观察；工具面板逐项开关待核本仓等价；Speak 合成/安全页规则组记账 |
+| BiliPai | `ad20fff82^` → `1637adcbe`（v0.8.0–0.8.5） | ~50 | 候选 0；判据记账 3：被覆盖导航页停子树绘制+暂停采样（视口可见性判据落地延续）/玻璃预设默认值不变（配方采样不同批改的善后件）/后台图片加载双通道防预取被前台取消；其余播放器/首页域不适用 |
+| PurrCat | `67d33cc` → `23f2c11` | ~36 | 候选 0；MCP Apps over HTTP + sidecar、GenUI 组件库——MCP host 未立项域不合；`f353325` killed task persist + 启动对账 = 已有等价（诚实终态判据）；覆盖写入带 undo 备份记账 |
+| 华灯 | `8107f093e` → `93c4421e3` | ~15 | 候选 0；Phone Use 跟随上游 3.2.0（本仓不跟该线）；`f8cd873a6` datastore 未知开关只丢一项不崩启动——判据记账；压缩语境保留条数手动输入记账 |
+| dsh-Go | `e6dc475b` → `b78c34093`（v1.1.0） | ~80 | **候选 1**：`617bbaa7b` 未发送消息回填输入框（P3，本仓发送失败路径待核）；DeepSeek「接回续聊」（酒馆线 `d2761ebe7`）= 已有等价（本仓导入线已落）；判据记账 3：字符上限按码点+组字不截断/换文件先存新再删旧/不确定重发沿用原 requestId（限同 Host）；酒馆阶段四（世界书/预设/正则/按钮/MVU）推进记账 |
+| SillyTavern | 11-14 → `0a85854ee` | ~30 | 候选 0；extension-owned Custom provider 域不合；模型表/零散修复不适用，无新判据 |
+| billion-context | 晚增量 → `301e1a545` | ~50（抽样） | 候选 0；判据记账 3：**dispatch purpose 声明**（每个辅助请求声明用途、主流量缓存键裸 session id——本仓压缩/标题等辅助请求编排相关，P2 级判据）/ model-facing 文本改动=最高优先级警告+回归推断 / 压缩回执回显 clamp 后实际范围；gate knobs 域外 |
+| archify | `e37848822` → `a7ed6fd66` | 7 | GEO/website 营销线，不适用 |
+| Miffan | `11b8fb55b` → 同 | **0** | 无新提交 |
+| bigeye / Yuihub / senera / SoLab / rikkahub-agent / agentd | 同 | **0** | 无新提交 |
+
+### 9.1 本轮候选池（按优先级）
+
+1. ~~**上游 `fab0c077d` 工作区挂载共享存储**（P2）~~ ✅ **2026-11-17 已落地（fork `5c37aa595`）**：上游轻量方案原样吸收（`/storage` bind 进 Rootfs、写审批最长匹配 + `.`/`..` 规范化、挂载失效显式报错不静默回退；DB 74→75；无渠道隔离故 `MANAGE_EXTERNAL_STORAGE` 声明在主 manifest），安全细节三点全部采纳
+2. ~~**上游 `27976e4da` 安全模式清超大设置**（P2，#2333）~~ ✅ **2026-11-17 已落地（fork `8a5d2f241`）**：本仓重写为白名单 + 原始长度检测不解码 + 删 key 恢复默认（decode `?: 默认值`），不走 update 整份写回
+3. **NMoi 超窗撤回重发**（`096cbc1`+`9ef973c`+`58d17c4`+`677a50e`，P2）：超窗判定确定/也许两档、只对确定档摘最大工具结果、同轮重发、FFI 信封带 overflow/shrunk 让 UI 能说明「撤回过」；与挂账「一轮中途压缩」二选一或组合拍板。
+4. **上游 `f361bbc11` DeepSeek TTS/ASR**（P3）：前置=确认接口对 API key 开放。
+5. ~~**上游 `cfb7d9613` 段落拆多气泡**（P3）~~ ✅ **2026-11-17 已落地（fork `8a5d2f241`）**：拆分规则原样移植（`MarkdownParagraphs` + 8 条单测），接线在 `MessageTextContent`（仅气泡模式、切片/预渲染路径不参与，流式只最后一段 streaming）
+6. **NMoi `tool_call_*` 世界书覆写工具定义**（`b2b38b9`，P3）。
+7. **dsh-Go `617bbaa7b` 未发送消息回填**（P3，待核本仓发送失败路径）。
+8. **上游 Gemini trace 回放补用例**（`14d60e44e`/`d3f128f34`，P3）：修复已落，只补回归。
+
+### 9.2 本轮判据记账（进 §二 口径的增量）
+
+- **辅助 dispatch 必须声明用途（purpose），主流量缓存键裸 session id**（billion-context `005ec647a`+`4662b074e`，P2 级）：本仓压缩/标题/摘要等辅助请求与主对话同 provider 时，缓存键是否被辅助流量污染需编排层核。
+- **模型可见文本（prompt/错误文案/工具描述）改动 = 最高优先级，强制警告 + 回归推断**（billion-context §7.3 `889c8e189`）。
+- **压缩回执回显 clamp 后实际生效范围，不回显请求范围**（billion-context `fe5c5f3f9`）。
+- **字符上限一律按码点计数；组字（composing）中不截断、上屏后限长**（dsh-Go `42f933c65`+`85f1f8e1f`）。
+- **换文件类设置先落新文件再删旧文件**（dsh-Go `9b38a0036`，与 managed_files 对账纪律同族）。
+- **结果不确定的重发沿用原 requestId（幂等），且只在同一 Host 上沿用**（dsh-Go `74365e61a`/`98b8bbcf1`/`afc1c3896`）。
+- **后台图片加载走独立通道，预取不被前台请求取消**（BiliPai `d44719af9`）。
+- **被覆盖导航页停止子树绘制并暂停后台采样/图片加载**（BiliPai `ebcdd646d`，§F 视口可见性判据的落地延续）。
+- **改玻璃预设机制时保持用户默认值不变**（BiliPai `1637adcbe`）。
+- **DataStore 认不出的枚举只丢该字段不崩启动**（华灯 `f8cd873a6`，局部容错优先于整体拒绝）。
+
+### 9.3 本轮销账/免疫确认
+
+- 上游 `a75f3f9cd`（弹窗宿主坑）：本仓不同构已免疫（宿主在 CardGroup 常驻节点），无需动作。
+- 上游 `8e2afbd3c`（后台任务滚动）：本仓自研任务中心，不适用。
+- 上游 `f93764e6a`（DeepSeek 导入）：本仓 11-15/16 刚落地且更强（分支树/幂等/隔离/互斥锁全齐），判已有等价；可对照其 308 行测试补漏测。
+- archify 本轮唯一实质线为 GEO 营销，下轮可直接跳过或继续零负担。

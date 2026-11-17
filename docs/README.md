@@ -30,15 +30,15 @@
 | [`design-storage-management.md`](design/in-progress/design-storage-management.md) | 缓存管理：Phase 1+2 已实现并真机验证；**Phase 3 部分** |
 | [`design-subagent-context.md`](design/in-progress/design-subagent-context.md) | 子代理上下文信封：Phase 1+2 已落地；Phase 3+ 由 agent-task-runtime P2 接续 |
 
-### design/drafts/（评估稿 / 未立项，10 篇）
+### design/drafts/（评估稿 / 未立项，9 篇）
 
 | 文档 | 内容 |
 |---|---|
 | [`design-ui-overhaul-research.md`](design/drafts/design-ui-overhaul-research.md) | UI 改造调研稿（dsh-go 补析 §10）：A+G+D/C/B/I/F 七方向已于 2026-11-14 落地；第三轮 M1–M4 已于 2026-11-15 实施（正式稿见下），本稿归档为调研底稿 |
 | [`design-ui-round3-skins-geometry-motion.md`](design/drafts/design-ui-round3-skins-geometry-motion.md) | UI 第三轮：皮肤档位/气泡几何 v2/IA 三件/motion tokens——**M1+M2+M3/M4 已全部实施并提交**（dee8c09ce/eb2a675e0/cd26f2596）；挂账 = 设备颜色模式恢复深色真机验证 |
 | [`design-skins-batch2-engineering-ios.md`](design/drafts/design-skins-batch2-engineering-ios.md) | 皮肤第二批「工程感 / iOS 风」+ 分组容器形态：**M1–M3 已实施**（0d4262cf9），M4 真机验收中 |
-| [`design-deepseek-export-import.md`](design/drafts/design-deepseek-export-import.md) | DeepSeek 官方导出包导入：**implemented**（88e5718da），待真机全量导入验证 |
-| [`design-workspace-external-directories.md`](design/drafts/design-workspace-external-directories.md) | 工作区「访问外部指定目录」：LIVE/SNAPSHOT 两档挂载，**设计稿未实现** |
+| [`design-deepseek-export-import.md`](design/drafts/design-deepseek-export-import.md) | DeepSeek 官方导出包导入：**implemented**（88e5718da；11-16 加固 `599be9044` 前置判重/逐会话落库隔离/导入互斥），待真机全量导入验证 |
+| [`design-workspace-external-directories.md`](design/drafts/design-workspace-external-directories.md) | 工作区「访问外部指定目录」：LIVE/SNAPSHOT 两档——**共享存储挂载已按上游轻量方案落地**（`5c37aa595` 吸收 fab0c077d，仅 LIVE 档、限 `/storage`；本稿 SAF/快照重方案保持未实施，留档备查） |
 | [`design-dshgo-kotlin-migration-assessment.md`](design/drafts/design-dshgo-kotlin-migration-assessment.md) | dsh-go → Kotlin 迁移评估：插件设计重构先行、引擎托管独立立项；**评估稿，未立项** |
 | [`design-history-tools-and-delta-emit.md`](design/drafts/design-history-tools-and-delta-emit.md) | 历史检索工具族 + 增量发送：**草案（暂不实现）**；若重启需先复核 §B.1（树语义重构已改变前提） |
 | [`design-tool-output-budget.md`](design/drafts/design-tool-output-budget.md) | 工具输出预算：阶段 1 变体已落地（`_meta` 完整性声明）；阶段 2/3 未做 |
@@ -78,7 +78,7 @@
 | [`upstream-analysis.md`](upstream-analysis.md) | 上游逐条评估记录与「吸收 / 不吸收」结论 |
 | [`ui-simplification-proposal.md`](ui-simplification-proposal.md) | UI 复杂度证据基线（**改前快照**；改后状态见 design-ui-yuihub-inspired §7） |
 | [`peer-apps-benchmark.md`](peer-apps-benchmark.md) | 同类客户端 / 竞品调研：**索引 + 跨应用汇总**（落地状态表、五条通用判据、不做清单、章节号对照）；**每个应用的评估原文在 [`references/other projects/`](references/other%20projects/)**（14 个文件，2026-10-30 拆分；2026-11-03 全量增量；2026-11-06 增 #15 dsh-Go） |
-| [`peer-verdicts-2026-11-08.md`](peer-verdicts-2026-11-08.md) | peer 增量轮判决汇总（§六 11-10 轮、§七 11-14 轮） |
+| [`peer-verdicts-2026-11-08.md`](peer-verdicts-2026-11-08.md) | peer 增量轮判决汇总（§六 11-10 轮、§七 11-14 轮、§九 11-17 轮） |
 | [`purrcat-analysis.md`](purrcat-analysis.md) | PurrCat（桌面 Python Agent 宿主）借鉴评估：**A1 收尾闸门 / A3 交付物契约 / A4.1 idle 门控 / A4.2 会话级目标已落地，A2 能力生产线未动工**（2026-11-03 回写）；含三项建议与去重清单 |
 | [`tikz-rendering-tectonic-postmortem.md`](tikz-rendering-tectonic-postmortem.md) | TikZ 渲染链复盘（native Tectonic + mupdf SVG 桥、字体 bundle）；配套 [`../tools/tex-poc/`](../tools/tex-poc/) |
 | [`PLUGIN_SYSTEM_DESIGN_DRAFT.md`](PLUGIN_SYSTEM_DESIGN_DRAFT.md) | 插件系统最初调研底稿（借鉴 BiliPai；**已落地，现行稿见 design/completed/design-plugin-composable-runtime.md**，本文不再维护） |
@@ -98,11 +98,11 @@
 
 | 文档 | 待办/状态最新刷新 | 说明 |
 |---|---|---|
-| `handoff-2026-09-04.md` | **2026-11-15**（§〇 快照 → beta.22 (325)/DB 73） | **待办的第一真相源**；§三.1 表内**未划掉**的才是未完成项——长文本里的「YYYY-MM-DD 评估，未实现」多为**存档**，不代表当前状态 |
-| `roadmap.md` | **2026-11-14**（头部快照刷新；§八 日志索引） | §八 只保留**日志索引 + 追加约定**（最新条目见 `changelog/2026-11.md`）；§一~§七 的规划判断**可能已被日志推翻**，冲突时以 `changelog/` + handoff §三 为准 |
-| `changelog/2026-11.md` | **2026-11-15**（最后一条） | 逐日落地日志（**只追加**，最新月份文件为准）；查某功能全过程按关键词全文搜 `changelog/`，不要只看某月 |
-| `peer-apps-benchmark.md` | **2026-11-14 晚**（§七+§八 两轮判决；上轮 2026-11-10） | 本页**只剩索引与汇总**：落地状态看「§三」（原 §五，唯一口径）；各应用评估原文已迁 `references/other projects/`；11-14 两轮明细见 peer-verdicts §七/§八与各台账当日节 |
-| `upstream-analysis.md` | **2026-11-14**（同步点 `64452581d`，tag `3.2.0`） | 已评估到上游 `64452581d`；issue 扫描至 #2312；唯一候选 c1c3c4d12 已落地（fork `0bf49eed4`）；**下次同步从 `64452581d` 往后取** |
+| `handoff-2026-09-04.md` | **2026-11-17**（§〇 快照 → beta.22 (326)/DB 75） | **待办的第一真相源**；§三.1 表内**未划掉**的才是未完成项——长文本里的「YYYY-MM-DD 评估，未实现」多为**存档**，不代表当前状态 |
+| `roadmap.md` | **2026-11-17**（头部快照刷新；§八 日志索引） | §八 只保留**日志索引 + 追加约定**（最新条目见 `changelog/2026-11.md`）；§一~§七 的规划判断**可能已被日志推翻**，冲突时以 `changelog/` + handoff §三 为准 |
+| `changelog/2026-11.md` | **2026-11-17**（最后一条） | 逐日落地日志（**只追加**，最新月份文件为准）；查某功能全过程按关键词全文搜 `changelog/`，不要只看某月 |
+| `peer-apps-benchmark.md` | **2026-11-17**（§九判决，peer-verdicts；上轮 2026-11-14） | 本页**只剩索引与汇总**：落地状态看「§三」（原 §五，唯一口径）；各应用评估原文已迁 `references/other projects/`；11-17 轮明细见 peer-verdicts §九与各台账当日节 |
+| `upstream-analysis.md` | **2026-11-17**（同步点 `bfac2440c`，tag `3.3.0`） | 已评估到上游 `bfac2440c`；issue 扫描至 #2335；候选中 fab0c077d/27976e4da/cfb7d9613 三件已于 11-17 落地（5c37aa595/8a5d2f241），DeepSeek TTS/ASR 与 trace 补测两件 P3 随缘；**下次同步从 `bfac2440c` 往后取** |
 | `purrcat-analysis.md` | **2026-11-03**（状态回写；原评估 2026-10-30） | 全篇为**评估原文**；**A1/A3/A4.1/A4.2 已落地，A2 仍空**；引用第三方项目的说法一律标注「自述」并附源码核验 |
 
 > **一条教训（2026-10-12）**：`handoff` §三 表头曾写「2026-10-05 复核」，但 10-05 之后落地的 4 项
