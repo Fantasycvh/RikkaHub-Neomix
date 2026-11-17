@@ -85,6 +85,22 @@ class RootfsPathResolutionTest {
     }
 
     @Test
+    fun extraMountDoesNotShadowExistingMountPrefix() {
+        // /storage 是 /storage/emulated/0 的前缀兄弟：排序必须让更长的 target 先匹配
+        manager = createManager()
+        val storage = tempFolder.newFolder("storage-src")
+
+        assertEquals(
+            storage,
+            manager.resolveRootfsPath(root, "/storage/emulated/0/DCIM/a.jpg", listOf(WorkspaceBindMount(source = storage, target = "/storage"))).rootDir,
+        )
+        assertEquals(
+            skillsDir,
+            manager.resolveRootfsPath(root, "/skills/a.md", listOf(WorkspaceBindMount(source = storage, target = "/storage"))).rootDir,
+        )
+    }
+
+    @Test
     fun traversalOutOfBindMountIsRejected() {
         manager = createManager()
         tempFolder.newFile("secret.txt").writeText("secret")

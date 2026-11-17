@@ -17,8 +17,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.workspace.WorkspaceBindMount
+import app.androidrik.workspace.WorkspaceMountUnavailableException
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -167,9 +170,17 @@ class WorkspaceTerminalSessionManager internal constructor(
             onTitleUpdated = { title -> updateTitle(root, tabId, title) },
             onFinished = { markFinished(root = root, tabId = tabId) },
         )
+        // 重读实体拿最新的共享存储挂载（UI 手里的实体可能是改挂载前的旧快照）
+        val freshWorkspace = workspaceRepository.getById(workspace.id) ?: workspace
+        val extraMounts = freshWorkspace.extraBindMounts()
+
         val session = runCatching {
+            // 挂载失效时显式报错，而不是静默落回 Rootfs（写入"成功"但文件不在挂载源里）
+            extraMounts.filterNot { it.source.isDirectory }.takeIf { it.isNotEmpty() }?.let {
+                throw WorkspaceMountUnavailableException(it.map { mount -> mount.target })
+            }
             createWorkspaceTerminalSession(
-                transport = terminalTransport(workspace),
+                transport = terminalTransport(freshWorkspace, extraMounts),
                 root = root,
                 client = client,
             )
@@ -178,7 +189,12 @@ class WorkspaceTerminalSessionManager internal constructor(
         }.getOrNull()
 
         if (session == null) {
-            updateState(root) { it.copy(isCreating = false) }
+            updateState(root) {
+                it.copy(
+                    isCreating = false,
+                    errorMessage = appContext.getString(R.string.workspace_terminal_start_failed),
+                )
+            }
             return@withContext
         }
 
@@ -195,11 +211,15 @@ class WorkspaceTerminalSessionManager internal constructor(
                 readiness = WorkspaceTerminalReadiness.Ready,
                 isCreating = false,
                 nextTabNumber = tabNumber + 1,
+                errorMessage = null,
             )
         }
     }
 
-    private fun terminalTransport(workspace: WorkspaceEntity): com.termux.terminal.TerminalTransport =
+    private fun terminalTransport(
+        workspace: WorkspaceEntity,
+        extraMounts: List<WorkspaceBindMount>,
+    ): com.termux.terminal.TerminalTransport =
         if (workspace.isSsh()) {
             val settings = workspace.sshSettings() ?: error("SSH workspace config is missing: ${workspace.id}")
             SshTerminalTransport(address = "${settings.username}@${settings.host}:${settings.port}") { columns, rows ->
@@ -210,6 +230,7 @@ class WorkspaceTerminalSessionManager internal constructor(
                 context = appContext,
                 root = workspace.root,
                 shellCompatibilityMode = workspace.shellCompatibilityMode,
+                extraMounts = extraMounts,
             )
         }
 
@@ -267,6 +288,8 @@ internal data class WorkspaceTerminalTabsState(
     val readiness: WorkspaceTerminalReadiness = WorkspaceTerminalReadiness.Loading,
     val isCreating: Boolean = false,
     val nextTabNumber: Int = 1,
+    /** 最近一次启动失败的简述（挂载失效/会话创建失败）；成功开新 tab 后清空 */
+    val errorMessage: String? = null,
 )
 
 internal data class WorkspaceTerminalTab(

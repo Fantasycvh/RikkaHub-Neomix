@@ -25,6 +25,7 @@ import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.RootfsPatchOptions
 import app.androidrik.workspace.RootfsPatcher
 import java.io.File
+import app.androidrik.workspace.WorkspaceBindMount
 import app.androidrik.rikkahub.ui.theme.TerminalSkinColors
 import com.termux.terminal.TerminalColors
 
@@ -32,6 +33,7 @@ internal fun createLocalTerminalTransport(
     context: Context,
     root: String,
     shellCompatibilityMode: Boolean = false,
+    extraMounts: List<WorkspaceBindMount> = emptyList(),
 ): LocalPtyTransport {
     val appContext = context.applicationContext
     val workspaceDir = File(File(appContext.filesDir, "workspaces"), root)
@@ -66,6 +68,12 @@ internal fun createLocalTerminalTransport(
         "-b",
         "${builtinSkillsDir.absolutePath}:$BUILTIN_SKILLS_DIR",
     )
+    // 工作区自有的共享存储挂载：与文件工具/shell 用同一份挂载表，路径与宿主机一致。
+    // 调用方已确保源目录都存在（PRoot 会静默跳过失效的 -b 绑定，文件会落进 Rootfs 而不是挂载源）
+    extraMounts.forEach { mount ->
+        args += "-b"
+        args += "${mount.source.absolutePath}:${mount.target.trimEnd('/')}"
+    }
     listOf("/dev", "/proc", "/sys").forEach { path ->
         if (File(path).exists()) {
             args += "-b"

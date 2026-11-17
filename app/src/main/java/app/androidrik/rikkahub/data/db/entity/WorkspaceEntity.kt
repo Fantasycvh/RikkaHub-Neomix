@@ -5,14 +5,17 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import app.androidrik.rikkahub.data.model.SshWorkspaceSettings
+import app.androidrik.rikkahub.data.model.WorkspaceStorageMount
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.workspace.PackageMirrorSetup
 import app.androidrik.workspace.Workspace
+import app.androidrik.workspace.WorkspaceBindMount
 import app.androidrik.workspace.WorkspaceCapabilities
 import app.androidrik.workspace.WorkspaceManager
 import app.androidrik.workspace.WorkspaceShellStatus
 import app.androidrik.workspace.WorkspaceType
 import app.androidrik.workspace.ssh.SshWorkspaceBackend
+import java.io.File
 
 @Entity(
     tableName = "workspaces",
@@ -62,6 +65,9 @@ data class WorkspaceEntity(
     // 仅本地 rootfs 工作区使用；SSH 工作区永远保持默认空对象。
     @ColumnInfo("package_mirrors", defaultValue = "{}")
     val packageMirrors: String = "{}",
+    // 挂载进 Rootfs 的共享存储目录 (WorkspaceStorageMount 列表的 JSON), 只对本地工作区生效
+    @ColumnInfo("storage_mounts", defaultValue = "[]")
+    val storageMounts: String = "[]",
 ) {
     fun isSsh(): Boolean = type == WorkspaceType.SSH.name
 
@@ -78,6 +84,20 @@ data class WorkspaceEntity(
             sshSettings()?.let { SshWorkspaceBackend.layoutOf(it.remoteDir).workspaceDir } ?: "/"
         } else {
             WorkspaceManager.ROOTFS_WORKSPACE_DIR
+        }
+
+    fun storageMountList(): List<WorkspaceStorageMount> = runCatching {
+        JsonInstant.decodeFromString<List<WorkspaceStorageMount>>(storageMounts)
+    }.getOrDefault(emptyList())
+
+    /** 叠加在全局挂载表之后的工作区自有挂载; 共享存储目录在 Rootfs 内挂到同一路径 */
+    fun extraBindMounts(): List<WorkspaceBindMount> =
+        if (!capabilities().rootfs) {
+            emptyList()
+        } else {
+            storageMountList().map { mount ->
+                WorkspaceBindMount(source = File(mount.path), target = mount.path, writable = mount.writable)
+            }
         }
 
     fun supportsTerminal(): Boolean =

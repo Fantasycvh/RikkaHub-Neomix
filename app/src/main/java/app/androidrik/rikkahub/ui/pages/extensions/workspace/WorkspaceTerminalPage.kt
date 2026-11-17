@@ -156,6 +156,7 @@ private fun WorkspaceTerminalContent(
         ) {
             Text(
                 text = when {
+                    state.errorMessage != null -> state.errorMessage
                     root == null || state.isCreating || state.readiness == WorkspaceTerminalReadiness.Loading -> {
                         stringResource(R.string.workspace_terminal_loading)
                     }

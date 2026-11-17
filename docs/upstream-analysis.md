@@ -4,6 +4,8 @@
 
 > **同步点（2026-11-14 更新）**：已评估到上游 **`64452581d`**（tag `3.2.0`），`90269e39d` 之后共 **5 提交**（逐条见「2026-11-14 同步评估」）；issue 扫描维持 #2312。**唯一吸收候选 `c1c3c4d12`（message_node 复合索引）已当日落地**（fork `0bf49eed4`，DB 68→69）；`66149047e` 不跟、`3adeba476` 等价、Phone Use 两件不适用；**#2271（Mistral 422）确认关闭——本仓修复与上游语义一致，挂账销账**。peer 侧同轮评估见 [peer-verdicts §七](peer-verdicts-2026-11-08.md)。**同日晚复查：`upstream/master` 仍为 `64452581d`，无新增提交**（全量 peer 复检见 [peer-verdicts §八](peer-verdicts-2026-11-08.md)。**2026-11-15 本仓独立修复两条上游相关项**：#2317 空候选整条消失（75e669636，含落库前拦截空回复）与 Gemini 独立 `thoughtSignature` part 容忍 + 禁用签名推理编辑（d6f8140d1，判据 #14「不改写带签名产出块」同族的容错面）；上游侧无新增提交。）
 
+> **同步点（2026-11-17 更新）**：已评估到上游 **`bfac2440c`**（tag **`3.3.0`**），`64452581d` 之后共 **14 提交**（逐条见「2026-11-17 同步评估」）；issue 扫描 #2330–#2335（均由本批提交关闭，无新增 open 挂账）。**候选 5**：`fab0c077d` 工作区挂载共享存储（P2，与本仓草稿 `design-workspace-external-directories.md` 同题）、`27976e4da` 安全模式清超大设置（P2）、`f361bbc11` DeepSeek TTS/ASR（P3）、`cfb7d9613` 段落拆多气泡（P3）、Gemini trace 回归补用例（P3）；**已有等价 2**：`f93764e6a` DeepSeek 导入（本仓分支树/幂等/隔离更全）、`2898c3dea` thoughtSignature 兜底（本仓 d6f8140d1 同日独立修复）；**不同构免疫 1**：`a75f3f9cd` 弹窗宿主坑（本仓 CardGroup 常驻节点免疫）；**不适用 6**。本轮 fetch 方式变更：本机 7890 代理挂、https 全部连不上，改走 SSH fetch（Neomix 仓内临时 `upstream-fresh/master`，未改 remote 配置）。
+
 > **同步点（2026-11-07 更新）**：已评估到上游 **`fe5a28f9a`**（2026-11-07，上游 HEAD，已发 `3.1.2`），`903e058b9` 之后共 **25 提交**（逐条见「2026-11-07 同步评估」）；issue 扫描到 **#2304**。**当日已吸收落地**：bettertext bump v0.1.5（#2285/#2301）、`3733bac8f` DAO/仓库部分（本仓确认 #2299 同构孤儿收藏 bug 后修复）、`6328f4a8d` 余额查询 POST+JSON、`b40d7a273` 顶栏胶囊（方案定案「两套共存加开关」，haze 维持 2.0.1）；**等价五条**：`e011970cb`（跳板机）、`dba9fa574`（收藏去重）、`ae599e8d7`（图片压缩缓存，本仓 MediaEncodingCache 覆盖热路径）、`e85c1d901`（压缩直填，NumericDialogField 领先）、`88dee920c`（世界书拖拽，本仓整页领先）；**大体等价**：`4ebfde221`+`27ef05ede`（后台任务三件套/任务中心/进程树杀本仓均已领先，唯一缺口「任务完成主动通知模型」挂账待专项批次）。用户拍板不跟：`bbae6d3a7`+`6687f636c` 推荐提供商弹窗线；`c512338d5` deps update 稍后。详见文末实施记录。
 
 > **同步点（2026-11-10 更新）**：已评估到上游 **`8a837b27e`**（2026-11-10，上游 HEAD），`fe5a28f9a` 之后共 **16 提交**（逐条见「2026-11-10 同步评估」）；issue 扫描到 **#2310**。本批**只评不施**（未改源码、未提交）：**吸收 0 条**；**候选 8 条**——`bcc649abc` 一轮中途自动压缩（P2）、`5b7ca774b` 对话地图滑动卡顿（P2）、`921427f95` web 输入 token 取最后一次（P2，连带补 `UIMessage.lastUsage` 旧账）、`e1667163c` 的两处残件（P2：`signature_delta` 累加 / 非流式相邻 thinking 不合并）、`62d6acd31` 通知权限卡（P3）、`90fe936ed` 信任用户 CA（P3，需拍板）、`1c93ca72c` 500k token 调试对话（P3）、`9bc0fd658` 默认提供商全开（**用户 2026-11-10 已放弃，不再列为候选**）（P3，需拍板）；**已有等价 2 条**（`5863c4e4c` 地图搜索框悬浮、`0cd90ef12` 比例自动压缩——本仓压缩引擎更强，仅「压缩组装搬离主线程」留 P3 残件）；**不跟/不适用 6 条**（`25b70392a`+`ffb1c79e1` Phone Use 线、`da498cb2d` STA1N、`7691e385d`/`8a837b27e` i18n、`9135903d1` specialUse）。issue **#2306 多图上传跳过图片编辑＝本仓同构 bug（`ChatFilesPickerSheet.kt:125`）**，待用户拍板立项。
@@ -1916,6 +1918,34 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 - `c1c3c4d12` 待用户拍板后实施（DB 68→69）。
 - Phone Use 整线（`25b70392a` 无障碍操作手机，工具面 8 类 action、0-1000 网格坐标）记为**大特性观察**：安全边界设计克制（支付/银行/微信黑名单 + 本应用前台不操作 + 悬浮窗可见可停），若本仓将来做同域功能可参考其黑名单与渠道隔离（github source set 剔除 Play 构建）写法。
+
+## 2026-11-17 同步评估（`64452581d`..`bfac2440c`，14 提交，上游 3.3.0）
+
+> fetch 方式：本机 7890 代理挂（https 走 127.0.0.1 全部连不上），改走 SSH：`git fetch git@github.com:rikkahub/rikkahub.git +master:refs/remotes/upstream-fresh/master`（未改 remote 配置）。上游同批发了 tag `3.3.0`（版本号 `eb33917e4`）。
+
+### 总评
+
+**14 提交：候选 5（P2×2、P3×3）/ 已有等价 2 / 不同构免疫 1 / 不适用 6**。issue #2330（段落拆分）、#2331（DeepSeek 语音）、#2333（超大设置 OOM）、#2335（后台任务滚动）均由本批关闭。本批与 11-15 本仓独立修复正面撞题一次（thoughtSignature 兜底——两仓同日独立修复同一问题，互证）。
+
+| 上游提交 | 内容 | 判决 | 依据 / 本仓落点 |
+|---|---|---|---|
+| `f93764e6a` | **DeepSeek 当前分支聊天记录导入**（importer 265 行 + 测试 308 行） | **已有等价（本仓更强）** | 本仓 11-15/16 刚落地 DeepSeek 导入线：分支树折叠、确定性 UUID 幂等 + 前置判重、单会话异常隔离、导入互斥锁、READ_LINK/token 丢弃口径；上游仅线性「当前分支」、无幂等判重。可对照其 308 行测试补本仓漏测场景 |
+| `fab0c077d` | **工作区挂载共享存储目录**：`/storage` 目录 bind 进 Rootfs，命令/终端/文件工具共用挂载表，DB 33→34 | **候选 P2 → 已落地（2026-11-17）** | 用户拍板走上游轻量方案（同路径 bind），本仓 SAF/快照重草稿保持未实施。落地：workspace 模块 `WorkspaceBindMount.writable` + `WorkspaceLayout.approvalRoots`（最长匹配 + `.`/`..` 归一化防绕过）+ `WorkspaceManager.layout(extraMounts)`/`mountsOf`/`requireMountsAvailable` → `WorkspaceMountUnavailableException`（挂载失效显式报错，不静默落回 Rootfs）；app 侧 `WorkspaceStorageMount` + `workspaces.storage_mounts` 列（DB 74→75 AutoMigration）+ `extraBindMounts()`（rootfs 工作区才下发）；文件工具写审批从硬编码 `WRITABLE_ROOT_PREFIXES` 改为 `layout.isWritable`（writable 挂载免审批）；终端接线 `createLocalTerminalTransport(extraMounts)` + 启动失败 `errorMessage`；提示词追加挂载清单 + link2symlink 不可用警告；卡片 Android 11+ 才露（本仓无 productFlavors，`MANAGE_EXTERNAL_STORAGE` 声明在主 manifest，无渠道隔离）；共享存储路径按当前 Android 用户取（`Environment.getExternalStorageDirectory`），`/sdcard` 等别名归一 |
+| `27976e4da` | **安全模式清超大设置**（#2333）：超大世界书致设置 JSON 落盘 OOM、每次启动首写重现=循环闪退；安全模式列 >500 万字符字段、走 `SettingsStore.update` 内存+盘同清 | **候选 P2 → 已落地（fork `8a5d2f241`，2026-11-17）** | 本仓重写：`RESETTABLE_LARGE_KEYS` 白名单 + `collectLargeStoredFields` 纯函数（不解码看原始长度）+ `resetStoredField` 直接 `edit { remove(key) }`（本仓 decode `?: 默认值`，删 key 即默认，比 update 整份写回更稳）；UI 按钮顺序同步调整；测试 `SettingsStoreLargeFieldsTest` |
+| `f361bbc11` | **DeepSeek TTS/ASR**：TTS `/v1/tools/tts` 整段合成（pcm 补 WAV 头，stella/tide 音色）；ASR `/v1/tools/asr` 非流式，120s/8MiB 强制切段；抽出共享 `pcm16ToWav` | **候选 P3** | 本仓 speech 模块 provider 化结构同源，接入成本低；前置=确认 DeepSeek 开放该接口给 API key |
+| `cfb7d9613` | **助手回复按段落拆多气泡**（#2330）：按空行拆，代码块/公式块内空行不拆、列表缩进延续归同段；只影响显示 | **候选 P3 → 已落地（fork `8a5d2f241`，2026-11-17）** | `MarkdownParagraphs` 原样移植 + 8 条单测全收；本仓 ChatMessage 为 slice/外观重构版，接线点改在 `MessageTextContent`（仅气泡模式、非切片/非预渲染路径，每段独立气泡、流式只最后一段 streaming）；入口在显示页气泡开关下 |
+| `2898c3dea` | **Gemini 单独 thoughtSignature part 兜底** | **已有等价** | 本仓 d6f8140d1（11-15）同日独立修复同一问题，互证 |
+| `14d60e44e` / `d3f128f34` | Gemini trace 回放测试（thoughtSignature 完整回传 / Gemini 4 混用本地函数与 Google Search 流式 trace） | **不移植（2026-11-17 定案）** | 修复已落，但本仓无整套 trace 录制/回放基建（`tools/trace/traces.yml`/`StreamTraceReplayTest` 均不存在），超出 test-only 范围；thoughtSignature 已有 `GoogleStreamDecoderTest` 等覆盖 |
+| `a75f3f9cd` | 测试连接弹窗点搜索框后自动关闭：dialog 挂在 AnimatedVisibility 工具栏下，键盘弹出宿主被移出 composition | **不同构免疫** | 本仓 `ProviderConnectionTester` 宿主在 CardGroup/FlowRow 常驻节点（`SettingProviderDetailPage.kt:281`），无 AnimatedVisibility 宿主链；AGENTS.md TextField 宿主规则覆盖此坑族 |
+| `8e2afbd3c` | 后台任务详情长命令展开后无法滚动（#2335，命令块限半高内部滚动） | **不适用** | 本仓后台任务 UI 为自研任务中心（领先上游一代），无 `BackgroundTasksSheet` |
+| `90ef90b76` | Vertex 服务账号支持 Interactions API | **不跟** | 本仓未跟 Interactions API 线，上游继续沿该线推进 |
+| `7677f649f` | Phone Use：后台生成期间悬浮窗保持亮屏 | **不适用** | Phone Use 线本仓不跟（github 渠道专属） |
+| `eb33917e4` / `bfac2440c` | bump 3.3.0 / 发布 skill 压缩 mapping 再上传 | **不适用** | 版本号与发布基础设施，本仓发布流程独立 |
+
+### 后续
+
+- ~~`fab0c077d` 与安全模式两件 P2~~ 两件均已落地（安全模式 `8a5d2f241`、工作区挂载 2026-11-17）；DeepSeek 导入补测与 DeepSeek TTS/ASR 两件 P3 排期随缘。
+- Gemini trace 回放可在下次动 ai 模块测试时顺手补。
 
 ## 关联
 

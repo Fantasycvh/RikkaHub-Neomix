@@ -61,6 +61,7 @@ import me.rerere.hugeicons.stroke.FingerPrint
 import me.rerere.hugeicons.stroke.Folder01
 import me.rerere.hugeicons.stroke.PencilEdit01
 import me.rerere.hugeicons.stroke.Zap
+import app.androidrik.rikkahub.data.model.WorkspaceStorageMount
 
 @Composable
 internal fun WorkspaceBasicPage(
@@ -75,6 +76,7 @@ internal fun WorkspaceBasicPage(
     onToolApprovalChange: (String, Boolean) -> Unit,
     onMaxReadBytesChange: (Long) -> Unit,
     onShellCompatibilityModeChange: (Boolean) -> Unit,
+    onStorageMountsChange: (List<WorkspaceStorageMount>) -> Unit,
     onEditSsh: () -> Unit,
     mirrorSetupRunning: Boolean,
     mirrorPicks: List<PackageMirrorPick>,
@@ -204,6 +206,15 @@ internal fun WorkspaceBasicPage(
         if (workspace?.capabilities()?.backgroundTasks != false) {
             item {
                 WorkspaceTasksCard(tasks = tasks, now = tasksNow, onKill = onKillTask)
+            }
+        }
+
+        if (hasRootfs && workspace?.isSsh() != true) {
+            item {
+                WorkspaceStorageMountCard(
+                    workspace = workspace,
+                    onMountsChange = onStorageMountsChange,
+                )
             }
         }
 

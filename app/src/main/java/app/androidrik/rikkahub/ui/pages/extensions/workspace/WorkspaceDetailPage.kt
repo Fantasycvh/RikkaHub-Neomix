@@ -404,6 +404,7 @@ fun WorkspaceDetailPage(id: String) {
                     onToolApprovalChange = vm::setToolApproval,
                     onMaxReadBytesChange = vm::setMaxReadFileBytes,
                     onShellCompatibilityModeChange = vm::setShellCompatibilityMode,
+                    onStorageMountsChange = vm::setStorageMounts,
                     onEditSsh = { navController.navigate(Screen.WorkspaceSshEditor(id)) },
                     mirrorSetupRunning = mirrorSetupRunning,
                     mirrorPicks = mirrorPicks,

@@ -8,6 +8,16 @@
   <uses-permission
     android:name="android.permission.WRITE_EXTERNAL_STORAGE"
     android:maxSdkVersion="28" />
+  <!--
+    工作区挂载共享存储（上游 fab0c077d）：按路径 bind 真实目录进 PRoot Rootfs 需要
+    Android 11+ 的「所有文件访问权限」（SAF 的 content:// 给不了文件路径）。
+    权限不声明会直接导致挂载卡里目录不可访问；授权入口在系统设置，用户可拒绝。
+    上游把该权限隔离在 github 渠道；本仓无 productFlavors，声明在主 manifest，
+    Play 渠道分发时需注意 MANAGE_EXTERNAL_STORAGE 的审核要求。
+  -->
+  <uses-permission
+    android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+    tools:ignore="ScopedStorage" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

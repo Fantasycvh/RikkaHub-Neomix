@@ -33,7 +33,7 @@ class LocalWorkspaceBackendTest {
     @Test
     fun layoutWritableRootsMatchToolApprovalBoundary() {
         val (manager, _) = createManager()
-        val layout = manager.layout
+        val layout = manager.layout()
 
         assertEquals("/workspace", layout.workspaceDir)
         assertEquals(listOf("/workspace", "/tmp"), layout.writableRoots)

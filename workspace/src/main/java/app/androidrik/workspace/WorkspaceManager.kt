@@ -33,11 +33,44 @@ class WorkspaceManager(
 
     private val readOnlySnapshots = ReadOnlyMountSnapshots()
 
-    /** 工作区在执行环境内的目录约定；可写区与工具审批口径保持一致 */
-    val layout = WorkspaceLayout(
-        workspaceDir = ROOTFS_WORKSPACE_DIR,
-        writableRoots = listOf(ROOTFS_WORKSPACE_DIR, "/tmp"),
-    )
+    init {
+        baseDir.mkdirs()
+    }
+
+    /**
+     * 工作区的目录约定。
+     *
+     * [extraMounts] 是单个工作区自己的挂载（如用户配置的共享存储目录），叠加在全局挂载表之后；
+     * 下面凡是带这个参数的方法，调用方需传入同一份列表，否则 PRoot 内外看到的路径会对不上。
+     */
+    fun layout(extraMounts: List<WorkspaceBindMount> = emptyList()): WorkspaceLayout {
+        val (writable, approval) = mountsOf(extraMounts).partition { it.writable }
+        return WorkspaceLayout(
+            workspaceDir = ROOTFS_WORKSPACE_DIR,
+            writableRoots = listOf(ROOTFS_WORKSPACE_DIR, "/tmp") + writable.map { it.target.trimEnd('/') },
+            approvalRoots = approval.map { it.target.trimEnd('/') },
+        )
+    }
+
+    fun backend(
+        root: String,
+        shellCompatibilityMode: Boolean = false,
+        extraMounts: List<WorkspaceBindMount> = emptyList(),
+    ): WorkspaceBackend = LocalWorkspaceBackend(this, root, shellCompatibilityMode, extraMounts)
+
+    private fun mountsOf(extraMounts: List<WorkspaceBindMount>): List<WorkspaceBindMount> =
+        if (extraMounts.isEmpty()) bindMounts else bindMounts + extraMounts
+
+    /**
+     * PRoot 会跳过不存在的源目录，这时 Rootfs 里对应路径落回 Rootfs 自身：
+     * 写入能「成功」，文件却不在挂载源里，文件工具也读不到。工作区挂载失效时直接报错。
+     */
+    private fun requireMountsAvailable(extraMounts: List<WorkspaceBindMount>) {
+        val unavailable = extraMounts.filterNot { it.source.isDirectory }
+        if (unavailable.isNotEmpty()) {
+            throw WorkspaceMountUnavailableException(unavailable.map { it.target })
+        }
+    }
 
     /** 后台任务表：进程内内存态，见 [WorkspaceTaskRegistry] 的类注释。 */
     private val backgroundTaskRegistry: WorkspaceTaskRegistry? =
@@ -58,16 +91,6 @@ class WorkspaceManager(
      */
     val backgroundTaskSnapshots: StateFlow<List<WorkspaceTaskSnapshot>> =
         backgroundTaskRegistry?.snapshotFlow ?: emptyTaskSnapshots.asStateFlow()
-
-    // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
-    private val sortedBindMounts = bindMounts.sortedByDescending { it.target.trimEnd('/').length }
-
-    init {
-        baseDir.mkdirs()
-    }
-
-    fun backend(root: String, shellCompatibilityMode: Boolean = false): WorkspaceBackend =
-        LocalWorkspaceBackend(this, root, shellCompatibilityMode)
 
     fun ensureWorkspace(root: String): File {
         val dir = workspaceDir(root)
@@ -167,11 +190,16 @@ class WorkspaceManager(
      * 可以直接用文件 IO 访问, 无需经过 PRoot; 只是 Rootfs 目录里对应位置是个空挂载点,
      * 按 [WorkspaceStorageArea.LINUX] 解析必然落空。
      */
-    fun resolveRootfsPath(root: String, path: String): RootfsLocation {
+    fun resolveRootfsPath(
+        root: String,
+        path: String,
+        extraMounts: List<WorkspaceBindMount> = emptyList(),
+    ): RootfsLocation {
         val trimmed = path.trim().trimEnd('/').ifBlank { "/" }
         require(trimmed.startsWith("/")) { "Rootfs path must be absolute: $path" }
 
-        sortedBindMounts.forEach { mount ->
+        // 按 target 长度降序, 保证 /a/b 优先于 /a 匹配
+        mountsOf(extraMounts).sortedByDescending { it.target.trimEnd('/').length }.forEach { mount ->
             val target = mount.target.trimEnd('/')
             if (trimmed == target) return RootfsLocation(mount.source, "")
             if (trimmed.startsWith("$target/")) {
@@ -194,16 +222,16 @@ class WorkspaceManager(
         return RootfsLocation(linuxDir(root), trimmed.trimStart('/'))
     }
 
-    fun rootfsFileSize(root: String, path: String): Long =
-        resolveRootfsFile(root, path).also { it.requireReadableFile(path) }.length()
+    fun rootfsFileSize(root: String, path: String, extraMounts: List<WorkspaceBindMount> = emptyList()): Long =
+        resolveRootfsFile(root, path, extraMounts).also { it.requireReadableFile(path) }.length()
 
     /**
      * 取工作区内文件的**真实 File**（已校验存在/可读、内核伪文件系统已拒绝）。
      *
      * 只给"需要真实文件路径的解析器"用（PDF 等原生解析器都吃 `File`）：调用方只读，不得移动/删除。
      */
-    fun resolveReadableRootfsFile(root: String, path: String): File {
-        val file = resolveRootfsFile(root, path)
+    fun resolveReadableRootfsFile(root: String, path: String, extraMounts: List<WorkspaceBindMount> = emptyList()): File {
+        val file = resolveRootfsFile(root, path, extraMounts)
         file.requireReadableFile(path)
         return file
     }
@@ -225,8 +253,9 @@ class WorkspaceManager(
         path: String,
         startLine: Long,
         limit: Int,
+        extraMounts: List<WorkspaceBindMount> = emptyList(),
     ): RootfsLineWindow {
-        val file = resolveRootfsFile(root, path)
+        val file = resolveRootfsFile(root, path, extraMounts)
         file.requireReadableFile(path)
         val lines = ArrayList<String>(limit.coerceAtMost(4096))
         file.bufferedReader(Charsets.UTF_8).use { reader ->
@@ -244,8 +273,8 @@ class WorkspaceManager(
     }
 
     /** Rootfs 内文件的最后修改时间（毫秒）；不存在或不是文件时返回 null（写入冲突检测用） */
-    fun rootfsFileMtime(root: String, path: String): Long? {
-        val file = resolveRootfsFile(root, path)
+    fun rootfsFileMtime(root: String, path: String, extraMounts: List<WorkspaceBindMount> = emptyList()): Long? {
+        val file = resolveRootfsFile(root, path, extraMounts)
         if (!file.exists() || !file.isFile) return null
         return file.lastModified()
     }
@@ -259,15 +288,15 @@ class WorkspaceManager(
      */
     fun rootfsShell(root: String): String = rootfsShellFor(linuxDir(root))
 
-    fun exportRootfsFile(root: String, path: String, outputStream: OutputStream) {
-        val file = resolveRootfsFile(root, path)
+    fun exportRootfsFile(root: String, path: String, outputStream: OutputStream, extraMounts: List<WorkspaceBindMount> = emptyList()) {
+        val file = resolveRootfsFile(root, path, extraMounts)
         file.requireReadableFile(path)
         outputStream.use { out -> file.inputStream().use { it.copyTo(out) } }
     }
 
     /** Rootfs 内绝对路径对应的宿主机文件，不检查是否存在 */
-    fun resolveRootfsFile(root: String, path: String): File {
-        val location = resolveRootfsPath(root, path)
+    fun resolveRootfsFile(root: String, path: String, extraMounts: List<WorkspaceBindMount> = emptyList()): File {
+        val location = resolveRootfsPath(root, path, extraMounts)
         return fileSystem.resolve(location.rootDir, location.relativePath)
     }
 
@@ -314,16 +343,19 @@ class WorkspaceManager(
         timeoutMillis: Long = DEFAULT_COMMAND_TIMEOUT_MS,
         stdin: ByteArray? = null,
         shellCompatibilityMode: Boolean = false,
+        extraMounts: List<WorkspaceBindMount> = emptyList(),
     ): WorkspaceCommandResult {
         require(command.isNotBlank()) { "Command is required" }
         val workingDir = fileSystem.resolve(filesDir(root), cwd)
         require(workingDir.exists()) { "Working directory does not exist: $cwd" }
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
+        requireMountsAvailable(extraMounts)
 
         // 只读挂载先换快照（design-readonly-mount-snapshots §3.3）：shell（前台 + 后台任务）
         // 是 /upload 只读保护的唯一绕过面；失败向上传播，与 cwd 预检同层。
         // 租约覆盖整条命令（审计 #20）：命令跑完才释放，期间这一代不会被 GC 回收。
-        val leased = preparedBindMountLease()
+        val mounts = mountsOf(extraMounts)
+        val leased = preparedBindMountLease(mounts)
         return try {
             shellRunner.execute(
                 WorkspaceShellContext(
@@ -336,7 +368,7 @@ class WorkspaceManager(
                     workingDir = workingDir,
                     timeoutMillis = timeoutMillis,
                     stdin = stdin,
-                    bindMounts = leased?.mounts ?: bindMounts,
+                    bindMounts = leased?.mounts ?: mounts,
                     shellCompatibilityMode = shellCompatibilityMode,
                 )
             )
@@ -367,6 +399,7 @@ class WorkspaceManager(
         shellCompatibilityMode: Boolean = false,
         owner: ExecutionScope? = null,
         noticeTarget: WorkspaceTaskNoticeTarget? = null,
+        extraMounts: List<WorkspaceBindMount> = emptyList(),
     ): WorkspaceTaskSnapshot {
         require(command.isNotBlank()) { "Command is required" }
         val registry = requireNotNull(backgroundTaskRegistry) {
@@ -375,10 +408,12 @@ class WorkspaceManager(
         val workingDir = fileSystem.resolve(filesDir(root), cwd)
         require(workingDir.exists()) { "Working directory does not exist: $cwd" }
         require(workingDir.isDirectory) { "Working path is not a directory: $cwd" }
+        requireMountsAvailable(extraMounts)
 
         // 后台任务比一轮对话活得久：租约交给注册表，在进程退出（reaper 线程收尾）或启动失败置终态
         // 之后释放，期间该代不会被回收（审计 #20）。start 校验失败（并发超限）时这里兜底释放。
-        val leased = preparedBindMountLease()
+        val mounts = mountsOf(extraMounts)
+        val leased = preparedBindMountLease(mounts)
         val context = WorkspaceShellContext(
             root = root,
             command = command,
@@ -390,7 +425,7 @@ class WorkspaceManager(
             // 后台任务无超时；这里的 timeoutMillis 不被启动器使用
             timeoutMillis = 0L,
             stdin = null,
-            bindMounts = leased?.mounts ?: bindMounts,
+            bindMounts = leased?.mounts ?: mounts,
             shellCompatibilityMode = shellCompatibilityMode,
         )
         return try {
@@ -413,10 +448,10 @@ class WorkspaceManager(
      * `require(!readOnly)` 才能通过），并持有这些代的引用计数直到命令/任务结束。
      * 无只读挂载或快照关闭时返回 null（调用方原样透传 [bindMounts]，也不需要释放）。
      */
-    private fun preparedBindMountLease(): ReadOnlyMountSnapshots.Leased? {
+    private fun preparedBindMountLease(mounts: List<WorkspaceBindMount>): ReadOnlyMountSnapshots.Leased? {
         if (readOnlySnapshotStorage == null) return null
-        if (bindMounts.none { it.readOnly }) return null
-        return readOnlySnapshots.prepareLeased(bindMounts, readOnlySnapshotStorage)
+        if (mounts.none { it.readOnly }) return null
+        return readOnlySnapshots.prepareLeased(mounts, readOnlySnapshotStorage)
     }
 
     /** 后台任务列表；[root] 为 null 时列出所有工作空间的。 */
@@ -522,3 +557,12 @@ data class RootfsLineWindow(
     val lines: List<String>,
     val moreLines: Boolean,
 )
+
+/**
+ * 工作区配置的挂载源目录不存在（权限被撤销 / SD 卡拔出 / 目录被删）。
+ *
+ * 为什么显式报错而不是跳过：PRoot 跳过失效的 `-b` 绑定后，Rootfs 里对应路径落回
+ * Rootfs 自身——写入能「成功」，文件却不在挂载源里，模型侧表现为静默丢数据。
+ */
+class WorkspaceMountUnavailableException(val targets: List<String>) :
+    RuntimeException("Workspace mounts are unavailable: ${targets.joinToString(", ")}")

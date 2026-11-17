@@ -22,6 +22,7 @@ import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
 import app.androidrik.rikkahub.data.repository.AptIndexRefresh
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
+import app.androidrik.rikkahub.data.model.WorkspaceStorageMount
 import app.androidrik.workspace.PackageMirrorPick
 import app.androidrik.workspace.RootfsCatalog
 import app.androidrik.workspace.RootfsInstallProgress
@@ -397,6 +398,21 @@ class WorkspaceDetailVM(
                 throw error
             } catch (error: Exception) {
                 _installError.value = error.message ?: context.getString(R.string.workspace_detail_shell_compat_save_failed)
+            }
+        }
+    }
+
+    // 共享存储挂载（上游 fab0c077d）：保存失败（路径不合法/目录不可访问）只弹提示，不改状态
+    fun setStorageMounts(mounts: List<WorkspaceStorageMount>) {
+        viewModelScope.launch {
+            try {
+                val workspace = state.value.workspace ?: return@launch
+                repository.setStorageMounts(workspace.id, mounts)
+                loadWorkspace()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _installError.value = error.message ?: context.getString(R.string.workspace_detail_storage_save_failed)
             }
         }
     }

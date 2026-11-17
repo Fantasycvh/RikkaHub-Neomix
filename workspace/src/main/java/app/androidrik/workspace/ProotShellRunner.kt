@@ -20,8 +20,16 @@ data class WorkspaceBindMount(
      * 此标记只是声明——**binding 前必须先经 [ReadOnlyMountSnapshots.prepare] 换成私有快照**
      * （prepare 产物以 readOnly=false 形态下发）。任何调用方把 readOnly 挂载直接塞进
      * shell 上下文都会在 runner 这里当场失败，而不是静默挂载原件。
+     *
+     * 注意：新字段必须排在 [readOnly] 之后——存量测试与调用方用位置参数
+     * `WorkspaceBindMount(source, target, readOnly)` 构造。
      */
     val readOnly: Boolean = false,
+    /**
+     * AI 经文件工具写入该挂载目录时免强制审批（挂载审批语义，与 [readOnly] 正交：
+     * writable 只影响审批判断，不改 PRoot 绑定行为）。
+     */
+    val writable: Boolean = false,
 ) {
     init {
         require(target.startsWith("/")) { "Bind mount target must be absolute: $target" }

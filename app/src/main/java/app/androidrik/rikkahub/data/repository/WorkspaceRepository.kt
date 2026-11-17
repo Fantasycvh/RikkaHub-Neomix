@@ -16,6 +16,8 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.model.SshJumpSettings
 import app.androidrik.rikkahub.data.model.SshWorkspaceDraft
 import app.androidrik.rikkahub.data.model.SshWorkspaceSettings
+import app.androidrik.rikkahub.data.model.WorkspaceStorageMount
+import app.androidrik.rikkahub.data.model.normalizeStorageMountPath
 import app.androidrik.rikkahub.data.export.WorkspaceBatchResult
 import app.androidrik.rikkahub.data.export.ExportTreeWriter
 import app.androidrik.rikkahub.data.export.collectWorkspaceExportPlan
@@ -467,7 +469,7 @@ class WorkspaceRepository(
             "Local file access is not available for ${workspace.type} workspaces"
         }
         manager.ensureWorkspace(workspace.root)
-        manager.resolveReadableRootfsFile(workspace.root, path)
+        manager.resolveReadableRootfsFile(workspace.root, path, workspace.extraBindMounts())
     }
 
     /**
@@ -484,7 +486,7 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         if (workspace.capabilities().localFiles) {
             manager.ensureWorkspace(workspace.root)
-            manager.readRootfsLineWindow(workspace.root, path, startLine, limit)
+            manager.readRootfsLineWindow(workspace.root, path, startLine, limit, workspace.extraBindMounts())
         } else {
             // 远程没有本地 File 可流式读：按绝对路径整读后再切窗口，
             // 上限沿用工作区的单次读取上限，避免窗口请求顺手把大文件全拉进内存。
@@ -526,7 +528,7 @@ class WorkspaceRepository(
         val workspace = dao.getById(id) ?: error("Workspace not found: $id")
         if (!workspace.capabilities().localFiles) return@withContext null
         manager.ensureWorkspace(workspace.root)
-        manager.rootfsFileMtime(workspace.root, path)
+        manager.rootfsFileMtime(workspace.root, path, workspace.extraBindMounts())
     }
 
     /** 按 Rootfs 内绝对路径导出文件内容, 支持 /workspace、bind mount 与 Rootfs 内部路径 */
@@ -690,6 +692,32 @@ class WorkspaceRepository(
         dao.setShellCompatibilityMode(id, enabled, System.currentTimeMillis())
     }
 
+    /**
+     * 保存共享存储挂载列表, 路径规范化后按路径去重; 只对下次执行的命令和新开的终端生效。
+     * 新加入的路径必须是可访问的目录, 已保存的路径不再校验, 这样 SD 卡拔出后仍能删除或修改其他条目。
+     */
+    suspend fun setStorageMounts(id: String, mounts: List<WorkspaceStorageMount>) {
+        val workspace = dao.getById(id) ?: error("Workspace not found: $id")
+        require(workspace.capabilities().rootfs) { "Storage mounts are only available for local workspaces" }
+        val savedPaths = workspace.storageMountList().mapTo(HashSet()) { it.path }
+        val normalized = mounts
+            .map { it.copy(path = normalizeStorageMountPath(it.path)) }
+            .distinctBy { it.path }
+        withContext(Dispatchers.IO) {
+            normalized.filterNot { it.path in savedPaths }.forEach { mount ->
+                require(File(mount.path).isDirectory) {
+                    "Folder does not exist, or all files access is not granted: ${mount.path}"
+                }
+            }
+        }
+        dao.upsert(
+            workspace.copy(
+                storageMounts = JsonInstant.encodeToString(normalized),
+                updatedAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
     suspend fun executeCommand(
         id: String,
         command: String,
@@ -728,6 +756,7 @@ class WorkspaceRepository(
             shellCompatibilityMode = workspace.shellCompatibilityMode,
             owner = owner,
             noticeTarget = noticeTarget,
+            extraMounts = workspace.extraBindMounts(),
         )
     }
 
@@ -815,7 +844,7 @@ class WorkspaceRepository(
         if (workspace.isSsh()) {
             workspace.sshSettings()?.let { SshWorkspaceBackend.layoutOf(it.remoteDir) }
         } else {
-            manager.layout
+            manager.layout(workspace.extraBindMounts())
         }
     }
 
@@ -855,7 +884,7 @@ class WorkspaceRepository(
             val settings = workspace.sshSettings() ?: error("SSH workspace config is missing: ${workspace.id}")
             SshWorkspaceBackend(sshPool, workspace.id, settings.toConnectionConfig())
         } else {
-            manager.backend(workspace.root, workspace.shellCompatibilityMode)
+            manager.backend(workspace.root, workspace.shellCompatibilityMode, workspace.extraBindMounts())
         }
 
     private fun SshWorkspaceSettings.toConnectionConfig() = SshConnectionConfig(
