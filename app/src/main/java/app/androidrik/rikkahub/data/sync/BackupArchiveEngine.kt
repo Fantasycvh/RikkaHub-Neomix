@@ -102,12 +102,14 @@ internal class BackupArchiveEngine(
         try {
         ManifestZipOutputStream(FileOutputStream(backupFile)).use { zipOut ->
             // settings.json 恒含（首个 section；manifest 记其 SHA-256 供恢复侧校验）。
-            // scope 排除的类别在 JSON 键级剔除（BackupContentFilter），恢复侧据此回填本机值。
+            // scope 排除的类别在 JSON 键级剔除（BackupContentFilter），恢复侧据此回填本机值；
+            // 设备态字段（launchCount 等）再经 BackupPortability 剥离——备份只描述用户数据。
             val settingsContent = BackupContentFilter
                 .filterSettingsJson(
                     settings = json.encodeToJsonElement(settingsStore.settingsFlow.value).jsonObject,
                     scope = scope,
                 )
+                .let(BackupPortability::portable)
                 .toString()
             val settingsRaw = settingsContent.toByteArray(Charsets.UTF_8)
             addVirtualFileToZip(
@@ -479,7 +481,12 @@ internal class BackupArchiveEngine(
                         var droppedEntries: List<String> = emptyList()
                         settingsStore.update { current ->
                             val currentJson = json.encodeToJsonElement(current).jsonObject
-                            val mergedJson = BackupContentFilter.preserveUnselected(incomingJson, currentJson, scope)
+                            // 设备态字段（launchCount/importedSources/lastBackupTime）一律保留本机值，
+                            // 即使旧包（本阶段之前）未清洗过也以本机为准（BackupPortability）。
+                            val mergedJson = BackupPortability.preserveDeviceState(
+                                incoming = BackupContentFilter.preserveUnselected(incomingJson, currentJson, scope),
+                                current = currentJson,
+                            )
                             // 原版 3.1.0 可能带本应用没有的多态子类（chatgpt/grok/volcengine…）：
                             // 逐条降级丢弃而不是整份失败，否则连会话都恢复不了
                             val decoded = SettingsCompatDecoder.decode(json, mergedJson.toString())
