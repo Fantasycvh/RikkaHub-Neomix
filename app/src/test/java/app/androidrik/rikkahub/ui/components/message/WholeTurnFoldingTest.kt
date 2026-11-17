@@ -5,9 +5,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.ServerToolMetadata
+import app.androidrik.ai.ui.ServerToolProtocol
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.toMetadata
 
 /**
  * 整轮折叠的分组 / 展示决策单测（`docs/design/design-whole-turn-folding.md` §9）。
@@ -92,6 +95,24 @@ class WholeTurnFoldingTest {
         assertTrue(chain.steps.any { it is ThinkingStep.NarrationStep })
         val answer = blocks[1] as MessagePartBlock.ContentBlock
         assertEquals("回答", (answer.part as UIMessagePart.Text).text)
+    }
+
+    @Test
+    fun `Vertex search after model output keeps final answer visible and still folds client tool narration`() {
+        val grounding = serverTool(name = "google_search").copy(
+            metadata = ServerToolMetadata(protocol = ServerToolProtocol.GOOGLE_INTERACTIONS).toMetadata(),
+        )
+        val answer = text("The current year is 2026.")
+        val blocks = listOf(text("Let me check"), tool("lookup"), answer, grounding)
+            .groupMessageParts(wholeTurnFolding = true)
+
+        val content = blocks.filterIsInstance<MessagePartBlock.ContentBlock>().single()
+        assertEquals(answer, content.part)
+        assertEquals(2, content.index)
+        val (clientChain, groundingChain) = blocks.thinkingBlocks()
+        assertTrue(clientChain.canCollapse)
+        assertTrue(clientChain.steps.first() is ThinkingStep.NarrationStep)
+        assertEquals(listOf(ThinkingStep.ServerToolStep(grounding)), groundingChain.steps)
     }
 
     // ---- 4. 空白文本中断（Qwen 场景）----

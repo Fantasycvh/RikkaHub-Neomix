@@ -6,8 +6,11 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.ServerToolMetadata
+import app.androidrik.ai.ui.ServerToolProtocol
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.metadataAs
 import app.androidrik.rikkahub.ui.components.message.tools.ToolUIRegistry
 import app.androidrik.rikkahub.utils.JsonInstant
 
@@ -114,8 +117,8 @@ sealed interface MessagePartBlock {
  * 将 parts 分组成 ThinkingBlock 和 ContentBlock。
  *
  * 规则（对照 `docs/design/design-whole-turn-folding.md` §4）：
- * 1. `lastToolIndex` 之前的 `Text` 是过程解说，和 Reasoning/Tool/ServerTool 一起进思考链；
- * 2. `lastToolIndex` 之后的 `Text` 才是面向用户的最终回答，单独成正文块；
+ * 1. `narrationBoundary` 之前的 `Text` 是过程解说，和 Reasoning/Tool/ServerTool 一起进思考链；
+ * 2. `narrationBoundary` 之后的 `Text` 单独成正文块；
  * 3. 空白 `Text` 直接跳过（部分模型如 Qwen 会在工具之间输出空白文本，把它当分隔符
  *    会把一条思考链撕成多块，折叠头消失）；
  * 4. 成功执行的 `chart_display` 原地替换为 `ChartBlock`，其余工具按渲染器的
@@ -150,9 +153,13 @@ fun List<UIMessagePart>.groupMessageParts(
         return result
     }
 
-    // 最后一次工具调用之后出现的文本才是面向用户的最终回答；
-    // 位于工具调用之前的文本是过程解说，归入思考链一起折叠
-    val lastToolIndex = indexOfLast { it is UIMessagePart.Tool || it is UIMessagePart.ServerTool }
+    val narrationBoundary = indexOfLast { part ->
+        when (part) {
+            is UIMessagePart.Tool -> true
+            is UIMessagePart.ServerTool -> !part.isInteractionsSearch()
+            else -> false
+        }
+    }
 
     this.fastForEachIndexed { index, part ->
         when (part) {
@@ -184,7 +191,7 @@ fun List<UIMessagePart>.groupMessageParts(
             is UIMessagePart.Text -> {
                 // 空白文本既不渲染也不参与分组，否则会把一条思考链撕成两块
                 if (part.text.isBlank()) return@fastForEachIndexed
-                if (wholeTurnFolding && index < lastToolIndex) {
+                if (wholeTurnFolding && index < narrationBoundary) {
                     currentThinkingSteps.add(ThinkingStep.NarrationStep(part, index))
                 } else {
                     flushThinkingSteps()
@@ -201,6 +208,11 @@ fun List<UIMessagePart>.groupMessageParts(
     flushThinkingSteps()
     return result.withFoldDecisions(wholeTurnFolding)
 }
+
+// Vertex Interactions can emit a complete answer before its Google Search and citation steps.
+private fun UIMessagePart.ServerTool.isInteractionsSearch(): Boolean =
+    toolName == "google_search" &&
+        metadataAs<ServerToolMetadata>()?.protocol == ServerToolProtocol.GOOGLE_INTERACTIONS
 
 /**
  * 折叠相关的展示决策（决策 2/7/8），在分组完成后统一算好，渲染层只管照做。
