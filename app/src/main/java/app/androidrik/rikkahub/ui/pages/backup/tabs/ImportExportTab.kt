@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.sync.BackupInspection
 import app.androidrik.rikkahub.data.sync.BackupRunKind
+import app.androidrik.rikkahub.data.sync.RestoreMode
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.CardGroupScope
 import app.androidrik.rikkahub.ui.components.ui.StickyHeader
@@ -81,6 +82,8 @@ fun ImportExportTab(
     var pendingFormat by remember { mutableStateOf<ImportFormat?>(null) }
     // 整库恢复：**选文件之前**的覆盖确认（不可逆）
     var pendingLocalImport by remember { mutableStateOf(false) }
+    // 整库恢复模式：首个确认框选定（默认覆盖），随选文件流程带到 restoreFromLocalFile
+    var pendingRestoreMode by remember { mutableStateOf(RestoreMode.OVERWRITE) }
     // 「对话归档」导入：解析出的预览（非空 = 待确认）与其重复导入记录
     // 见 docs/design/design-conversation-import-export.md §十
     var conversationImportPreview by remember { mutableStateOf<ConversationImportPreview?>(null) }
@@ -302,6 +305,8 @@ fun ImportExportTab(
                         BackupItemsSelector(
                             items = settings.backupItems,
                             onItemsChange = { vm.updateSettings(settings.copy(backupItems = it)) },
+                            scope = settings.backupScope,
+                            onScopeChange = { vm.updateSettings(settings.copy(backupScope = it)) },
                         )
                     },
                 )
@@ -512,7 +517,9 @@ fun ImportExportTab(
     if (pendingLocalImport) {
         RestoreConfirmDialog(
             items = settings.backupItems,
-            onConfirm = {
+            onConfirm = { mode ->
+                // 模式在首个确认框选定，随选文件流程带到 restoreFromLocalFile
+                pendingRestoreMode = mode
                 pendingLocalImport = false
                 launchPicker(ImportFormat.LOCAL_BACKUP)
             },
@@ -529,9 +536,19 @@ fun ImportExportTab(
                 scope.launch {
                     isRestoring = true
                     try {
-                        val outcome = vm.restoreFromLocalFile(file)
+                        val outcome = vm.restoreFromLocalFile(file, pendingRestoreMode)
                         finishImport(ImportFormat.LOCAL_BACKUP)
                         showSettingsDroppedWarning(outcome.settingsWarnings)
+                        if (outcome.mergedConversations > 0 || outcome.skippedConversations > 0) {
+                            toaster.show(
+                                resources.getString(
+                                    R.string.backup_page_restore_merge_result,
+                                    outcome.mergedConversations.toString(),
+                                    outcome.skippedConversations.toString(),
+                                ),
+                                type = ToastType.Info,
+                            )
+                        }
                     } catch (e: Exception) {
                         e.printStackTrace()
                         toastFailure(e)

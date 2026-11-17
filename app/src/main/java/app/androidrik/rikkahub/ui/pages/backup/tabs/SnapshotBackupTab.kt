@@ -218,7 +218,7 @@ fun SnapshotBackupTab(vm: BackupVM) {
         } else null
         RestoreConfirmDialog(
             items = snapshot.items,
-            onConfirm = { restoring = null; vm.restoreSnapshot(snapshot) },
+            onConfirm = { _ -> restoring = null; vm.restoreSnapshot(snapshot) },
             onDismissRequest = { restoring = null },
             databaseWarning = databaseWarning,
         )

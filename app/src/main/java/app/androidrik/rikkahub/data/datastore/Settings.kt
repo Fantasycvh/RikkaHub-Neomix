@@ -32,6 +32,7 @@ import app.androidrik.rikkahub.data.model.SubagentPreset
 import app.androidrik.rikkahub.data.model.Tag
 import app.androidrik.rikkahub.data.model.asSinglePreset
 import app.androidrik.rikkahub.data.sync.BackupItem
+import app.androidrik.rikkahub.data.sync.BackupScope
 import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.data.model.CustomTheme
 import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
@@ -210,6 +211,8 @@ data class Settings(
      * 无自动调度，故“别忘记改回来”的风险低）。
      */
     val backupItems: List<BackupItem> = DEFAULT_BACKUP_ITEMS,
+    /** 备份范围（excluded-set 语义）：settings.json 键级剔除（见 [BackupScope]），默认全包含。 */
+    val backupScope: BackupScope = BackupScope(),
     val ttsProviders: List<TTSProviderSetting> = DEFAULT_TTS_PROVIDERS,
     val selectedTTSProviderId: Uuid = DEFAULT_SYSTEM_TTS_ID,
     val defaultTTSPlaybackSpeed: Float = 1.0f,

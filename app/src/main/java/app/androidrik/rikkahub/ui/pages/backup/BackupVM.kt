@@ -6,6 +6,7 @@ import app.androidrik.rikkahub.data.sync.BackupProgress
 import app.androidrik.rikkahub.data.sync.BackupRunCoordinator
 import app.androidrik.rikkahub.data.sync.BackupRunKind
 import app.androidrik.rikkahub.data.sync.BackupRunState
+import app.androidrik.rikkahub.data.sync.RestoreMode
 import app.androidrik.rikkahub.data.sync.RestoreOutcome
 import android.app.Application
 import android.util.Log
@@ -395,9 +396,9 @@ class BackupVM(
         }
     }
 
-    suspend fun restore(item: WebDavBackupItem): RestoreOutcome =
+    suspend fun restore(item: WebDavBackupItem, mode: RestoreMode = RestoreMode.OVERWRITE): RestoreOutcome =
         backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
-            webDavSync.restore(config = settings.value.webDavConfig, item = item, onProgress = report)
+            webDavSync.restore(config = settings.value.webDavConfig, item = item, mode = mode, onProgress = report)
         }
 
     suspend fun deleteWebDavBackupFile(item: WebDavBackupItem) {
@@ -424,14 +425,14 @@ class BackupVM(
     }
 
     /** 从本地 ZIP 恢复；临时文件的删除移到与任务同生命周期，避免任务仍在读时被页面删掉。 */
-    suspend fun restoreFromLocalFile(file: File): RestoreOutcome {
+    suspend fun restoreFromLocalFile(file: File, mode: RestoreMode = RestoreMode.OVERWRITE): RestoreOutcome {
         if (backupRun.state.value != null) {
             file.delete()
             error("已有备份任务正在进行")
         }
         return backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
             try {
-                webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, report)
+                webDavSync.restoreFromLocalFile(file, settings.value.webDavConfig, mode, report)
             } finally {
                 withContext(NonCancellable + Dispatchers.IO) { file.delete() }
             }
@@ -768,9 +769,9 @@ class BackupVM(
         }
     }
 
-    suspend fun restoreFromS3(item: S3BackupItem): RestoreOutcome =
+    suspend fun restoreFromS3(item: S3BackupItem, mode: RestoreMode = RestoreMode.OVERWRITE): RestoreOutcome =
         backupRun.await(BackupRunKind.FULL_RESTORE) { report ->
-            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, onProgress = report)
+            s3Sync.restoreFromS3(config = settings.value.s3Config, item = item, mode = mode, onProgress = report)
         }
 
     suspend fun deleteS3BackupFile(item: S3BackupItem) {

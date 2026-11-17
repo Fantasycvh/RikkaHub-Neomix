@@ -4,6 +4,7 @@ import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupProgressRow
 import app.androidrik.rikkahub.data.sync.BackupItem
+import app.androidrik.rikkahub.data.sync.RestoreMode
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
@@ -103,16 +104,26 @@ fun S3Tab(
     }
 
     /** 实际执行恢复（经确认后调用） */
-    fun performRestore(restoreItem: S3BackupItem) {
+    fun performRestore(restoreItem: S3BackupItem, mode: RestoreMode) {
         if (busy) return
         scope.launch {
             restoringItemId = restoreItem.displayName
             runCatching {
-                val outcome = vm.restoreFromS3(item = restoreItem)
+                val outcome = vm.restoreFromS3(item = restoreItem, mode = mode)
                 toaster.show(
                     resources.getString(R.string.backup_page_restore_success),
                     type = ToastType.Success
                 )
+                if (outcome.mergedConversations > 0 || outcome.skippedConversations > 0) {
+                    toaster.show(
+                        resources.getString(
+                            R.string.backup_page_restore_merge_result,
+                            outcome.mergedConversations.toString(),
+                            outcome.skippedConversations.toString(),
+                        ),
+                        type = ToastType.Info,
+                    )
+                }
                 if (outcome.settingsWarnings.isNotEmpty()) {
                     toaster.show(
                         resources.getString(
@@ -299,6 +310,10 @@ fun S3Tab(
                             onItemsChange = { items ->
                                 vm.updateSettings { it.copy(backupItems = items) }
                             },
+                            scope = settings.backupScope,
+                            onScopeChange = { scope ->
+                                vm.updateSettings { it.copy(backupScope = scope) }
+                            },
                         )
                     },
                 )
@@ -471,9 +486,9 @@ fun S3Tab(
     pendingRestoreItem?.let { item ->
         RestoreConfirmDialog(
             items = settings.backupItems,
-            onConfirm = {
+            onConfirm = { mode ->
                 pendingRestoreItem = null
-                performRestore(item)
+                performRestore(item, mode)
             },
             onDismissRequest = { pendingRestoreItem = null },
         )

@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.sync.BackupCategory
 import app.androidrik.rikkahub.data.sync.BackupInspection
 import app.androidrik.rikkahub.data.sync.BackupManifestSection
 import app.androidrik.rikkahub.data.sync.BackupSectionStats
@@ -57,6 +58,22 @@ fun BackupRestorePreviewDialog(
                     BackupManifestSection.WORKSPACE_FILES,
                     inspection.sections[BackupManifestSection.WORKSPACE_FILES],
                 )?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                // v3 manifest 记录的备份范围：被排除的 settings 类别恢复时保留本机值
+                val excludedSettingsLabels = inspection.manifest?.scope?.excluded
+                    ?.filter {
+                        it == BackupCategory.ASSISTANTS || it == BackupCategory.PROVIDERS ||
+                            it == BackupCategory.DISPLAY || it == BackupCategory.ABOUT
+                    }
+                    ?.map { backupCategoryLabel(it) }
+                    .orEmpty()
+                if (excludedSettingsLabels.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.backup_page_restore_scope_not_included) +
+                            " " + excludedSettingsLabels.joinToString(", "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (inspection.manifest == null) {
                     Text(
                         text = stringResource(R.string.backup_restore_preview_legacy),

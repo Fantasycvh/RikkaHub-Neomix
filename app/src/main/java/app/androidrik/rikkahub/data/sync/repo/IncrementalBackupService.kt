@@ -12,6 +12,7 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
+import app.androidrik.rikkahub.data.sync.RestoreMode
 import app.androidrik.rikkahub.data.sync.BackupItem
 import app.androidrik.rikkahub.data.sync.BackupProgress
 import app.androidrik.rikkahub.data.sync.RestoreOutcome
@@ -284,7 +285,9 @@ class IncrementalBackupService(
                 }
             }
             try {
-                val outcome = BackupArchiveEngine(settings, json, context, database).restoreFromBackupFile(zip, snapshot.items, onProgress)
+                // 快照 = 完整视图，恢复恒为整表替换语义（不提供 merge 选项）
+                val outcome = BackupArchiveEngine(settings, json, context, database)
+                    .restoreFromBackupFile(zip, snapshot.items, RestoreMode.OVERWRITE, onProgress)
                 // 逻辑对象快照不含 FTS；换库后由启动期按当前数据重建搜索索引。
                 if (snapshot.dbObjects.isNotEmpty()) FtsRebuildPending.mark(context.filesDir)
                 if (warnings.isNotEmpty()) Log.i("IncrementalBackup", "restore cross-schema warnings=${warnings.size}")

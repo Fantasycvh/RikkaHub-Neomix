@@ -23,9 +23,14 @@ data class BackupManifest(
     val settingsBytes: Long? = null,
     val databaseSha256: String? = null,
     val databaseBytes: Long? = null,
+    /**
+     * v3：备份范围（excluded-set 语义，见 [BackupScope]）。null = v2 旧包，按「全类别」处理——
+     * 旧包的 settings.json 是整份写出的，恢复时不做键级回填（历史行为不变）。
+     */
+    val scope: BackupScope? = null,
 ) {
     companion object {
-        const val FORMAT_VERSION = 2
+        const val FORMAT_VERSION = 3
         const val ZIP_ENTRY = "manifest.json"
 
         /** 恢复侧单条目解压上限（zip 炸弹兜底；ZipEntry.size 常为 -1，必须边拷边数）。 */

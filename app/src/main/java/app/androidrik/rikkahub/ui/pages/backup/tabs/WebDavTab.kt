@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.backup.tabs
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreConfirmDialog
 import app.androidrik.rikkahub.ui.pages.backup.components.BackupItemsSelector
 import app.androidrik.rikkahub.data.sync.BackupItem
+import app.androidrik.rikkahub.data.sync.RestoreMode
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
@@ -102,16 +103,26 @@ fun WebDavTab(
     }
 
     /** 实际执行恢复（经确认后调用） */
-    fun performRestore(restoreItem: WebDavBackupItem) {
+    fun performRestore(restoreItem: WebDavBackupItem, mode: RestoreMode) {
         if (busy) return
         scope.launch {
             restoringItemId = restoreItem.displayName
             runCatching {
-                val outcome = vm.restore(item = restoreItem)
+                val outcome = vm.restore(item = restoreItem, mode = mode)
                 toaster.show(
                     resources.getString(R.string.backup_page_restore_success),
                     type = ToastType.Success
                 )
+                if (outcome.mergedConversations > 0 || outcome.skippedConversations > 0) {
+                    toaster.show(
+                        resources.getString(
+                            R.string.backup_page_restore_merge_result,
+                            outcome.mergedConversations.toString(),
+                            outcome.skippedConversations.toString(),
+                        ),
+                        type = ToastType.Info,
+                    )
+                }
                 if (outcome.settingsWarnings.isNotEmpty()) {
                     toaster.show(
                         resources.getString(
@@ -266,6 +277,10 @@ fun WebDavTab(
                             items = settings.backupItems,
                             onItemsChange = { items ->
                                 vm.updateSettings { it.copy(backupItems = items) }
+                            },
+                            scope = settings.backupScope,
+                            onScopeChange = { scope ->
+                                vm.updateSettings { it.copy(backupScope = scope) }
                             },
                         )
                     },
@@ -439,9 +454,9 @@ fun WebDavTab(
     pendingRestoreItem?.let { item ->
         RestoreConfirmDialog(
             items = settings.backupItems,
-            onConfirm = {
+            onConfirm = { mode ->
                 pendingRestoreItem = null
-                performRestore(item)
+                performRestore(item, mode)
             },
             onDismissRequest = { pendingRestoreItem = null },
         )

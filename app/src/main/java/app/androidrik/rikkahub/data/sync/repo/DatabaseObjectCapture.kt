@@ -35,6 +35,43 @@ internal object DatabaseObjectCapture {
     private fun workerCount(count: Int): Int =
         minOf(count, Runtime.getRuntime().availableProcessors().coerceIn(1, 4), 4)
 
+    /**
+     * merge 恢复专用：只捕获会话逻辑对象（不产出整表对象），供归档引擎把快照会话
+     * 幂等并入现库副本（`DatabaseObjectMerge.mergeMissingConversations`）。
+     *
+     * 与 [capture] 的差异：不导出整表对象（merge 不做整表替换）、不删快照主文件
+     * （staged 快照生命周期归调用方），只清自身产生的 `-wal`/`-shm` sidecar。
+     */
+    fun captureConversationsOnly(snapshotDb: File, outputDir: File): List<Pair<String, File>> {
+        require(snapshotDb.isFile && snapshotDb.length() > 0) { "Missing consistent database snapshot" }
+        check(outputDir.isDirectory || outputDir.mkdirs()) { "Cannot create database object staging directory" }
+        try {
+            val schemaDb = SQLiteDatabase.openDatabase(snapshotDb.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+            val conversationIds: List<String>
+            val present: List<Triple<SourceTable, String, String>>
+            val schemas: List<DbTableSchema>
+            try {
+                val tables = readTables(schemaDb)
+                val byLower = tables.associateBy { it.actualName.lowercase() }
+                val conversationTable = byLower["conversationentity"]
+                    ?: throw IllegalStateException("Database snapshot has no conversation table")
+                conversationIds = readConversationIds(schemaDb, conversationTable.actualName)
+                present = CONVERSATION_FILTERS.mapNotNull { (table, column) ->
+                    byLower[table]?.let { source -> Triple(source, column, table) }
+                }
+                schemas = present.map { (source, filterColumn, _) ->
+                    DbTableSchema(source.actualName, readColumns(schemaDb, source.actualName, filterColumn))
+                }
+            } finally {
+                schemaDb.close()
+            }
+            return captureConversations(snapshotDb, outputDir, conversationIds, present, schemas)
+                .map { it.objectKey to it.file }
+        } finally {
+            listOf("-wal", "-shm").forEach { suffix -> File(snapshotDb.path + suffix).delete() }
+        }
+    }
+
     fun capture(snapshotDb: File, outputDir: File): List<SnapshotDbObjectInput> {
         require(snapshotDb.isFile && snapshotDb.length() > 0) { "Missing consistent database snapshot" }
         check(outputDir.isDirectory || outputDir.mkdirs()) { "Cannot create database object staging directory" }

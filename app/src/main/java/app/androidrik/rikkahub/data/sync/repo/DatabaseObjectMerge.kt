@@ -31,6 +31,73 @@ internal object DatabaseObjectMerge {
     private val CONVERSATION_DELETE_ORDER = listOf("compression_checkpoint", "message_node", "conversationentity")
 
     /**
+     * merge 恢复（整包备份的 merge 模式，借鉴 Kelivo）：把会话对象**幂等并入**基底副本。
+     *
+     * 与 [merge] 的「快照 = 完整视图，整表替换」语义不同：基底是**现库的一致性副本**，
+     * 快照只贡献「本地没有的会话」——
+     * - `conversationentity.id` 已存在 → 整对象跳过（本地版保留，含其 message_node/checkpoint）；
+     * - 不存在 → 按会话对象插入（header 里的父表在前），列取「对象列 ∩ 当前表列」交集；
+     * - 其余表一律不动；单事务内完成，`foreign_key_check` 失败整体回滚（基底丢弃，现库未动）。
+     *
+     * 判重口径与第三方导入的确定性 UUID 幂等一致：同 id 即同会话，不做内容级合并。
+     *
+     * @return (新插入会话数, 跳过会话数)
+     */
+    fun mergeMissingConversations(baseDb: File, objects: List<Pair<String, File>>): Pair<Int, Int> {
+        require(objects.isNotEmpty()) { "No database objects to merge" }
+        require(baseDb.isFile && baseDb.length() > 0) { "Missing base database copy" }
+        objects.forEach { (key, _) ->
+            require(dbObjectKind(key) == "conversation") { "Non-conversation object in merge restore: $key" }
+        }
+        val database = SQLiteDatabase.openDatabase(baseDb.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        try {
+            val actualTables = readTables(database)
+            val conversationTable = actualTables["conversationentity"]
+                ?: throw IllegalStateException("Base database has no conversation table")
+            database.execSQL("PRAGMA foreign_keys = OFF")
+            database.beginTransaction()
+            var merged = 0
+            var skipped = 0
+            try {
+                val existingIds = HashSet<String>()
+                database.rawQuery("SELECT \"id\" FROM \"$conversationTable\"", null).use { cursor ->
+                    while (cursor.moveToNext()) existingIds += cursor.getString(0)
+                }
+                objects.forEach { (objectKey, file) ->
+                    val payload = readDbObjectPayload(file)
+                    require(payload.objectKey == objectKey) { "Database object key mismatch" }
+                    if (dbObjectValue(objectKey) in existingIds) {
+                        skipped++
+                        return@forEach
+                    }
+                    payload.tables.forEach { (table, data) ->
+                        val actual = actualTables[table.lowercase()] ?: return@forEach
+                        insertTable(database, actual, data, onWarning = {})
+                    }
+                    merged++
+                }
+                database.setTransactionSuccessful()
+            } finally {
+                database.endTransaction()
+            }
+            val violations = ArrayList<String>()
+            database.rawQuery("PRAGMA foreign_key_check", null).use { cursor ->
+                while (cursor.moveToNext()) {
+                    violations += "${cursor.getString(0)} rowid=${cursor.getLong(1)} parent=${cursor.getString(2)}"
+                }
+            }
+            require(violations.isEmpty()) {
+                "Merged database violates foreign keys: ${violations.take(5).joinToString("; ")}"
+            }
+            // 换库管线只搬运主库文件（+wal/-shm），确保 WAL 已落盘并切回单文件模式。
+            database.rawQuery("PRAGMA journal_mode = DELETE", null).use { it.moveToFirst() }
+            return merged to skipped
+        } finally {
+            database.close()
+        }
+    }
+
+    /**
      * @param currentDbVersion 当前应用 DB schema（基底副本的 user_version），必须与副本一致。
      * @param snapshotDbVersion 快照来源 schema；允许 `<= currentDbVersion`（旧版本快照按当前结构恢复），
      *   更新版本的快照在引擎层已拒绝。
