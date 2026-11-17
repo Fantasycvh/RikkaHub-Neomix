@@ -16,11 +16,11 @@ import kotlinx.serialization.json.JsonObject
 sealed class StreamChunk {
     @Serializable
     @SerialName("text_start")
-    data class TextStart(val id: String) : StreamChunk()
+    data class TextStart(val id: String, val metadata: JsonObject? = null) : StreamChunk()
 
     @Serializable
     @SerialName("text_delta")
-    data class TextDelta(val id: String, val text: String) : StreamChunk()
+    data class TextDelta(val id: String, val text: String, val metadata: JsonObject? = null) : StreamChunk()
 
     @Serializable
     @SerialName("text_end")
@@ -100,6 +100,7 @@ sealed class StreamChunk {
         val output: JsonElement? = null,
         val status: ServerToolStatus,
         val metadata: JsonObject? = null,
+        val toolName: String = "",
     ) : StreamChunk()
 
     @Serializable

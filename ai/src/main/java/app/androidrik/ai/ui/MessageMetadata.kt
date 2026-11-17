@@ -55,6 +55,8 @@ data class GoogleThoughtMetadata(
     val thoughtSignature: String? = null,
     /** 生成图片 inlineData 的真实 mime：Image.url 只存裸 base64，mime 单独记，回传时用 */
     val inlineDataMime: String? = null,
+    /** Omit the wire ID when Google omitted it, including in history saved by older clients. */
+    val googleFunctionCallId: String? = null,
 ) : PartMetadata
 
 /** Signatures from the Interactions steps protocol are distinct from generateContent signatures. */
@@ -86,6 +88,9 @@ enum class ServerToolProtocol {
 
     @SerialName("google_interactions")
     GOOGLE_INTERACTIONS,
+
+    @SerialName("google_generate_content")
+    GOOGLE_GENERATE_CONTENT,
 }
 
 /**

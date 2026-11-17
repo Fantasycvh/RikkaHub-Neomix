@@ -92,12 +92,16 @@ data class UIMessage(
             var newParts = delta.parts.fold(parts) { acc, deltaPart ->
                 when (deltaPart) {
                     is UIMessagePart.Text -> {
-                        // Skip empty text deltas
-                        if (deltaPart.text.isEmpty()) {
+                        val lastPart = acc.lastOrNull()
+                        // A signed Gemini part must stay intact, including signature-only parts.
+                        if (deltaPart.metadataAs<GoogleThoughtMetadata>()?.thoughtSignature != null) {
+                            acc + deltaPart
+                        } else if (deltaPart.text.isEmpty()) {
                             acc
                         } else {
-                            val lastPart = acc.lastOrNull()
-                            if (lastPart is UIMessagePart.Text) {
+                            if (lastPart is UIMessagePart.Text &&
+                                lastPart.metadataAs<GoogleThoughtMetadata>()?.thoughtSignature == null
+                            ) {
                                 // Append to the last Text part
                                 acc.dropLast(1) + lastPart.copy(text = lastPart.text + deltaPart.text)
                             } else {
@@ -181,8 +185,10 @@ data class UIMessage(
                                 if (part is UIMessagePart.ServerTool && part.toolCallId == deltaPart.toolCallId) {
                                     part.copy(
                                         status = deltaPart.status,
+                                        toolName = deltaPart.toolName.ifBlank { part.toolName },
                                         input = deltaPart.input ?: part.input,
                                         output = deltaPart.output ?: part.output,
+                                        metadata = mergeMetadata(part.metadata, deltaPart.metadata),
                                     )
                                 } else part
                             }

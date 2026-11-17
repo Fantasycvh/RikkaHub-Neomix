@@ -67,7 +67,7 @@ class StreamChunkHandler(
         when (chunk) {
             is StreamChunk.TextStart -> {
                 if (chunk.id in textPartIndexes) this
-                else copy(parts = parts + UIMessagePart.Text("")).also {
+                else copy(parts = parts + UIMessagePart.Text("", chunk.metadata)).also {
                     textPartIndexes[chunk.id] = parts.size
                 }
             }
@@ -76,13 +76,13 @@ class StreamChunkHandler(
                 val index = textPartIndexes[chunk.id]
                 // 容忍 Provider 未发送 Start：首次收到 Delta 时直接创建对应 part。
                 if (index == null || parts.getOrNull(index) !is UIMessagePart.Text) {
-                    copy(parts = parts + UIMessagePart.Text(chunk.text)).also {
+                    copy(parts = parts + UIMessagePart.Text(chunk.text, chunk.metadata)).also {
                         textPartIndexes[chunk.id] = parts.size
                     }
                 } else {
                     copy(parts = parts.toMutableList().apply {
                         val text = get(index) as UIMessagePart.Text
-                        set(index, text.copy(text = text.text + chunk.text))
+                        set(index, text.copy(text = text.text + chunk.text, metadata = mergeMetadata(text.metadata, chunk.metadata)))
                     })
                 }
             }
@@ -148,7 +148,7 @@ class StreamChunkHandler(
                     part.copy(
                         toolName = part.toolName + chunk.toolNameDelta,
                         input = part.input + chunk.inputDelta,
-                        metadata = chunk.metadata ?: part.metadata,
+                        metadata = mergeMetadata(part.metadata, chunk.metadata),
                     )
                 } else part
             })
@@ -202,7 +202,7 @@ class StreamChunkHandler(
                 if (index < 0) {
                     copy(parts = parts + UIMessagePart.ServerTool(
                         toolCallId = chunk.id,
-                        toolName = "",
+                        toolName = chunk.toolName,
                         input = chunk.input ?: bufferedInput,
                         output = chunk.output,
                         status = chunk.status,
@@ -211,6 +211,7 @@ class StreamChunkHandler(
                 } else {
                     updateServerTool(chunk.id) { tool ->
                         tool.copy(
+                            toolName = chunk.toolName.ifBlank { tool.toolName },
                             input = chunk.input ?: bufferedInput ?: tool.input,
                             output = chunk.output ?: tool.output,
                             status = chunk.status,
@@ -325,7 +326,7 @@ private fun parseServerToolJson(value: String) = runCatching {
     json.parseToJsonElement(value)
 }.getOrElse { JsonPrimitive(value) }
 
-private fun mergeMetadata(old: JsonObject?, new: JsonObject?): JsonObject? = when {
+internal fun mergeMetadata(old: JsonObject?, new: JsonObject?): JsonObject? = when {
     old == null -> new
     new == null -> old
     else -> JsonObject(old + new)
