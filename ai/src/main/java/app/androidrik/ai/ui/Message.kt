@@ -76,6 +76,7 @@ data class UIMessage(
     val isSynthetic: Boolean = false,
     /** App-owned memory library binding for tool replay and deferred approvals. */
     val memoryContext: String? = null,
+    val vertexInteraction: VertexInteractionCheckpoint? = null,
 ) {
     /**
      * 把一条**增量或完整**的 assistant 消息合并进当前消息。
@@ -215,6 +216,7 @@ data class UIMessage(
             copy(
                 parts = newParts,
                 annotations = newAnnotations,
+                vertexInteraction = delta.vertexInteraction,
             )
         }
     }

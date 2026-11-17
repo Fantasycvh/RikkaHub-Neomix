@@ -100,6 +100,119 @@ class InteractionsApiTest {
     }
 
     @Test
+    fun `stored chats only send a delta when the local prefix and conversation still match`() {
+        val stored = vertex.copy(storeInteractions = true)
+        val chat = params.copy(sessionId = "chat-a")
+        val firstUser = UIMessage.user("Remember red.")
+        val first = api.planRequest(stored, listOf(firstUser), chat, stream = true)
+        assertEquals(JsonPrimitive(true), first.body["store"])
+        assertNull(first.body["previous_interaction_id"])
+        val answer = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text("OK.")),
+            vertexInteraction = first.checkpoint("interaction-a", "completed", "OK."),
+        )
+        val secondUser = UIMessage.user("Which color?")
+        val secondMessages = listOf(firstUser, answer, secondUser)
+        val second = api.planRequest(stored, secondMessages, chat, stream = false)
+        assertEquals(JsonPrimitive("interaction-a"), second.body["previous_interaction_id"])
+        assertEquals(api.buildInput(listOf(secondUser)), second.body["input"])
+        assertEquals(api.buildInput(secondMessages), second.fullBody["input"])
+        assertTrue(second.shouldRestart(InteractionsRequestException(400, "Previous Interaction ID not found")))
+        assertFalse(second.shouldRestart(InteractionsRequestException(400, "Bad input")))
+
+        val alternatives = listOf(
+            listOf(UIMessage.user("Remember blue."), answer, secondUser),
+            listOf(firstUser, answer.copy(parts = listOf(UIMessagePart.Text("Edited."))), secondUser),
+            listOf(firstUser, answer.copy(vertexInteraction = answer.vertexInteraction!!.copy(expiresAtMillis = 0)), secondUser),
+        )
+        alternatives.forEach { messages ->
+            assertNull(api.planRequest(stored, messages, chat, stream = false).body["previous_interaction_id"])
+        }
+        assertNull(api.planRequest(stored, secondMessages, chat.copy(sessionId = "chat-b"), stream = false)
+            .body["previous_interaction_id"])
+        assertEquals(JsonPrimitive(false), api.planRequest(stored, secondMessages, params, stream = false).body["store"])
+    }
+
+    @Test
+    fun `a stale previous interaction retries once with the full local history`() = runBlocking {
+        val requests = mutableListOf<kotlinx.serialization.json.JsonObject>()
+        val responses = ArrayDeque(listOf(
+            200 to """{"id":"old-id","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"OK."}]}]}""",
+            400 to """[{"error":{"message":"Previous Interaction ID not found"}}]""",
+            200 to """{"id":"new-id","status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"Red."}]}]}""",
+        ))
+        val instance = InteractionsAPI(OkHttpClient.Builder().addInterceptor { chain ->
+            val data = Buffer().also { chain.request().body!!.writeTo(it) }.readUtf8()
+            requests += json.parseToJsonElement(data).jsonObject
+            val (code, body) = responses.removeFirst()
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(code).message("Fixture")
+                .body(body.toResponseBody("application/json".toMediaType())).build()
+        }.build()) { _, request -> request }
+        val stored = vertex.copy(storeInteractions = true)
+        val chat = params.copy(sessionId = "chat-a")
+        val user = UIMessage.user("Remember red.")
+        val first = instance.generateText(stored, listOf(user), chat)
+        val followUp = UIMessage.user("Which color?")
+        val result = instance.generateText(stored, listOf(user, first.message, followUp), chat)
+        assertEquals("Red.", result.message.toText())
+        assertEquals("new-id", result.message.vertexInteraction?.id)
+        assertEquals(JsonPrimitive("old-id"), requests[1]["previous_interaction_id"])
+        assertEquals(1, requests[1].getValue("input").jsonArray.size)
+        assertNull(requests[2]["previous_interaction_id"])
+        assertEquals(3, requests[2].getValue("input").jsonArray.size)
+    }
+
+    @Test
+    fun `research uses the global background endpoint and polls and cancels the same task`() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val responses = ArrayDeque(listOf(
+            """{"id":"research-1","status":"in_progress"}""",
+            """{"id":"research-1","status":"in_progress","steps":[{"type":"thought","summary":[{"type":"text","text":"Comparing sources"}]}]}""",
+            """{"id":"research-1","status":"cancelled"}""",
+        ))
+        val research = InteractionsAPI(OkHttpClient.Builder().addInterceptor { chain ->
+            requests += chain.request()
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(responses.removeFirst().toResponseBody("application/json".toMediaType())).build()
+        }.build()) { _, request -> request.newBuilder().header("Authorization", "Bearer fixture").build() }
+
+        val started = research.startResearch(vertex, "Compare published release notes.")
+        val progress = research.getResearch(vertex, started.id)
+        val cancelled = research.cancelResearch(vertex, started.id)
+        assertEquals("in_progress", started.status)
+        assertEquals("Comparing sources", progress.progress)
+        assertTrue(cancelled.isTerminal)
+        assertEquals("cancelled", cancelled.status)
+        val root = "/v1beta1/projects/test-project/locations/global/interactions"
+        assertEquals(listOf("POST", "GET", "POST"), requests.map { it.method })
+        assertEquals(listOf(root, "$root/research-1", "$root/research-1/cancel"), requests.map { it.url.encodedPath })
+        assertTrue(requests.all { it.header("Authorization") == "Bearer fixture" })
+        val sent = Buffer().also { requests.first().body!!.writeTo(it) }.readUtf8()
+        val body = json.parseToJsonElement(sent).jsonObject
+        assertEquals(JsonPrimitive("deep-research-preview-04-2026"), body["agent"])
+        assertEquals(JsonPrimitive(true), body["background"])
+        assertEquals(JsonPrimitive(true), body["store"])
+        assertNull(body["model"])
+    }
+
+    @Test
+    fun `completed research snapshots expose the report and citations separately from progress`() {
+        val snapshot = json.parseToJsonElement("""
+            {"id":"saved-id","status":"completed","steps":[
+              {"type":"thought","summary":[{"type":"text","text":"Comparing sources"}]},
+              {"type":"model_output","content":[{"type":"text","text":"Report","annotations":[
+                {"type":"url_citation","title":"Source","url":"https://example.com"}
+              ]}]}
+            ]}
+        """.trimIndent()).jsonObject.parseVertexResearch()
+        assertTrue(snapshot.isTerminal)
+        assertEquals("Report", snapshot.report)
+        assertEquals("Comparing sources", snapshot.progress)
+        assertEquals("https://example.com", snapshot.citations.single().url)
+    }
+
+    @Test
     fun `stream persists a thought signature and rebuilds tool history after action`() {
         val decoder = InteractionsStreamDecoder(params.model.modelId)
         val chunks = listOf(

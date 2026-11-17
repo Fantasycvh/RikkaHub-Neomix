@@ -101,6 +101,15 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
     }
     private val interactionsApi = InteractionsAPI(client, ::transformRequest)
 
+    suspend fun startDeepResearch(setting: ProviderSetting.Google, prompt: String) =
+        interactionsApi.startResearch(setting, prompt)
+
+    suspend fun getDeepResearch(setting: ProviderSetting.Google, id: String) =
+        interactionsApi.getResearch(setting, id)
+
+    suspend fun cancelDeepResearch(setting: ProviderSetting.Google, id: String) =
+        interactionsApi.cancelResearch(setting, id)
+
     private fun buildUrl(providerSetting: ProviderSetting.Google, path: String): HttpUrl {
         return if (!providerSetting.vertexAI) {
             "${providerSetting.baseUrl}/$path".toHttpUrl()

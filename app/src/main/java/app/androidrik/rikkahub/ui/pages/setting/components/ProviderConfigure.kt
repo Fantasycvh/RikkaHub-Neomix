@@ -655,6 +655,37 @@ private fun ProviderConfigureGoogle(
                 onCheckedChange = { onEdit(provider.copy(useInteractionsApi = it)) },
             )
         }
+        if (provider.useInteractionsApi && provider.supportsInteractionsApi) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Resume stored interactions")
+                    Text(
+                        "Stores eligible text-only chat turns on Google for 7 days to send only new messages on follow-up turns.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(
+                    checked = provider.storeInteractions,
+                    onCheckedChange = { onEdit(provider.copy(storeInteractions = it)) },
+                )
+            }
+        }
+        var showDeepResearch by remember(provider.id) { mutableStateOf(false) }
+        OutlinedButton(
+            onClick = { showDeepResearch = true },
+            enabled = provider.supportsDeepResearch,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("Gemini Deep Research") }
+        if (!provider.supportsDeepResearch) {
+            Text("Deep Research requires the global region.", style = MaterialTheme.typography.bodySmall)
+        }
+        if (showDeepResearch && provider.supportsDeepResearch) {
+            VertexResearchSheet(provider, onDismiss = { showDeepResearch = false })
+        }
     }
 }
 

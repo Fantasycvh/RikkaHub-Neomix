@@ -46,6 +46,7 @@ import app.androidrik.rikkahub.data.rag.RagRepository
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.ai.VertexResearchRepository
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.fts.createMessageFtsTables
 import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
@@ -335,6 +336,8 @@ val dataSourceModule = module {
             accountCredentials = get<ProviderAccountManager>(),
         )
     }
+
+    single { VertexResearchRepository(get(), get(), get()) }
 
     single(createdAtStart = true) {
         val context: Context = get()

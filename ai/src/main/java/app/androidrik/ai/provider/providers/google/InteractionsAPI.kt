@@ -6,6 +6,8 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -44,6 +46,7 @@ import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.VertexInteractionCheckpoint
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
 import app.androidrik.ai.util.applyCustomHeaders
@@ -72,12 +75,15 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import java.io.IOException
+import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 
-internal fun ProviderSetting.Google.interactionsUrl(): HttpUrl {
+internal fun ProviderSetting.Google.interactionsUrl(version: String = "v1"): HttpUrl {
     require(supportsInteractionsApi)
     val host = if (location == "global") "aiplatform.googleapis.com" else "aiplatform.$location.rep.googleapis.com"
-    return "https://$host/v1/projects".toHttpUrl().newBuilder()
+    return "https://$host/$version/projects".toHttpUrl().newBuilder()
         .addPathSegment(projectId.trim())
         .addPathSegment("locations")
         .addPathSegment(location)
@@ -86,39 +92,58 @@ internal fun ProviderSetting.Google.interactionsUrl(): HttpUrl {
 }
 
 /**
- * Stateless Gemini Interactions on Vertex AI. Local message history supplies every turn.
+ * Gemini Interactions on Vertex AI. The full local history remains the fallback for stored turns.
  */
 internal class InteractionsAPI(
     private val client: OkHttpClient,
     private val authorize: suspend (ProviderSetting.Google, Request) -> Request,
 ) {
+    private val researchClient by lazy { client.newBuilder().callTimeout(30, TimeUnit.SECONDS).build() }
     suspend fun generateText(
         providerSetting: ProviderSetting.Google,
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): TextGenerationResult = withContext(Dispatchers.IO) {
-        val requestBody = buildRequestBody(providerSetting, messages, params, stream = false)
-        val request = buildRequest(providerSetting, params, requestBody)
-
-        // await() waits for the response headers; reading the body can still block.
-        client.configureClientWithProxy(providerSetting.proxy).newCall(request).await().use { response ->
-            if (!response.isSuccessful) {
-                throw response.interactionsError()
-            }
-            val bodyJson = json.parseToJsonElement(response.body.string()).jsonObject
-            parseInteraction(bodyJson, fallbackModel = params.model.modelId)
+        val plan = planRequest(providerSetting, messages, params, stream = false)
+        suspend fun request(body: JsonObject) = execute(
+            providerSetting, buildRequest(providerSetting, params, body),
+        )
+        val body = try {
+            request(plan.body)
+        } catch (e: InteractionsRequestException) {
+            if (!plan.shouldRestart(e)) throw e
+            request(plan.fullBody)
         }
+        val result = parseInteraction(body, fallbackModel = params.model.modelId)
+        result.copy(message = result.message.copy(
+            vertexInteraction = plan.checkpoint(result.id, result.finishReason, result.message.interactionAnswer()),
+        ))
     }
 
     fun streamText(
         providerSetting: ProviderSetting.Google,
         messages: List<UIMessage>,
         params: TextGenerationParams,
+    ): Flow<StreamChunk> = flow {
+        val plan = planRequest(providerSetting, messages, params, stream = true)
+        try {
+            emitAll(streamRequest(providerSetting, params, plan, plan.body))
+        } catch (e: InteractionsRequestException) {
+            if (!plan.shouldRestart(e)) throw e
+            emitAll(streamRequest(providerSetting, params, plan, plan.fullBody))
+        }
+    }.flowOn(Dispatchers.IO)
+
+    private fun streamRequest(
+        providerSetting: ProviderSetting.Google,
+        params: TextGenerationParams,
+        plan: InteractionRequestPlan,
+        requestBody: JsonObject,
     ): Flow<StreamChunk> = callbackFlow {
-        val requestBody = buildRequestBody(providerSetting, messages, params, stream = true)
         val request = buildRequest(providerSetting, params, requestBody)
 
         val decoder = InteractionsStreamDecoder(fallbackModel = params.model.modelId)
+        val answer = if (plan.contextHash == null) null else StringBuilder()
 
         val listener = object : EventSourceListener() {
             override fun onEvent(
@@ -129,7 +154,16 @@ internal class InteractionsAPI(
             ) {
                 try {
                     val result = decoder.accept(SseEvent(id = id, event = type, data = data))
-                    result.chunks.forEach { trySend(it) }
+                    result.chunks.forEach { chunk ->
+                        if (chunk is StreamChunk.TextDelta) answer?.append(chunk.text)
+                        if (chunk is StreamChunk.Finish) {
+                            trySend(chunk.copy(vertexInteraction = plan.checkpoint(
+                                chunk.responseId, chunk.finishReason, answer?.toString(),
+                            )))
+                        } else {
+                            trySend(chunk)
+                        }
+                    }
                     if (result.completed) close()
                 } catch (e: Exception) {
                     close(e)
@@ -172,9 +206,122 @@ internal class InteractionsAPI(
             .build()
     }
 
-    private fun Response.interactionsError(): HttpException {
+    private suspend fun execute(
+        providerSetting: ProviderSetting.Google,
+        request: Request,
+        http: OkHttpClient = client,
+    ): JsonObject =
+        withContext(Dispatchers.IO) {
+            http.configureClientWithProxy(providerSetting.proxy).newCall(request).await().use { response ->
+                if (!response.isSuccessful) throw response.interactionsError()
+                json.parseToJsonElement(response.body.string()).jsonObject
+            }
+        }
+
+    suspend fun startResearch(provider: ProviderSetting.Google, prompt: String): VertexResearchInteraction {
+        require(provider.supportsDeepResearch && prompt.isNotBlank())
+        val body = buildJsonObject {
+            put("agent", VERTEX_RESEARCH_AGENT)
+            put("input", prompt)
+            put("background", true)
+            put("store", true)
+            put("stream", false)
+            put("agent_config", buildJsonObject {
+                put("type", "deep-research")
+                put("thinking_summaries", "auto")
+            })
+        }
+        val request = Request.Builder().url(provider.interactionsUrl("v1beta1"))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+        return execute(provider, researchRequest(provider, request), researchClient).parseVertexResearch()
+    }
+
+    suspend fun getResearch(provider: ProviderSetting.Google, id: String): VertexResearchInteraction {
+        val request = Request.Builder().url(researchUrl(provider, id))
+        return try {
+            execute(provider, researchRequest(provider, request), researchClient).parseVertexResearch(id)
+        } catch (e: InteractionsRequestException) {
+            if (e.code != 404) throw e
+            VertexResearchInteraction(id, "expired")
+        }
+    }
+
+    suspend fun cancelResearch(provider: ProviderSetting.Google, id: String): VertexResearchInteraction =
+        withContext(Dispatchers.IO) {
+            val url = researchUrl(provider, id).newBuilder().addPathSegment("cancel").build()
+            val request = researchRequest(provider, Request.Builder().url(url).post(ByteArray(0).toRequestBody()))
+            researchClient.configureClientWithProxy(provider.proxy).newCall(request).await().use { response ->
+                if (!response.isSuccessful) {
+                    val error = response.interactionsError()
+                    if (error.code == 404) return@withContext VertexResearchInteraction(id, "expired")
+                    if (error.code != 400 && error.code != 409) throw error
+                    val current = getResearch(provider, id)
+                    if (current.isTerminal) return@withContext current
+                    throw error
+                }
+                val raw = response.body.string()
+                if (raw.isNotBlank()) {
+                    val result = json.parseToJsonElement(raw).jsonObject
+                    if (result.stringOrNull("status") != null) return@withContext result.parseVertexResearch(id)
+                }
+            }
+            getResearch(provider, id)
+        }
+
+    private fun researchUrl(provider: ProviderSetting.Google, id: String): HttpUrl {
+        require(provider.supportsDeepResearch && id.isNotBlank())
+        return provider.interactionsUrl("v1beta1").newBuilder().addPathSegment(id).build()
+    }
+
+    private suspend fun researchRequest(provider: ProviderSetting.Google, builder: Request.Builder): Request =
+        authorize(provider, builder.build()).newBuilder().applyCustomHeaders(provider).build()
+
+    private fun Response.interactionsError(): InteractionsRequestException {
         val detail = runCatching { json.parseToJsonElement(body.string()).parseErrorDetail().message }.getOrNull()
-        return HttpException("Vertex Interactions HTTP $code" + (detail?.let { ": $it" } ?: ""))
+        return InteractionsRequestException(code, detail)
+    }
+
+    internal fun planRequest(
+        provider: ProviderSetting.Google,
+        messages: List<UIMessage>,
+        params: TextGenerationParams,
+        stream: Boolean,
+        now: Long = Clock.System.now().toEpochMilliseconds(),
+    ): InteractionRequestPlan {
+        val stateless = buildRequestBody(provider, messages, params, stream)
+        if (!provider.storeInteractions || params.sessionId.isNullOrBlank() ||
+            stateless["tools"] != null || stateless["response_format"] != null ||
+            params.customBody.any { it.key == "input" } ||
+            messages.any { message -> message.parts.any { it !is UIMessagePart.Text && it !is UIMessagePart.Reasoning } }
+        ) return InteractionRequestPlan(stateless, stateless)
+
+        val full = JsonObject(stateless + ("store" to JsonPrimitive(true)))
+        val context = interactionHash(buildJsonObject {
+            put("provider", provider.id.toString())
+            put("project", provider.projectId.trim())
+            put("location", provider.location)
+            put("principal", provider.serviceAccountEmail.trim())
+            put("session", params.sessionId)
+            put("body", JsonObject(full - setOf("input", "stream")))
+        }.toString())
+        val inputHash = interactionHash(full.getValue("input").toString())
+        val anchorIndex = messages.indexOfLast { it.role == MessageRole.ASSISTANT }
+        val assistant = messages.getOrNull(anchorIndex)
+        val anchor = assistant?.vertexInteraction
+        val suffix = messages.drop(anchorIndex + 1)
+        val continued = if (
+            anchor != null && anchor.expiresAtMillis > now && !assistant.finishIncomplete &&
+            anchor.contextHash == context && suffix.isNotEmpty() && suffix.all { it.role == MessageRole.USER } &&
+            assistant.interactionAnswer()?.let(::interactionHash) == anchor.answerHash &&
+            interactionHash(buildInput(messages.take(anchorIndex)).toString()) == anchor.inputHash
+        ) {
+            val input = buildInput(suffix)
+            if (input.isEmpty()) full else JsonObject(full + mapOf(
+                "input" to input,
+                "previous_interaction_id" to JsonPrimitive(anchor.id),
+            ))
+        } else full
+        return InteractionRequestPlan(continued, full, context, inputHash)
     }
 
     internal fun buildRequestBody(
@@ -541,6 +688,39 @@ internal class InteractionsAPI(
         )
     }
 }
+
+internal class InteractionsRequestException(val code: Int, private val detail: String?) :
+    RuntimeException("Vertex Interactions HTTP $code" + (detail?.let { ": $it" } ?: "")) {
+    fun isMissingPreviousInteraction(): Boolean =
+        code == 404 || (code == 400 && detail?.contains("previous interaction", ignoreCase = true) == true &&
+            detail.contains("not found", ignoreCase = true))
+}
+
+internal data class InteractionRequestPlan(
+    val body: JsonObject,
+    val fullBody: JsonObject,
+    val contextHash: String? = null,
+    val inputHash: String? = null,
+) {
+    fun shouldRestart(error: InteractionsRequestException): Boolean =
+        "previous_interaction_id" in body && error.isMissingPreviousInteraction()
+
+    fun checkpoint(id: String?, status: String?, answer: String?): VertexInteractionCheckpoint? {
+        if (contextHash == null || inputHash == null || id.isNullOrBlank() || status != "completed" ||
+            answer.isNullOrBlank()
+        ) return null
+        return VertexInteractionCheckpoint(id, contextHash, inputHash, interactionHash(answer),
+            Clock.System.now().toEpochMilliseconds() + 7.days.inWholeMilliseconds)
+    }
+}
+
+private fun UIMessage.interactionAnswer(): String? =
+    parts.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }.takeIf { it.isNotBlank() }
+
+private fun interactionHash(value: String): String =
+    MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8)).joinToString("") {
+        "%02x".format(it)
+    }
 
 internal fun JsonObject.requireSuccessfulInteraction() {
     val status = stringOrNull("status")

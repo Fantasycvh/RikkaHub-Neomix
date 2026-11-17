@@ -337,9 +337,13 @@ sealed class ProviderSetting : Enableable {
         var location: String = "us-central1", // only for vertex AI service account
         var projectId: String = "", // only for vertex AI service account
         val useInteractionsApi: Boolean = false,
+        val storeInteractions: Boolean = false,
     ) : ApiKey() {
         val supportsInteractionsApi: Boolean
             get() = vertexAI && useServiceAccount && location in setOf("global", "us", "eu")
+
+        val supportsDeepResearch: Boolean
+            get() = supportsInteractionsApi && location == "global"
 
         override fun copyQuotaQuery(quotaQuery: QuotaQuery): ApiKey {
             return copy(quotaQuery = quotaQuery)
