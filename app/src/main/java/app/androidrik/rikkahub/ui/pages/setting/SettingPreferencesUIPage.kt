@@ -276,6 +276,20 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
+                    if (appearance.assistantBubble.visible) {
+                        item(
+                            headlineContent = { Text(stringResource(R.string.setting_display_page_split_assistant_bubble_title)) },
+                            supportingContent = { Text(stringResource(R.string.setting_display_page_split_assistant_bubble_desc)) },
+                            trailingContent = {
+                                Switch(
+                                    checked = displaySetting.splitAssistantBubbleByParagraph,
+                                    onCheckedChange = {
+                                        updateDisplaySetting { current -> current.copy(splitAssistantBubbleByParagraph = it) }
+                                    }
+                                )
+                            },
+                        )
+                    }
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_bubble_opacity_title)) },
                         supportingContent = {

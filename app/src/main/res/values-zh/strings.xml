@@ -1018,9 +1018,15 @@
   <string name="safe_mode_crash_report">崩溃报告</string>
   <string name="safe_mode_current_assistant">当前助手：%s</string>
   <string name="safe_mode_default_assistant">默认助手</string>
-  <string name="safe_mode_description">应用上次启动时崩溃了。您可以切换到其他助手来解决此问题。</string>
+  <string name="safe_mode_description">应用上次启动时崩溃了。</string>
   <string name="safe_mode_switch_assistant">切换助手</string>
   <string name="safe_mode_title">安全模式</string>
+  <string name="safe_mode_oversized_data_title">超大数据</string>
+  <string name="safe_mode_oversized_field_chars">%1$s 字符</string>
+  <string name="safe_mode_clear">清除</string>
+  <string name="safe_mode_clear_field_title">清除%1$s？</string>
+  <string name="safe_mode_clear_field_desc">该数据大到可能让应用内存耗尽。清除会恢复为默认值，且无法撤销。</string>
+  <string name="safe_mode_cancel">取消</string>
   <string name="search_ability_scrape">抓取</string>
   <string name="search_ability_search">搜索</string>
   <string name="search_detail_api_key">API密钥</string>
@@ -1176,6 +1182,8 @@
   <string name="setting_display_page_send_on_enter_title">按Enter发送</string>
   <string name="setting_display_page_show_assistant_bubble_desc">是否为助手消息显示气泡背景</string>
   <string name="setting_display_page_show_assistant_bubble_title">显示助手消息气泡</string>
+  <string name="setting_display_page_split_assistant_bubble_title">按段落拆分助手气泡</string>
+  <string name="setting_display_page_split_assistant_bubble_desc">助手回复按空行拆成多个气泡显示，代码块和公式块内的空行不拆；只影响显示，消息本身仍是一条。</string>
   <string name="setting_display_page_show_datetime_in_message_desc">在每条消息下方显示日期和时间</string>
   <string name="setting_display_page_show_datetime_in_message_title">在消息中显示日期和时间</string>
   <string name="setting_display_page_show_line_numbers_desc">在代码块中显示行号</string>

@@ -457,39 +457,71 @@ private fun MessageTextContent(
     val user = role == MessageRole.USER
     val baseColor = if (user) LocalUserBubbleColor.current ?: MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surfaceContainerHigh
+    // 助手气泡按空行拆多气泡（#2330）：只在气泡模式、纯文本路径（非切片/非预渲染文档）下生效，
+    // 切片路径的 segment（首尾圆角/共享选择组）语义已被占用，不参与拆分
+    val splitByParagraph = !user && markdownSlice == null && prepared == null &&
+        appearance.assistantBubble.visible && settings.splitAssistantBubbleByParagraph &&
+        content.isNotBlank()
+    val paragraphs = remember(content, splitByParagraph) {
+        if (splitByParagraph) splitMarkdownParagraphs(content).ifEmpty { listOf(content) }
+        else listOf(content)
+    }
     SelectableContent(group = markdownSlice?.group) {
-        ChatBubbleSurface(
-            style = if (user) appearance.userBubble else appearance.assistantBubble,
-            defaultColor = baseColor,
-            defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
-            padWhenHidden = user,
-            onClick = if (user) ({ onUserMessageClick?.invoke() }) else null,
-            tailAtEnd = user == appearance.layout.userAlignEnd,
-            modifier = if (markdownSlice != null) Modifier.fillMaxWidth()
-                else if (!loading || settings.enableGenerationSizeAnimation) Modifier.animateContentSize(
-                    // MotionScheme 快弹簧统一 Expressive 动效（方向 F②）；默认 spring 未纳入主题动效体系
-                    animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
-                ) else Modifier,
-            segment = segment,
-        ) {
-            // Do not collapse an already visible streamed block as it crosses the threshold.
-            var expanded by androidx.compose.runtime.saveable.rememberSaveable(markdownSlice?.unit?.id) {
-                mutableStateOf(markdownSlice?.preview == null)
-            }
-            if (markdownSlice?.preview != null && !expanded) {
-                Column {
-                    Text("超长内容已折叠", style = MaterialTheme.typography.labelLarge)
-                    Row {
-                        TextButton(onClick = { onReadFullText?.invoke() }) { Text("查看完整原文") }
-                        TextButton(onClick = { expanded = true }) { Text("展开完整排版") }
+        if (paragraphs.size > 1) {
+            // 拆段只影响显示，消息本身仍是一条：每段独立气泡（完整圆角+尾角），段间 4.dp
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                paragraphs.fastForEachIndexed { index, paragraph ->
+                    key(index) {
+                        ChatBubbleSurface(
+                            style = appearance.assistantBubble,
+                            defaultColor = baseColor,
+                            tailAtEnd = user == appearance.layout.userAlignEnd,
+                        ) {
+                            MarkdownBlock(
+                                content = paragraph,
+                                onClickCitation = onClickCitation,
+                                // 流式时只有最后一段还在生长，其余段已定型
+                                streaming = loading && index == paragraphs.lastIndex,
+                                blockFadeIn = loading && settings.enableGenerationSizeAnimation,
+                            )
+                        }
                     }
-                    me.rerere.bettertext.text.BetterText(markdownSlice.preview, style = LocalTextStyle.current, maxLines = 64)
                 }
-            } else {
-                if (markdownSlice?.preview != null) TextButton(onClick = { expanded = false }) { Text("折叠超长内容") }
-                MarkdownBlock(documentKey = documentKey, content = content, renderUnit = markdownSlice?.unit,
-                    renderDocument = prepared, onClickCitation = onClickCitation, streaming = loading,
-                    blockFadeIn = loading && settings.enableGenerationSizeAnimation)
+            }
+        } else {
+            ChatBubbleSurface(
+                style = if (user) appearance.userBubble else appearance.assistantBubble,
+                defaultColor = baseColor,
+                defaultContentColor = if (user) adaptiveContentColor(baseColor) else MaterialTheme.colorScheme.onSurface,
+                padWhenHidden = user,
+                onClick = if (user) ({ onUserMessageClick?.invoke() }) else null,
+                tailAtEnd = user == appearance.layout.userAlignEnd,
+                modifier = if (markdownSlice != null) Modifier.fillMaxWidth()
+                    else if (!loading || settings.enableGenerationSizeAnimation) Modifier.animateContentSize(
+                        // MotionScheme 快弹簧统一 Expressive 动效（方向 F②）；默认 spring 未纳入主题动效体系
+                        animationSpec = MaterialTheme.motionScheme.fastSpatialSpec()
+                    ) else Modifier,
+                segment = segment,
+            ) {
+                // Do not collapse an already visible streamed block as it crosses the threshold.
+                var expanded by androidx.compose.runtime.saveable.rememberSaveable(markdownSlice?.unit?.id) {
+                    mutableStateOf(markdownSlice?.preview == null)
+                }
+                if (markdownSlice?.preview != null && !expanded) {
+                    Column {
+                        Text("超长内容已折叠", style = MaterialTheme.typography.labelLarge)
+                        Row {
+                            TextButton(onClick = { onReadFullText?.invoke() }) { Text("查看完整原文") }
+                            TextButton(onClick = { expanded = true }) { Text("展开完整排版") }
+                        }
+                        me.rerere.bettertext.text.BetterText(markdownSlice.preview, style = LocalTextStyle.current, maxLines = 64)
+                    }
+                } else {
+                    if (markdownSlice?.preview != null) TextButton(onClick = { expanded = false }) { Text("折叠超长内容") }
+                    MarkdownBlock(documentKey = documentKey, content = content, renderUnit = markdownSlice?.unit,
+                        renderDocument = prepared, onClickCitation = onClickCitation, streaming = loading,
+                        blockFadeIn = loading && settings.enableGenerationSizeAnimation)
+                }
             }
         }
     }

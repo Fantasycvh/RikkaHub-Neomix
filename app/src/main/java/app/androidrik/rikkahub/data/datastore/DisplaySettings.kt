@@ -149,6 +149,11 @@ data class DisplaySetting(
     val useAppIconStyleLoadingIndicator: Boolean = true,
     val showUserAvatar: Boolean = true,
     val showAssistantBubble: Boolean = false,
+    /**
+     * 助手气泡按空行拆成多个气泡显示（上游 `cfb7d9613`，#2330）。代码块/公式块内的空行
+     * 不拆，列表项的缩进延续归同段；**只影响显示**，消息本身仍是一条。仅气泡模式下生效。
+     */
+    val splitAssistantBubbleByParagraph: Boolean = false,
     val bubbleOpacity: Float = 1.0f,
     val showModelIcon: Boolean = true,
     val showModelName: Boolean = true,

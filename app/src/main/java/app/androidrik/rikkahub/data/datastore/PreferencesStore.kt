@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
@@ -108,6 +109,18 @@ internal fun normalizeFavoriteModelIds(ids: List<Uuid>, providers: List<Provider
     val modelIds = providers.flatMap { it.models }.map { it.id }.toSet()
     return ids.distinct().filter { it in modelIds }
 }
+
+/**
+ * [SettingsStore.largeStoredFieldsFlow] 的纯函数主体（JVM 单测直驱，不经 Koin）。
+ *
+ * 只看盘上原始字符串长度、不做解码，只看 [SettingsStore.RESETTABLE_LARGE_KEYS]；
+ * 结果从大到小排序。
+ */
+internal fun collectLargeStoredFields(preferences: Preferences, minChars: Int): List<Pair<String, Int>> =
+    SettingsStore.RESETTABLE_LARGE_KEYS
+        .mapNotNull { key -> preferences[key]?.let { key.name to it.length } }
+        .filter { (_, chars) -> chars >= minChars }
+        .sortedByDescending { (_, chars) -> chars }
 
 /** 读取失败的重试上限（退避 100ms × 2^n）；超限后向上抛，绝不回退空配置。 */
 private const val READ_MAX_RETRIES = 3
@@ -472,6 +485,34 @@ class SettingsStore(
         // 「导出到文件」虽开着却收不到任何请求日志，是个静默失效的坑）
         val RECORD_REQUESTS_ENABLED = booleanPreferencesKey("record_requests_enabled")
 
+        /**
+         * 允许安全模式整体恢复默认的**大体积字符串字段**（上游 `27976e4da`）。
+         *
+         * 收录标准：整份 JSON 列表/结构落盘、用户可导入海量数据、正常使用到不了百万字符量级。
+         * 超大世界书/助手等导入会让 Settings JSON 编码在落盘时 OOM（#2333），且每次启动后的
+         * 第一次写入都会重现 ⇒ 循环闪退，只能靠安全模式把它们清掉。恢复默认 = **删除 key**
+         * （本仓 decode 是 `preferences[KEY] ?: 默认值`，key 缺失即默认），与上游
+         * `SettingsField.reset` 语义一致。
+         */
+        val RESETTABLE_LARGE_KEYS: List<Preferences.Key<String>> = listOf(
+            ASSISTANTS,
+            LOREBOOKS,
+            PROVIDERS,
+            PROMPT_PRESETS,
+            QUICK_MESSAGES,
+            SEARCH_SERVICES,
+            TTS_PROVIDERS,
+            ASR_PROVIDERS,
+            MCP_SERVERS,
+            BACKUP_ITEMS,
+            SUBAGENT_PRESETS,
+            IMPORTED_SOURCES,
+            COMPRESS_PRESETS,
+            CUSTOM_THEMES,
+            MEDIA_GENERATION_PROVIDERS,
+            AVATAR_FRAME_SCHEMES,
+            COT_STYLE_SCHEMES,
+        )
     }
 
     @Volatile
@@ -866,6 +907,33 @@ class SettingsStore(
     suspend fun update(settings: Settings) {
         updateMutex.withLock {
             updateLocked(settings)
+        }
+    }
+
+    /**
+     * 盘上占用不小于 [minChars] 个字符的可清理字段：key 名和字符数，从大到小（上游 `27976e4da`）。
+     *
+     * 只看盘上原始字符串长度，**不做解码**——安全模式的场景正是解码/编码会撑爆内存，
+     * 这里不能成为第二个 OOM 点。只看 [RESETTABLE_LARGE_KEYS]，避免把无法恢复默认的
+     * 杂项 key（哨兵、墓碑、开关）也列出来让用户「清除」。
+     */
+    fun largeStoredFieldsFlow(minChars: Int): Flow<List<Pair<String, Int>>> = dataStore.data
+        .map { preferences -> collectLargeStoredFields(preferences, minChars) }
+        .distinctUntilChanged()
+
+    /**
+     * 把 [keyName] 对应的字段恢复成默认值，返回时已经落盘；认不出的 key 不做任何事。
+     *
+     * 实现是 `edit { remove(key) }`（与 [incrementLaunchCount] 同思路的原子读-改-写）：
+     * 不走 `update { }` 整份快照——安全模式运行时设置流可能仍在产出「含超大字段」的旧快照，
+     * 整份写回恰好把坏数据重新落盘；直接删 key 则无论内存快照多旧，下次写回的都是默认值
+     * （decode 侧 `?: 默认值`）。持有 [updateMutex] 防止并发的 `update` 在删除后立刻用
+     * 旧快照把大字段写回来。
+     */
+    suspend fun resetStoredField(keyName: String) {
+        val key = RESETTABLE_LARGE_KEYS.find { it.name == keyName } ?: return
+        updateMutex.withLock {
+            dataStore.edit { preferences -> preferences.remove(key) }
         }
     }
 

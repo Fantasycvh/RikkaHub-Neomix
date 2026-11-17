@@ -1015,9 +1015,15 @@
   <string name="safe_mode_crash_report">當機報告</string>
   <string name="safe_mode_current_assistant">目前助理：%s</string>
   <string name="safe_mode_default_assistant">預設助理</string>
-  <string name="safe_mode_description">應用程式在上次啟動時崩潰。您可以切換到其他助理來解決此問題。</string>
+  <string name="safe_mode_description">應用程式在上次啟動時崩潰。</string>
   <string name="safe_mode_switch_assistant">切換助理</string>
   <string name="safe_mode_title">安全模式</string>
+  <string name="safe_mode_oversized_data_title">超大資料</string>
+  <string name="safe_mode_oversized_field_chars">%1$s 字元</string>
+  <string name="safe_mode_clear">清除</string>
+  <string name="safe_mode_clear_field_title">清除%1$s？</string>
+  <string name="safe_mode_clear_field_desc">該資料大到可能讓應用程式記憶體耗盡。清除會恢復為預設值，且無法復原。</string>
+  <string name="safe_mode_cancel">取消</string>
   <string name="search_ability_scrape">爬取</string>
   <string name="search_ability_search">搜尋</string>
   <string name="search_detail_api_key">API 金鑰</string>
@@ -1145,6 +1151,8 @@
   <string name="setting_display_page_send_on_enter_title">按 Enter 鍵傳送</string>
   <string name="setting_display_page_show_assistant_bubble_desc">是否顯示助理訊息的泡泡背景</string>
   <string name="setting_display_page_show_assistant_bubble_title">顯示助理訊息氣泡</string>
+  <string name="setting_display_page_split_assistant_bubble_title">按段落拆分助理氣泡</string>
+  <string name="setting_display_page_split_assistant_bubble_desc">助理回覆按空行拆成多個氣泡顯示，程式碼塊和公式塊內的空行不拆；只影響顯示，訊息本身仍是一條。</string>
   <string name="setting_display_page_show_datetime_in_message_desc">在每則訊息下方顯示日期與時間</string>
   <string name="setting_display_page_show_datetime_in_message_title">在訊息中顯示日期和時間</string>
   <string name="setting_display_page_show_line_numbers_desc">在程式碼區塊中顯示行號</string>
