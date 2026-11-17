@@ -259,6 +259,12 @@ data class Settings(
     val globalProxy: GlobalProxySetting = GlobalProxySetting(),
     val retrySetting: RetrySetting = RetrySetting(),
     val launchCount: Int = 0,
+    /**
+     * 跨设备累计启动次数（与 [launchCount] 每次启动同步 +1）。
+     * 随备份迁移、恢复侧与本地值取 max 合并（幂等），统计页展示用——见 BackupPortability；
+     * [launchCount] 保持本机口径（清洗不迁移），供更新提醒判断。
+     */
+    val totalLaunchCount: Int = 0,
     /** 上下文窗口全局默认（模型无 contextLength/customContextLength 时的兜底；null=不覆盖走 256K） */
     val contextLengthOverride: Int? = null,
     /** 自动压缩：占用超过阈值时自动把早期历史摘要为检查点（默认关，保持行为可预期） */

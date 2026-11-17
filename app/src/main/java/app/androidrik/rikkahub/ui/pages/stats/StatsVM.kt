@@ -45,7 +45,10 @@ data class AppStats(
     val totalConversations: Int = 0,
     /** 节点数（不是消息条数）：一个节点可能带多个分支消息，按行数算是唯一确定的刻度。 */
     val totalMessages: Int = 0,
+    /** 本机启动计数（设备态，不随备份迁移；更新提醒按它判断）。 */
     val launchCount: Int = 0,
+    /** 跨设备累计启动次数（随备份 max 合并；统计页展示口径，见 BackupPortability）。 */
+    val totalLaunchCount: Int = 0,
     /** 每天（本地日期）的聊天请求次数，`source = CHAT`。 */
     val requestsPerDay: Map<LocalDate, Int> = emptyMap(),
     /** 每天（本地日期）的 token 合计（输入 + 输出），全部来源。 */
@@ -225,6 +228,7 @@ class StatsVM(
         val totalConversations = conversationDAO.countAll()
         val totalMessages = messageNodeDAO.countAll()
         val launchCount = settingsStore.settingsFlow.value.launchCount
+        val totalLaunchCount = settingsStore.settingsFlow.value.totalLaunchCount
 
         _stats.update {
             it.copy(
@@ -232,6 +236,7 @@ class StatsVM(
                 totalConversations = totalConversations,
                 totalMessages = totalMessages,
                 launchCount = launchCount,
+                totalLaunchCount = totalLaunchCount,
                 requestsPerDay = requestsPerDay,
                 tokensPerDay = tokensPerDay,
             )

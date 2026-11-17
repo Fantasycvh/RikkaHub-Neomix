@@ -534,12 +534,26 @@ private fun StatsGrid(stats: AppStats, modifier: Modifier = Modifier) {
                 value = formatCount(stats.totalMessages.toLong()),
             )
         }
-        StatCard(
+        // 启动次数两个口径并列展示，各自注明数据来源（备份可移植化清洗的区分，见 BackupPortability）
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxWidth(),
-            icon = HugeIcons.Rocket01,
-            label = stringResource(R.string.stats_page_launch_count),
-            value = formatCount(stats.launchCount.toLong()),
-        )
+        ) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                icon = HugeIcons.Rocket01,
+                label = stringResource(R.string.stats_page_launch_count_total),
+                value = formatCount(stats.totalLaunchCount.toLong()),
+                desc = stringResource(R.string.stats_page_launch_count_total_desc),
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                icon = HugeIcons.Rocket01,
+                label = stringResource(R.string.stats_page_launch_count_local),
+                value = formatCount(stats.launchCount.toLong()),
+                desc = stringResource(R.string.stats_page_launch_count_local_desc),
+            )
+        }
     }
 }
 
@@ -1106,6 +1120,7 @@ private fun StatCard(
     icon: ImageVector,
     label: String,
     value: String,
+    desc: String? = null,
 ) {
     Card(modifier = modifier, colors = CustomColors.cardColorsOnSurfaceContainer) {
         Column(
@@ -1127,6 +1142,13 @@ private fun StatCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (desc != null) {
+                Text(
+                    text = desc,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+            }
         }
     }
 }

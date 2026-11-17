@@ -178,6 +178,67 @@ class BackupPortabilityTest {
         assertEquals(JsonPrimitive("oops"), merged["backupReminderConfig"])
     }
 
+    // ===== 可合并设备态：totalLaunchCount（打包保留 + 恢复侧 max）=====
+
+    @Test
+    fun `portable keeps totalLaunchCount`() {
+        // 跨设备累计口径不清洗（launchCount 本机口径仍剔除），二者区分开
+        val input = buildJsonObject {
+            put("launchCount", JsonPrimitive(11))
+            put("totalLaunchCount", JsonPrimitive(123))
+        }
+        val output = BackupPortability.portable(input)
+        assertFalse("launchCount" in output)
+        assertEquals(JsonPrimitive(123), output["totalLaunchCount"])
+    }
+
+    @Test
+    fun `preserveDeviceState merges totalLaunchCount with max`() {
+        val merged = BackupPortability.preserveDeviceState(
+            settingsJson("totalLaunchCount" to "120"),
+            buildJsonObject { put("totalLaunchCount", JsonPrimitive(45)) },
+        )
+        assertEquals(JsonPrimitive(120), merged["totalLaunchCount"])
+    }
+
+    @Test
+    fun `preserveDeviceState keeps larger local totalLaunchCount`() {
+        val merged = BackupPortability.preserveDeviceState(
+            settingsJson("totalLaunchCount" to "30"),
+            buildJsonObject { put("totalLaunchCount", JsonPrimitive(80)) },
+        )
+        assertEquals(JsonPrimitive(80), merged["totalLaunchCount"])
+    }
+
+    @Test
+    fun `preserveDeviceState falls back to local totalLaunchCount for old packages`() {
+        // 旧包没有该键（字段加入前的版本生成）：自然落到本机值
+        val merged = BackupPortability.preserveDeviceState(
+            settingsJson("themeId" to "dark"),
+            buildJsonObject { put("totalLaunchCount", JsonPrimitive(66)) },
+        )
+        assertEquals(JsonPrimitive(66), merged["totalLaunchCount"])
+    }
+
+    @Test
+    fun `preserveDeviceState totalLaunchCount merge is idempotent`() {
+        // merge 模式重跑/恢复两次结果不变
+        val incoming = settingsJson("totalLaunchCount" to "120")
+        val current = buildJsonObject { put("totalLaunchCount", JsonPrimitive(45)) }
+        val once = BackupPortability.preserveDeviceState(incoming, current)
+        val twice = BackupPortability.preserveDeviceState(once, current)
+        assertEquals(JsonPrimitive(120), twice["totalLaunchCount"])
+    }
+
+    @Test
+    fun `preserveDeviceState tolerates malformed totalLaunchCount`() {
+        val merged = BackupPortability.preserveDeviceState(
+            buildJsonObject { put("totalLaunchCount", JsonPrimitive("oops")) },
+            buildJsonObject { put("totalLaunchCount", JsonPrimitive(77)) },
+        )
+        assertEquals(JsonPrimitive(77), merged["totalLaunchCount"])
+    }
+
     // ===== round trip：打包清洗 → 恢复回填 =====
 
     @Test

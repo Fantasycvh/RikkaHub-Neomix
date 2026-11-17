@@ -1696,7 +1696,10 @@
   <string name="stats_page_heatmap_metric_tokens">Token 數</string>
   <string name="stats_page_heatmap_title">聊天熱力圖</string>
   <string name="stats_page_input_tokens">輸入詞元</string>
-  <string name="stats_page_launch_count">應用程式啟動次數</string>
+  <string name="stats_page_launch_count_total">啟動次數 · 跨裝置累計</string>
+  <string name="stats_page_launch_count_total_desc">隨備份合併（取較大值），換機可延續</string>
+  <string name="stats_page_launch_count_local">啟動次數 · 本機</string>
+  <string name="stats_page_launch_count_local_desc">本機計數（裝置態，不隨備份遷移），供更新提醒判斷</string>
   <string name="stats_page_no_usage">這段期間還沒有用量記錄</string>
   <string name="stats_page_other">其他</string>
   <string name="stats_page_output_tokens">輸出詞元</string>

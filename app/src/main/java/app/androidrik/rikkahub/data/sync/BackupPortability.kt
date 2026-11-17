@@ -2,6 +2,9 @@ package app.androidrik.rikkahub.data.sync
 
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * 备份可移植化清洗（设备态剥离）：让备份包描述「用户数据」而非「这台设备的状态」。
@@ -20,6 +23,13 @@ import kotlinx.serialization.json.JsonObject
 internal object BackupPortability {
     /** 整键设备态：打包时剔除，恢复时一律保留本机值。 */
     private val DEVICE_STATE_KEYS = setOf("launchCount", "importedSources")
+
+    /**
+     * 可合并设备态：**打包保留、恢复侧与本地值取 max**（幂等）。
+     * `totalLaunchCount` 是跨设备累计口径（统计页展示用），与整键设备态的
+     * `launchCount`（本机口径，清洗不迁移）区分——见 Settings 字段注释。
+     */
+    private const val TOTAL_LAUNCH_KEY = "totalLaunchCount"
 
     private const val BACKUP_REMINDER_KEY = "backupReminderConfig"
     private const val BACKUP_REMINDER_TIME_FIELD = "lastBackupTime"
@@ -58,6 +68,11 @@ internal object BackupPortability {
             val localValue = current[key]
             if (localValue != null) merged[key] = localValue else merged.remove(key)
         }
+        // 可合并设备态：max(备份, 本机)。旧包没带该键（清洗前/旧版本生成）按 0 参与比较，
+        // 自然落到本机值。两侧计数都单调增，max 语义下恢复两次结果不变（幂等）。
+        val incomingTotal = incoming[TOTAL_LAUNCH_KEY]?.jsonPrimitive?.intOrNull ?: 0
+        val currentTotal = current[TOTAL_LAUNCH_KEY]?.jsonPrimitive?.intOrNull ?: 0
+        merged[TOTAL_LAUNCH_KEY] = JsonPrimitive(maxOf(incomingTotal, currentTotal))
         val incomingReminder = merged[BACKUP_REMINDER_KEY] as? JsonObject
         if (incomingReminder != null) {
             val localTime = (current[BACKUP_REMINDER_KEY] as? JsonObject)

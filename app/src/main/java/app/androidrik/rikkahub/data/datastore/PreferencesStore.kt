@@ -427,6 +427,9 @@ class SettingsStore(
         // 统计
         val LAUNCH_COUNT = intPreferencesKey("launch_count")
 
+        // 跨设备累计启动次数（随备份迁移 + 恢复侧 max 合并；统计页展示口径，见 BackupPortability）
+        val TOTAL_LAUNCH_COUNT = intPreferencesKey("total_launch_count")
+
         // 上下文窗口全局默认（模型无 contextLength/customContextLength 时的兜底，null=不覆盖走 256K）
         val CONTEXT_LENGTH_OVERRIDE = intPreferencesKey("context_length_override")
 
@@ -693,7 +696,12 @@ class SettingsStore(
                 backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: BackupReminderConfig(),
+                // 存量安装无 TOTAL pref：回填为本机计数（升级后统计口径连续，无需迁移脚本）
                 launchCount = preferences[LAUNCH_COUNT] ?: 0,
+                totalLaunchCount = maxOf(
+                    preferences[TOTAL_LAUNCH_COUNT] ?: 0,
+                    preferences[LAUNCH_COUNT] ?: 0,
+                ),
                 contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
                 autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
                 contextImageLimit = (preferences[CONTEXT_IMAGE_LIMIT] ?: DEFAULT_CONTEXT_IMAGE_LIMIT)
@@ -900,6 +908,9 @@ class SettingsStore(
         dataStore.edit { preferences ->
             count = (preferences[LAUNCH_COUNT] ?: 0) + 1
             preferences[LAUNCH_COUNT] = count
+            // 跨设备累计口径同步 +1（随备份迁移，见 BackupPortability）
+            preferences[TOTAL_LAUNCH_COUNT] =
+                maxOf(preferences[TOTAL_LAUNCH_COUNT] ?: 0, count)
         }
         return count
     }
@@ -1052,6 +1063,11 @@ class SettingsStore(
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
             // 防回退：整份快照可能早于 incrementLaunchCount()，取盘内现值与新值的较大者
             preferences[LAUNCH_COUNT] = maxOf(settings.launchCount, preferences[LAUNCH_COUNT] ?: 0)
+            // 累计口径同理防回退（恢复可能带来更大的值，见 BackupPortability max 合并）
+            preferences[TOTAL_LAUNCH_COUNT] = maxOf(
+                settings.totalLaunchCount,
+                preferences[TOTAL_LAUNCH_COUNT] ?: 0,
+            )
             settings.contextLengthOverride?.let {
                 preferences[CONTEXT_LENGTH_OVERRIDE] = it
             } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
