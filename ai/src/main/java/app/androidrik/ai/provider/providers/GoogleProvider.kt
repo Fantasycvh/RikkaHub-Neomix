@@ -47,6 +47,7 @@ import app.androidrik.ai.provider.runQuotaQuery
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.provider.providers.google.GoogleStreamDecoder
+import app.androidrik.ai.provider.providers.google.InteractionsAPI
 import app.androidrik.ai.provider.stream.SseEvent
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.provider.providers.vertex.ServiceAccountTokenProvider
@@ -98,6 +99,7 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
     private val serviceAccountTokenProvider by lazy {
         ServiceAccountTokenProvider(client)
     }
+    private val interactionsApi = InteractionsAPI(client, ::transformRequest)
 
     private fun buildUrl(providerSetting: ProviderSetting.Google, path: String): HttpUrl {
         return if (!providerSetting.vertexAI) {
@@ -159,6 +161,9 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         messages: List<UIMessage>,
         params: TextGenerationParams,
     ): TextGenerationResult = withContext(Dispatchers.IO) {
+        if (providerSetting.useInteractionsApi && providerSetting.supportsInteractionsApi) {
+            return@withContext interactionsApi.generateText(providerSetting, messages, params)
+        }
         val requestBody = buildCompletionRequestBody(providerSetting, messages, params)
 
         val url = buildUrl(
@@ -216,6 +221,16 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
 
     override suspend fun streamText(
+        providerSetting: ProviderSetting.Google,
+        messages: List<UIMessage>,
+        params: TextGenerationParams,
+    ): Flow<StreamChunk> = if (providerSetting.useInteractionsApi && providerSetting.supportsInteractionsApi) {
+        interactionsApi.streamText(providerSetting, messages, params)
+    } else {
+        streamGenerateContent(providerSetting, messages, params)
+    }
+
+    private fun streamGenerateContent(
         providerSetting: ProviderSetting.Google,
         messages: List<UIMessage>,
         params: TextGenerationParams,

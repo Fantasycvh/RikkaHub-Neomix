@@ -634,6 +634,27 @@ private fun ProviderConfigureGoogle(
             label = { Text(stringResource(R.string.setting_provider_page_project_id)) },
             modifier = Modifier.fillMaxWidth(),
         )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Gemini Interactions API")
+                if (!provider.supportsInteractionsApi) {
+                    Text(
+                        "Available in global, us, and eu.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Switch(
+                checked = provider.useInteractionsApi && provider.supportsInteractionsApi,
+                enabled = provider.supportsInteractionsApi,
+                onCheckedChange = { onEdit(provider.copy(useInteractionsApi = it)) },
+            )
+        }
     }
 }
 
