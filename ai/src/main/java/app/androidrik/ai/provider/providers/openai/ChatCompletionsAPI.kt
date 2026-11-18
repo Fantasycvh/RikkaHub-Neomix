@@ -46,6 +46,7 @@ import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.provider.stream.SseEvent
+import app.androidrik.ai.ui.DEEPSEEK_RAW_CALL_METADATA_KEY
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.provider.providers.PartGroup
 import app.androidrik.ai.util.ensureArrayItems
@@ -1139,7 +1140,7 @@ internal fun parseDeepSeekServerToolCalls(steps: JsonArray): List<UIMessagePart.
                     metadata = buildJsonObject {
                         stepIndex?.let { put("deepseek_step", JsonPrimitive(it)) }
                         if (!stepReasoning.isNullOrEmpty()) put("deepseek_reasoning", JsonPrimitive(stepReasoning))
-                        put("deepseek_raw_call", call)
+                        put(DEEPSEEK_RAW_CALL_METADATA_KEY, call)
                     },
                 )
             )
@@ -1159,7 +1160,7 @@ internal fun rebuildServerToolCallSteps(parts: List<UIMessagePart.ServerTool>): 
     val reasoningByKey = linkedMapOf<String, String?>()
     parts.forEach { part ->
         val meta = part.metadata ?: return@forEach
-        val raw = meta["deepseek_raw_call"] as? JsonObject ?: return@forEach
+        val raw = meta[DEEPSEEK_RAW_CALL_METADATA_KEY] as? JsonObject ?: return@forEach
         val key = (meta["deepseek_step"] as? JsonPrimitive)?.content ?: ""
         steps.getOrPut(key) { mutableListOf() }.add(raw to (meta["deepseek_step"] as? JsonPrimitive)?.content?.toIntOrNull())
         if (key !in reasoningByKey) {

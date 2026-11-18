@@ -5,12 +5,16 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.DEEPSEEK_RAW_CALL_METADATA_KEY
 import app.androidrik.ai.ui.ServerToolMetadata
 import app.androidrik.ai.ui.ServerToolProtocol
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.ToolApprovalState
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.toMetadata
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 /**
  * 整轮折叠的分组 / 展示决策单测（`docs/design/design-whole-turn-folding.md` §9）。
@@ -113,6 +117,62 @@ class WholeTurnFoldingTest {
         assertTrue(clientChain.canCollapse)
         assertTrue(clientChain.steps.first() is ThinkingStep.NarrationStep)
         assertEquals(listOf(ThinkingStep.ServerToolStep(grounding)), groundingChain.steps)
+    }
+
+    /** DeepSeek 内置工具块：`server_tool_calls` 解析后原始 JSON 存在 `deepseek_raw_call`（配料 01 §8） */
+    private fun deepSeekSearchTool(name: String = "deep_search") = serverTool(name = name).copy(
+        metadata = buildJsonObject {
+            put(DEEPSEEK_RAW_CALL_METADATA_KEY, buildJsonObject { put("kind", JsonPrimitive(name)) })
+        },
+    )
+
+    @Test
+    fun `DeepSeek search steps after the answer keep it visible and still fold client tool narration`() {
+        val grounding = deepSeekSearchTool()
+        val answer = text("The current year is 2026.")
+        val blocks = listOf(text("Let me check"), tool("lookup"), answer, grounding)
+            .groupMessageParts(wholeTurnFolding = true)
+
+        val content = blocks.filterIsInstance<MessagePartBlock.ContentBlock>().single()
+        assertEquals(answer, content.part)
+        assertEquals(2, content.index)
+        val (clientChain, groundingChain) = blocks.thinkingBlocks()
+        assertTrue(clientChain.canCollapse)
+        assertTrue(clientChain.steps.first() is ThinkingStep.NarrationStep)
+        assertEquals(listOf(ThinkingStep.ServerToolStep(grounding)), groundingChain.steps)
+    }
+
+    @Test
+    fun `DeepSeek trailing tool steps keep the streamed answer as content`() {
+        // DeepSeek 实测线形（配料 04）：正文先流完，末帧 reasoning + server_tool_calls 整块下发
+        val search = deepSeekSearchTool()
+        val answer = text("最终回答")
+        val blocks = listOf(answer, reasoning("最后一步思考"), search)
+            .groupMessageParts(wholeTurnFolding = true)
+
+        val content = blocks.filterIsInstance<MessagePartBlock.ContentBlock>().single()
+        assertEquals(answer, content.part)
+        assertEquals(0, content.index)
+        val chain = blocks.onlyThinking()
+        assertEquals(2, chain.steps.size)
+        assertTrue(chain.steps[0] is ThinkingStep.ReasoningStep)
+        assertEquals(listOf<ThinkingStep>(ThinkingStep.ServerToolStep(search)), chain.steps.drop(1))
+    }
+
+    @Test
+    fun `DeepSeek search step as the only tool keeps both texts as content`() {
+        // DeepSeek 工具块不判定解说边界 ⇒ 前置解说不再是 NarrationStep（与 Vertex 修复同款取舍：
+        // 宁可少折叠一段解说，也不能把最终回答吞进思考链；实测线形里工具块总在正文之后，配料 04）
+        val blocks = listOf(text("正在搜索"), deepSeekSearchTool(), text("最终回答"))
+            .groupMessageParts(wholeTurnFolding = true)
+
+        assertEquals(3, blocks.size)
+        assertTrue(blocks[0] is MessagePartBlock.ContentBlock)
+        val chain = blocks.onlyThinking()
+        assertEquals(1, chain.steps.size)
+        assertTrue(chain.steps.single() is ThinkingStep.ServerToolStep)
+        val answer = blocks[2] as MessagePartBlock.ContentBlock
+        assertEquals("最终回答", (answer.part as UIMessagePart.Text).text)
     }
 
     // ---- 4. 空白文本中断（Qwen 场景）----

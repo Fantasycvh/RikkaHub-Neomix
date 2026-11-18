@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.DEEPSEEK_RAW_CALL_METADATA_KEY
 import app.androidrik.ai.ui.ServerToolMetadata
 import app.androidrik.ai.ui.ServerToolProtocol
 import app.androidrik.ai.ui.ToolApprovalState
@@ -118,6 +119,8 @@ sealed interface MessagePartBlock {
  *
  * 规则（对照 `docs/design/design-whole-turn-folding.md` §4）：
  * 1. `narrationBoundary` 之前的 `Text` 是过程解说，和 Reasoning/Tool/ServerTool 一起进思考链；
+ *    Vertex Interactions 与 DeepSeek 内置搜索这类「正文之后才补发的步骤」不判定边界（见
+ *    [isPostAnswerSearchStep]），否则最终回答会被吞进思考链；
  * 2. `narrationBoundary` 之后的 `Text` 单独成正文块；
  * 3. 空白 `Text` 直接跳过（部分模型如 Qwen 会在工具之间输出空白文本，把它当分隔符
  *    会把一条思考链撕成多块，折叠头消失）；
@@ -156,7 +159,7 @@ fun List<UIMessagePart>.groupMessageParts(
     val narrationBoundary = indexOfLast { part ->
         when (part) {
             is UIMessagePart.Tool -> true
-            is UIMessagePart.ServerTool -> !part.isInteractionsSearch()
+            is UIMessagePart.ServerTool -> !part.isPostAnswerSearchStep()
             else -> false
         }
     }
@@ -208,6 +211,12 @@ fun List<UIMessagePart>.groupMessageParts(
     flushThinkingSteps()
     return result.withFoldDecisions(wholeTurnFolding)
 }
+
+// Vertex Interactions 和 DeepSeek Chat Completions 都可能在正文之后才下发搜索步骤与引用
+// （Vertex：Interactions 序；DeepSeek：server_tool_calls 与 annotations 同帧整块出现在
+// 末尾，配料 04 实测）。这类步骤不判定解说边界，否则整轮折叠会把最终回答吞进思考链。
+private fun UIMessagePart.ServerTool.isPostAnswerSearchStep(): Boolean =
+    isInteractionsSearch() || metadata?.containsKey(DEEPSEEK_RAW_CALL_METADATA_KEY) == true
 
 // Vertex Interactions can emit a complete answer before its Google Search and citation steps.
 private fun UIMessagePart.ServerTool.isInteractionsSearch(): Boolean =

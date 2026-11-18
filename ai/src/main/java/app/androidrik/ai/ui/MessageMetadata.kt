@@ -19,6 +19,12 @@ import app.androidrik.ai.util.json
  * 所有字段必须可空且 key 与历史数据保持一致(必要时用 [SerialName]),
  * 否则旧会话中持久化的 metadata 将无法解析
  */
+/**
+ * DeepSeek Chat Completions 内置工具（配料 01 §8）的原始 call JSON 所在的 metadata key。
+ * UI 层据此识别 DeepSeek 内置工具步骤（它们没有类型化的 [ServerToolMetadata]）。
+ */
+const val DEEPSEEK_RAW_CALL_METADATA_KEY = "deepseek_raw_call"
+
 sealed interface PartMetadata
 
 /**
