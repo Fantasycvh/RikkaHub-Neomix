@@ -126,6 +126,7 @@ data class MediaCreationRecord(
     val providerName: String,
     /** 下发给接口的模型名。 */
     val modelId: String,
+    val catalogModelId: Uuid? = null,
     val kind: MediaKind,
     val prompt: String,
     val params: MediaCreationParams = MediaCreationParams(),

@@ -149,6 +149,9 @@ internal data class MediaCreationPresets(
         )
 }
 
+internal fun app.androidrik.rikkahub.data.media.MediaModelOption.presets(): MediaCreationPresets =
+    (mediaProvider ?: MediaGenerationProviderSetting.OpenAI()).presets(model.kind)
+
 internal fun MediaGenerationProviderSetting.presets(kind: MediaKind): MediaCreationPresets = when (this) {
     is MediaGenerationProviderSetting.OpenAI -> MediaCreationPresets(
         resolutions = listOf("1024x1024", "1536x1024", "1024x1536"),

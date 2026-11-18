@@ -10,6 +10,7 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAction
 import app.androidrik.rikkahub.data.scheduled.SchedulePayload
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
 import app.androidrik.rikkahub.service.ChatService
@@ -94,11 +95,13 @@ class ScheduledTasksVM(
         withGoal: Boolean = false,
         keepLastConversations: Int = 0,
         deliverablesJson: String? = null,
+        mediaAction: ScheduledMediaAction? = null,
         onCreated: () -> Unit = {},
         onFailed: (TargetFailure) -> Unit = {},
     ) {
         viewModelScope.launch {
-            val conversationId = when (targetMode) {
+            val template = mediaAction?.isTemplate == true
+            val conversationId = if (template) "" else when (targetMode) {
                 TargetMode.EXISTING -> conversation?.id?.toString()
                     ?: return@launch onFailed(TargetFailure.CONVERSATION_MISSING)
 
@@ -113,17 +116,18 @@ class ScheduledTasksVM(
             }
             taskRepository.create(
                 conversationId = conversationId,
-                targetMode = targetMode,
-                assistantId = assistant?.id?.toString(),
+                targetMode = if (template) TargetMode.EXISTING else targetMode,
+                assistantId = if (template) null else assistant?.id?.toString(),
                 title = title,
                 prompt = prompt,
                 scheduleType = scheduleType,
                 payload = payload,
                 missPolicy = missPolicy,
-                idleOnly = idleOnly,
-                withGoal = withGoal,
-                keepLastConversations = keepLastConversations,
-                deliverables = deliverablesJson,
+                idleOnly = !template && idleOnly,
+                withGoal = !template && withGoal,
+                keepLastConversations = if (template) 0 else keepLastConversations,
+                deliverables = deliverablesJson.takeUnless { template },
+                mediaAction = mediaAction,
             )
             sweeperKeeper.rearm(taskRepository)
             onCreated()

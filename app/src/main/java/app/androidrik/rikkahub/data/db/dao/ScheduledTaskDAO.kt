@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
 import kotlinx.coroutines.flow.Flow
@@ -34,6 +35,13 @@ interface ScheduledTaskDAO {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(entity: ScheduledTaskEntity)
+
+    @Transaction
+    suspend fun editTask(id: String, transform: (ScheduledTaskEntity) -> ScheduledTaskEntity): Boolean {
+        val existing = byId(id) ?: return false
+        upsert(transform(existing))
+        return true
+    }
 
     @Query("DELETE FROM scheduled_tasks WHERE id = :id")
     suspend fun deleteById(id: String)
@@ -73,6 +81,12 @@ interface ScheduledTaskDAO {
     @Query("UPDATE scheduled_tasks SET last_status = :status WHERE id = :id")
     suspend fun recordStatus(id: String, status: String)
 
+    @Query("""
+        UPDATE scheduled_tasks SET last_status = :status WHERE id = :taskId AND last_run_at <=
+        (SELECT started_at FROM scheduled_task_runs WHERE id = :runId AND task_id = :taskId)
+    """)
+    suspend fun recordMediaStatus(taskId: String, runId: String, status: String)
+
     // ---- 运行账本（P2）：每次执行一行，终态必达；诊断「昨晚为什么没跑成」用 ----
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -89,6 +103,9 @@ interface ScheduledTaskDAO {
 
     @Query("SELECT * FROM scheduled_task_runs WHERE id = :id")
     suspend fun runById(id: String): ScheduledTaskRunEntity?
+
+    @Query("UPDATE scheduled_task_runs SET media_session_id = :sessionId WHERE id = :id")
+    suspend fun linkMediaSession(id: String, sessionId: String)
 
     @Query("UPDATE scheduled_task_runs SET memory_sync_status = :state, memory_receipts = :receipts WHERE id = :id")
     suspend fun updateMemoryEvidence(id: String, state: String, receipts: String)

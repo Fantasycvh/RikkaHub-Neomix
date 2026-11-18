@@ -41,6 +41,9 @@ import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.workspace.ExecutionScope
 import app.androidrik.workspace.WorkspaceShellStatus
 import app.androidrik.rikkahub.utils.getStringContent
+import app.androidrik.rikkahub.service.ScheduledMediaRunner
+import app.androidrik.rikkahub.service.scheduledRunId
+import app.androidrik.rikkahub.service.scheduledRunTurnOwner
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
@@ -109,6 +112,7 @@ class ChatToolFactory(
     private val pluginManager: PluginManager,
     /** 会话内生图工具（#2123）的写路径；见 [app.androidrik.rikkahub.data.image.ImageGenerationRunner] */
     private val imageGenerationRunner: ImageGenerationRunner,
+    private val scheduledMediaRunner: ScheduledMediaRunner,
     /**
      * 对话内子代理派发器（[SubagentDispatcher] 的**延迟解析**）。
      *
@@ -304,14 +308,19 @@ class ChatToolFactory(
         // （工具 schema 每次请求都要下发），也避免出现"一调用就报错"的工具——沿用本文件
         // `subagentDispatcher` 那条定式「宁可没有工具，也不能出现一个一调用就崩的工具」。
         // 用设置里的生图模型（不是当前 chat 模型），故 chat 模型不支持生图也能用。
-        if (settings.resolveImageGenerationModel() != null) {
+        val scheduledRunId = turnOwner.scheduledRunId()
+        val imageModel = if (scheduledRunId == null) settings.resolveImageGenerationModel()
+            else scheduledMediaRunner.agentModel(scheduledRunId)
+        if (imageModel != null) {
             segments += ToolSegment(
                 ToolSource.Image,
                 createImageTools(
-                    assistant = assistant,
+                    assistant = if (scheduledRunId == null) assistant else assistant.copy(imageGenApproval = false),
                     generate = { prompt, num, size ->
-                        val request = MediaGenerationRequest(prompt = prompt, count = num, resolution = size)
-                        imageGenerationRunner.generate(settings, request)
+                        val (option, resolution) = if (scheduledRunId == null) imageModel to size
+                            else scheduledMediaRunner.authorizeImage(scheduledRunId, num, size)
+                        val request = MediaGenerationRequest(prompt = prompt, count = num, resolution = resolution)
+                        imageGenerationRunner.generate(option, request)
                             .filterIsInstance<ImageGenerationUpdate.Saved>()
                             .map { it.image }
                             .toList()
@@ -380,7 +389,7 @@ class ChatToolFactory(
                             SubagentDispatchContext(
                                 parentToolEnvelope = segments.filter { it.source != ToolSource.Subagent }
                                     .flatMap { it.tools }.map { it.name }.toSet(),
-                                scopeToken = turnOwner?.wire,
+                                scopeToken = scheduledRunId?.let(::scheduledRunTurnOwner) ?: turnOwner?.wire,
                                 parentWorkspaceId = assistant.workspaceId,
                                 noticeTarget = workspaceNoticeTarget?.let {
                                     app.androidrik.rikkahub.data.task.AgentNoticeTarget(it.conversationId, it.assistantId,

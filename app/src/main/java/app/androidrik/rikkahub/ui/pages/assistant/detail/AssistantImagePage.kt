@@ -101,7 +101,7 @@ fun AssistantImagePage(id: String) {
                     supportingContent = {
                         Text(
                             text = imageModel?.let {
-                                stringResource(R.string.assistant_page_image_model_configured, it.displayName)
+                                stringResource(R.string.assistant_page_image_model_configured, it.name)
                             } ?: stringResource(R.string.assistant_page_image_model_missing),
                         )
                     },

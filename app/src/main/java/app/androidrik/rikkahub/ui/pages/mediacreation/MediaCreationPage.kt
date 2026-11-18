@@ -83,6 +83,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.model.MediaCreationNode
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.data.media.mediaModelCatalog
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.components.ui.RikkaConfirmDialog
@@ -196,7 +197,7 @@ fun MediaCreationPage(id: String) {
                     nodes = nodes,
                     editingNodeId = draft.editingNodeId,
                     selectedNodes = selectedNodes,
-                    hasModels = settings.mediaGenerationProviders.any { it.models.isNotEmpty() },
+                    hasModels = settings.mediaModelCatalog().any { it.visible },
                     onOpenMediaSettings = { navController.navigate(Screen.SettingMedia) },
                 )
             }
@@ -213,7 +214,7 @@ fun MediaCreationPage(id: String) {
                     vm = vm,
                     draft = draft,
                     selection = selection,
-                    providers = settings.mediaGenerationProviders.portedProviders(),
+                    models = settings.mediaModelCatalog(),
                     recentOutputs = recentOutputs,
                     onOpenMediaSettings = { navController.navigate(Screen.SettingMedia) },
                 )

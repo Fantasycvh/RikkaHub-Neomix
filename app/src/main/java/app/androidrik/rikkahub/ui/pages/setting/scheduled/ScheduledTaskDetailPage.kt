@@ -11,6 +11,8 @@ import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
 import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.media.mediaModelCatalog
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,6 +79,8 @@ fun ScheduledTaskDetailPage(
     ) { innerPadding ->
         val current = task ?: return@GlassTopBarScaffold
         val form = rememberScheduledTaskFormState(current)
+        val mediaCatalog = LocalSettings.current.mediaModelCatalog()
+        val mediaAction = form.mediaAction(mediaCatalog)
         // 「附带长期目标」仅当目标会话写了 goal 才可选；每轮新建没有固定会话，恒不可选
         val withGoalAvailable = targetModeOrDefault(current.targetMode) != TargetMode.NEW_EACH_RUN &&
             !conversationGoals[current.conversationId].isNullOrBlank()
@@ -106,10 +110,11 @@ fun ScheduledTaskDetailPage(
                     Text(stringResource(R.string.scheduled_task_view_last_conversation))
                 }
             }
+            if (current.createdBy == ScheduledTaskEntity.CREATED_BY_USER) ScheduledMediaFields(form, mediaCatalog)
             ScheduledTaskFormFields(
                 form,
-                withGoalAvailable = withGoalAvailable,
-                keepLastVisible = keepLastVisible,
+                withGoalAvailable = !form.mediaTemplate && withGoalAvailable,
+                keepLastVisible = !form.mediaTemplate && keepLastVisible,
             )
             // 运行历史入口（P3）：列表摊到二级页（ScheduledTaskRunsPage），这里只留一行摘要——
             // 几十条历史塞在编辑表单中间既挤又喧宾夺主
@@ -147,11 +152,11 @@ fun ScheduledTaskDetailPage(
                 },
             )
             Button(
-                onClick = { vm.save(form) },
+                onClick = { vm.save(form, mediaAction) },
                 modifier = Modifier
                     .padding(16.dp)
                     .fillMaxWidth(),
-                enabled = form.isValid,
+                enabled = form.isValid && (!(form.mediaTemplate || form.authorizeMedia) || mediaAction != null),
             ) {
                 Text(stringResource(R.string.scheduled_task_save))
             }

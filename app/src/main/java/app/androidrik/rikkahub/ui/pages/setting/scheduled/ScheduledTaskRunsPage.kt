@@ -82,14 +82,15 @@ fun ScheduledTaskRunsPage(
             items(runs, key = { it.id }) { run ->
                 val statusText = run.status?.let { runStatusLabel(it) }
                     ?: stringResource(R.string.scheduled_task_run_unfinished)
-                val conversationId = run.conversationId
+                val destination = run.mediaSessionId?.let { Screen.MediaCreation(it) }
+                    ?: run.conversationId?.let { Screen.Chat(it) }
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(
-                            if (conversationId != null) {
+                            if (destination != null) {
                                 Modifier.clickable {
-                                    navController.navigate(Screen.Chat(conversationId))
+                                    navController.navigate(destination)
                                 }
                             } else {
                                 Modifier
@@ -97,8 +98,8 @@ fun ScheduledTaskRunsPage(
                         )
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
-                    Text("记忆同步：${memorySyncLabel(run.memorySyncStatus)}", style = MaterialTheme.typography.labelSmall)
-                    run.runSummary?.let { summary ->
+                    if (run.mediaSessionId == null) Text("记忆同步：${memorySyncLabel(run.memorySyncStatus)}", style = MaterialTheme.typography.labelSmall)
+                    run.runSummary?.takeIf { it.isNotBlank() }?.let { summary ->
                         Text("运行摘要（有界快照）", style = MaterialTheme.typography.labelSmall)
                         androidx.compose.foundation.text.selection.SelectionContainer {
                             Text(runCatching { (app.androidrik.rikkahub.utils.JsonInstant.parseToJsonElement(summary) as? kotlinx.serialization.json.JsonObject)
@@ -130,6 +131,9 @@ fun ScheduledTaskRunsPage(
                             MaterialTheme.colorScheme.error
                         },
                     )
+                    if (run.mediaSessionId != null) {
+                        Text("Open media result", style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }

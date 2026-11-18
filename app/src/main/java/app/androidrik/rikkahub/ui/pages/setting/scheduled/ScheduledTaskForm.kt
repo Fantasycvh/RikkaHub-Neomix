@@ -35,6 +35,8 @@ import app.androidrik.rikkahub.data.db.entity.MissPolicy
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.ai.DeliverableChecker
+import app.androidrik.rikkahub.data.scheduled.mediaGrant
+import app.androidrik.rikkahub.data.scheduled.isMediaTemplate
 import app.androidrik.rikkahub.data.scheduled.SchedulePayload
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.ui.components.ui.FormItem
@@ -54,6 +56,12 @@ import java.util.Locale
 class ScheduledTaskFormState {
     var title by mutableStateOf("")
     var prompt by mutableStateOf("")
+    var mediaTemplate by mutableStateOf(false)
+    var authorizeMedia by mutableStateOf(false)
+    var mediaModel by mutableStateOf<app.androidrik.rikkahub.data.media.MediaModelRef?>(null)
+    var mediaCount by mutableIntStateOf(1)
+    var mediaResolution by mutableStateOf<String?>(null)
+    var mediaConfigurationFingerprint by mutableStateOf<String?>(null)
     var type by mutableStateOf(ScheduleType.DAILY)
     var randomDaily by mutableStateOf(false)
     var randomEndHourText by mutableStateOf("23")
@@ -143,6 +151,13 @@ class ScheduledTaskFormState {
     )
 
     fun loadFrom(entity: ScheduledTaskEntity) {
+        val grant = entity.mediaGrant()
+        mediaTemplate = entity.isMediaTemplate
+        authorizeMedia = grant != null
+        mediaModel = grant?.model
+        mediaCount = grant?.params?.count ?: 1
+        mediaResolution = grant?.params?.resolution
+        mediaConfigurationFingerprint = grant?.configurationFingerprint
         val payload = SchedulePayload.decode(entity.schedulePayload)
         randomDaily = payload.randomWindow != null
         payload.randomWindow?.let { window ->
@@ -220,7 +235,13 @@ fun ScheduledTaskFormFields(
         )
         OutlinedTextField(
             value = state.prompt,
-            onValueChange = { state.prompt = it },
+            onValueChange = {
+                state.prompt = it
+                if (state.mediaTemplate) {
+                    state.authorizeMedia = false
+                    state.mediaConfigurationFingerprint = null
+                }
+            },
             label = { Text(stringResource(R.string.scheduled_task_field_prompt)) },
             minLines = 3,
             modifier = Modifier.fillMaxWidth(),
@@ -405,7 +426,7 @@ fun ScheduledTaskFormFields(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        FormItem(
+        if (!state.mediaTemplate) FormItem(
             label = { Text(stringResource(R.string.scheduled_task_idle_only)) },
             description = { Text(stringResource(R.string.scheduled_task_idle_only_desc)) },
             tail = {
@@ -445,7 +466,7 @@ fun ScheduledTaskFormFields(
         Text("记忆跟随助手与会话设置。普通执行的记忆写入沿用审批，可从通知或会话卡片批准；headless 执行不支持记忆同步。提示词只作引导，未保存到记忆的内容仍可能随自动清理消失。")
         // 交付物契约（design-deliverable-gate.md）：每行一个相对 workspace 根的路径；
         // 留空 = 不设闸（默认）。放在表单尾部：它是进阶字段，不是排周期的必经之路。
-        OutlinedTextField(
+        if (!state.mediaTemplate) OutlinedTextField(
             value = state.deliverablesText,
             onValueChange = { state.deliverablesText = it },
             label = { Text(stringResource(R.string.scheduled_task_deliverables)) },

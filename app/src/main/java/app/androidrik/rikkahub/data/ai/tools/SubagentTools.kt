@@ -111,11 +111,12 @@ internal fun resolveSubagentEnvelope(
     parentToolEnvelope: Set<String>? = null,
     requestedWorkspaceId: kotlin.uuid.Uuid? = null,
     parentWorkspaceId: kotlin.uuid.Uuid? = null,
+    allowScheduledImage: Boolean = false,
 ): Set<String> {
     val scopedSegments = if (parentToolEnvelope != null && requestedWorkspaceId != parentWorkspaceId)
         segments.filterNot { it.source == ToolSource.Workspace } else segments
     val byCapability = scopedSegments
-        .filter { it.source in CAPABILITY_SOURCE_SEGMENTS }
+        .filter { it.source in CAPABILITY_SOURCE_SEGMENTS || (allowScheduledImage && it.source == ToolSource.Image) }
         .flatMapTo(mutableSetOf()) { segment -> segment.tools.map { it.name } }
 
     val assembled = scopedSegments.flatMapTo(mutableSetOf()) { segment -> segment.tools.map { it.name } }

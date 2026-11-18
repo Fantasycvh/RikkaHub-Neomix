@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.service
 
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAction
+import app.androidrik.workspace.ExecutionScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +41,8 @@ class ScheduledRunRegistry {
         /** 归属的定时任务行 id（P0 任务中心按 taskId 反查运行中 run；可空以兼容旧调用）。 */
         val taskId: String?,
     ) {
+        var mediaGrant: ScheduledMediaAction? = null
+        var mediaCallUsed = false
         /** 本轮 generation Job；null = 已登记但 Job 还没出现（排队中/尚未派发） */
         var job: Job? = null
 
@@ -77,7 +81,7 @@ class ScheduledRunRegistry {
      * 某定时任务**当前这一轮**的 runId（没有运行中的轮次返回 null）。
      *
      * 任务中心从任务行出发要能取消「正在跑的那一轮」，而它手里只有 taskId；注册表在注入前
-     * 登记 runId 时顺带记下 taskId，才能做这个反查（同一 task 同时只允许一轮执行）。
+     * 登记时保存 taskId。多轮媒体生成有重叠时，返回最早登记的那一轮。
      */
     fun activeRunIdOfTask(taskId: String): String? {
         if (taskId.isBlank()) return null
@@ -131,6 +135,23 @@ class ScheduledRunRegistry {
         entries[runId]?.cancelled == true
     }
 
+    internal fun setMediaGrant(runId: String, grant: ScheduledMediaAction) = synchronized(lock) {
+        entries[runId]?.mediaGrant = grant
+    }
+
+    internal fun mediaGrant(runId: String): ScheduledMediaAction? = synchronized(lock) {
+        entries[runId]?.takeUnless { it.cancelled || it.mediaCallUsed }?.mediaGrant
+    }
+
+    internal fun consumeMediaGrant(runId: String, grant: ScheduledMediaAction): Boolean = synchronized(lock) {
+        val entry = entries[runId] ?: return@synchronized false
+        if (entry.cancelled || entry.mediaCallUsed || entry.mediaGrant != grant) return@synchronized false
+        entry.mediaCallUsed = true
+        true
+    }
+
+    internal fun taskIdOf(runId: String): String? = synchronized(lock) { entries[runId]?.taskId }
+
     /** 本轮登记过的 generation Job（诊断/测试用；取消请走 [cancel]） */
     fun jobOf(runId: String): Job? = synchronized(lock) { entries[runId]?.job }
 
@@ -164,3 +185,7 @@ class ScheduledRunRegistry {
  * `turn-<uuid>` 形态碰撞。
  */
 internal fun scheduledRunTurnOwner(runId: String): String = "sched:$runId"
+
+internal fun ExecutionScope?.scheduledRunId(): String? =
+    generateSequence(this) { it.parent }.firstOrNull { it.wire.startsWith("sched:") }
+        ?.wire?.removePrefix("sched:")

@@ -69,6 +69,7 @@ import app.androidrik.rikkahub.ui.theme.installPluginChatAppearanceBridge
 import app.androidrik.rikkahub.ui.components.message.tools.installPluginToolUIBridge
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.rikkahub.service.MediaCreationService
+import app.androidrik.rikkahub.service.ScheduledMediaRunner
 import app.androidrik.rikkahub.service.MemoryTriggerScheduleManager
 import app.androidrik.rikkahub.service.WebServerService
 import app.androidrik.rikkahub.service.KeepAliveService
@@ -560,6 +561,7 @@ class RikkaHubApp : Application() {
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
                 get<MediaCreationService>().resumePending()
+                get<ScheduledMediaRunner>().reconcile()
             }.onFailure {
                 Log.e(TAG, "resumeMediaCreations failed", it)
             }

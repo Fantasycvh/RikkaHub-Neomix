@@ -93,7 +93,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import app.androidrik.ai.provider.ModelType
+import app.androidrik.mediagen.model.MediaKind
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.data.media.defaultImageModel
+import app.androidrik.rikkahub.data.media.mediaModelCatalog
+import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.pages.mediacreation.MediaModelPicker
+import androidx.compose.foundation.layout.widthIn
 import app.androidrik.ai.ui.ImageGenSize
 import app.androidrik.common.android.appTempFolder
 import me.rerere.hugeicons.HugeIcons
@@ -111,7 +117,6 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.files.FileUtils
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.image.GeneratedImage
-import app.androidrik.rikkahub.ui.components.ai.ModelSelector
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.ImagePreviewDialog
@@ -350,6 +355,8 @@ private fun InputBar(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val nav = LocalNavController.current
+    var showModels by remember { mutableStateOf(false) }
     // GetMultipleContents 而非 PickMultipleVisualMedia：保留文件浏览入口
     // （同 ChatPage 的说明；上游 4b36640a 亦已 revert 回此形态）
     val imagePickerLauncher =
@@ -403,19 +410,13 @@ private fun InputBar(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ModelSelector(
-                modelId = settings.imageGenerationModelId,
-                providers = settings.providers,
-                type = ModelType.IMAGE,
-                onlyIcon = true,
-                onSelect = { model ->
-                    scope.launch {
-                        vm.settingsStore.update { oldSettings ->
-                            oldSettings.copy(imageGenerationModelId = model.id)
-                        }
-                    }
-                }
-            )
+            TextButton(onClick = { showModels = true }, modifier = Modifier.widthIn(max = 124.dp)) {
+                Text(
+                    settings.defaultImageModel()?.name ?: stringResource(R.string.media_creation_page_select_model),
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
 
             IconButton(
                 onClick = onShowSettings
@@ -475,6 +476,18 @@ private fun InputBar(
                 }
             }
         }
+    }
+    if (showModels) {
+        MediaModelPicker(
+            models = settings.mediaModelCatalog().filter { it.model.kind == MediaKind.IMAGE },
+            selectedModelId = settings.imageGenerationModelId,
+            onSelect = { option ->
+                showModels = false
+                scope.launch { vm.settingsStore.update { it.copy(imageGenerationModelId = option.model.id) } }
+            },
+            onManage = { showModels = false; nav.navigate(Screen.SettingMedia) },
+            onDismiss = { showModels = false },
+        )
     }
 }
 

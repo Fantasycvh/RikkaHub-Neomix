@@ -1639,7 +1639,10 @@ class ChatService(
             )
             return
         }
-        val model = initialConversation.upstreamConfig?.applyToModel(baseModel) ?: baseModel
+        val configuredModel = initialConversation.upstreamConfig?.applyToModel(baseModel) ?: baseModel
+        val scheduled = app.androidrik.workspace.ExecutionScope.parse(activeSession.backgroundTaskOwner).scheduledRunId() != null
+        val model = if (scheduled) configuredModel.copy(tools = configuredModel.tools - BuiltInTools.ImageGeneration)
+            else configuredModel
 
         val senderName = if (assistant.useAssistantAvatar) {
             assistant.name.ifEmpty { context.getString(R.string.assistant_page_default_assistant) }

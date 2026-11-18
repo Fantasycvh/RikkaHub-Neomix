@@ -1,17 +1,14 @@
 package app.androidrik.rikkahub.data.image
 
-import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.ImageGenerationItem
 import app.androidrik.mediagen.model.MediaGenerationInput
 import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.rikkahub.data.datastore.Settings
-import app.androidrik.rikkahub.data.datastore.findModelById
-import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.db.entity.GenMediaEntity
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.media.MediaGenerationExecutor
-import app.androidrik.rikkahub.data.media.MediaGenerationResult
-import app.androidrik.rikkahub.data.media.MediaGenerationTarget
+import app.androidrik.rikkahub.data.media.MediaModelOption
+import app.androidrik.rikkahub.data.media.defaultImageModel
 import app.androidrik.rikkahub.data.repository.GenMediaRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -31,11 +28,7 @@ import kotlin.uuid.Uuid
  * 的工具（`ChatToolFactory` 里 `subagentDispatcher` 同款定式：宁可没有工具，也不能出现一个
  * 一调用就崩的工具）。顺带的效果是：没配生图模型的用户一个 token 都不付。
  */
-internal fun Settings.resolveImageGenerationModel(): Model? {
-    val model = findModelById(imageGenerationModelId) ?: return null
-    // provider 也要能解析：只有模型、没有可用 provider 时同样属于"没配好"
-    return model.takeIf { it.findProvider(providers) != null }
-}
+internal fun Settings.resolveImageGenerationModel(): MediaModelOption? = defaultImageModel()
 
 internal sealed interface ImageGenerationUpdate {
     data class Preview(
@@ -56,27 +49,25 @@ class ImageGenerationRunner(
     internal fun generate(
         settings: Settings,
         request: MediaGenerationRequest,
-    ): Flow<ImageGenerationUpdate> = flow {
-        val model = settings.findModelById(settings.imageGenerationModelId)
-            ?: error("No model selected")
-        val provider = model.findProvider(settings.providers)
-            ?: error("Provider not found")
-        val result = executor.submit(MediaGenerationTarget.Image(provider, model), request)
-            as MediaGenerationResult.ImageStream
+    ): Flow<ImageGenerationUpdate> = generate(
+        settings.resolveImageGenerationModel() ?: error("No model selected"),
+        request,
+    )
 
+    internal fun generate(option: MediaModelOption, request: MediaGenerationRequest): Flow<ImageGenerationUpdate> = flow {
         val prompt = requireNotNull(request.prompt)
         val editInputs = request.inputs.filterIsInstance<MediaGenerationInput.Image>()
         val type = if (editInputs.isEmpty()) GenMediaEntity.TYPE_IMAGE_GENERATION else GenMediaEntity.TYPE_IMAGE_EDIT
         val sourcePaths = editInputs.takeIf { it.isNotEmpty() }?.joinToString("\n") { it.url }
-        result.images.collect { item ->
+        executor.images(option.target, request).collect { item ->
             if (item.partial) {
-                emit(ImageGenerationUpdate.Preview(item, model.displayName))
+                emit(ImageGenerationUpdate.Preview(item, option.name))
                 return@collect
             }
             val image = saveImageToStorage(
                 item = item,
                 prompt = prompt,
-                modelName = model.displayName,
+                modelName = option.name,
                 type = type,
                 sourcePaths = sourcePaths,
             )

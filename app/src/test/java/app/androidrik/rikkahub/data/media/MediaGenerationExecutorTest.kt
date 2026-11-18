@@ -11,12 +11,20 @@ import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.ui.ImageGenerationItem
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.mediagen.model.MediaGenerationInput
+import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationRequest
+import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationManager
+import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Protocol
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -74,6 +82,30 @@ class MediaGenerationExecutorTest {
             provider.edit,
         )
         assertNull(provider.generation)
+    }
+
+    @Test
+    fun `media provider images can be consumed by the standalone gallery and chat tool`() = runTest {
+        val client = OkHttpClient.Builder().addInterceptor { chain ->
+            val request = chain.request()
+            assertEquals("/v1/images/generations", request.url.encodedPath)
+            Response.Builder()
+                .request(request)
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body("""{"data":[{"b64_json":"aW1hZ2U="}]}""".toResponseBody("application/json".toMediaType()))
+                .build()
+        }.build()
+        val executor = MediaGenerationExecutor({ error("Unexpected chat provider") }, MediaGenerationManager(client))
+        val target = MediaGenerationTarget.Media(
+            MediaGenerationProviderSetting.OpenAI(baseUrl = "https://example.test/v1", apiKey = "test"),
+            MediaGenerationModel("media-image", MediaKind.IMAGE),
+        )
+
+        val images = executor.images(target, MediaGenerationRequest(prompt = "Draw a lake")).toList()
+
+        assertEquals(listOf(ImageGenerationItem("aW1hZ2U=", "image/png")), images)
     }
 
     private class RecordingImageProvider : Provider<ProviderSetting> {

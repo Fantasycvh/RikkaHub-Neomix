@@ -8,6 +8,7 @@ import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAction
 import app.androidrik.rikkahub.data.scheduled.SchedulePayload
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
@@ -72,7 +73,7 @@ class ScheduledTaskDetailVM(
     }
 
     /** 保存编辑：周期字段变更由仓库侧重算 nextRunAt，保存后重排唤醒作业 */
-    fun save(form: ScheduledTaskFormState) {
+    fun save(form: ScheduledTaskFormState, mediaAction: ScheduledMediaAction?) {
         viewModelScope.launch {
             taskRepository.update(
                 id = taskId,
@@ -84,7 +85,9 @@ class ScheduledTaskDetailVM(
                 idleOnly = form.idleOnly,
                 withGoal = form.withGoal,
                 keepLastConversations = form.keepLast ?: 0,
-                deliverables = form.deliverablesJson(),
+                deliverables = form.deliverablesJson().takeUnless { form.mediaTemplate },
+                editMediaAction = true,
+                mediaAction = mediaAction,
             )
             sweeperKeeper.rearm(taskRepository)
             refresh()

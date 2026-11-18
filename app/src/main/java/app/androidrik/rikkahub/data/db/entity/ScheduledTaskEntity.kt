@@ -102,6 +102,9 @@ import androidx.room.PrimaryKey
     /** AI 建任务时的会话溯源（task_manage create 的发起会话）；用户建的为 null。 */
     @ColumnInfo("source_conversation_id")
     val sourceConversationId: String? = null,
+    /** JSON grant issued from the task editor. A null value grants no unattended media calls. */
+    @ColumnInfo("media_action")
+    val mediaAction: String? = null,
     @ColumnInfo("enabled")
     val enabled: Boolean,
     @ColumnInfo("created_at")

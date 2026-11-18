@@ -31,7 +31,9 @@ class ImageToolWiringTest {
     @Test
     fun `image tool segment is gated on a configured image model`() {
         val factory = source("app/androidrik/rikkahub/data/ai/tools/ChatToolFactory.kt")
-        val gate = "if (settings.resolveImageGenerationModel() != null) {"
+        val gate = "if (imageModel != null) {"
+        assertTrue(factory.contains("if (scheduledRunId == null) settings.resolveImageGenerationModel()"))
+        assertTrue(factory.contains("else scheduledMediaRunner.agentModel(scheduledRunId)"))
         assertTrue(
             "装配点缺少门控：没配生图模型的用户会白白多付一段工具 schema，且调用只会失败",
             factory.contains(gate),

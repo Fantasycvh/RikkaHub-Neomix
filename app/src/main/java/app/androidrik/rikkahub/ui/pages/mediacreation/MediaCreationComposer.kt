@@ -110,9 +110,8 @@ import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationCapabilities
 import app.androidrik.mediagen.provider.MediaGenerationParameter
-import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
-import app.androidrik.mediagen.provider.capabilities
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.media.MediaModelOption
 import app.androidrik.rikkahub.data.model.MediaCreationAsset
 import app.androidrik.rikkahub.data.model.MediaCreationAssetType
 import app.androidrik.rikkahub.data.model.MediaCreationDraft
@@ -127,7 +126,6 @@ import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.Tooltip
 import app.androidrik.rikkahub.ui.pages.setting.components.label
-import app.androidrik.rikkahub.ui.pages.setting.components.typeName
 import java.io.File
 import kotlin.uuid.Uuid
 
@@ -140,8 +138,8 @@ private const val MAX_PICKED_IMAGES = 8
 internal fun MediaCreationComposer(
     vm: MediaCreationVM,
     draft: MediaCreationDraft,
-    selection: MediaCreationModelSelection?,
-    providers: List<MediaGenerationProviderSetting>,
+    selection: MediaModelOption?,
+    models: List<MediaModelOption>,
     recentOutputs: List<MediaCreationRecentOutput>,
     onOpenMediaSettings: () -> Unit,
     modifier: Modifier = Modifier,
@@ -269,7 +267,7 @@ internal fun MediaCreationComposer(
                     ModelButton(model = selection?.model, onClick = { showModels = true })
                     if (selection != null && capabilities != null && capabilities.parameters.isNotEmpty()) {
                         val summary = draft.params
-                            .withRequired(capabilities, selection.provider.presets(selection.model.kind).defaults)
+                            .withRequired(capabilities, selection.presets().defaults)
                             .summary(selection.model.kind)
                         ComposerChip(
                             icon = HugeIcons.SlidersHorizontal,
@@ -294,11 +292,11 @@ internal fun MediaCreationComposer(
     }
 
     if (showModels) {
-        ModelSheet(
-            providers = providers,
+        MediaModelPicker(
+            models = models,
             selectedModelId = draft.modelId,
-            onSelect = { provider, model ->
-                vm.selectModel(provider, model)
+            onSelect = { option ->
+                vm.selectModel(option)
                 showModels = false
             },
             onManage = {
@@ -356,7 +354,7 @@ internal fun MediaCreationComposer(
             // 白纸默认用参数里选的比例，画出来的首帧、参考图和要生成的画面对得上
             aspectRatio = if (selection != null && capabilities != null) {
                 draft.params
-                    .withRequired(capabilities, selection.provider.presets(selection.model.kind).defaults)
+                    .withRequired(capabilities, selection.presets().defaults)
                     .aspectRatio
                     ?.let(::parseAspectRatio)
             } else {
@@ -743,17 +741,14 @@ private fun AssetPickerSheet(
 // ---- 模型 ----
 
 @Composable
-private fun ModelSheet(
-    providers: List<MediaGenerationProviderSetting>,
+internal fun MediaModelPicker(
+    models: List<MediaModelOption>,
     selectedModelId: Uuid?,
-    onSelect: (MediaGenerationProviderSetting, MediaGenerationModel) -> Unit,
+    onSelect: (MediaModelOption) -> Unit,
     onManage: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // 适配器没有实现的类型不列出来
-    val groups = providers
-        .map { provider -> provider to provider.models.filter { provider.capabilities(it.kind) != null } }
-        .filter { it.second.isNotEmpty() }
+    val groups = models.filter { it.visible }.groupBy { it.providerId to it.providerName }
 
     ComposerSheet(onDismiss = onDismiss) {
         Text(
@@ -773,14 +768,14 @@ private fun ModelSheet(
                 modifier = Modifier.heightIn(max = 420.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                groups.forEach { (provider, models) ->
-                    item(key = "provider-${provider.id}") {
+                groups.forEach { (provider, entries) ->
+                    item(key = "provider-${provider.first}") {
                         Row(
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            val name = provider.name.ifEmpty { provider.typeName }
+                            val name = provider.second
                             AutoAIIcon(name = name, modifier = Modifier.size(20.dp))
                             Text(
                                 text = name,
@@ -789,11 +784,11 @@ private fun ModelSheet(
                             )
                         }
                     }
-                    items(models, key = { it.id.toString() }) { model ->
+                    items(entries, key = { it.model.id.toString() }) { option ->
                         ModelRow(
-                            model = model,
-                            selected = model.id == selectedModelId,
-                            onClick = { onSelect(provider, model) },
+                            model = option.model,
+                            selected = option.model.id == selectedModelId,
+                            onClick = { onSelect(option) },
                         )
                     }
                 }
@@ -852,7 +847,7 @@ private fun ModelRow(
  */
 @Composable
 private fun ParamsSheet(
-    selection: MediaCreationModelSelection,
+    selection: MediaModelOption,
     params: MediaCreationParams,
     onParamsChange: (MediaCreationParams) -> Unit,
     onDismiss: () -> Unit,
@@ -867,7 +862,7 @@ private fun ParamsSheet(
     val kind = selection.model.kind
     val supported = selection.capabilities.parameters
     val required = selection.capabilities.requiredParameters
-    val presets = remember(selection.provider, kind) { selection.provider.presets(kind) }
+    val presets = remember(selection) { selection.presets() }
     val defaults = presets.defaults
 
     ComposerSheet(onDismiss = onDismiss) {

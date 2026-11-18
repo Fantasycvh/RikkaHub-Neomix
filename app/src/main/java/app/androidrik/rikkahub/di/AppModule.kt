@@ -27,6 +27,7 @@ import app.androidrik.rikkahub.service.ScheduledTaskExecutor
 import app.androidrik.rikkahub.service.ScheduledTaskRunner
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
 import app.androidrik.rikkahub.service.ScheduledRunRegistry
+import app.androidrik.rikkahub.service.ScheduledMediaRunner
 import app.androidrik.rikkahub.data.task.TaskCenter
 import app.androidrik.rikkahub.service.SubagentRunner
 import app.androidrik.rikkahub.utils.EmojiData
@@ -217,6 +218,7 @@ val appModule = module {
         MediaGenerationExecutor(
             imageProvider = get<ProviderManager>()::getProviderByType,
             mediaGenerationManager = get(),
+            downloadClient = get(),
         )
     }
 
@@ -242,6 +244,7 @@ val appModule = module {
             workspaceRepository = get(),
             pluginManager = get(),
             imageGenerationRunner = get(),
+            scheduledMediaRunner = get(),
             // **延迟解析**：SubagentRunner 依赖本工厂（它要用装配点装配工具），
             // 直接在此 `get()` 会构成构造环。lambda 体在装配工具时才执行 ⇒ 环断在这里。
             // 依赖窄接口而非具体 Runner，见下方 single<SubagentDispatcher> 的绑定。
@@ -298,6 +301,8 @@ val appModule = module {
         ScheduledRunRegistry()
     }
 
+    single { ScheduledMediaRunner(get(), get(), get(), get(), get(), get()) }
+
     single {
         ScheduledTaskRunner(
             context = get(),
@@ -308,6 +313,7 @@ val appModule = module {
             workspaceRepository = get(),
             runRegistry = get(),
             subagentRunner = get(),
+            mediaRunner = get(),
         )
     }
 

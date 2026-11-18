@@ -127,6 +127,9 @@ interface MediaCreationDAO {
     @Query("SELECT * FROM media_creation_record WHERE id = :id")
     suspend fun getRecord(id: String): MediaCreationRecordEntity?
 
+    @Query("SELECT * FROM media_creation_record WHERE id = :id")
+    fun observeRecord(id: String): Flow<MediaCreationRecordEntity?>
+
     @Query("SELECT * FROM media_creation_record WHERE session_id = :sessionId")
     suspend fun getRecordsOfSession(sessionId: String): List<MediaCreationRecordEntity>
 

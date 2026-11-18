@@ -36,17 +36,17 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import app.androidrik.mediagen.model.ImageRole
-import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationCapabilities
-import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
-import app.androidrik.mediagen.provider.capabilities
 import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.files.MediaCreationFiles
 import app.androidrik.rikkahub.data.files.RemoteFileStore
+import app.androidrik.rikkahub.data.media.MediaModelOption
+import app.androidrik.rikkahub.data.media.mediaModelCatalog
+import app.androidrik.rikkahub.data.media.resolveMediaRecord
 import app.androidrik.rikkahub.data.model.MediaCreationAsset
 import app.androidrik.rikkahub.data.model.MediaCreationAssetType
 import app.androidrik.rikkahub.data.model.MediaCreationDraft
@@ -68,13 +68,6 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.uuid.Uuid
 
 private const val TAG = "MediaCreationVM"
-
-/** 草稿选中的模型，以及它所属的提供商和适配器能力。 */
-data class MediaCreationModelSelection(
-    val provider: MediaGenerationProviderSetting,
-    val model: MediaGenerationModel,
-    val capabilities: MediaGenerationCapabilities,
-)
 
 /** 可以再次放进输入区的一项历史产出。 */
 data class MediaCreationRecentOutput(
@@ -128,9 +121,9 @@ class MediaCreationVM(
 
     val nodes: Flow<PagingData<MediaCreationNode>> = repository.observeNodes(sessionId).cachedIn(viewModelScope)
 
-    val selection: StateFlow<MediaCreationModelSelection?> =
+    internal val selection: StateFlow<MediaModelOption?> =
         combine(settingsStore.settingsFlow, draft) { settings, draft ->
-            settings.mediaGenerationProviders.portedProviders().findSelection(draft.modelId)
+            settings.mediaModelCatalog().firstOrNull { it.model.id == draft.modelId }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val recentOutputs: StateFlow<List<MediaCreationRecentOutput>> =
@@ -191,7 +184,7 @@ class MediaCreationVM(
 
     private suspend fun load() {
         val session = repository.getSession(sessionId) ?: return
-        val providers = settingsStore.settingsFlow.first { !it.init }.mediaGenerationProviders
+        val catalog = settingsStore.settingsFlow.first { !it.init }.mediaModelCatalog()
         val assets = withContext(Dispatchers.IO) {
             val assets = session.draft.assets.filter { repository.resolve(it.path).isFile }
             // 草稿目录里不再被引用的文件是之前移除的素材
@@ -199,10 +192,8 @@ class MediaCreationVM(
             repository.draftDir(session.id).listFiles()?.filterNot { it in referenced }?.forEach { it.delete() }
             assets
         }
-        val modelId = session.draft.modelId?.takeIf { providers.findSelection(it) != null }
-            ?: providers.firstNotNullOfOrNull { provider ->
-                provider.models.firstOrNull { provider.capabilities(it.kind) != null }
-            }?.id
+        val modelId = session.draft.modelId?.takeIf { id -> catalog.any { it.model.id == id } }
+            ?: catalog.firstOrNull { it.visible }?.model?.id
         val editingNodeId = session.draft.editingNodeId?.takeIf { repository.hasNode(it) }
         savedDraft = session.draft
         draftState.value = session.draft.copy(modelId = modelId, assets = assets, editingNodeId = editingNodeId)
@@ -233,16 +224,14 @@ class MediaCreationVM(
     /**
      * 切换模型。换了厂商或类型时参数的取值不再通用，恢复成默认；素材调整成新模型能接受的形态。
      */
-    fun selectModel(provider: MediaGenerationProviderSetting, model: MediaGenerationModel) = updateDraft { draft ->
-        val capabilities = provider.capabilities(model.kind) ?: return@updateDraft draft
+    internal fun selectModel(option: MediaModelOption) = updateDraft { draft ->
         val previous = currentSelection(draft)
-        val sameShape = previous != null &&
-            previous.provider::class == provider::class &&
-            previous.model.kind == model.kind
+        val sameShape = previous != null && previous.capabilities == option.capabilities &&
+            previous.model.kind == option.model.kind
         draft.copy(
-            modelId = model.id,
+            modelId = option.model.id,
             params = if (sameShape) draft.params else MediaCreationParams(),
-            assets = draft.assets.supportedBy(capabilities),
+            assets = draft.assets.supportedBy(option.capabilities),
         )
     }
 
@@ -468,29 +457,22 @@ class MediaCreationVM(
         draftState.value = transform(draft)
     }
 
-    private fun currentSelection(draft: MediaCreationDraft? = draftState.value): MediaCreationModelSelection? =
-        settingsStore.settingsFlow.value.mediaGenerationProviders.portedProviders()
-            .findSelection(draft?.modelId)
+    private fun currentSelection(draft: MediaCreationDraft? = draftState.value): MediaModelOption? =
+        settingsStore.settingsFlow.value.mediaModelCatalog().firstOrNull { it.model.id == draft?.modelId }
 
-    // 当前模型不满足要求时换一个满足的；这里的要求（首尾帧、视频素材）都只有视频模型能满足
     private suspend fun ensureModel(requirement: (MediaGenerationCapabilities) -> Boolean): Boolean {
         if (currentSelection()?.capabilities?.let(requirement) == true) return true
-        val candidates = settingsStore.settingsFlow.value.mediaGenerationProviders.portedProviders()
-            .flatMap { provider ->
-            provider.models.mapNotNull { model ->
-                provider.capabilities(model.kind)?.takeIf(requirement)
-                    ?.let { MediaCreationModelSelection(provider, model, it) }
-            }
-        }
+        val candidates = settingsStore.settingsFlow.value.mediaModelCatalog()
+            .filter { it.visible && requirement(it.capabilities) }
         if (candidates.isEmpty()) {
             _events.send(MediaCreationEvent.Error(context.getString(R.string.media_creation_page_no_video_model)))
             return false
         }
         // 优先用上一次生成视频时的模型
         val recent = repository.getLatestRecordOfKind(MediaKind.VIDEO)
-        val target = candidates.find { it.provider.id == recent?.providerId && it.model.modelId == recent.modelId }
+        val target = candidates.find { it.providerId == recent?.providerId && it.model.modelId == recent.modelId }
             ?: candidates.first()
-        selectModel(target.provider, target.model)
+        selectModel(target)
         return true
     }
 
@@ -513,8 +495,7 @@ class MediaCreationVM(
             MediaCreationSubmission(
                 sessionId = sessionId,
                 nodeId = submitted.editingNodeId,
-                provider = selection.provider,
-                model = selection.model,
+                option = selection,
                 prompt = submitted.prompt,
                 params = submitted.params,
                 assets = submitted.assets,
@@ -536,9 +517,8 @@ class MediaCreationVM(
 
     /** 用同样的输入和参数再生成一次，作为同一项的新版本。 */
     fun rerun(record: MediaCreationRecord) {
-        val provider = settingsStore.settingsFlow.value.mediaGenerationProviders.find { it.id == record.providerId }
-        val capabilities = provider?.capabilities(record.kind)
-        if (provider == null || capabilities == null) {
+        val option = settingsStore.settingsFlow.value.resolveMediaRecord(record)
+        if (option == null) {
             _events.trySend(
                 MediaCreationEvent.Error(
                     context.getString(R.string.media_creation_error_provider_deleted, record.providerName)
@@ -550,13 +530,12 @@ class MediaCreationVM(
             MediaCreationSubmission(
                 sessionId = record.sessionId,
                 nodeId = record.nodeId,
-                provider = provider,
-                model = MediaGenerationModel(modelId = record.modelId, kind = record.kind),
+                option = option,
                 prompt = record.prompt,
                 params = record.params,
                 assets = record.inputs,
             ),
-            capabilities,
+            option.capabilities,
         )
     }
 
@@ -571,7 +550,7 @@ class MediaCreationVM(
             return null
         }
         // 接口必填的参数没有设置时用默认值，记录里保存的就是实际下发的值
-        val defaults = submission.provider.presets(submission.model.kind).defaults
+        val defaults = submission.option.presets().defaults
         val completed = submission.copy(params = submission.params.withRequired(capabilities, defaults))
         return viewModelScope.launch {
             try {
@@ -592,9 +571,10 @@ class MediaCreationVM(
     /** 把一条记录的提示词、素材和参数填回输入区，之后生成的结果成为它所在那一项的新版本。 */
     fun editFrom(record: MediaCreationRecord) {
         updateDraft { draft ->
-            val providers = settingsStore.settingsFlow.value.mediaGenerationProviders
-            val model = providers.find { it.id == record.providerId }
-                ?.models?.find { it.modelId == record.modelId && it.kind == record.kind }
+            val catalog = settingsStore.settingsFlow.value.mediaModelCatalog()
+            val model = catalog.find { it.providerId == record.providerId && it.model.kind == record.kind &&
+                (record.catalogModelId?.let { id -> it.model.id == id } ?: (it.model.modelId == record.modelId))
+            }?.model
             // 模型还在就切回去；已经被删掉的话保留当前模型和参数，只带回提示词和素材
             draft.copy(
                 modelId = model?.id ?: draft.modelId,
@@ -696,25 +676,3 @@ class MediaCreationVM(
         private val DRAFT_SAVE_DELAY = 500.milliseconds
     }
 }
-
-private fun List<MediaGenerationProviderSetting>.findSelection(modelId: Uuid?): MediaCreationModelSelection? {
-    if (modelId == null) return null
-    forEach { provider ->
-        val model = provider.models.find { it.id == modelId } ?: return@forEach
-        val capabilities = provider.capabilities(model.kind) ?: return@forEach
-        return MediaCreationModelSelection(provider, model, capabilities)
-    }
-    return null
-}
-
-/**
- * 当前真正接入适配器的供应商。
- *
- * 其余类型（Aliyun/Volcengine/MiniMax/OpenRouter）只为设置 JSON 与旧备份的反序列化保留，
- * 生成时会明确失败。UI 侧提前过滤掉，避免用户选到一个必然失败的模型。
- * 接入新适配器时放宽这里即可。
- */
-internal fun List<MediaGenerationProviderSetting>.portedProviders(): List<MediaGenerationProviderSetting> =
-    filter {
-        it is MediaGenerationProviderSetting.OpenAI || it is MediaGenerationProviderSetting.SiliconFlow
-    }

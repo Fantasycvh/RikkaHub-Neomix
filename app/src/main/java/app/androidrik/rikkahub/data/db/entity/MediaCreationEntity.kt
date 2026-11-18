@@ -85,6 +85,8 @@ data class MediaCreationRecordEntity(
     val providerName: String,
     @ColumnInfo("model_id")
     val modelId: String,
+    @ColumnInfo("catalog_model_id")
+    val catalogModelId: String? = null,
     @ColumnInfo("kind")
     val kind: String,
     @ColumnInfo("prompt")

@@ -8,13 +8,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import app.androidrik.common.android.sanitizeSensitiveText
 import app.androidrik.common.http.await
-import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationOutput
 import app.androidrik.mediagen.model.MediaGenerationStatus
 import app.androidrik.mediagen.model.MediaGenerationTask
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
-import app.androidrik.mediagen.provider.capabilities
 import app.androidrik.mediagen.provider.providers.MediaGenerationApiException
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.MEDIA_CREATION_NOTIFICATION_CHANNEL_ID
@@ -26,13 +24,14 @@ import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.data.media.MediaGenerationExecutor
 import app.androidrik.rikkahub.data.media.MediaGenerationResult
 import app.androidrik.rikkahub.data.media.MediaGenerationTarget
+import app.androidrik.rikkahub.data.media.MediaModelOption
+import app.androidrik.rikkahub.data.media.resolveMediaRecord
 import app.androidrik.rikkahub.data.model.MediaCreationAsset
 import app.androidrik.rikkahub.data.model.MediaCreationOutput
 import app.androidrik.rikkahub.data.model.MediaCreationParams
 import app.androidrik.rikkahub.data.model.MediaCreationRecord
 import app.androidrik.rikkahub.data.model.MediaCreationStatus
 import app.androidrik.rikkahub.data.model.buildMediaGenerationRequest
-import app.androidrik.rikkahub.data.model.deriveMediaCreationTitle
 import app.androidrik.rikkahub.data.model.supportedBy
 import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.utils.sendNotification
@@ -47,6 +46,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,6 +60,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaDuration
+import kotlin.io.encoding.Base64
 import kotlin.uuid.Uuid
 
 private const val TAG = "MediaCreationService"
@@ -70,11 +71,10 @@ private const val TAG = "MediaCreationService"
  *
  * [nodeId] 非空时新记录成为时间线上那一项的新版本，否则另起一项。
  */
-data class MediaCreationSubmission(
+internal data class MediaCreationSubmission(
     val sessionId: Uuid,
     val nodeId: Uuid? = null,
-    val provider: MediaGenerationProviderSetting,
-    val model: MediaGenerationModel,
+    val option: MediaModelOption,
     val prompt: String,
     val params: MediaCreationParams,
     val assets: List<MediaCreationAsset>,
@@ -104,43 +104,46 @@ class MediaCreationService(
     /**
      * 新建一条记录并开始生成。提交过程放在应用级作用域里，调用方中途被取消也不会留下半条记录。
      */
-    suspend fun submit(submission: MediaCreationSubmission): MediaCreationRecord = inAppScope {
-        val capabilities = submission.provider.capabilities(submission.model.kind)
-            ?: error(context.getString(R.string.media_creation_error_kind_unsupported, submission.provider.name))
-        val recordId = Uuid.random()
+    internal suspend fun submit(
+        submission: MediaCreationSubmission,
+        recordId: Uuid = Uuid.random(),
+    ): MediaCreationRecord = inAppScope {
+        repository.getRecord(recordId)?.let { return@inAppScope it }
+        val option = submission.option
+        val capabilities = option.capabilities
         val assets = submission.assets.supportedBy(capabilities)
         val record = MediaCreationRecord(
             id = recordId,
             sessionId = submission.sessionId,
             nodeId = submission.nodeId ?: Uuid.random(),
-            providerId = submission.provider.id,
-            providerName = submission.provider.name,
-            modelId = submission.model.modelId,
-            kind = submission.model.kind,
+            providerId = option.providerId,
+            providerName = option.providerName,
+            modelId = option.model.modelId,
+            catalogModelId = option.model.id,
+            kind = option.model.kind,
             prompt = submission.prompt.trim(),
             params = submission.params.supportedBy(capabilities),
             inputs = copyInputs(submission.sessionId, recordId, assets),
         )
         // 先登记任务再写入记录：恢复逻辑把「进行中但没有任务」的记录当作被中断，不能让它看到这个空档
-        val job = register(record.id, record.sessionId)
+        val job = register(record.id, record.sessionId, option)
             ?: error(context.getString(R.string.media_creation_error_task_exists))
         try {
             repository.insertRecord(record)
-            repository.updateSession(record.sessionId) { session ->
-                session.copy(
-                    title = session.title.ifBlank { deriveMediaCreationTitle(record.prompt) },
-                    updateAt = Instant.now(),
-                )
-            }
         } catch (e: Throwable) {
             jobs.remove(record.id, job)
             job.cancel()
-            withContext(Dispatchers.IO) { repository.recordDir(record.sessionId, record.id).deleteRecursively() }
+            withContext(Dispatchers.IO + NonCancellable) {
+                repository.recordDir(record.sessionId, record.id).deleteRecursively()
+            }
             throw e
         }
         job.start()
         record
     }
+
+    internal suspend fun awaitRecord(id: Uuid): MediaCreationRecord? =
+        repository.observeRecord(id).first { it == null || !it.status.isActive }
 
     /**
      * 重新执行失败或已取消的记录。服务端还有任务时接着查询，否则重新提交。
@@ -230,11 +233,11 @@ class MediaCreationService(
     }
 
     // 记录已有任务在跑时返回 null
-    private fun register(recordId: Uuid, sessionId: Uuid): Job? {
+    private fun register(recordId: Uuid, sessionId: Uuid, option: MediaModelOption? = null): Job? {
         val job = appScope.launch(start = CoroutineStart.LAZY) {
             val foreground = MediaCreationForegroundService.acquire(context, recordId, sessionId)
             try {
-                run(recordId)
+                run(recordId, option)
             } finally {
                 jobs.remove(recordId, coroutineContext.job)
                 if (foreground) MediaCreationForegroundService.release(context, recordId)
@@ -247,9 +250,9 @@ class MediaCreationService(
         return job
     }
 
-    private suspend fun run(recordId: Uuid) {
+    private suspend fun run(recordId: Uuid, option: MediaModelOption?) {
         try {
-            generate(recordId)
+            generate(recordId, option)
         } catch (e: Throwable) {
             // 被取消时记录的状态由取消方负责
             currentCoroutineContext().ensureActive()
@@ -264,18 +267,16 @@ class MediaCreationService(
         repository.getRecord(recordId)?.let(::notifyFinished)
     }
 
-    private suspend fun generate(recordId: Uuid) {
+    private suspend fun generate(recordId: Uuid, submittedOption: MediaModelOption?) {
         val record = repository.getRecord(recordId) ?: return
-        val setting = settingsStore.awaitLoaded()
-            .mediaGenerationProviders.find { it.id == record.providerId }
+        val option = submittedOption ?: settingsStore.awaitLoaded().resolveMediaRecord(record)
             ?: error(context.getString(R.string.media_creation_error_provider_deleted, record.providerName))
-        val model = MediaGenerationModel(modelId = record.modelId, kind = record.kind)
-        val target = MediaGenerationTarget.Media(setting, model)
+        val target = option.target
 
         val task = if (record.taskId != null) {
-            awaitTask(target, record.id, record.taskId, since = record.updateAt)
+            awaitTask(target as MediaGenerationTarget.Media, record.id, record.taskId, since = record.updateAt)
         } else {
-            val created = create(target, record)
+            val created = create(option, record)
             if (created.isTerminal) {
                 created
             } else {
@@ -286,7 +287,7 @@ class MediaCreationService(
                     }
                 }
                 delay(POLL_INTERVAL)
-                awaitTask(target, record.id, created.id, since = Instant.now())
+                awaitTask(target as MediaGenerationTarget.Media, record.id, created.id, since = Instant.now())
             }
         }
 
@@ -303,7 +304,7 @@ class MediaCreationService(
         }
 
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.DOWNLOADING) }
-        val outputs = downloadOutputs(setting, record, task.outputs)
+        val outputs = downloadOutputs(option.mediaProvider, record, task.outputs)
         repository.updateRecord(record.id) {
             if (outputs.isEmpty()) {
                 it.copy(
@@ -318,12 +319,10 @@ class MediaCreationService(
     }
 
     private suspend fun create(
-        target: MediaGenerationTarget.Media,
+        option: MediaModelOption,
         record: MediaCreationRecord,
     ): MediaGenerationTask {
-        val setting = target.provider
-        val capabilities = setting.capabilities(record.kind)
-            ?: error(context.getString(R.string.media_creation_error_kind_unsupported, setting.name))
+        val capabilities = option.capabilities
         val inputUrls = if (capabilities.requiresRemoteInputs && record.inputs.isNotEmpty()) {
             // 未配置或上传失败都直接抛：记录会落到 FAILED 并在界面上显示具体原因，不静默退回本地路径
             check(remoteFileStore.isConfigured) { context.getString(R.string.media_creation_error_upload_required) }
@@ -336,8 +335,22 @@ class MediaCreationService(
         }
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.RUNNING) }
         val request = buildMediaGenerationRequest(record.prompt, record.params, record.inputs, inputUrls, capabilities)
-        val result = executor.submit(target, request) as MediaGenerationResult.Task
-        return result.task
+        return when (val result = executor.submit(option.target, request)) {
+            is MediaGenerationResult.Task -> result.task
+            is MediaGenerationResult.ImageStream -> {
+                val outputs = mutableListOf<MediaGenerationOutput>()
+                result.images.collect { image ->
+                    if (!image.partial) {
+                        outputs += MediaGenerationOutput(
+                            data = Base64.decode(image.data.substringAfter(";base64,")),
+                            mimeType = image.mimeType,
+                        )
+                    }
+                }
+                MediaGenerationTask(record.id.toString(), option.providerName, option.model.modelId,
+                    MediaGenerationStatus.SUCCEEDED, outputs)
+            }
+        }
     }
 
     /**
@@ -395,7 +408,7 @@ class MediaCreationService(
     }
 
     private suspend fun downloadOutputs(
-        setting: MediaGenerationProviderSetting,
+        setting: MediaGenerationProviderSetting?,
         record: MediaCreationRecord,
         outputs: List<MediaGenerationOutput>,
     ): List<MediaCreationOutput> = withContext(Dispatchers.IO) {
@@ -412,7 +425,7 @@ class MediaCreationService(
                 data != null -> file.writeBytes(data)
                 url != null -> {
                     Log.i(TAG, "Downloading output $index (${output.mimeType}) from $url")
-                    download(setting, url, file)
+                    download(requireNotNull(setting), url, file)
                     Log.i(TAG, "Downloaded output $index: ${file.length()} bytes -> ${file.name}")
                 }
                 else -> return@mapIndexedNotNull null
@@ -424,7 +437,7 @@ class MediaCreationService(
                 // 尾帧只是「续写」时的捷径，下载不到就等用的时候再从视频里抽
                 val lastFrame = output.lastFrameUrl?.let { lastFrameUrl ->
                     File(dir, "$OUTPUT_PREFIX${index}_last.${lastFrameUrl.urlExtension() ?: "jpg"}")
-                        .takeIf { runCatching { download(setting, lastFrameUrl, it, attempts = 1) }.isSuccess }
+                        .takeIf { runCatching { download(requireNotNull(setting), lastFrameUrl, it, attempts = 1) }.isSuccess }
                 }
                 val info = MediaCreationFiles.videoInfo(file)
                 MediaCreationOutput(

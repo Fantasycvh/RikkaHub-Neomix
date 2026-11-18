@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.service
 
+import app.androidrik.rikkahub.data.scheduled.mediaGrant
+import app.androidrik.rikkahub.data.scheduled.isMediaTemplate
+
 import android.app.PendingIntent
 import android.content.Context
 import android.util.Log
@@ -69,9 +72,10 @@ class ScheduledTaskRunner(
     private val runRegistry: ScheduledRunRegistry,
     /** P4b 可选 headless 执行：定时任务走独立 agent_run（默认关，见 Settings.scheduledHeadlessEnabled）。 */
     private val subagentRunner: SubagentRunner,
+    private val mediaRunner: ScheduledMediaRunner,
 ) {
     /**
-     * 执行一个**已认领**的任务，返回落 `last_status` 的状态值。
+     * 执行一个**已认领**的任务，返回落 `last_status` 的状态值。媒体任务完成持久化移交后返回 null。
      *
      * 完成判定：`job == null && 队列空`。不能等 `generationDoneFlow`——它的 emit 全部在生成
      * job 体**内**发出（`ChatService.kt:956` 等五处），等信号时 job 还没结束，「emit + job 空闲」
@@ -87,7 +91,7 @@ class ScheduledTaskRunner(
      * 从注入时刻起算，可能不够等到自己的轮次——此时记 [TaskRunStatus.TIMEOUT] 但**不取消**
      * 生成（消息还在队列里正常走完，只是不再等/不再报状态）。
      */
-    suspend fun runClaimed(task: ScheduledTaskEntity, source: String): String {
+    suspend fun runClaimed(task: ScheduledTaskEntity, source: String): String? {
         // 运行账本（P2）：本轮开账。conversationId 先按任务锚点填（NEW_EACH_RUN 建出会话后补记）；
         // 之后的每条 return 路径都必须 finishRun（终态必达），否则 finished_at 留空 = 进程死亡的直接证据。
         val mode0 = targetModeOrDefault(task.targetMode)
@@ -96,6 +100,12 @@ class ScheduledTaskRunner(
             source = source,
             conversationId = if (mode0 == TargetMode.NEW_EACH_RUN) null else task.conversationId.takeIf { it.isNotBlank() },
         )
+        // A saved template owns its media session and does not create a chat turn.
+        val mediaGrant = task.mediaGrant()
+        if (task.isMediaTemplate) {
+            mediaRunner.start(task, runId)
+            return null
+        }
 
         // 冷启动前提 1：等真实设置就位（超时兜底——读不出来也不能把 worker 挂死；
         // 此时下游会以「未配置模型」的可见错误收尾，状态记 FAILED）。
@@ -155,6 +165,7 @@ class ScheduledTaskRunner(
         // 取消入口（FGS 通知的「停止」）只有 runId，必须先能反查到这一轮；登记早于注入
         // ⇒ 取消窗口覆盖整个执行期。条目在 finally 移除，避免泄漏成「永远有运行中任务」。
         runRegistry.register(runId, conversationId, task.id)
+        mediaGrant?.takeUnless { it.isTemplate }?.let { runRegistry.setMediaGrant(runId, it) }
         return try {
             val settings = settingsStore.settingsFlow.value
             // P4b：headless 是可选路径，且依赖后台子代理的 notice 投递通道；任一条件不满足

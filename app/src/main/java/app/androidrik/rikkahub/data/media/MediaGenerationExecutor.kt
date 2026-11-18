@@ -7,15 +7,24 @@ import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.ui.ImageGenSize
 import app.androidrik.ai.ui.ImageGenerationItem
+import app.androidrik.common.http.await
 import app.androidrik.mediagen.model.MediaGenerationInput
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.mediagen.model.MediaGenerationTask
+import app.androidrik.mediagen.model.MediaGenerationStatus
 import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import kotlin.io.encoding.Base64
 
 internal sealed interface MediaGenerationTarget {
     data class Image(
@@ -41,7 +50,29 @@ internal sealed interface MediaGenerationResult {
 class MediaGenerationExecutor(
     private val imageProvider: (ProviderSetting) -> Provider<ProviderSetting>,
     private val mediaGenerationManager: MediaGenerationManager,
+    private val downloadClient: OkHttpClient = OkHttpClient(),
 ) {
+    internal fun images(target: MediaGenerationTarget, request: MediaGenerationRequest): Flow<ImageGenerationItem> =
+        flow {
+            when (val result = submit(target, request)) {
+                is MediaGenerationResult.ImageStream -> emitAll(result.images)
+                is MediaGenerationResult.Task -> {
+                    check(result.task.status == MediaGenerationStatus.SUCCEEDED) {
+                        result.task.error?.message ?: "Image generation did not complete"
+                    }
+                    for (output in result.task.outputs) {
+                        val data = output.data ?: downloadClient.newCall(
+                            Request.Builder().url(requireNotNull(output.url)).build(),
+                        ).await().use { response ->
+                            check(response.isSuccessful) { "Image download failed (HTTP ${response.code})" }
+                            withContext(Dispatchers.IO) { response.body.bytes() }
+                        }
+                        emit(ImageGenerationItem(Base64.encode(data), output.mimeType))
+                    }
+                }
+            }
+        }
+
     internal suspend fun submit(
         target: MediaGenerationTarget,
         request: MediaGenerationRequest,

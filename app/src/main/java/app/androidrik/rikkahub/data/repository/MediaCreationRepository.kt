@@ -25,6 +25,7 @@ import app.androidrik.rikkahub.data.model.MediaCreationParams
 import app.androidrik.rikkahub.data.model.MediaCreationRecord
 import app.androidrik.rikkahub.data.model.MediaCreationSession
 import app.androidrik.rikkahub.data.model.MediaCreationStatus
+import app.androidrik.rikkahub.data.model.deriveMediaCreationTitle
 import java.io.File
 import java.time.Instant
 import kotlin.uuid.Uuid
@@ -85,6 +86,13 @@ class MediaCreationRepository(
 
     suspend fun getSession(id: Uuid): MediaCreationSession? = dao.getSession(id.toString())?.toSession()
 
+    suspend fun getOrCreateSession(id: Uuid, title: String): MediaCreationSession =
+        database.withTransaction {
+            dao.getSession(id.toString())?.toSession() ?: MediaCreationSession(id = id, title = title).also {
+                dao.insertSession(it.toEntity())
+            }
+        }
+
     suspend fun getLatestSession(): MediaCreationSession? = dao.getLatestSession()?.toSession()
 
     /**
@@ -104,13 +112,6 @@ class MediaCreationRepository(
 
     suspend fun saveDraft(id: Uuid, draft: MediaCreationDraft) =
         dao.updateDraft(id.toString(), json.encodeToString(draft))
-
-    suspend fun updateSession(id: Uuid, transform: (MediaCreationSession) -> MediaCreationSession) {
-        database.withTransaction {
-            val session = dao.getSession(id.toString())?.toSession() ?: return@withTransaction
-            dao.updateSession(transform(session).toEntity())
-        }
-    }
 
     suspend fun deleteSession(id: Uuid) {
         dao.deleteSession(id.toString())
@@ -163,6 +164,9 @@ class MediaCreationRepository(
 
     suspend fun getRecord(id: Uuid): MediaCreationRecord? = dao.getRecord(id.toString())?.toRecord()
 
+    fun observeRecord(id: Uuid): Flow<MediaCreationRecord?> =
+        dao.observeRecord(id.toString()).map { it?.toRecord() }
+
     suspend fun getRecordsOfSession(sessionId: Uuid): List<MediaCreationRecord> =
         dao.getRecordsOfSession(sessionId.toString()).map { it.toRecord() }
 
@@ -183,6 +187,7 @@ class MediaCreationRepository(
      */
     suspend fun insertRecord(record: MediaCreationRecord) = database.withTransaction {
         val entity = record.toEntity()
+        val session = checkNotNull(dao.getSession(entity.sessionId))
         if (dao.getNode(entity.nodeId) == null) {
             dao.insertNode(
                 MediaCreationNodeEntity(
@@ -197,6 +202,12 @@ class MediaCreationRepository(
             dao.insertRecord(entity)
             dao.selectRecord(entity.nodeId, entity.id)
         }
+        dao.updateSession(
+            session.copy(
+                title = session.title.ifBlank { deriveMediaCreationTitle(record.prompt) },
+                updateAt = Instant.now().toEpochMilli(),
+            ),
+        )
     }
 
     /**
@@ -258,6 +269,7 @@ class MediaCreationRepository(
         providerId = Uuid.parse(providerId),
         providerName = providerName,
         modelId = modelId,
+        catalogModelId = catalogModelId?.let(Uuid::parse),
         kind = MediaKind.valueOf(kind),
         prompt = prompt,
         params = decodeOrDefault(params, MediaCreationParams()),
@@ -277,6 +289,7 @@ class MediaCreationRepository(
         providerId = providerId.toString(),
         providerName = providerName,
         modelId = modelId,
+        catalogModelId = catalogModelId?.toString(),
         kind = kind.name,
         prompt = prompt,
         params = json.encodeToString(params),

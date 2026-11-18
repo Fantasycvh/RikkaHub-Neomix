@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.data.scheduled
 
+import app.androidrik.rikkahub.utils.JsonInstant
+
 import app.androidrik.rikkahub.data.db.dao.ScheduledTaskDAO
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
@@ -48,6 +50,7 @@ class ScheduledTaskRepository(
         createdBy: String = ScheduledTaskEntity.CREATED_BY_USER,
         /** AI 建任务时的发起会话溯源 */
         sourceConversationId: String? = null,
+        mediaAction: ScheduledMediaAction? = null,
     ): ScheduledTaskEntity {
         val now = clock()
         val entity = ScheduledTaskEntity(
@@ -70,6 +73,8 @@ class ScheduledTaskRepository(
             deliverables = deliverables?.takeIf { it.isNotBlank() },
             createdBy = createdBy,
             sourceConversationId = sourceConversationId,
+            mediaAction = mediaAction?.takeIf { createdBy == ScheduledTaskEntity.CREATED_BY_USER }
+                ?.let { JsonInstant.encodeToString(it) },
             enabled = true,
             createdAt = now,
         )
@@ -102,32 +107,38 @@ class ScheduledTaskRepository(
         keepLastConversations: Int = 0,
         /** 交付物 JSON 数组；null/空 = 不设闸 */
         deliverables: String? = null,
-    ): Boolean {
-        val existing = dao.byId(id) ?: return false
+        editMediaAction: Boolean = false,
+        mediaAction: ScheduledMediaAction? = null,
+    ): Boolean = dao.editTask(id) { existing ->
         val newPayload = payload.encode()
         val scheduleChanged = existing.scheduleType != scheduleType.name || existing.schedulePayload != newPayload
-        dao.upsert(
-            existing.copy(
-                title = title.trim(),
-                prompt = prompt.trim(),
-                scheduleType = scheduleType.name,
-                schedulePayload = newPayload,
-                nextRunAt = if (scheduleChanged) {
-                    ScheduleMath.firstRunAt(scheduleType, payload, clock())
-                } else {
-                    existing.nextRunAt
-                },
-                missPolicy = missPolicy.name,
-                idleOnly = idleOnly,
-                withGoal = withGoal,
-                keepLastConversations = keepLastConversations,
-                deliverables = deliverables?.takeIf { it.isNotBlank() },
-            )
+        existing.copy(
+            title = title.trim(),
+            prompt = prompt.trim(),
+            scheduleType = scheduleType.name,
+            schedulePayload = newPayload,
+            nextRunAt = if (scheduleChanged) {
+                ScheduleMath.firstRunAt(scheduleType, payload, clock())
+            } else {
+                existing.nextRunAt
+            },
+            missPolicy = missPolicy.name,
+            idleOnly = idleOnly,
+            withGoal = withGoal,
+            keepLastConversations = keepLastConversations,
+            deliverables = deliverables?.takeIf { it.isNotBlank() },
+            mediaAction = if (editMediaAction && existing.createdBy == ScheduledTaskEntity.CREATED_BY_USER) {
+                mediaAction?.let { JsonInstant.encodeToString(it) }
+            } else existing.mediaAction,
         )
-        return true
     }
 
     suspend fun markTargetGone(id: String) = dao.markTargetGone(id)
+
+    suspend fun linkMediaSession(runId: String, sessionId: String) = dao.linkMediaSession(runId, sessionId)
+
+    suspend fun recordMediaStatus(taskId: String, runId: String, status: String) =
+        dao.recordMediaStatus(taskId, runId, status)
 
     suspend fun markAssistantGone(id: String) = dao.markAssistantGone(id)
 

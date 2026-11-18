@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.setting.scheduled
 
+import app.androidrik.rikkahub.data.scheduled.isMediaTemplate
+
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import app.androidrik.rikkahub.R
@@ -64,6 +66,7 @@ internal fun targetDescription(
     conversationTitles: Map<String, String>,
     assistantNames: Map<String, String>,
 ): String {
+    if (task.isMediaTemplate) return "Media creation"
     val assistantName = task.assistantId?.let { assistantNames[it] }
     return when (targetModeOrDefault(task.targetMode)) {
         TargetMode.EXISTING ->

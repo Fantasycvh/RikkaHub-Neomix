@@ -96,7 +96,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 75,
+    version = 76,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -226,6 +226,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         AutoMigration(from = 73, to = 74),
         // 74→75：workspaces.storage_mounts（共享存储挂载列表，NOT NULL + DEFAULT '[]'，零回填）
         AutoMigration(from = 74, to = 75),
+        AutoMigration(from = 75, to = 76),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -286,7 +287,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 75
+        const val SCHEMA_VERSION = 76
     }
 }
 

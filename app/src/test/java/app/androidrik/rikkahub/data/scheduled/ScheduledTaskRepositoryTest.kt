@@ -119,6 +119,15 @@ class ScheduledTaskRepositoryTest {
         override suspend fun interruptOldApprovals(before: Long) { runs.replaceAll { _, row ->
             if (row.memorySyncStatus in setOf("pending_approval", "writing") && row.startedAt < before) row.copy(memorySyncStatus = "interrupted") else row }; bump() }
         override suspend fun runById(id: String) = runs[id]
+
+        override suspend fun linkMediaSession(id: String, sessionId: String) {
+            runs[id]?.let { runs[id] = it.copy(mediaSessionId = sessionId) }
+        }
+
+        override suspend fun recordMediaStatus(taskId: String, runId: String, status: String) {
+            val run = runs[runId] ?: return
+            if (run.taskId == taskId) recordStatus(taskId, status)
+        }
         override suspend fun updateMemoryEvidence(id: String, state: String, receipts: String) { runs[id] = runs[id]!!.copy(memorySyncStatus = state, memoryReceipts = receipts); bump() }
         override suspend fun updateMemorySync(id: String, state: String) { runs[id] = runs[id]!!.copy(memorySyncStatus = state); bump() }
         override suspend fun finishWithEvidence(id: String, at: Long, status: String, retries: Int, memory: String, summary: String, receipts: String) {

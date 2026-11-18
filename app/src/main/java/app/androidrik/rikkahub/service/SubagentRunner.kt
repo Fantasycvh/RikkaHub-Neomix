@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.service
 
+import app.androidrik.ai.provider.BuiltInTools
+
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -540,11 +542,15 @@ class SubagentRunner(
             // memory 工具在 generateInternal（第二装配点）内部叠加，**信封过滤不到** ⇒
             // 在源头关闭（run 的 profile 副本禁用记忆），而不是放进来再拦。
             val runProfile = profile.copy(enableMemory = false)
-            val model = settings.findModelById(runProfile.chatModelId ?: settings.chatModelId)
-            if (model == null) {
+            val configuredModel = settings.findModelById(runProfile.chatModelId ?: settings.chatModelId)
+            if (configuredModel == null) {
                 failRun(runId, AgentRunEntity.ERROR_NO_MODEL, null)
                 return null
             }
+            val parentScope = ExecutionScope.parse(initial.scopeToken)
+            val model = if (parentScope.scheduledRunId() != null) {
+                configuredModel.copy(tools = configuredModel.tools - BuiltInTools.ImageGeneration)
+            } else configuredModel
             // 交付物闸门（purrcat A3）：声明了 deliverables 才挂，null/空 = 行为不变
             val loopGate = buildSubagentLoopGate(profile.workspaceId, deliverables)
 
@@ -561,12 +567,15 @@ class SubagentRunner(
                 // run 内起的后台 shell 任务归属到本 run（设计 §5.2 第 1 条）：以前这里不传，
                 // owner 落成 null ⇒ run 被取消后它的后台命令变孤儿——没人轮询输出、没人收进程，
                 // 却继续吃 CPU/网络直到 30 分钟看门狗。取消 scope 时据此级联 killByScope。
-                turnOwner = ExecutionScope.run(runId.toString()),
+                turnOwner = ExecutionScope.run(runId.toString(), parentScope),
                 // 子代理无头执行：不装配 Phone Use（design-phone-use.md §2.3）
                 allowPhoneUse = false,
             )
-            val envelope = resolveSubagentEnvelope(segments, allowedTools, parentToolEnvelope,
-                profile.workspaceId, parentWorkspaceId)
+            val envelope = resolveSubagentEnvelope(
+                segments, allowedTools, parentToolEnvelope, profile.workspaceId, parentWorkspaceId,
+                allowScheduledImage = initial.entryPoint == AgentRunEntity.ENTRY_POINT_SCHEDULED &&
+                    parentScope.scheduledRunId() != null,
+            )
             val tools = segments.flatMap { it.tools }.filter { it.name in envelope }
             update {
                 it.copy(

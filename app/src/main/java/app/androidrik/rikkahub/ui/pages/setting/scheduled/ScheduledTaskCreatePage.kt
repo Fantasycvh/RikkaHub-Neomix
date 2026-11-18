@@ -22,7 +22,9 @@ import app.androidrik.rikkahub.ui.components.ui.AppOutlinedButton as OutlinedBut
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
 import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
+import app.androidrik.rikkahub.data.media.mediaModelCatalog
 import app.androidrik.rikkahub.ui.context.LocalSettings
+import androidx.compose.material3.Switch
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
@@ -70,6 +72,8 @@ fun ScheduledTaskCreatePage(
     val navController = LocalNavController.current
     val form = rememberScheduledTaskFormState(null)
     val assistants by vm.assistants.collectAsStateWithLifecycle()
+    val mediaCatalog = LocalSettings.current.mediaModelCatalog()
+    val mediaAction = form.mediaAction(mediaCatalog)
 
     var targetMode by remember { mutableStateOf(TargetMode.EXISTING) }
     var selectedConversation by remember { mutableStateOf<Conversation?>(null) }
@@ -106,7 +110,8 @@ fun ScheduledTaskCreatePage(
                 navigationIcon = { BackButton() },
                 actions = {
                     TextButton(
-                        enabled = targetReady && form.isValid,
+                        enabled = (form.mediaTemplate || targetReady) && form.isValid &&
+                            (!(form.mediaTemplate || form.authorizeMedia) || mediaAction != null),
                         onClick = {
                             vm.create(
                                 targetMode = targetMode,
@@ -121,6 +126,7 @@ fun ScheduledTaskCreatePage(
                                 withGoal = form.withGoal && withGoalAvailable,
                                 keepLastConversations = if (keepLastVisible) (form.keepLast ?: 0) else 0,
                                 deliverablesJson = form.deliverablesJson(),
+                                mediaAction = mediaAction,
                                 onCreated = { navController.popBackStack() },
                                 onFailed = { targetFailure = it },
                             )
@@ -143,78 +149,94 @@ fun ScheduledTaskCreatePage(
                 // 曲面屏两侧的曲率区会吃掉贴边内容，表单留足边距
                 .padding(horizontal = 16.dp),
         ) {
-            FormItem(label = { Text(stringResource(R.string.scheduled_task_field_target)) }) {
-                SegmentedPill(
-                    options = TargetMode.entries,
-                    selectedOption = targetMode,
-                    onOptionSelected = {
-                        targetMode = it
-                        targetFailure = null
+            if (prefillConversationId == null) {
+                FormItem(
+                    label = { Text("Run a media template") },
+                    tail = {
+                        Switch(checked = form.mediaTemplate, onCheckedChange = {
+                            form.mediaTemplate = it
+                            form.authorizeMedia = false
+                            form.mediaModel = null
+                            form.mediaResolution = null
+                        })
                     },
-                    optionToString = {
-                        when (it) {
-                            TargetMode.EXISTING -> stringResource(R.string.scheduled_task_target_existing)
-                            TargetMode.DEDICATED -> stringResource(R.string.scheduled_task_target_dedicated)
-                            TargetMode.NEW_EACH_RUN -> stringResource(R.string.scheduled_task_target_new_each_run)
+                )
+            }
+            if (!form.mediaTemplate) {
+                FormItem(label = { Text(stringResource(R.string.scheduled_task_field_target)) }) {
+                    SegmentedPill(
+                        options = TargetMode.entries,
+                        selectedOption = targetMode,
+                        onOptionSelected = {
+                            targetMode = it
+                            targetFailure = null
+                        },
+                        optionToString = {
+                            when (it) {
+                                TargetMode.EXISTING -> stringResource(R.string.scheduled_task_target_existing)
+                                TargetMode.DEDICATED -> stringResource(R.string.scheduled_task_target_dedicated)
+                                TargetMode.NEW_EACH_RUN -> stringResource(R.string.scheduled_task_target_new_each_run)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Text(
+                    text = when (targetMode) {
+                        TargetMode.EXISTING -> stringResource(R.string.scheduled_task_target_hint_existing)
+                        TargetMode.DEDICATED -> stringResource(R.string.scheduled_task_target_hint_dedicated)
+                        TargetMode.NEW_EACH_RUN -> stringResource(R.string.scheduled_task_target_hint_new_each_run)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalContentColor.current.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = {
+                        if (targetMode == TargetMode.EXISTING) {
+                            showConversationPicker = true
+                        } else {
+                            showAssistantPicker = true
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            Text(
-                text = when (targetMode) {
-                    TargetMode.EXISTING -> stringResource(R.string.scheduled_task_target_hint_existing)
-                    TargetMode.DEDICATED -> stringResource(R.string.scheduled_task_target_hint_dedicated)
-                    TargetMode.NEW_EACH_RUN -> stringResource(R.string.scheduled_task_target_hint_new_each_run)
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = LocalContentColor.current.copy(alpha = 0.6f),
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            OutlinedButton(
-                onClick = {
-                    if (targetMode == TargetMode.EXISTING) {
-                        showConversationPicker = true
-                    } else {
-                        showAssistantPicker = true
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = when (targetMode) {
-                        TargetMode.EXISTING -> selectedConversation?.title?.ifEmpty {
-                            stringResource(R.string.scheduled_task_conversation_untitled)
-                        } ?: stringResource(R.string.scheduled_task_pick_conversation)
+                ) {
+                    Text(
+                        text = when (targetMode) {
+                            TargetMode.EXISTING -> selectedConversation?.title?.ifEmpty {
+                                stringResource(R.string.scheduled_task_conversation_untitled)
+                            } ?: stringResource(R.string.scheduled_task_pick_conversation)
 
-                        TargetMode.DEDICATED, TargetMode.NEW_EACH_RUN ->
-                            selectedAssistant?.name?.ifBlank { null }
-                                ?: stringResource(R.string.scheduled_task_pick_assistant)
-                    },
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            targetFailure?.let { failure ->
-                Text(
-                    text = when (failure) {
-                        TargetFailure.CONVERSATION_MISSING ->
-                            stringResource(R.string.scheduled_task_conversation_missing)
+                            TargetMode.DEDICATED, TargetMode.NEW_EACH_RUN ->
+                                selectedAssistant?.name?.ifBlank { null }
+                                    ?: stringResource(R.string.scheduled_task_pick_assistant)
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                targetFailure?.let { failure ->
+                    Text(
+                        text = when (failure) {
+                            TargetFailure.CONVERSATION_MISSING ->
+                                stringResource(R.string.scheduled_task_conversation_missing)
 
-                        TargetFailure.ASSISTANT_MISSING ->
-                            stringResource(R.string.scheduled_task_assistant_missing)
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-                )
+                            TargetFailure.ASSISTANT_MISSING ->
+                                stringResource(R.string.scheduled_task_assistant_missing)
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
             }
+            ScheduledMediaFields(form, mediaCatalog)
             Spacer(Modifier.height(8.dp))
             ScheduledTaskFormFields(
                 form,
-                withGoalAvailable = withGoalAvailable,
-                keepLastVisible = keepLastVisible,
+                withGoalAvailable = !form.mediaTemplate && withGoalAvailable,
+                keepLastVisible = !form.mediaTemplate && keepLastVisible,
             )
             Spacer(Modifier.height(24.dp))
         }
