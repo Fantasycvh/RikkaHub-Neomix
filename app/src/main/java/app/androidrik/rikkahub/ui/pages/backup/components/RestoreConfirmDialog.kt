@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -59,7 +61,12 @@ fun RestoreConfirmDialog(
         onDismissRequest = onDismissRequest,
         title = { Text(stringResource(R.string.backup_page_restore_confirm_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 勾选项多时内容会超出对话框可视高度（AGENTS.md TextField 宿主规则 3）：
+            // 必须 verticalScroll，否则底部选项被静默裁掉且无法下滑
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 // 恢复模式（仅勾了数据库时可选——merge/overwrite 的差异只在数据库与 settings 合并）
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     RestoreMode.entries.forEach { candidate ->

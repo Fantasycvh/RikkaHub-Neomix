@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -55,7 +57,12 @@ fun BackupRestorePreviewDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.backup_restore_preview_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            // 勾选项多时内容会超出对话框可视高度（AGENTS.md TextField 宿主规则 3）：
+            // 必须 verticalScroll，否则底部选项被静默裁掉且无法下滑
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 inspection.manifest?.createdAt?.let { createdAt ->
                     Text(
                         text = stringResource(R.string.backup_restore_preview_created_at, createdAt),
