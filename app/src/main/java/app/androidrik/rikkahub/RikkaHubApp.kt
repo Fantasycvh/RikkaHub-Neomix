@@ -26,6 +26,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import app.androidrik.rikkahub.data.DataOperation
+import app.androidrik.rikkahub.data.DataOperationLock
 import app.androidrik.rikkahub.data.files.EXPORT_TEMP_PREFIX
 import app.androidrik.rikkahub.data.files.exportRetentionCutoff
 import app.androidrik.rikkahub.data.files.isExportExpired
@@ -119,6 +121,10 @@ sealed interface StartupState {
 }
 
 class RikkaHubApp : Application() {
+    @Volatile
+    var crashRecoveryPending: Boolean = false
+        private set
+
     private val startupScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineName("Startup")
     )
@@ -134,25 +140,28 @@ class RikkaHubApp : Application() {
         // 全部应用初始化：isolatedProcess 无大部分系统服务（WorkManager 依赖的
         // JobScheduler 为 null 直接崩溃），Koin/DB/WorkManager 与编译无关
         if (isIsolatedProcess()) return
+
+        ProcessStartClock.markStarted()
+        CrashHandler.install(this)
+        crashRecoveryPending = CrashHandler.hasCrashed(this)
+        if (!crashRecoveryPending) startNormalStartup()
+    }
+
+    private fun startNormalStartup() {
         Thread { runCatching { app.androidrik.rikkahub.data.files.SkinPackageStore(this).reload() } }.start()
         // 内置聊天外观方案（第三轮皮肤档位的聊天域配套）：内存注册，随进程生命周期
         ChatAppearanceRegistry.installBuiltins()
 
-        // 本次进程启动时刻（P0.5 启动对账的判据）：必须早于任何 run 创建；
-        // 放在通知渠道/DB 之前，重试 boot 也不会把它改晚。
-        ProcessStartClock.markStarted()
-
-        // 这些步骤不依赖 Koin，且 Failed 态下也应当就绪（崩溃处理器/通知渠道）
         createNotificationChannel()
-        // set cursor window size to 32MB
         DatabaseUtil.setCursorWindowSize(32 * 1024 * 1024)
-        // install crash handler
-        CrashHandler.install(this)
-        // QuickJS native 库不在这里同步加载（#9）：System.loadLibrary 首次 dlopen + JNI
-        // 注册是同步阻塞的，放在 onCreate 会直接拖慢首帧。改到 boot 进 Ready 后由
-        // postReadyInit 在后台预热；使用点另有幂等兜底（QuickJsInit），延后是安全的。
-
         boot()
+    }
+
+    fun resumeAfterCrashRecovery() {
+        if (!crashRecoveryPending) return
+        CrashHandler.clearCrashed(this)
+        crashRecoveryPending = false
+        startNormalStartup()
     }
 
     /**
@@ -161,11 +170,11 @@ class RikkaHubApp : Application() {
      * **startKoin 被推迟到换库成功之后**——换库失败时 Koin/Room/后台写者都不存在，
      * fail-closed 的重试才是无损的（设计稿 §1 的动机）。
      */
-    fun boot(): Boolean {
+    private fun boot(): Boolean {
         if (!startupRunning.compareAndSet(false, true)) return false
         startupScope.launch {
             try {
-                doBoot()
+                DataOperationLock.runWaiting(DataOperation.RESTORE) { doBoot() }
             } finally {
                 startupRunning.set(false)
             }
@@ -304,9 +313,6 @@ class RikkaHubApp : Application() {
     /**
      * Koin 幂等启动（B 档的 startKoin 唯一入口）。
      *
-     * **SafeModeActivity 也会调用**：崩溃后重启进程 → RouteActivity 检测到崩溃标记 →
-     * 进 SafeMode，但此时 boot() 可能尚未跑到 startKoin（甚至永远不会——Failed 态），
-     * 不在这里补齐的话 SafeMode 自己就会因 Koin 未启动再崩一次（真机踩过同款）。
      */
     fun ensureKoinStarted() {
         if (org.koin.core.context.GlobalContext.getOrNull() != null) return

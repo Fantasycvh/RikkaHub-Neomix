@@ -1050,6 +1050,16 @@
   <string name="safe_mode_current_assistant">当前助手：%s</string>
   <string name="safe_mode_default_assistant">默认助手</string>
   <string name="safe_mode_description">应用上次启动时崩溃了。</string>
+  <string name="safe_mode_export_backup">导出备份</string>
+  <string name="safe_mode_export_backup_success">备份已导出</string>
+  <string name="safe_mode_export_rescue">导出救援包</string>
+  <string name="safe_mode_export_try_rescue">无法生成完整备份。可以导出救援包，用于手工恢复。</string>
+  <string name="safe_mode_rescue_success">已保存救援包，可用于手工恢复。</string>
+  <string name="safe_mode_rescue_incomplete">已保存救援包。有 %1$d 项未能完整读取，详见 ZIP 中的 rescue-report.txt。</string>
+  <string name="safe_mode_rescue_failed">无法生成救援包。</string>
+  <string name="safe_mode_export_write_failed">无法将压缩包保存到所选位置。</string>
+  <string name="safe_mode_repair_failed">无法读取或更新设置。</string>
+  <string name="safe_mode_rescue_manual_only">此救援包用于手工恢复。</string>
   <string name="safe_mode_switch_assistant">切换助手</string>
   <string name="safe_mode_title">安全模式</string>
   <string name="safe_mode_oversized_data_title">超大数据</string>

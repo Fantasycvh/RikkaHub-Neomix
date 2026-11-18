@@ -87,7 +87,6 @@ import app.androidrik.rikkahub.ui.pages.backup.components.SearchIndexRebuildBann
 import app.androidrik.rikkahub.ui.pages.debug.PerfOverlay
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
-import app.androidrik.rikkahub.utils.CrashHandler
 import app.androidrik.rikkahub.utils.LauncherAlias
 import app.androidrik.rikkahub.utils.openUsageAccessSettings
 import okhttp3.OkHttpClient
@@ -236,7 +235,7 @@ open class RouteActivity : ComponentActivity() {
         enableEdgeToEdge()
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
-        if (CrashHandler.hasCrashed(this)) {
+        if ((application as RikkaHubApp).crashRecoveryPending) {
             startActivity(Intent(this, SafeModeActivity::class.java))
             finish()
             return

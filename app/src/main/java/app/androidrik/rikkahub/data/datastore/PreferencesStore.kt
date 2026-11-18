@@ -516,6 +516,331 @@ class SettingsStore(
             AVATAR_FRAME_SCHEMES,
             COT_STYLE_SCHEMES,
         )
+
+        internal fun Flow<Preferences>.decodeSettings(): Flow<Settings> = this
+            .map { preferences ->
+                // 搜索提供方是**持久化**的多态列表（`search_services` 单 key 存整份列表），
+                // 已退役的类型必须在多态解码前剔除，否则存量 JSON 会让整份 settings 加载抛异常。
+                // 详见 loadSearchServices 的 kdoc。
+                val searchServicesLoad = loadSearchServices(
+                    raw = preferences[SEARCH_SERVICES],
+                    storedSelected = preferences[SEARCH_SELECTED] ?: 0,
+                )
+                Settings(
+                    catalogAutoRefresh = preferences[CATALOG_AUTO_REFRESH] ?: false,
+                    favoriteModels = preferences[FAVORITE_MODELS]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    chatModelId = preferences[SELECT_MODEL]?.let { Uuid.parse(it) }
+                        ?: DEFAULT_AUTO_MODEL_ID,
+                    fallbackChatModelId = preferences[FALLBACK_CHAT_MODEL]?.let { Uuid.parse(it) },
+                    fastModelId = preferences[FAST_MODEL]?.let { Uuid.parse(it) }
+                        // 旧版本「未配置」会落成 AUTO 哨兵（无清除入口时代的默认值），视为未配置
+                        ?.takeIf { it != DEFAULT_AUTO_MODEL_ID },
+                    memoryConsolidationModelId = preferences[MEMORY_CONSOLIDATION_MODEL]?.let { Uuid.parse(it) },
+                    memoryConsolidationReasoningLevel = preferences[MEMORY_CONSOLIDATION_REASONING]
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { runCatching { JsonInstant.decodeFromString<ReasoningLevel>(it) }.getOrNull() },
+                    memoryConsolidationPrompt = preferences[MEMORY_CONSOLIDATION_PROMPT]
+                        ?: MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
+                    titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) },
+                    translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
+                        ?: DEFAULT_AUTO_MODEL_ID,
+                    enableSuggestion = preferences[ENABLE_SUGGESTION] != false,
+                    // 缺键 = 开（老数据零变化）
+                    enableAutoTitle = preferences[ENABLE_AUTO_TITLE] != false,
+                    suggestionModelId = preferences[SUGGESTION_MODEL]?.let { Uuid.parse(it) },
+                    imageGenerationModelId = preferences[IMAGE_GENERATION_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
+                    titlePrompt = preferences[TITLE_PROMPT] ?: DEFAULT_TITLE_PROMPT,
+                    translatePrompt = preferences[TRANSLATION_PROMPT] ?: DEFAULT_TRANSLATION_PROMPT,
+                    translateThinkingBudget = preferences[TRANSLATE_THINKING_BUDGET] ?: 0,
+                    suggestionPrompt = preferences[SUGGESTION_PROMPT] ?: DEFAULT_SUGGESTION_PROMPT,
+                    ocrModelId = preferences[OCR_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
+                    ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
+                    ocrBackend = preferences[OCR_BACKEND]?.let {
+                        runCatching { OcrBackend.valueOf(it) }.getOrNull()
+                    } ?: OcrBackend.MODEL,
+                    ocrDeepSeekProviderId = preferences[OCR_DEEPSEEK_PROVIDER_ID]?.let {
+                        runCatching { Uuid.parse(it) }.getOrNull()
+                    },
+                    ocrDeepSeekBaseUrl = preferences[OCR_DEEPSEEK_BASE_URL] ?: DEFAULT_OCR_DEEPSEEK_BASE_URL,
+                    ocrDeepSeekPurpose = preferences[OCR_DEEPSEEK_PURPOSE]?.let {
+                        runCatching { OcrDeepSeekPurpose.valueOf(it) }.getOrNull()
+                    } ?: OcrDeepSeekPurpose.TEXT,
+                    ocrDeepSeekIncludeLayout = preferences[OCR_DEEPSEEK_INCLUDE_LAYOUT] ?: false,
+                    ocrDeepSeekMaxPages = preferences[OCR_DEEPSEEK_MAX_PAGES] ?: OCR_DEEPSEEK_MAX_PAGES_LIMIT,
+                    // 空串哨兵 = 用户显式选择「跟随对话模型」；key 不存在 = 默认显式模型
+                    compressModelId = preferences[COMPRESS_MODEL]
+                        ?.let { raw -> if (raw.isBlank()) null else Uuid.parse(raw) }
+                        ?: DEFAULT_AUTO_MODEL_ID,
+                    compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
+                    assistantId = preferences[SELECT_ASSISTANT]?.let { Uuid.parse(it) }
+                        ?: DEFAULT_ASSISTANT_ID,
+                    favoriteTags = preferences[FAVORITE_TAGS]?.let {
+                        JsonInstant.decodeFromString<List<Tag>>(it)
+                    } ?: emptyList(),
+                    assistantTags = preferences[ASSISTANT_TAGS]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    providers = JsonInstant.decodeFromString(preferences[PROVIDERS] ?: "[]"),
+                    removedBuiltInProviderIds = preferences.readRemovedIds(REMOVED_BUILTIN_PROVIDERS),
+                    removedTtsProviderIds = preferences.readRemovedIds(REMOVED_TTS_PROVIDERS),
+                    removedAssistantIds = preferences.readRemovedIds(REMOVED_ASSISTANTS),
+                    legacyDefaultAssistantMerged = preferences[LEGACY_DEFAULT_ASSISTANT_MERGED] ?: false,
+                    retrySetting = preferences[RETRY_SETTING]?.let { JsonInstant.decodeFromString(it) }
+                        ?: RetrySetting(),
+                    assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
+                    dynamicColor = preferences[DYNAMIC_COLOR] != false,
+                    dynamicColorSeedColor = preferences[DYNAMIC_COLOR_SEED]?.takeIf { it.isNotBlank() }?.toLongOrNull(),
+                    themeId = preferences[THEME_ID] ?: DEFAULT_THEME_ID,
+                    customThemes = preferences[CUSTOM_THEMES]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    developerMode = preferences[DEVELOPER_MODE] == true,
+                    displaySetting = JsonInstant.decodeFromString(preferences[DISPLAY_SETTING] ?: "{}"),
+                    avatarFrameSchemes = preferences[AVATAR_FRAME_SCHEMES]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    cotStyleSchemes = preferences[COT_STYLE_SCHEMES]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    searchServices = searchServicesLoad.services,
+                    searchCommonOptions = preferences[SEARCH_COMMON]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: SearchCommonOptions(),
+                    // 索引随剔除元素左移并 clamp（见 loadSearchServices）；不能直接读原始值
+                    searchServiceSelected = searchServicesLoad.selected,
+                    mcpServers = preferences[MCP_SERVERS]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    mcpDynamicSchemaLoading = preferences[MCP_DYNAMIC_SCHEMA_LOADING] != false,
+                    webDavConfig = preferences[WEBDAV_CONFIG]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: WebDavConfig(),
+                    s3Config = preferences[S3_CONFIG]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: S3Config(),
+                    uploadS3Config = preferences[UPLOAD_S3_CONFIG]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: S3Config(),
+                    backupItems = preferences[BACKUP_ITEMS]?.let {
+                        JsonInstant.decodeFromString<List<BackupItem>>(it)
+                    } ?: DEFAULT_BACKUP_ITEMS,
+                    ttsProviders = preferences[TTS_PROVIDERS]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    mediaGenerationProviders = preferences[MEDIA_GENERATION_PROVIDERS]?.let {
+                        JsonInstant.decodeFromString<List<MediaGenerationProviderSetting>>(it)
+                    } ?: emptyList(),
+                    selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) }
+                        ?: DEFAULT_SYSTEM_TTS_ID,
+                    defaultTTSPlaybackSpeed = preferences[DEFAULT_TTS_PLAYBACK_SPEED]?.coerceIn(0.5f, 2.0f) ?: 1.0f,
+                    asrProviders = preferences[ASR_PROVIDERS]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    selectedASRProviderId = preferences[SELECTED_ASR_PROVIDER]?.let { Uuid.parse(it) },
+                    // 预设容器：新 key 优先；**旧 key 作回退**（把旧扁平列表包成一个预设），
+                    // 老用户原地可用、无需迁移器。写入只落新 key。
+                    // 解码后跑种子迁移（peer ⑤①）：内置条目的未改动旧副本自动升级到最新版。
+                    promptPresets = run {
+                        val decodedPresets = preferences[PROMPT_PRESETS]?.let {
+                            JsonInstant.decodeFromString<List<PromptPreset>>(it)
+                        } ?: preferences[MODE_INJECTIONS]?.let {
+                            listOf(
+                                JsonInstant.decodeFromString<List<PromptInjection.ModeInjection>>(it)
+                                    .asSinglePreset()
+                            )
+                        } ?: listOf(DEFAULT_MODE_INJECTIONS.asSinglePreset())
+                        migrateSeedPresetEntries(decodedPresets) ?: decodedPresets
+                    },
+                    lorebooks = preferences[LOREBOOKS]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    quickMessages = preferences[QUICK_MESSAGES]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: emptyList(),
+                    webServerEnabled = preferences[WEB_SERVER_ENABLED] == true,
+                    webServerPort = preferences[WEB_SERVER_PORT] ?: 8080,
+                    // 安全策略：Web 鉴权**恒开**，不再提供「不鉴权」模式。存量偏好里
+                    // `web_server_jwt_enabled=false`（旧版本默认值）也在这里被强制纠正，
+                    // 否则老用户升级后仍会以无鉴权方式暴露整个 Web API。
+                    webServerJwtEnabled = true,
+                    webServerAccessPassword = preferences[WEB_SERVER_ACCESS_PASSWORD] ?: "",
+                    // 安全策略：默认只听回环（`localhostOnly=true`）。用户仍可显式开启
+                    // 局域网模式，但旧偏好里缺失该 key 时不再默认暴露到 LAN。
+                    webServerLocalhostOnly = preferences[WEB_SERVER_LOCALHOST_ONLY] ?: true,
+                    memoryInjectBudgetTokens = preferences[MEMORY_INJECT_BUDGET_TOKENS]
+                        ?: DEFAULT_MEMORY_BUDGET_TOKENS,
+                    lorebookInjectBudgetTokens = preferences[LOREBOOK_INJECT_BUDGET_TOKENS]
+                        ?: DEFAULT_LOREBOOK_BUDGET_TOKENS,
+                    backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
+                        JsonInstant.decodeFromString(it)
+                    } ?: BackupReminderConfig(),
+                    // 存量安装无 TOTAL pref：回填为本机计数（升级后统计口径连续，无需迁移脚本）
+                    launchCount = preferences[LAUNCH_COUNT] ?: 0,
+                    totalLaunchCount = maxOf(
+                        preferences[TOTAL_LAUNCH_COUNT] ?: 0,
+                        preferences[LAUNCH_COUNT] ?: 0,
+                    ),
+                    contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
+                    autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
+                    contextImageLimit = (preferences[CONTEXT_IMAGE_LIMIT] ?: DEFAULT_CONTEXT_IMAGE_LIMIT)
+                        .coerceIn(0, 500),
+                    loopGuardSensitivity = preferences[LOOP_GUARD_SENSITIVITY]
+                        ?: app.androidrik.rikkahub.data.ai.LoopGuardSensitivity.STANDARD.name,
+                    loopGuardRepeatLimit = (preferences[LOOP_GUARD_REPEAT_LIMIT] ?: 0).coerceIn(0, 20),
+                    ruleReminderEnabled = preferences[RULE_REMINDER_ENABLED] ?: true,
+                    ruleReminderSensitivity = preferences[RULE_REMINDER_SENSITIVITY]
+                        ?: app.androidrik.rikkahub.data.ai.RuleReminderSensitivity.STANDARD.name,
+                    workspaceTurnBudgetChars = (preferences[WORKSPACE_TURN_BUDGET_CHARS]
+                        ?: DEFAULT_WORKSPACE_TURN_BUDGET_CHARS).coerceIn(32_000, 2_000_000),
+                    workspaceTurnMaxSteps = (preferences[WORKSPACE_TURN_MAX_STEPS]
+                        ?: DEFAULT_WORKSPACE_TURN_MAX_STEPS).coerceIn(8, 512),
+                    phoneUseTurnMaxSteps = (preferences[PHONE_USE_TURN_MAX_STEPS]
+                        ?: DEFAULT_PHONE_USE_TURN_MAX_STEPS).coerceIn(5, 200),
+                    subagentMaxConcurrentRuns = (preferences[SUBAGENT_MAX_CONCURRENT_RUNS]
+                        ?: DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS).coerceIn(1, 8),
+                    workspaceTaskMaxDurationMinutes = (preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES]
+                        ?: DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES).coerceIn(5, 1440),
+                    logToFileEnabled = preferences[LOG_TO_FILE_ENABLED] ?: false,
+                    globalProxy = preferences[GLOBAL_PROXY]?.let {
+                        JsonInstant.decodeFromString<GlobalProxySetting>(it)
+                    } ?: GlobalProxySetting(),
+                    usageDisplayMode = preferences[USAGE_DISPLAY_MODE]?.let {
+                        runCatching { UsageDisplayMode.valueOf(it) }.getOrNull()
+                    } ?: UsageDisplayMode.USED,
+                    recordRequestsEnabled = preferences[RECORD_REQUESTS_ENABLED] ?: false,
+                    autoCompressThresholdPercent = preferences[AUTO_COMPRESS_THRESHOLD_PERCENT]
+                        ?: DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
+                    autoCompressRetainPercent = preferences[AUTO_COMPRESS_RETAIN_PERCENT]
+                        ?: DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
+                    exportRetentionDays = preferences[EXPORT_RETENTION_DAYS]
+                        ?: DEFAULT_EXPORT_RETENTION_DAYS,
+                    exportDisplayConfig = preferences[EXPORT_DISPLAY_CONFIG]?.let {
+                        JsonInstant.decodeFromString<ExportDisplayConfig>(it)
+                    } ?: ExportDisplayConfig(),
+                    exportDisplaySchemes = preferences[EXPORT_DISPLAY_SCHEMES]?.let {
+                        JsonInstant.decodeFromString<List<ExportDisplayScheme>>(it)
+                    } ?: emptyList(),
+                    autoCompressTargetTokens = preferences[AUTO_COMPRESS_TARGET_TOKENS]
+                        ?: DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
+                    pruneCompressedPrefix = preferences[PRUNE_COMPRESSED_PREFIX] ?: false,
+                    compressPresets = preferences[COMPRESS_PRESETS]?.let {
+                        JsonInstant.decodeFromString<List<CompressPreset>>(it)
+                    } ?: emptyList(),
+                    importedSources = preferences[IMPORTED_SOURCES]?.let {
+                        JsonInstant.decodeFromString<Map<String, ImportSourceRecord>>(it)
+                    } ?: emptyMap(),
+                    noticeCarrier = app.androidrik.rikkahub.data.task.NoticeCarrier.fromStorage(preferences[NOTICE_CARRIER]),
+                    enableBackgroundSubagent = preferences[ENABLE_BACKGROUND_SUBAGENT] ?: false,
+                    workspaceTaskNoticeEnabled = preferences[WORKSPACE_TASK_NOTICE_ENABLED] ?: false,
+                    enableSubagentDispatch = preferences[ENABLE_SUBAGENT_DISPATCH] ?: false,
+                    taskCenterEnabled = preferences[TASK_CENTER_ENABLED] ?: true,
+                    namespacedNotifications = preferences[NAMESPACED_NOTIFICATIONS] ?: true,
+                    dynamicRunGate = preferences[DYNAMIC_RUN_GATE] ?: true,
+                    killShellTasksOnRunCancel = preferences[KILL_SHELL_TASKS_ON_RUN_CANCEL] ?: true,
+                    scheduledHeadlessEnabled = preferences[SCHEDULED_HEADLESS_ENABLED] ?: false,
+                    subagentPresets = preferences[SUBAGENT_PRESETS]?.let {
+                        JsonInstant.decodeFromString<List<SubagentPreset>>(it)
+                    } ?: DEFAULT_SUBAGENT_PRESETS,
+                )
+            }
+            .map {
+                // 内置提供商回填（墓碑感知）——收编进共享 refillBuiltIns（原为内联 forEach，
+                // 与 assistants/TTS 两套形态不一致；`ifEmpty { DEFAULT }` 复活陷阱见
+                // Enableable.refillBuiltIns 的 kdoc，此处从无 ifEmpty、保持如此）。
+                val providers = refillBuiltIns(
+                    it.providers,
+                    DEFAULT_PROVIDERS,
+                    it.removedBuiltInProviderIds,
+                ) { provider -> provider.copyProvider() }
+                    .map { provider ->
+                        val defaultProvider = DEFAULT_PROVIDERS.find { it.id == provider.id }
+                        if (defaultProvider != null) {
+                            provider.copyProvider(
+                                builtIn = defaultProvider.builtIn,
+                                description = defaultProvider.description,
+                                shortDescription = defaultProvider.shortDescription,
+                            )
+                        } else provider
+                    }
+                // 内置助手回填——**不能再写 `ifEmpty { DEFAULT_ASSISTANTS }`**：
+                // 内置项被删光（墓碑齐全）时列表本就该空，ifEmpty 会把墓碑项整体复活。
+                val assistants = it.assistants.toMutableList()
+                refillDefaultAssistants(assistants, it.removedAssistantIds)
+                // 内置 TTS 提供商回填（墓碑感知）——注意**不能再写 `ifEmpty { DEFAULT }`**：
+                // 用户把内置项全删光后列表本就为空，那样会整体复活，删除等于没生效。
+                val ttsProviders = it.ttsProviders.toMutableList()
+                refillDefaultTtsProviders(ttsProviders, it.removedTtsProviderIds)
+                // 系统 TTS 兜底：不允许「一个启用的都不剩」
+                val normalizedTtsProviders = ttsProviders.ensureFallbackTtsEnabled()
+                it.copy(
+                    providers = providers,
+                    assistants = assistants,
+                    ttsProviders = normalizedTtsProviders,
+                )
+            }
+            .map { settings ->
+                // 去重并清理无效引用
+                val validMcpServerIds = settings.mcpServers.map { it.id }.toSet()
+                val validModeInjectionIds = settings.modeInjections.map { it.id }.toSet()
+                val validLorebookIds = settings.lorebooks.map { it.id }.toSet()
+                val validQuickMessageIds = settings.quickMessages.map { it.id }.toSet()
+                val asrProviders = settings.asrProviders.distinctBy { it.id }
+                settings.copy(
+                    providers = settings.providers.distinctBy { it.id }.map { provider ->
+                        when (provider) {
+                            is ProviderSetting.OpenAI -> provider.copy(
+                                models = provider.models.distinctBy { model -> model.id }
+                            )
+
+                            is ProviderSetting.Google -> provider.copy(
+                                models = provider.models.distinctBy { model -> model.id }
+                            )
+
+                            is ProviderSetting.Claude -> provider.copy(
+                                models = provider.models.distinctBy { model -> model.id }
+                            )
+
+                            is ProviderSetting.Account -> provider.copyProvider(
+                                models = provider.models.distinctBy { model -> model.id }
+                            )
+                        }
+                    },
+                    assistants = settings.assistants.distinctBy { it.id }.map { assistant ->
+                        assistant.copy(
+                            // 过滤掉不存在的 MCP 服务器 ID
+                            mcpServers = assistant.mcpServers.filter { serverId ->
+                                serverId in validMcpServerIds
+                            }.toSet(),
+                            // 过滤掉不存在的模式注入 ID
+                            modeInjectionIds = assistant.modeInjectionIds.filter { id ->
+                                id in validModeInjectionIds
+                            }.toSet(),
+                            // 过滤掉不存在的 Lorebook ID
+                            lorebookIds = assistant.lorebookIds.filter { id ->
+                                id in validLorebookIds
+                            }.toSet(),
+                            // 过滤掉不存在的快捷消息 ID
+                            quickMessageIds = assistant.quickMessageIds.filter { id ->
+                                id in validQuickMessageIds
+                            }.toSet()
+                        )
+                    },
+                    ttsProviders = settings.ttsProviders.distinctBy { it.id },
+                    asrProviders = asrProviders,
+                    selectedASRProviderId = settings.selectedASRProviderId
+                        ?.takeIf { id -> asrProviders.any { provider -> provider.id == id } }
+                        ?: asrProviders.firstOrNull()?.id,
+                    favoriteModels = normalizeFavoriteModelIds(settings.favoriteModels, settings.providers),
+                    promptPresets = settings.promptPresets
+                        .distinctBy { it.id }
+                        // 预设内的条目也要去重（同 id 重复会让同一注入生效两次）
+                        .map { preset -> preset.copy(entries = preset.entries.distinctBy { it.id }) },
+                    lorebooks = settings.lorebooks.distinctBy { it.id },
+                    quickMessages = settings.quickMessages.distinctBy { it.id },
+                )
+            }
     }
 
     @Volatile
@@ -538,329 +863,7 @@ class SettingsStore(
             }
             shouldRetry
         }
-        .map { preferences ->
-            // 搜索提供方是**持久化**的多态列表（`search_services` 单 key 存整份列表），
-            // 已退役的类型必须在多态解码前剔除，否则存量 JSON 会让整份 settings 加载抛异常。
-            // 详见 loadSearchServices 的 kdoc。
-            val searchServicesLoad = loadSearchServices(
-                raw = preferences[SEARCH_SERVICES],
-                storedSelected = preferences[SEARCH_SELECTED] ?: 0,
-            )
-            Settings(
-                catalogAutoRefresh = preferences[CATALOG_AUTO_REFRESH] ?: false,
-                favoriteModels = preferences[FAVORITE_MODELS]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                chatModelId = preferences[SELECT_MODEL]?.let { Uuid.parse(it) }
-                    ?: DEFAULT_AUTO_MODEL_ID,
-                fallbackChatModelId = preferences[FALLBACK_CHAT_MODEL]?.let { Uuid.parse(it) },
-                fastModelId = preferences[FAST_MODEL]?.let { Uuid.parse(it) }
-                    // 旧版本「未配置」会落成 AUTO 哨兵（无清除入口时代的默认值），视为未配置
-                    ?.takeIf { it != DEFAULT_AUTO_MODEL_ID },
-                memoryConsolidationModelId = preferences[MEMORY_CONSOLIDATION_MODEL]?.let { Uuid.parse(it) },
-                memoryConsolidationReasoningLevel = preferences[MEMORY_CONSOLIDATION_REASONING]
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { runCatching { JsonInstant.decodeFromString<ReasoningLevel>(it) }.getOrNull() },
-                memoryConsolidationPrompt = preferences[MEMORY_CONSOLIDATION_PROMPT]
-                    ?: MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
-                titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) },
-                translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
-                    ?: DEFAULT_AUTO_MODEL_ID,
-                enableSuggestion = preferences[ENABLE_SUGGESTION] != false,
-                // 缺键 = 开（老数据零变化）
-                enableAutoTitle = preferences[ENABLE_AUTO_TITLE] != false,
-                suggestionModelId = preferences[SUGGESTION_MODEL]?.let { Uuid.parse(it) },
-                imageGenerationModelId = preferences[IMAGE_GENERATION_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
-                titlePrompt = preferences[TITLE_PROMPT] ?: DEFAULT_TITLE_PROMPT,
-                translatePrompt = preferences[TRANSLATION_PROMPT] ?: DEFAULT_TRANSLATION_PROMPT,
-                translateThinkingBudget = preferences[TRANSLATE_THINKING_BUDGET] ?: 0,
-                suggestionPrompt = preferences[SUGGESTION_PROMPT] ?: DEFAULT_SUGGESTION_PROMPT,
-                ocrModelId = preferences[OCR_MODEL]?.let { Uuid.parse(it) } ?: Uuid.random(),
-                ocrPrompt = preferences[OCR_PROMPT] ?: DEFAULT_OCR_PROMPT,
-                ocrBackend = preferences[OCR_BACKEND]?.let {
-                    runCatching { OcrBackend.valueOf(it) }.getOrNull()
-                } ?: OcrBackend.MODEL,
-                ocrDeepSeekProviderId = preferences[OCR_DEEPSEEK_PROVIDER_ID]?.let {
-                    runCatching { Uuid.parse(it) }.getOrNull()
-                },
-                ocrDeepSeekBaseUrl = preferences[OCR_DEEPSEEK_BASE_URL] ?: DEFAULT_OCR_DEEPSEEK_BASE_URL,
-                ocrDeepSeekPurpose = preferences[OCR_DEEPSEEK_PURPOSE]?.let {
-                    runCatching { OcrDeepSeekPurpose.valueOf(it) }.getOrNull()
-                } ?: OcrDeepSeekPurpose.TEXT,
-                ocrDeepSeekIncludeLayout = preferences[OCR_DEEPSEEK_INCLUDE_LAYOUT] ?: false,
-                ocrDeepSeekMaxPages = preferences[OCR_DEEPSEEK_MAX_PAGES] ?: OCR_DEEPSEEK_MAX_PAGES_LIMIT,
-                // 空串哨兵 = 用户显式选择「跟随对话模型」；key 不存在 = 默认显式模型
-                compressModelId = preferences[COMPRESS_MODEL]
-                    ?.let { raw -> if (raw.isBlank()) null else Uuid.parse(raw) }
-                    ?: DEFAULT_AUTO_MODEL_ID,
-                compressPrompt = preferences[COMPRESS_PROMPT] ?: DEFAULT_COMPRESS_PROMPT,
-                assistantId = preferences[SELECT_ASSISTANT]?.let { Uuid.parse(it) }
-                    ?: DEFAULT_ASSISTANT_ID,
-                favoriteTags = preferences[FAVORITE_TAGS]?.let {
-                    JsonInstant.decodeFromString<List<Tag>>(it)
-                } ?: emptyList(),
-                assistantTags = preferences[ASSISTANT_TAGS]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                providers = JsonInstant.decodeFromString(preferences[PROVIDERS] ?: "[]"),
-                removedBuiltInProviderIds = preferences.readRemovedIds(REMOVED_BUILTIN_PROVIDERS),
-                removedTtsProviderIds = preferences.readRemovedIds(REMOVED_TTS_PROVIDERS),
-                removedAssistantIds = preferences.readRemovedIds(REMOVED_ASSISTANTS),
-                legacyDefaultAssistantMerged = preferences[LEGACY_DEFAULT_ASSISTANT_MERGED] ?: false,
-                retrySetting = preferences[RETRY_SETTING]?.let { JsonInstant.decodeFromString(it) }
-                    ?: RetrySetting(),
-                assistants = JsonInstant.decodeFromString(preferences[ASSISTANTS] ?: "[]"),
-                dynamicColor = preferences[DYNAMIC_COLOR] != false,
-                dynamicColorSeedColor = preferences[DYNAMIC_COLOR_SEED]?.takeIf { it.isNotBlank() }?.toLongOrNull(),
-                themeId = preferences[THEME_ID] ?: DEFAULT_THEME_ID,
-                customThemes = preferences[CUSTOM_THEMES]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                developerMode = preferences[DEVELOPER_MODE] == true,
-                displaySetting = JsonInstant.decodeFromString(preferences[DISPLAY_SETTING] ?: "{}"),
-                avatarFrameSchemes = preferences[AVATAR_FRAME_SCHEMES]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                cotStyleSchemes = preferences[COT_STYLE_SCHEMES]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                searchServices = searchServicesLoad.services,
-                searchCommonOptions = preferences[SEARCH_COMMON]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: SearchCommonOptions(),
-                // 索引随剔除元素左移并 clamp（见 loadSearchServices）；不能直接读原始值
-                searchServiceSelected = searchServicesLoad.selected,
-                mcpServers = preferences[MCP_SERVERS]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                mcpDynamicSchemaLoading = preferences[MCP_DYNAMIC_SCHEMA_LOADING] != false,
-                webDavConfig = preferences[WEBDAV_CONFIG]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: WebDavConfig(),
-                s3Config = preferences[S3_CONFIG]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: S3Config(),
-                uploadS3Config = preferences[UPLOAD_S3_CONFIG]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: S3Config(),
-                backupItems = preferences[BACKUP_ITEMS]?.let {
-                    JsonInstant.decodeFromString<List<BackupItem>>(it)
-                } ?: DEFAULT_BACKUP_ITEMS,
-                ttsProviders = preferences[TTS_PROVIDERS]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                mediaGenerationProviders = preferences[MEDIA_GENERATION_PROVIDERS]?.let {
-                    JsonInstant.decodeFromString<List<MediaGenerationProviderSetting>>(it)
-                } ?: emptyList(),
-                selectedTTSProviderId = preferences[SELECTED_TTS_PROVIDER]?.let { Uuid.parse(it) }
-                    ?: DEFAULT_SYSTEM_TTS_ID,
-                defaultTTSPlaybackSpeed = preferences[DEFAULT_TTS_PLAYBACK_SPEED]?.coerceIn(0.5f, 2.0f) ?: 1.0f,
-                asrProviders = preferences[ASR_PROVIDERS]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                selectedASRProviderId = preferences[SELECTED_ASR_PROVIDER]?.let { Uuid.parse(it) },
-                // 预设容器：新 key 优先；**旧 key 作回退**（把旧扁平列表包成一个预设），
-                // 老用户原地可用、无需迁移器。写入只落新 key。
-                // 解码后跑种子迁移（peer ⑤①）：内置条目的未改动旧副本自动升级到最新版。
-                promptPresets = run {
-                    val decodedPresets = preferences[PROMPT_PRESETS]?.let {
-                        JsonInstant.decodeFromString<List<PromptPreset>>(it)
-                    } ?: preferences[MODE_INJECTIONS]?.let {
-                        listOf(
-                            JsonInstant.decodeFromString<List<PromptInjection.ModeInjection>>(it)
-                                .asSinglePreset()
-                        )
-                    } ?: listOf(DEFAULT_MODE_INJECTIONS.asSinglePreset())
-                    migrateSeedPresetEntries(decodedPresets) ?: decodedPresets
-                },
-                lorebooks = preferences[LOREBOOKS]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                quickMessages = preferences[QUICK_MESSAGES]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: emptyList(),
-                webServerEnabled = preferences[WEB_SERVER_ENABLED] == true,
-                webServerPort = preferences[WEB_SERVER_PORT] ?: 8080,
-                // 安全策略：Web 鉴权**恒开**，不再提供「不鉴权」模式。存量偏好里
-                // `web_server_jwt_enabled=false`（旧版本默认值）也在这里被强制纠正，
-                // 否则老用户升级后仍会以无鉴权方式暴露整个 Web API。
-                webServerJwtEnabled = true,
-                webServerAccessPassword = preferences[WEB_SERVER_ACCESS_PASSWORD] ?: "",
-                // 安全策略：默认只听回环（`localhostOnly=true`）。用户仍可显式开启
-                // 局域网模式，但旧偏好里缺失该 key 时不再默认暴露到 LAN。
-                webServerLocalhostOnly = preferences[WEB_SERVER_LOCALHOST_ONLY] ?: true,
-                memoryInjectBudgetTokens = preferences[MEMORY_INJECT_BUDGET_TOKENS]
-                    ?: DEFAULT_MEMORY_BUDGET_TOKENS,
-                lorebookInjectBudgetTokens = preferences[LOREBOOK_INJECT_BUDGET_TOKENS]
-                    ?: DEFAULT_LOREBOOK_BUDGET_TOKENS,
-                backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
-                    JsonInstant.decodeFromString(it)
-                } ?: BackupReminderConfig(),
-                // 存量安装无 TOTAL pref：回填为本机计数（升级后统计口径连续，无需迁移脚本）
-                launchCount = preferences[LAUNCH_COUNT] ?: 0,
-                totalLaunchCount = maxOf(
-                    preferences[TOTAL_LAUNCH_COUNT] ?: 0,
-                    preferences[LAUNCH_COUNT] ?: 0,
-                ),
-                contextLengthOverride = preferences[CONTEXT_LENGTH_OVERRIDE],
-                autoCompressEnabled = preferences[AUTO_COMPRESS_ENABLED] ?: false,
-                contextImageLimit = (preferences[CONTEXT_IMAGE_LIMIT] ?: DEFAULT_CONTEXT_IMAGE_LIMIT)
-                    .coerceIn(0, 500),
-                loopGuardSensitivity = preferences[LOOP_GUARD_SENSITIVITY]
-                    ?: app.androidrik.rikkahub.data.ai.LoopGuardSensitivity.STANDARD.name,
-                loopGuardRepeatLimit = (preferences[LOOP_GUARD_REPEAT_LIMIT] ?: 0).coerceIn(0, 20),
-                ruleReminderEnabled = preferences[RULE_REMINDER_ENABLED] ?: true,
-                ruleReminderSensitivity = preferences[RULE_REMINDER_SENSITIVITY]
-                    ?: app.androidrik.rikkahub.data.ai.RuleReminderSensitivity.STANDARD.name,
-                workspaceTurnBudgetChars = (preferences[WORKSPACE_TURN_BUDGET_CHARS]
-                    ?: DEFAULT_WORKSPACE_TURN_BUDGET_CHARS).coerceIn(32_000, 2_000_000),
-                workspaceTurnMaxSteps = (preferences[WORKSPACE_TURN_MAX_STEPS]
-                    ?: DEFAULT_WORKSPACE_TURN_MAX_STEPS).coerceIn(8, 512),
-                phoneUseTurnMaxSteps = (preferences[PHONE_USE_TURN_MAX_STEPS]
-                    ?: DEFAULT_PHONE_USE_TURN_MAX_STEPS).coerceIn(5, 200),
-                subagentMaxConcurrentRuns = (preferences[SUBAGENT_MAX_CONCURRENT_RUNS]
-                    ?: DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS).coerceIn(1, 8),
-                workspaceTaskMaxDurationMinutes = (preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES]
-                    ?: DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES).coerceIn(5, 1440),
-                logToFileEnabled = preferences[LOG_TO_FILE_ENABLED] ?: false,
-                globalProxy = preferences[GLOBAL_PROXY]?.let {
-                    JsonInstant.decodeFromString<GlobalProxySetting>(it)
-                } ?: GlobalProxySetting(),
-                usageDisplayMode = preferences[USAGE_DISPLAY_MODE]?.let {
-                    runCatching { UsageDisplayMode.valueOf(it) }.getOrNull()
-                } ?: UsageDisplayMode.USED,
-                recordRequestsEnabled = preferences[RECORD_REQUESTS_ENABLED] ?: false,
-                autoCompressThresholdPercent = preferences[AUTO_COMPRESS_THRESHOLD_PERCENT]
-                    ?: DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT,
-                autoCompressRetainPercent = preferences[AUTO_COMPRESS_RETAIN_PERCENT]
-                    ?: DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT,
-                exportRetentionDays = preferences[EXPORT_RETENTION_DAYS]
-                    ?: DEFAULT_EXPORT_RETENTION_DAYS,
-                exportDisplayConfig = preferences[EXPORT_DISPLAY_CONFIG]?.let {
-                    JsonInstant.decodeFromString<ExportDisplayConfig>(it)
-                } ?: ExportDisplayConfig(),
-                exportDisplaySchemes = preferences[EXPORT_DISPLAY_SCHEMES]?.let {
-                    JsonInstant.decodeFromString<List<ExportDisplayScheme>>(it)
-                } ?: emptyList(),
-                autoCompressTargetTokens = preferences[AUTO_COMPRESS_TARGET_TOKENS]
-                    ?: DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
-                pruneCompressedPrefix = preferences[PRUNE_COMPRESSED_PREFIX] ?: false,
-                compressPresets = preferences[COMPRESS_PRESETS]?.let {
-                    JsonInstant.decodeFromString<List<CompressPreset>>(it)
-                } ?: emptyList(),
-                importedSources = preferences[IMPORTED_SOURCES]?.let {
-                    JsonInstant.decodeFromString<Map<String, ImportSourceRecord>>(it)
-                } ?: emptyMap(),
-                noticeCarrier = app.androidrik.rikkahub.data.task.NoticeCarrier.fromStorage(preferences[NOTICE_CARRIER]),
-                enableBackgroundSubagent = preferences[ENABLE_BACKGROUND_SUBAGENT] ?: false,
-                workspaceTaskNoticeEnabled = preferences[WORKSPACE_TASK_NOTICE_ENABLED] ?: false,
-                enableSubagentDispatch = preferences[ENABLE_SUBAGENT_DISPATCH] ?: false,
-                taskCenterEnabled = preferences[TASK_CENTER_ENABLED] ?: true,
-                namespacedNotifications = preferences[NAMESPACED_NOTIFICATIONS] ?: true,
-                dynamicRunGate = preferences[DYNAMIC_RUN_GATE] ?: true,
-                killShellTasksOnRunCancel = preferences[KILL_SHELL_TASKS_ON_RUN_CANCEL] ?: true,
-                scheduledHeadlessEnabled = preferences[SCHEDULED_HEADLESS_ENABLED] ?: false,
-                subagentPresets = preferences[SUBAGENT_PRESETS]?.let {
-                    JsonInstant.decodeFromString<List<SubagentPreset>>(it)
-                } ?: DEFAULT_SUBAGENT_PRESETS,
-            )
-        }
-        .map {
-            // 内置提供商回填（墓碑感知）——收编进共享 refillBuiltIns（原为内联 forEach，
-            // 与 assistants/TTS 两套形态不一致；`ifEmpty { DEFAULT }` 复活陷阱见
-            // Enableable.refillBuiltIns 的 kdoc，此处从无 ifEmpty、保持如此）。
-            val providers = refillBuiltIns(
-                it.providers,
-                DEFAULT_PROVIDERS,
-                it.removedBuiltInProviderIds,
-            ) { provider -> provider.copyProvider() }
-                .map { provider ->
-                    val defaultProvider = DEFAULT_PROVIDERS.find { it.id == provider.id }
-                    if (defaultProvider != null) {
-                        provider.copyProvider(
-                            builtIn = defaultProvider.builtIn,
-                            description = defaultProvider.description,
-                            shortDescription = defaultProvider.shortDescription,
-                        )
-                    } else provider
-                }
-            // 内置助手回填——**不能再写 `ifEmpty { DEFAULT_ASSISTANTS }`**：
-            // 内置项被删光（墓碑齐全）时列表本就该空，ifEmpty 会把墓碑项整体复活。
-            val assistants = it.assistants.toMutableList()
-            refillDefaultAssistants(assistants, it.removedAssistantIds)
-            // 内置 TTS 提供商回填（墓碑感知）——注意**不能再写 `ifEmpty { DEFAULT }`**：
-            // 用户把内置项全删光后列表本就为空，那样会整体复活，删除等于没生效。
-            val ttsProviders = it.ttsProviders.toMutableList()
-            refillDefaultTtsProviders(ttsProviders, it.removedTtsProviderIds)
-            // 系统 TTS 兜底：不允许「一个启用的都不剩」
-            val normalizedTtsProviders = ttsProviders.ensureFallbackTtsEnabled()
-            it.copy(
-                providers = providers,
-                assistants = assistants,
-                ttsProviders = normalizedTtsProviders,
-            )
-        }
-        .map { settings ->
-            // 去重并清理无效引用
-            val validMcpServerIds = settings.mcpServers.map { it.id }.toSet()
-            val validModeInjectionIds = settings.modeInjections.map { it.id }.toSet()
-            val validLorebookIds = settings.lorebooks.map { it.id }.toSet()
-            val validQuickMessageIds = settings.quickMessages.map { it.id }.toSet()
-            val asrProviders = settings.asrProviders.distinctBy { it.id }
-            settings.copy(
-                providers = settings.providers.distinctBy { it.id }.map { provider ->
-                    when (provider) {
-                        is ProviderSetting.OpenAI -> provider.copy(
-                            models = provider.models.distinctBy { model -> model.id }
-                        )
-
-                        is ProviderSetting.Google -> provider.copy(
-                            models = provider.models.distinctBy { model -> model.id }
-                        )
-
-                        is ProviderSetting.Claude -> provider.copy(
-                            models = provider.models.distinctBy { model -> model.id }
-                        )
-
-                        is ProviderSetting.Account -> provider.copyProvider(
-                            models = provider.models.distinctBy { model -> model.id }
-                        )
-                    }
-                },
-                assistants = settings.assistants.distinctBy { it.id }.map { assistant ->
-                    assistant.copy(
-                        // 过滤掉不存在的 MCP 服务器 ID
-                        mcpServers = assistant.mcpServers.filter { serverId ->
-                            serverId in validMcpServerIds
-                        }.toSet(),
-                        // 过滤掉不存在的模式注入 ID
-                        modeInjectionIds = assistant.modeInjectionIds.filter { id ->
-                            id in validModeInjectionIds
-                        }.toSet(),
-                        // 过滤掉不存在的 Lorebook ID
-                        lorebookIds = assistant.lorebookIds.filter { id ->
-                            id in validLorebookIds
-                        }.toSet(),
-                        // 过滤掉不存在的快捷消息 ID
-                        quickMessageIds = assistant.quickMessageIds.filter { id ->
-                            id in validQuickMessageIds
-                        }.toSet()
-                    )
-                },
-                ttsProviders = settings.ttsProviders.distinctBy { it.id },
-                asrProviders = asrProviders,
-                selectedASRProviderId = settings.selectedASRProviderId
-                    ?.takeIf { id -> asrProviders.any { provider -> provider.id == id } }
-                    ?: asrProviders.firstOrNull()?.id,
-                favoriteModels = normalizeFavoriteModelIds(settings.favoriteModels, settings.providers),
-                promptPresets = settings.promptPresets
-                    .distinctBy { it.id }
-                    // 预设内的条目也要去重（同 id 重复会让同一注入生效两次）
-                    .map { preset -> preset.copy(entries = preset.entries.distinctBy { it.id }) },
-                lorebooks = settings.lorebooks.distinctBy { it.id },
-                quickMessages = settings.quickMessages.distinctBy { it.id },
-            )
-        }
+        .let { with(Companion) { it.decodeSettings() } }
         .map { settings ->
             // Backup databases are staged until restart, after settings have already been restored.
             // Replay the idempotent reference migration on the first read of each process as well.

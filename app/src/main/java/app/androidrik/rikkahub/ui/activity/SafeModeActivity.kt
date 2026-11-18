@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -41,6 +43,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,46 +55,55 @@ import androidx.compose.ui.res.stringResource
 import app.androidrik.rikkahub.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import app.androidrik.rikkahub.GateTheme
+import app.androidrik.rikkahub.data.DataOperation
+import app.androidrik.rikkahub.data.DataOperationLock
+import app.androidrik.rikkahub.data.datastore.RecoverySettings
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.hooks.writeStringPreference
-import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.RouteActivity
 import app.androidrik.rikkahub.utils.CrashHandler
-import org.koin.android.ext.android.inject
 import kotlin.uuid.Uuid
 
-// 盘上单个字段超过这么多字符才算「超大」：正常使用到不了这个量级，到了就可能在读写设置时撑爆内存（#2333）
-private const val LARGE_FIELD_MIN_CHARS = 5_000_000
-
 class SafeModeActivity : ComponentActivity() {
-    private val settingsStore by inject<SettingsStore>()
-
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // startKoin 已推迟到 boot() 编排（B 档）；崩溃重启时 SafeMode 可能早于/绕过它，
-        // 幂等补齐，否则本页的 koinInject/inject 会再崩一次
-        (applicationContext as? RikkaHubApp)?.ensureKoinStarted()
+        val app = application as RikkaHubApp
+        if (!app.crashRecoveryPending) {
+            finish()
+            return
+        }
+
         val stackTrace = CrashHandler.getStackTrace(this)
-        CrashHandler.clearCrashed(this)
+        val recoverySettings = RecoverySettings(app)
         enableEdgeToEdge()
         setContent {
-            RikkahubTheme {
-                val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
+            GateTheme {
+                val export: RecoveryExportViewModel = viewModel()
+                var settings by remember { mutableStateOf<Settings?>(null) }
                 var showAssistantPicker by remember { mutableStateOf(false) }
-                // 盘上超大字段（超大世界书/助手导入会把设置落盘打爆，启动即循环闪退 #2333）
-                val largeFields by remember {
-                    settingsStore.largeStoredFieldsFlow(LARGE_FIELD_MIN_CHARS)
-                }.collectAsStateWithLifecycle(emptyList())
+                var largeFields by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
                 var pendingClearKey by remember { mutableStateOf<String?>(null) }
-                var clearing by remember { mutableStateOf(false) }
+                var repairing by remember { mutableStateOf(false) }
+                var repairFailed by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
                 val context = LocalContext.current
+                val controlsEnabled = !export.busy && !repairing
+
+                LaunchedEffect(repairing) {
+                    if (!repairing) {
+                        largeFields = recoverySettingOperation(app) { recoverySettings.largeFields() }.orEmpty()
+                    }
+                }
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
@@ -103,6 +115,7 @@ class SafeModeActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding)
+                            .verticalScroll(rememberScrollState())
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -112,28 +125,58 @@ class SafeModeActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        Text(
-                            text = stringResource(
-                                R.string.safe_mode_current_assistant,
-                                settings.getCurrentAssistant().name.ifEmpty { stringResource(R.string.safe_mode_default_assistant) }),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                        RecoveryExportActions(export, enabled = !repairing)
+
+                        settings?.let { loaded ->
+                            Text(
+                                text = stringResource(
+                                    R.string.safe_mode_current_assistant,
+                                    loaded.getCurrentAssistant().name.ifEmpty {
+                                        stringResource(R.string.safe_mode_default_assistant)
+                                    },
+                                ),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
 
                         Button(
                             onClick = {
+                                app.resumeAfterCrashRecovery()
                                 startActivity(Intent(this@SafeModeActivity, RouteActivity::class.java))
                                 finish()
                             },
+                            enabled = controlsEnabled,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(stringResource(R.string.safe_mode_enter_app))
                         }
 
                         OutlinedButton(
-                            onClick = { showAssistantPicker = true },
+                            onClick = {
+                                repairing = true
+                                repairFailed = false
+                                scope.launch {
+                                    try {
+                                        val loaded = recoverySettingOperation(app) { recoverySettings.readForBackup() }
+                                        if (loaded != null) {
+                                            settings = loaded
+                                            showAssistantPicker = true
+                                        } else {
+                                            repairFailed = true
+                                        }
+                                    } finally {
+                                        repairing = false
+                                    }
+                                }
+                            },
+                            enabled = controlsEnabled,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(stringResource(R.string.safe_mode_switch_assistant))
+                        }
+
+                        if (repairFailed) {
+                            Text(stringResource(R.string.safe_mode_repair_failed))
                         }
 
                         if (largeFields.isNotEmpty()) {
@@ -154,7 +197,7 @@ class SafeModeActivity : ComponentActivity() {
                                         trailingContent = {
                                             FilledTonalButton(
                                                 onClick = { pendingClearKey = key },
-                                                enabled = !clearing,
+                                                enabled = controlsEnabled,
                                             ) {
                                                 Text(stringResource(R.string.safe_mode_clear))
                                             }
@@ -185,7 +228,7 @@ class SafeModeActivity : ComponentActivity() {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .weight(1f),
+                                    .heightIn(max = 400.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                                 )
@@ -217,12 +260,17 @@ class SafeModeActivity : ComponentActivity() {
                             TextButton(
                                 onClick = {
                                     pendingClearKey = null
-                                    clearing = true
+                                    repairing = true
+                                    repairFailed = false
                                     scope.launch {
                                         try {
-                                            settingsStore.resetStoredField(key)
+                                            if (recoverySettingOperation(app) { recoverySettings.resetField(key) } == null) {
+                                                repairFailed = true
+                                            } else {
+                                                settings = null
+                                            }
                                         } finally {
-                                            clearing = false
+                                            repairing = false
                                         }
                                     }
                                 }
@@ -238,13 +286,26 @@ class SafeModeActivity : ComponentActivity() {
                     )
                 }
 
-                if (showAssistantPicker) {
+                val loaded = settings
+                if (showAssistantPicker && loaded != null) {
                     AssistantPickerSheet(
-                        settings = settings,
+                        settings = loaded,
                         onAssistantSelected = { assistantId ->
-                            scope.launch { settingsStore.updateAssistant(assistantId) }
-                            context.writeStringPreference("lastConversationId", null)
                             showAssistantPicker = false
+                            repairing = true
+                            repairFailed = false
+                            scope.launch {
+                                try {
+                                    if (recoverySettingOperation(app) { recoverySettings.selectAssistant(assistantId) } == null) {
+                                        repairFailed = true
+                                    } else {
+                                        settings = loaded.copy(assistantId = assistantId)
+                                        context.writeStringPreference("lastConversationId", null)
+                                    }
+                                } finally {
+                                    repairing = false
+                                }
+                            }
                         },
                         onDismiss = { showAssistantPicker = false }
                     )
@@ -253,6 +314,21 @@ class SafeModeActivity : ComponentActivity() {
         }
     }
 }
+
+private suspend fun <T> recoverySettingOperation(app: RikkaHubApp, block: suspend () -> T): T? =
+    try {
+        DataOperationLock.runWaiting(DataOperation.BACKUP) {
+            check(app.crashRecoveryPending)
+            withContext(Dispatchers.IO) { block() }
+        }
+    } catch (failure: CancellationException) {
+        throw failure
+    } catch (failure: Exception) {
+        Log.w("SafeMode", "Settings operation failed: ${failure.javaClass.simpleName}")
+        null
+    } catch (_: OutOfMemoryError) {
+        null
+    }
 
 @Composable
 private fun storedFieldLabel(key: String): String = when (key) {

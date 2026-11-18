@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.ImageLoader
 import coil3.compose.setSingletonImageLoaderFactory
 import coil3.gif.AnimatedImageDecoder
@@ -40,6 +41,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.launch
+import app.androidrik.rikkahub.ui.activity.RecoveryExportActions
+import app.androidrik.rikkahub.ui.activity.RecoveryExportViewModel
 import app.androidrik.rikkahub.ui.pages.agentrun.SubagentApprovalDialog
 import okhttp3.OkHttpClient
 
@@ -160,6 +163,7 @@ internal fun DowngradeDialogs(startupApp: RikkaHubApp) {
 @Composable
 internal fun StartupFailedScreen(state: StartupState.Failed, onRetry: () -> Unit) {
     GateTheme {
+        val export: RecoveryExportViewModel = viewModel()
         Box(
             modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
             contentAlignment = Alignment.Center,
@@ -178,10 +182,11 @@ internal fun StartupFailedScreen(state: StartupState.Failed, onRetry: () -> Unit
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (state.canRetry) {
-                    Button(onClick = onRetry) {
+                    Button(onClick = onRetry, enabled = !export.busy) {
                         Text(stringResource(R.string.startup_restore_retry))
                     }
                 }
+                RecoveryExportActions(export)
             }
         }
     }

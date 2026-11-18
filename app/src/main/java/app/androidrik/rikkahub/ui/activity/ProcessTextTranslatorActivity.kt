@@ -6,6 +6,8 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import app.androidrik.rikkahub.RikkaHubApp
+import app.androidrik.rikkahub.RouteActivity
+import app.androidrik.rikkahub.StartupState
 import app.androidrik.rikkahub.ui.pages.translator.ProcessTextTranslatorWindow
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import kotlin.math.roundToInt
@@ -21,9 +23,13 @@ import kotlin.math.roundToInt
 class ProcessTextTranslatorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // startKoin 已推迟到 boot() 编排（B 档，同 SafeModeActivity）；本页 koinViewModel
-        // 依赖 Koin，幂等补齐，否则冷启动直达弹窗时会崩
-        (applicationContext as? RikkaHubApp)?.ensureKoinStarted()
+        val app = application as RikkaHubApp
+        if (app.crashRecoveryPending || app.startupState.value is StartupState.Failed) {
+            startActivity(Intent(this, RouteActivity::class.java))
+            finish()
+            return
+        }
+        app.ensureKoinStarted()
 
         val selectedText = intent
             .takeIf { it.action == Intent.ACTION_PROCESS_TEXT }
