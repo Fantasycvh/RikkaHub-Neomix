@@ -124,8 +124,25 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 - 入口：编辑器「凭据」区（引用/更换引用/解除引用，解除后回退本地快照）+ 原有的「从聊天供应商导入」现在默认生成活引用；列表项显示引用标记。
 - 已知边界：被引用供应商的代理（proxy）设置不随引用生效（媒体适配器本来也不走代理）；多 key 轮询取第一个有效 key。
 
-**M3 重复适配收敛评估**（待评估）
-- 旧生图适配器与 mediagen OpenAI 图片适配器都实现 openai 兼容图片。评估方向：旧供应商 IMAGE 模型通过凭据引用挂进媒体目录，统一走 mediagen 适配器，最终把聊天 `generate_image` 改走统一执行器并退役 ai 模块的媒体用途。牵动聊天工具卡流式预览与 legacy customBodies 语义，需单独评估单。
+**M3 重复适配收敛评估**（评估完毕：暂不收敛，列前置条件）
+
+对比两条链路（旧 `ai/OpenAIProvider.generateImage/editImage` vs mediagen `OpenAIMediaGenerationProvider`）：
+
+| 能力 | 旧链路 | mediagen |
+| --- | --- | --- |
+| 生成/编辑端点与 multipart | `/images/generations` + `/images/edits` | 相同，解析还多一层空串 b64 防御 |
+| Grok size 特判 / `auto` 不下发 | ✓ | ✓（同一套语义） |
+| **代理** | per-provider proxy | 无 |
+| **多 key 轮询** | keyRoulette | 无（单 key） |
+| **模型级 customHeaders/customBodies** | ✓（可覆盖 n/prompt/size，定时授权据此做 bounded count 检查） | 无（extraParameters 仅请求级） |
+| OpenRouter 图片编辑 | 特判走 `/generations` + `input_references` | mediagen 的 OpenRouter 适配器未接入 |
+| 模型列表 | 无 | `GET /models` ✓ |
+
+流式预览不是收敛障碍：两条链路都是响应完成后一次性 emit，`ImageGenerationItem.partial` 在 OpenAI 路径从未使用。
+
+结论：**收敛的前置条件是三项 parity——代理、多 key 轮询、模型级自定义头/body（含 `permitsBoundedCount` 语义移植）**，缺一即为功能降级（存量用户里多 key 与代理配置真实存在）；OpenRouter 图片编辑还需先移植 mediagen 的 OpenRouter 适配器。工作量估计 M3a（三项 parity）≈ 3 批提交、M3b（目录切换 + 退役旧路径 + 聊天 `generate_image` 改走统一执行器）≈ 2 批，另需完整回归与真机验收——属中等偏大特性工程，非删代码。
+
+处置：M2 已让**数据层面**的凭据重复可通过活引用消除（新配置推荐走引用）；适配器收敛挂起，触发条件 = 上述三项 parity 立项。在此之前两条链路并存，各自服务各自的供应商配置形态。
 
 ### 待决范围
 
