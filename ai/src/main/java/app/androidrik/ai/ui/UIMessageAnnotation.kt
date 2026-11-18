@@ -61,6 +61,14 @@ sealed class UIMessageAnnotation {
         val createdAt: LocalDateTime? = null,
     ) : UIMessageAnnotation()
 
+    /** The user-selected skill as it existed when the message was sent. */
+    @Serializable
+    @SerialName("invoked_skill")
+    data class InvokedSkill(
+        val name: String,
+        val instructions: String,
+    ) : UIMessageAnnotation()
+
     /**
      * 拼装预览 Tier 4：合成注入消息的**来源条目 id**，按内容拼接顺序排列。
      *

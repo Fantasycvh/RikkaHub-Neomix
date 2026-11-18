@@ -78,8 +78,7 @@ class SkillManager(
     }
 
     fun readSkillBody(skillName: String): String? {
-        val skillFile = resolveSkillDir(skillName)?.resolve("SKILL.md") ?: return null
-        if (!skillFile.exists()) return null
+        val skillFile = findSkill(skillName)?.skillFile ?: return null
         return SkillFrontmatterParser.extractBody(skillFile.readText())
     }
 

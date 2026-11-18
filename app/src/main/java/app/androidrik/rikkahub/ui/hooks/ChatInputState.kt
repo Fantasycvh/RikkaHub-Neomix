@@ -25,6 +25,7 @@ class ChatInputState {
      * 新消息引用谁」。发送或清空输入时置 null。
      */
     var pendingQuote by mutableStateOf<UIMessageAnnotation.QuotedMessage?>(null)
+    var pendingSkill by mutableStateOf<String?>(null)
 
     private var editingParts: List<UIMessagePart>? = null
     private var editingAttachmentUrls: Set<String> = emptySet()
@@ -54,6 +55,7 @@ class ChatInputState {
         messageContent = emptyList()
         editingMessage = null
         pendingQuote = null
+        pendingSkill = null
         editingParts = null
         editingAttachmentUrls = emptySet()
         replacedAttachments = emptyMap()
@@ -96,6 +98,7 @@ class ChatInputState {
             segmentedDraft = null
             textContent.undoState.clearHistory()
         }
+        pendingSkill = null
         setMessageText(text)
         loadedEditingMessage = editingMessage
         messageContent = contents.filter { it.isEditableAttachment() }
@@ -123,6 +126,8 @@ class ChatInputState {
         // 纯图片/纯附件消息：无文本但有内容时不算空（对齐 5902feab）
         return textContent.text.isBlank() && messageContent.isEmpty()
     }
+
+    internal fun canSend(): Boolean = !isEmpty() || pendingSkill != null
 
     fun addImages(uris: List<Uri>) {
         val newMessage = messageContent.toMutableList()

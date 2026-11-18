@@ -281,7 +281,10 @@ internal fun buildChatRenderIndex(
             return@forEachIndexed
         }
         add("header", ChatMessageSlice.Header, boundaryGap, true)
-        val leading = message.annotations.any { it is UIMessageAnnotation.QuotedMessage || it is UIMessageAnnotation.PartialFailure } ||
+        val leading = message.annotations.any {
+            it is UIMessageAnnotation.QuotedMessage || it is UIMessageAnnotation.PartialFailure ||
+                it is UIMessageAnnotation.InvokedSkill
+        } ||
             (nodeIndex == nodes.lastIndex && message.role == MessageRole.ASSISTANT && (message.finishIncomplete ||
                 isOutputLimitTruncation(message.finishReason) || isContentFilterTruncation(message.finishReason)))
         val firstBodyGap = if (appearance.layout.showHeader || leading) appearance.layout.messageGapDp else 0f

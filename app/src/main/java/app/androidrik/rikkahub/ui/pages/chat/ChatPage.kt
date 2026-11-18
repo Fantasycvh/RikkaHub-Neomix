@@ -95,7 +95,9 @@ import app.androidrik.rikkahub.ui.pages.share.handler.SharedFileInfo
 import app.androidrik.rikkahub.ui.pages.share.handler.importSharedAttachments
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.isEmptyInputMessage
 import app.androidrik.ai.ui.toQuotedMessage
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Cancel01
@@ -109,6 +111,7 @@ import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
@@ -121,6 +124,8 @@ import app.androidrik.rikkahub.ui.pages.chat.rememberVoiceModeStarter
 import app.androidrik.rikkahub.ui.components.ai.ChatInput
 import app.androidrik.rikkahub.ui.components.ai.ContextUsage
 import app.androidrik.rikkahub.ui.components.ai.FilesPicker
+import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionProvider
+import app.androidrik.rikkahub.ui.components.ai.completion.SkillCompletionProvider
 import app.androidrik.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
@@ -143,6 +148,7 @@ import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
 import java.io.File
+import java.io.IOException
 import kotlin.uuid.Uuid
 
 /**
@@ -488,6 +494,7 @@ private fun ChatPageContent(
     val context = LocalContext.current
     val resources = LocalResources.current
     val workspaceRepository: WorkspaceRepository = koinInject()
+    val skillManager: SkillManager = koinInject()
     // 树面板的轻量树信息（稀疏会话）；全量会话为空列表，面板按内存节点渲染
     val treeNodes by vm.treeNodes.collectAsStateWithLifecycle()
     val switchingBranch by vm.switchingBranch.collectAsStateWithLifecycle()
@@ -561,16 +568,65 @@ private fun ChatPageContent(
     val showEditKeepFollowing = inputState.isEditing() &&
         (inputState.editingMessage?.let { conversation.followingCount(it) } ?: 0) > 0
 
-    val completionProviders = remember(assistant.workspaceId, conversation.workspaceCwd, workspaceRepository) {
-        assistant.workspaceId?.let { workspaceId ->
-            listOf(
-                WorkspaceCompletionProvider(
-                    workspaceId = workspaceId.toString(),
-                    repository = workspaceRepository,
-                    currentCwd = conversation.workspaceCwd,
+    val isEditing = inputState.isEditing()
+    val completionProviders = remember(
+        assistant.workspaceId, conversation.workspaceCwd, workspaceRepository,
+        assistant.enabledSkills, skillManager, isEditing,
+    ) {
+        buildList<ChatCompletionProvider> {
+            assistant.workspaceId?.let { workspaceId ->
+                add(
+                    WorkspaceCompletionProvider(
+                        workspaceId = workspaceId.toString(),
+                        repository = workspaceRepository,
+                        currentCwd = conversation.workspaceCwd,
+                    )
                 )
-            )
-        }.orEmpty()
+            }
+            if (!isEditing && assistant.enabledSkills.isNotEmpty()) {
+                add(SkillCompletionProvider(skillManager, assistant.enabledSkills))
+            }
+        }
+    }
+
+    var preparingSkill by remember(inputState) { mutableStateOf(false) }
+    fun submitMessage(send: (List<UIMessagePart>, List<UIMessageAnnotation>) -> Unit) {
+        if (preparingSkill) return
+        val parts = inputState.getContents()
+        val quote = inputState.pendingQuote
+        val annotations = listOfNotNull(quote)
+        val name = inputState.pendingSkill
+        if (name == null) {
+            send(parts, annotations)
+            inputState.clearInput()
+            return
+        }
+
+        preparingSkill = true
+        scope.launch {
+            try {
+                val instructions = if (name in assistant.enabledSkills) {
+                    try {
+                        withContext(Dispatchers.IO) { skillManager.readSkillBody(name) }
+                    } catch (_: IOException) {
+                        null
+                    }
+                } else null
+                if (inputState.pendingSkill != name || inputState.isEditing() ||
+                    inputState.pendingQuote != quote || inputState.getContents() != parts
+                ) return@launch
+                if (instructions.isNullOrBlank()) {
+                    toaster.show(resources.getString(R.string.skills_page_read_failed_path, "/$name"), type = ToastType.Error)
+                    return@launch
+                }
+
+                val content = if (parts.isEmptyInputMessage()) listOf(UIMessagePart.Text("/$name")) else parts
+                send(content, annotations + UIMessageAnnotation.InvokedSkill(name, instructions))
+                inputState.clearInput()
+            } finally {
+                preparingSkill = false
+            }
+        }
     }
 
     // 计划条（todo_write）：当前分支里最后一次 todo_write 调用的参数即当前清单，
@@ -681,16 +737,13 @@ private fun ChatPageContent(
                                 messageId = inputState.editingMessage!!,
                                 keepFollowing = editKeepFollowing,
                             )
+                            inputState.clearInput()
                         } else {
-                            vm.handleMessageSend(
-                                content = inputState.getContents(),
-                                annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
-                            )
-                            scope.launch {
+                            submitMessage { content, annotations ->
+                                vm.handleMessageSend(content, annotations = annotations)
                                 chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                             }
                         }
-                        inputState.clearInput()
                     },
                     onLongSendClick = {
                         if (inputState.isEditing()) {
@@ -699,17 +752,13 @@ private fun ChatPageContent(
                                 messageId = inputState.editingMessage!!,
                                 keepFollowing = editKeepFollowing,
                             )
+                            inputState.clearInput()
                         } else {
-                            vm.handleMessageSend(
-                                content = inputState.getContents(),
-                                answer = false,
-                                annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
-                            )
-                            scope.launch {
+                            submitMessage { content, annotations ->
+                                vm.handleMessageSend(content, answer = false, annotations = annotations)
                                 chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                             }
                         }
-                        inputState.clearInput()
                     },
                     // 插队发送：打断当前生成、立刻发这条（半截落成可编辑候选、待审批工具默认拒绝）。
                     // AI 反问（ask_user）待答时同样可见，语义变为「跳过提问并发送」
@@ -717,24 +766,21 @@ private fun ChatPageContent(
                     // 既没有插队入口、普通发送又被 pending 闸静默滞留。
                     // 编辑态下不提供——编辑历史消息与「打断当前轮次」是两件事，混在一起语义不清。
                     onInterruptSendClick = {
-                        vm.handleMessageSendInterrupting(
-                            content = inputState.getContents(),
-                            annotations = inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
-                            // 生成中 = 常规插队；仅 pending（提问/审批待答）= 跳过语义
-                            skipQuestion = loadingJob == null && hasPendingInteraction,
-                        )
-                        scope.launch {
+                        submitMessage { content, annotations ->
+                            vm.handleMessageSendInterrupting(
+                                content = content,
+                                annotations = annotations,
+                                // 生成中 = 常规插队；仅 pending（提问/审批待答）= 跳过语义
+                                skipQuestion = loadingJob == null && hasPendingInteraction,
+                            )
                             chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                         }
-                        inputState.clearInput()
                     },
                     onRetainTasksSendClick = {
-                        vm.handleMessageSendRetainingTasks(
-                            inputState.getContents(),
-                            inputState.pendingQuote?.let { listOf(it) }.orEmpty(),
-                        )
-                        chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
-                        inputState.clearInput()
+                        submitMessage { content, annotations ->
+                            vm.handleMessageSendRetainingTasks(content, annotations)
+                            chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
+                        }
                     },
                     messageQueue = messageQueueState,
                     onRemoveQueuedMessage = vm::removeQueuedMessage,

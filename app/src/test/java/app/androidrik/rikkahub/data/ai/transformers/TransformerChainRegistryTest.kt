@@ -38,7 +38,7 @@ class TransformerChainRegistryTest {
         val expectedInput = listOf(
             TimeReminderTransformer, PromptInjectionTransformer, TavernMacroTransformer, PlaceholderTransformer,
             DeepSeekDocumentOcrTransformer, DocumentAsPromptTransformer, OcrTransformer, ContextImageEvictionTransformer, QuoteTransformer,
-            template, workspace, z, a,
+            template, InvokedSkillTransformer, workspace, z, a,
             ToolResultBalancingTransformer,
         )
         val expectedOutput = listOf(ThinkTagTransformer, Base64ImageToLocalFileTransformer, RegexOutputTransformer, z, a)

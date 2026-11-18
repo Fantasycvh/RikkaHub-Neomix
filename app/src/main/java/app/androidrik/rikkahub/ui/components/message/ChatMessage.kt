@@ -217,6 +217,17 @@ fun ChatMessage(
             else -> ChatLayoutSection.BODY
         },
         leading = {
+            message.annotations.filterIsInstance<UIMessageAnnotation.InvokedSkill>().firstOrNull()?.let { skill ->
+                val label = "/${skill.name}"
+                if ((message.parts.singleOrNull() as? UIMessagePart.Text)?.text != label) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colorScheme.primary,
+                    )
+                }
+            }
+
             // #1812：半截生成失败的草稿横幅——放置在消息上方，重试复用现有 regenerate
             if (message.annotations.any { it is UIMessageAnnotation.PartialFailure }) {
                 PartialFailureBanner(

@@ -57,6 +57,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -295,7 +296,7 @@ fun ChatInput(
     fun sendMessage() {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        if (loading && state.isEmpty()) {
+        if (loading && !state.canSend()) {
             onCancelClick()
             return
         }
@@ -306,7 +307,7 @@ fun ChatInput(
     fun sendMessageWithoutAnswer() {
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        if (loading && state.isEmpty()) onCancelClick() else onLongSendClick()
+        if (loading && !state.canSend()) onCancelClick() else onLongSendClick()
     }
 
     val asr = LocalASRState.current
@@ -516,6 +517,18 @@ fun ChatInput(
                         )
                     }
 
+                    state.pendingSkill?.let { name ->
+                        InputChip(
+                            selected = true,
+                            onClick = { state.pendingSkill = null },
+                            label = { Text("/$name", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                            trailingIcon = {
+                                Icon(HugeIcons.Cancel01, stringResource(R.string.cancel), Modifier.size(16.dp))
+                            },
+                            modifier = Modifier.testTag("chat_pending_skill"),
+                        )
+                    }
+
                     if (state.messageContent.isNotEmpty()) {
                         MediaFileInputRow(state = state)
                     }
@@ -529,7 +542,7 @@ fun ChatInput(
                         onEditKeepFollowingChange = onEditKeepFollowingChange,
                     )
 
-                    AnimatedVisibility(visible = (loading || hasPendingInteraction) && !state.isEditing() && !state.isEmpty() && !asrState.isRecording) {
+                    AnimatedVisibility(visible = (loading || hasPendingInteraction) && !state.isEditing() && state.canSend() && !asrState.isRecording) {
                         TextButton(
                             modifier = Modifier.testTag("chat_retain_tasks_send"),
                             onClick = {
@@ -628,7 +641,7 @@ fun ChatInput(
                         // 语义变为「跳过提问并发送」（design-ask-user-interrupt §3.2）——
                         // 待答期间普通发送会被 pending 闸静默滞留，没有这个入口用户就没有出路。
                         AnimatedVisibility(
-                            visible = (loading || hasPendingInteraction) && !state.isEmpty() && !asrState.isRecording,
+                            visible = (loading || hasPendingInteraction) && state.canSend() && !asrState.isRecording,
                             enter = fadeIn() + scaleIn(),
                             exit = fadeOut() + scaleOut(),
                         ) {
@@ -663,7 +676,7 @@ fun ChatInput(
                                     .testTag("chat_send_button")
                                     .clip(CircleShape)
                                     .combinedClickable(
-                                        enabled = loading && state.isEmpty() || !state.isEmpty(),
+                                        enabled = loading || state.canSend(),
                                         onClick = {
                                             sendMessage()
                                         }, onLongClick = {
@@ -671,7 +684,7 @@ fun ChatInput(
                                         }
                                     )
                             ) {
-                                val showStop = loading && state.isEmpty()
+                                val showStop = loading && !state.canSend()
                                 // M3E polygon morph：发送（圆）↔停止（方圆角多边形）连续形变，形状与颜色同源切换
                                 val morphProgress by animateFloatAsState(
                                     targetValue = if (showStop) 1f else 0f,
@@ -681,12 +694,12 @@ fun ChatInput(
                                 val buttonShape = rememberMorphShape(MaterialShapes.Circle, MaterialShapes.Square, morphProgress)
                                 val containerColor = when {
                                     showStop -> MaterialTheme.colorScheme.errorContainer
-                                    state.isEmpty() -> MaterialTheme.colorScheme.surfaceContainerHigh
+                                    !state.canSend() -> MaterialTheme.colorScheme.surfaceContainerHigh
                                     else -> MaterialTheme.colorScheme.primary
                                 }
                                 val contentColor = when {
                                     showStop -> MaterialTheme.colorScheme.onErrorContainer
-                                    state.isEmpty() -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                    !state.canSend() -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                                     else -> MaterialTheme.colorScheme.onPrimary
                                 }
                                 Surface(
@@ -931,7 +944,7 @@ private fun TextInputRow(
                 imeAction = if (settings.displaySetting.sendOnEnter) ImeAction.Send else ImeAction.Default
             ),
             onKeyboardAction = {
-                if (settings.displaySetting.sendOnEnter && !state.isEmpty()) {
+                if (settings.displaySetting.sendOnEnter && state.canSend()) {
                     onSendMessage()
                 }
             },

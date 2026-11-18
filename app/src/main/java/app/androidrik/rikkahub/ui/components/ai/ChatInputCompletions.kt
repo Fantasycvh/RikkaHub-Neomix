@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.data.model.QuickMessage
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionItem
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionList
+import app.androidrik.rikkahub.ui.components.ai.completion.isSkillQueryCharacter
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Zap
@@ -115,9 +116,15 @@ internal fun ChatInputState.applyCompletion(
     replacementRange: TextRange,
     item: ChatCompletionItem,
 ) {
-    val textLength = textContent.text.length
+    val text = textContent.text
+    val textLength = text.length
     val start = replacementRange.min.coerceIn(0, textLength)
-    val end = replacementRange.max.coerceIn(start, textLength)
+    var end = replacementRange.max.coerceIn(start, textLength)
+    item.skillName?.let { name ->
+        if (isEditing()) return
+        while (end < textLength && text[end].isSkillQueryCharacter()) end++
+        pendingSkill = name
+    }
     textContent.edit {
         replace(start, end, item.insertText)
         selection = TextRange(start + item.insertText.length)

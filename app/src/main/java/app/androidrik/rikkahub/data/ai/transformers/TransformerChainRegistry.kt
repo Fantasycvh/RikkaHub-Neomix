@@ -153,6 +153,7 @@ internal fun defaultTransformerChainRegistry(
         TransformerContribution("builtin.context_image_eviction", TransformerStage.CORE, ContextImageEvictionTransformer, allowPreview = true),
         TransformerContribution("builtin.quote", TransformerStage.CORE, QuoteTransformer, allowPreview = true),
         TransformerContribution("builtin.template", TransformerStage.TEMPLATE, template, allowPreview = true),
+        TransformerContribution("builtin.invoked_skill", TransformerStage.TEMPLATE, InvokedSkillTransformer, allowPreview = true),
         TransformerContribution("builtin.workspace_reminder", TransformerStage.WORKSPACE, workspaceReminder, false, previewLabel = "工作区环境提醒"),
     ),
     registeredAssembly = registeredAssembly,
