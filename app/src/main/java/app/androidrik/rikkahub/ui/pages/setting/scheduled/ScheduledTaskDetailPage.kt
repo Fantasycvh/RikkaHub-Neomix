@@ -80,7 +80,8 @@ fun ScheduledTaskDetailPage(
         val current = task ?: return@GlassTopBarScaffold
         val form = rememberScheduledTaskFormState(current)
         val mediaCatalog = LocalSettings.current.mediaModelCatalog()
-        val mediaAction = form.mediaAction(mediaCatalog)
+        val uploadFingerprint by vm.uploadFingerprint.collectAsStateWithLifecycle()
+        val mediaAction = form.mediaAction(mediaCatalog, uploadFingerprint)
         // 「附带长期目标」仅当目标会话写了 goal 才可选；每轮新建没有固定会话，恒不可选
         val withGoalAvailable = targetModeOrDefault(current.targetMode) != TargetMode.NEW_EACH_RUN &&
             !conversationGoals[current.conversationId].isNullOrBlank()
@@ -110,7 +111,14 @@ fun ScheduledTaskDetailPage(
                     Text(stringResource(R.string.scheduled_task_view_last_conversation))
                 }
             }
-            if (current.createdBy == ScheduledTaskEntity.CREATED_BY_USER) ScheduledMediaFields(form, mediaCatalog)
+            if (current.createdBy == ScheduledTaskEntity.CREATED_BY_USER) {
+                ScheduledMediaFields(
+                    form,
+                    mediaCatalog,
+                    onImportAssets = { uris -> vm.importMediaAssets(form, uris) },
+                    uploadFingerprint = uploadFingerprint,
+                )
+            }
             ScheduledTaskFormFields(
                 form,
                 withGoalAvailable = !form.mediaTemplate && withGoalAvailable,

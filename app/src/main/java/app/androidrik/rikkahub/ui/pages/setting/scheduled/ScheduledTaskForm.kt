@@ -38,6 +38,9 @@ import app.androidrik.rikkahub.data.ai.DeliverableChecker
 import app.androidrik.rikkahub.data.scheduled.mediaGrant
 import app.androidrik.rikkahub.data.scheduled.isMediaTemplate
 import app.androidrik.rikkahub.data.scheduled.SchedulePayload
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAsset
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAssetStore
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaOperation
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
@@ -62,6 +65,18 @@ class ScheduledTaskFormState {
     var mediaCount by mutableIntStateOf(1)
     var mediaResolution by mutableStateOf<String?>(null)
     var mediaConfigurationFingerprint by mutableStateOf<String?>(null)
+
+    /** 模板的生成操作：纯提示词 / 图片编辑 / 首帧视频。带素材的操作同时引用 [mediaAssets]。 */
+    var mediaOperation by mutableStateOf(ScheduledMediaOperation.TEXT)
+
+    /** 锁进授权的模板素材（应用私有目录里的副本，见 [ScheduledMediaAssetStore]）。 */
+    var mediaAssets by mutableStateOf<List<ScheduledMediaAsset>>(emptyList())
+
+    /**
+     * 素材目录 id：编辑既有任务时是任务 id，新建表单时在第一次导素材时生成。
+     * `null` = 这个表单还没有动过素材。
+     */
+    var mediaAssetDirId by mutableStateOf<String?>(null)
     var type by mutableStateOf(ScheduleType.DAILY)
     var randomDaily by mutableStateOf(false)
     var randomEndHourText by mutableStateOf("23")
@@ -158,6 +173,9 @@ class ScheduledTaskFormState {
         mediaCount = grant?.params?.count ?: 1
         mediaResolution = grant?.params?.resolution
         mediaConfigurationFingerprint = grant?.configurationFingerprint
+        mediaOperation = grant?.operation ?: ScheduledMediaOperation.TEXT
+        mediaAssets = grant?.templateAssets.orEmpty()
+        mediaAssetDirId = entity.id
         val payload = SchedulePayload.decode(entity.schedulePayload)
         randomDaily = payload.randomWindow != null
         payload.randomWindow?.let { window ->

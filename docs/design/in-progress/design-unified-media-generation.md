@@ -1,6 +1,6 @@
 # 统一媒体生成接口、模型目录与定时任务
 
-> 2026-11-18。统一执行入口已在本地提交 `55efb216b`；统一模型目录、按任务授权和定时模板直跑连同本设计稿在本地提交落地，并随 Debug 包装机。提交结果待确认与恢复语义（阶段 2 主体）已在工作树实现，真机验收中途暂停（场景 1 部分完成）。真机业务验收和后续阶段见下文。
+> 2026-11-18/19。统一执行入口已在本地提交 `55efb216b`；统一模型目录、按任务授权和定时模板直跑连同本设计稿在本地提交落地，并随 Debug 包装机。提交结果待确认与恢复语义（阶段 2 主体）与定时模板的生成操作、素材引用（阶段 3 主体）已实现，真机验收中途暂停（场景 1 部分完成）。真机业务验收和后续阶段见下文。
 
 ## 目标与范围
 
@@ -61,12 +61,23 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 
 [中断判定](../../../app/src/main/java/app/androidrik/rikkahub/service/MediaInterruption.kt) · [状态模型](../../../app/src/main/java/app/androidrik/rikkahub/data/model/MediaCreation.kt) · [能力声明](../../../mediagen/src/main/java/app/androidrik/mediagen/provider/MediaGenerationProvider.kt)
 
+### 定时模板的生成操作与素材引用
+
+任务编辑页的媒体模板新增显式操作三选：**Text prompt**（纯提示词直跑）、**Image edit**（参考图图片编辑）、**First-frame video**（首帧图生视频）。操作决定可选模型范围：编辑操作要求图片模型且接受图片输入，首帧操作要求视频模型且声明首帧角色（SiliconFlow I2V 因此进入模板可选范围，纯文本门控不再排除它）。
+
+素材在选中相册图片时**立即复制**进应用私有目录 `filesDir/scheduled_media/<目录>/`（编辑既有任务时目录就是任务 id），授权 `ScheduledMediaAction.templateAssets` 只引用副本及用途（角色），后台到点直跑读副本，相册原文件被删不影响。保存时清理目录里未引用的副本；删除任务时按授权路径清理。带素材的授权还保存素材上传目的地指纹（S3 配置，密钥不参与），运行前核对，不一致视为授权失效并要求重新保存任务。
+
+`ScheduledMediaAction.permits` 对素材强校验：素材必须被模型能力完整接受（不能有被丢弃的角色或类型），编辑操作至少一张参考图，首帧操作必须恰好提供首帧。素材被删除、必填首帧缺失、上传目的地变化的失败路径分别有明确错误。
+
+[授权模型](../../../app/src/main/java/app/androidrik/rikkahub/data/scheduled/ScheduledMediaAction.kt) · [素材锁定仓库](../../../app/src/main/java/app/androidrik/rikkahub/data/scheduled/ScheduledMediaAssetStore.kt) · [模板字段](../../../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/scheduled/ScheduledMediaFields.kt) · [上传目的地指纹](../../../app/src/main/java/app/androidrik/rikkahub/data/files/RemoteFileStore.kt)
+
 ## 验证记录
 
 | 项目 | 结果 |
 | --- | --- |
 | 最终相关单元测试 | 应用 167 项，`:mediagen` 42 项，共 209 项通过。涉及目录合并、模型配置变更、授权单次消耗、预览与编辑、调度和 schema 版本 |
 | 提交中断判定测试 | `MediaInterruptionTest`（三窗口处置 + 终态不动）与 `MediaGenerationManagerTest.supportsQueryFollowsTheAdapter` 通过；媒体/定时相关套件复跑全绿 |
+| 模板操作与素材测试 | `ScheduledMediaActionTest`（三操作 × 模型/角色门控 + 序列化往返 + 上传指纹）与 `ScheduledMediaAssetStoreTest`（清理/删除/路径越界）通过；全量 3627 项除既有 `ImportFormatTest` 外全绿 |
 | Room 75→76 | 在 SQLite 中执行 Room 生成的迁移 SQL。三张表的旧行得到保留，新列为空，列结构与新 schema 一致 |
 | 应用全量测试 | 实施期间复跑发现 1 项既有失败。`ImportFormatTest` 的断言只允许本地备份在选文件前确认，当前实现也要求原版整库备份先确认 |
 | 构建、装机与启动 | `:app:assembleDebug` 成功。2026-11-18 在 PJX110 上用 ARM64 Debug APK 覆盖安装，调试包从 beta.22 更新为 `1.0.28-beta.23`（327），包名 `app.androidrik.rikkahub.debug`。ADB 验证本地与装机包的 SHA-256 一致，冷启动成功 |
@@ -86,15 +97,16 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 | 两种定时聊天执行模式 | 分别验证会话注入与无界面执行。无授权时工具不可用，授权后成功调用一次，第二次及超出张数或分辨率限制的调用被拦截。撤回授权、删除模型或变更端点后无新增供应商请求 |
 | 定时直跑与恢复 | 各跑一轮文生图和文生视频，产物可从运行历史打开。视频轮询期间另一项到期任务可执行。持有供应商任务 ID 时重启能继续查询，无 ID 时无二次提交。取消只影响本轮 |
 | 提交窗口中断 | 任务型供应商提交瞬间杀进程，重启后媒体记录显示「结果待确认」且不自动重试；重试时出现可能重复计费的确认弹窗。提交前杀进程的记录直接标记为中断失败 |
+| 模板素材路径 | 图片编辑与首帧视频模板各跑一轮，产物可从运行历史打开。锁定的素材被删除后到点运行明确报错而不是静默失败；素材上传目的地变化后授权失效并提示重新保存 |
 | 升级与回退准备 | 在隔离配置中以含媒体记录和旧定时任务的 v75 数据升级，核对 v76 开库、旧任务行为与产物链接。保留升级前备份作为回退依据 |
 
 ### 2. 接入按请求 ID 对账
 
 状态语义与恢复判定已落地（见「提交结果待确认与恢复语义」）。剩余部分：给支持幂等键或按请求 ID 查询的供应商把提交请求 ID 带上下发，`SUBMIT_UNKNOWN` 记录在下次启动时自动对账——查到任务就转回可续查状态，查不到再交由用户处置。需要先有厂商接口支持（当前已接入的适配器均无此端点）。
 
-### 3. 扩充定时模板
+### 3. 真机验收模板素材路径
 
-在固定提示词模板的基础上加入显式的生成操作与素材引用，优先支持图片编辑和首帧视频。保存时锁定素材及其用途，使后台运行能稳定读取。模型、操作、参数、素材或上传目的地变化时更新授权。验收覆盖素材被删除、进程重启、必填首帧缺失和需要远端素材 URL 的情况。
+生成操作与素材引用已实现（见「定时模板的生成操作与素材引用」）。剩余部分在真机验收中覆盖：素材型模板各跑一轮（编辑 + 首帧视频）、素材被删除后的失败报错、素材上传目的地变化后的授权失效、需要远端素材 URL 的接口（未配 S3 时明确失败）。
 
 ### 4. 收敛供应商配置与能力声明
 

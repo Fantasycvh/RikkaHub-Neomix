@@ -5,6 +5,7 @@ import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
+import app.androidrik.rikkahub.data.files.uploadDestinationFingerprint
 import app.androidrik.rikkahub.data.db.entity.TaskRunStatus
 import app.androidrik.rikkahub.data.media.resolveMediaModel
 import app.androidrik.rikkahub.data.media.MediaModelOption
@@ -13,6 +14,7 @@ import app.androidrik.rikkahub.data.model.MediaCreationStatus
 import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.data.scheduled.RunEvidence
 import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAction
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAsset
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
 import app.androidrik.rikkahub.data.scheduled.mediaGrant
 import kotlinx.coroutines.CancellationException
@@ -77,6 +79,13 @@ class ScheduledMediaRunner(
             } ?: error("Model settings could not be loaded")
             val option = settings.resolveMediaModel(grant.model)
                 ?.takeIf(grant::permits) ?: error("The authorized media model or parameters are unavailable")
+            if (grant.templateAssets.isNotEmpty()) {
+                // 上传目的地变化说明素材可能传到别的桶里去了：当作授权失效，让用户重新保存任务
+                val current = settings.uploadS3Config.withHttpsByDefault().uploadDestinationFingerprint()
+                check(current == grant.uploadFingerprint) {
+                    "The asset upload destination changed. Save the task again to update its authorization"
+                }
+            }
             val latest = tasks.byId(task.id)
             check(latest != null && latest.mediaGrant() == grant && latest.prompt.trim() == prompt) {
                 "The media authorization changed"
@@ -92,7 +101,7 @@ class ScheduledMediaRunner(
                         option = option,
                         prompt = prompt,
                         params = grant.params,
-                        assets = emptyList(),
+                        assets = grant.templateAssets.map(ScheduledMediaAsset::toMediaCreationAsset),
                     ),
                     recordId = id,
                 )

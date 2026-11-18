@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.db.entity.TargetMode
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaOperation
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -73,7 +74,8 @@ fun ScheduledTaskCreatePage(
     val form = rememberScheduledTaskFormState(null)
     val assistants by vm.assistants.collectAsStateWithLifecycle()
     val mediaCatalog = LocalSettings.current.mediaModelCatalog()
-    val mediaAction = form.mediaAction(mediaCatalog)
+    val uploadFingerprint by vm.uploadFingerprint.collectAsStateWithLifecycle()
+    val mediaAction = form.mediaAction(mediaCatalog, uploadFingerprint)
 
     var targetMode by remember { mutableStateOf(TargetMode.EXISTING) }
     var selectedConversation by remember { mutableStateOf<Conversation?>(null) }
@@ -127,6 +129,7 @@ fun ScheduledTaskCreatePage(
                                 keepLastConversations = if (keepLastVisible) (form.keepLast ?: 0) else 0,
                                 deliverablesJson = form.deliverablesJson(),
                                 mediaAction = mediaAction,
+                                assetFormDirId = form.mediaAssetDirId,
                                 onCreated = { navController.popBackStack() },
                                 onFailed = { targetFailure = it },
                             )
@@ -158,6 +161,8 @@ fun ScheduledTaskCreatePage(
                             form.authorizeMedia = false
                             form.mediaModel = null
                             form.mediaResolution = null
+                            form.mediaOperation = ScheduledMediaOperation.TEXT
+                            form.mediaAssets = emptyList()
                         })
                     },
                 )
@@ -231,7 +236,12 @@ fun ScheduledTaskCreatePage(
                     )
                 }
             }
-            ScheduledMediaFields(form, mediaCatalog)
+            ScheduledMediaFields(
+                form,
+                mediaCatalog,
+                onImportAssets = { uris -> vm.importMediaAssets(form, uris) },
+                uploadFingerprint = uploadFingerprint,
+            )
             Spacer(Modifier.height(8.dp))
             ScheduledTaskFormFields(
                 form,

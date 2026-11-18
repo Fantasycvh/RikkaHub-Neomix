@@ -20,6 +20,7 @@ import java.time.Instant
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.io.encoding.Base64
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
@@ -237,6 +238,18 @@ private fun S3Config.isUsable(): Boolean =
     endpoint.isNotBlank() && accessKeyId.isNotBlank() && secretAccessKey.isNotBlank() && bucket.isNotBlank()
 
 private fun S3Config.isUsableForUpload(): Boolean = isUsable() && endpoint.startsWith("https://")
+
+/**
+ * 素材上传目的地的授权指纹，供定时模板授权核对保存与运行之间的配置是否一致。
+ * 未配置或不可用于上传（缺字段、显式 http）时为 null；密钥不参与指纹——它能用就够了，
+ * 换密钥不影响素材还能不能传上去。
+ */
+internal fun S3Config.uploadDestinationFingerprint(): String? {
+    val normalized = withHttpsByDefault()
+    if (!(normalized.isUsable() && normalized.endpoint.startsWith("https://"))) return null
+    val bytes = "${normalized.endpoint}/${normalized.bucket}/${normalized.pathStyle}".encodeToByteArray()
+    return Base64.encode(MessageDigest.getInstance("SHA-256").digest(bytes))
+}
 
 private fun S3Config.requireUsableForUpload() {
     check(isUsable()) { "S3 is not configured" }

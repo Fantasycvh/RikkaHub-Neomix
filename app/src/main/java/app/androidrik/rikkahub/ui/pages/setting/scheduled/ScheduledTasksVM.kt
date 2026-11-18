@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting.scheduled
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.androidrik.rikkahub.data.db.entity.MissPolicy
@@ -7,12 +8,17 @@ import app.androidrik.rikkahub.data.db.entity.ScheduleType
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.db.entity.TargetMode
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.files.uploadDestinationFingerprint
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAction
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAsset
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAssetStore
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaOperation
 import app.androidrik.rikkahub.data.scheduled.SchedulePayload
 import app.androidrik.rikkahub.data.scheduled.ScheduledTaskRepository
+import app.androidrik.rikkahub.data.scheduled.mediaGrant
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
 import kotlin.uuid.Uuid
@@ -32,6 +38,7 @@ class ScheduledTasksVM(
     private val sweeperKeeper: ScheduledTaskSweeperKeeper,
     private val settingsStore: SettingsStore,
     private val chatService: ChatService,
+    private val assetStore: ScheduledMediaAssetStore,
 ) : ViewModel() {
     val tasks = taskRepository.flowAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -58,9 +65,33 @@ class ScheduledTasksVM(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** id → 助手名（任务列表的目标描述用） */
+
     val assistantNames = settingsStore.settingsFlow
         .map { settings -> settings.assistants.associate { it.id.toString() to it.name } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** 素材上传目的地指纹：保存授权时写进 grant，运行时由 ScheduledMediaRunner 核对。 */
+    val uploadFingerprint = settingsStore.settingsFlow
+        .map { it.uploadS3Config.withHttpsByDefault().uploadDestinationFingerprint() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** 媒体模板素材：相册选中的图片立即复制进应用私有目录，授权只引用副本。 */
+    fun importMediaAssets(form: ScheduledTaskFormState, uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        viewModelScope.launch {
+            val dirId = form.mediaAssetDirId ?: ScheduledMediaAssetStore.newFormDirId().also { form.mediaAssetDirId = it }
+            val paths = assetStore.importImages(uris, dirId)
+            // 首帧视频的素材按首帧角色锁定；其余操作当参考图
+            val role = if (form.mediaOperation == ScheduledMediaOperation.FIRST_FRAME) {
+                app.androidrik.mediagen.model.ImageRole.FIRST_FRAME
+            } else {
+                app.androidrik.mediagen.model.ImageRole.REFERENCE
+            }
+            form.mediaAssets = form.mediaAssets + paths.map { ScheduledMediaAsset(it, role = role) }
+            // 素材变了授权就要重新批准
+            if (paths.isNotEmpty()) form.authorizeMedia = false
+        }
+    }
 
     fun setConversationQuery(query: String) {
         _conversationQuery.value = query
@@ -96,6 +127,7 @@ class ScheduledTasksVM(
         keepLastConversations: Int = 0,
         deliverablesJson: String? = null,
         mediaAction: ScheduledMediaAction? = null,
+        assetFormDirId: String? = null,
         onCreated: () -> Unit = {},
         onFailed: (TargetFailure) -> Unit = {},
     ) {
@@ -130,6 +162,10 @@ class ScheduledTasksVM(
                 mediaAction = mediaAction,
             )
             sweeperKeeper.rearm(taskRepository)
+            // 授权里引用的素材才算数：目录里被替换或删除掉的副本顺手清掉
+            assetFormDirId?.let { dirId ->
+                assetStore.pruneUnreferenced(dirId, mediaAction?.templateAssets.orEmpty().map(ScheduledMediaAsset::path).toSet())
+            }
             onCreated()
         }
     }
@@ -143,6 +179,8 @@ class ScheduledTasksVM(
 
     fun delete(id: String) {
         viewModelScope.launch {
+            // 授权里锁定的素材副本跟着任务一起删
+            taskRepository.byId(id)?.mediaGrant()?.templateAssets?.let { assetStore.deleteAssets(it) }
             taskRepository.delete(id)
             sweeperKeeper.rearm(taskRepository)
         }

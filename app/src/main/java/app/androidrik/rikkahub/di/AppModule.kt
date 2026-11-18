@@ -27,6 +27,7 @@ import app.androidrik.rikkahub.service.ScheduledTaskExecutor
 import app.androidrik.rikkahub.service.ScheduledTaskRunner
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
 import app.androidrik.rikkahub.service.ScheduledRunRegistry
+import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAssetStore
 import app.androidrik.rikkahub.service.ScheduledMediaRunner
 import app.androidrik.rikkahub.data.task.TaskCenter
 import app.androidrik.rikkahub.service.SubagentRunner
@@ -300,6 +301,9 @@ val appModule = module {
     single {
         ScheduledRunRegistry()
     }
+
+    // 定时模板素材的锁定仓库：相册选中的图先复制进应用私有目录再进授权
+    single { ScheduledMediaAssetStore(get()) }
 
     single { ScheduledMediaRunner(get(), get(), get(), get(), get(), get()) }
 

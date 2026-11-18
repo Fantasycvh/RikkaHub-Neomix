@@ -62,6 +62,7 @@ val viewModelModule = module {
             conversationRepository = get(),
             sweeperKeeper = get(),
             settingsStore = get(),
+            assetStore = get(),
         )
     }
     viewModelOf(::KnowledgeBasesVM)
