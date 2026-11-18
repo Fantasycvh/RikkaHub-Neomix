@@ -1,12 +1,17 @@
 package app.androidrik.rikkahub.phoneuse
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityService.GestureResultCallback
+import android.accessibilityservice.AccessibilityService.ScreenshotResult
+import android.accessibilityservice.AccessibilityService.TakeScreenshotCallback
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Path
 import android.graphics.Point
 import android.graphics.Rect
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -40,34 +45,72 @@ private const val JPEG_QUALITY = 80
  *
  * 隐私边界：只读应用窗口，不读通知栏等系统窗口；密码框不返回文字。
  */
-class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
+class PhoneUseAccessibilityService : AccessibilityService() {
     // 静态单例：服务可能早于 startKoin 绑定，不能走 Koin 解析
     private val manager: PhoneUseManager get() = PhoneUseManager.instance
-    private val indicator by lazy { GestureIndicator(this) }
-
-    // 和最近一次 captureScreen 返回的元素一一对应，setText 靠它找到节点
-    @Volatile
-    private var nodes: List<AccessibilityNodeInfo> = emptyList()
+    private val primaryController = DisplayController(this, null)
 
     override fun onServiceConnected() {
         Log.i(TAG, "onServiceConnected")
-        manager.attach(this)
+        manager.attach(primaryController)
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        manager.detach(this)
+        manager.detach(primaryController)
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        manager.detach(this)
-        indicator.dismiss()
+        manager.detach(primaryController)
+        primaryController.dismissIndicator()
         super.onDestroy()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
 
     override fun onInterrupt() {}
+}
+
+private class DisplayController(
+    private val service: PhoneUseAccessibilityService,
+    private val virtual: PhoneUseVirtualDisplay?,
+) : PhoneController, PhoneUseDisplayControllerFactory {
+    override val isVirtual: Boolean get() = virtual != null
+    private val displayId: Int get() = virtual?.id ?: Display.DEFAULT_DISPLAY
+    private val indicator by lazy { GestureIndicator(service) }
+
+    fun dismissIndicator() = indicator.dismiss()
+
+    // 元素编号只指向这个显示屏的最近一次快照。
+    @Volatile
+    private var nodes: List<AccessibilityNodeInfo> = emptyList()
+
+    override fun forDisplay(display: PhoneUseVirtualDisplay): PhoneController = DisplayController(service, display)
+
+    private fun requireVirtualDisplay(): Display {
+        PhoneUseVirtualDisplays.checkTarget(checkNotNull(virtual))
+        val display = service.getSystemService(DisplayManager::class.java).getDisplay(displayId)
+        check(display != null && display.isValid && displayId != Display.DEFAULT_DISPLAY) {
+            "The Phone Use virtual display is no longer available."
+        }
+        return display
+    }
+
+    private fun targetWindows(): List<AccessibilityWindowInfo> {
+        if (!isVirtual) return service.windows
+        requireVirtualDisplay()
+        service.clearCache()
+        val windows = service.windowsOnAllDisplays[displayId].orEmpty()
+        check(windows.none { it.type == AccessibilityWindowInfo.TYPE_APPLICATION && it.root?.packageName == service.packageName }) {
+            "Neomix is on the Phone Use display. Switch apps with open_app."
+        }
+        return windows
+    }
+
+    private fun applicationWindows(): List<AccessibilityWindowInfo> = targetWindows().filter { window ->
+        window.type == AccessibilityWindowInfo.TYPE_APPLICATION &&
+            (!isVirtual || window.root?.packageName?.toString()?.let { it != "com.android.systemui" } == true)
+    }
 
     // ---- 读取屏幕 ----
 
@@ -132,11 +175,11 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
         val topPackage = roots.firstOrNull()?.packageName?.toString()
         PhoneScreen(
             packageName = topPackage,
-            appLabel = topPackage?.let(::appLabel),
+            appLabel = topPackage?.let { name -> virtual?.apps?.firstOrNull { it.packageName == name }?.label ?: appLabel(name) },
             packages = roots.packages(),
             width = size.x,
             height = size.y,
-            keyboardVisible = windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD },
+            keyboardVisible = targetWindows().any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD },
             elements = elements,
             truncated = truncated,
         )
@@ -149,11 +192,10 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
      * 状态栏、导航栏、输入法的按键也不列出来；本应用自己的窗口（悬浮窗）跳过。
      */
     private fun targetRoots(): List<AccessibilityNodeInfo> {
-        val roots = windows
-            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .mapNotNull { it.root }
+        val roots = applicationWindows().mapNotNull { it.root }
         // 个别系统拿不到窗口列表，退回当前活动窗口
-        return roots.ifEmpty { listOfNotNull(rootInActiveWindow) }.filter { it.packageName != packageName }
+        return (if (isVirtual) roots else roots.ifEmpty { listOfNotNull(service.rootInActiveWindow) })
+            .filter { it.packageName != service.packageName }
     }
 
     private fun AccessibilityNodeInfo.ownLabel(): String {
@@ -186,7 +228,11 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
     }
 
     private fun screenSize(): Point {
-        val windowManager = getSystemService(WindowManager::class.java)
+        if (isVirtual) {
+            val display = requireVirtualDisplay()
+            return Point().also { display.getRealSize(it) }
+        }
+        val windowManager = service.getSystemService(WindowManager::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val bounds = windowManager.maximumWindowMetrics.bounds
             return Point(bounds.width(), bounds.height())
@@ -196,7 +242,7 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
     }
 
     private fun appLabel(packageName: String): String? = runCatching {
-        packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
+        service.packageManager.getApplicationLabel(service.packageManager.getApplicationInfo(packageName, 0)).toString()
     }.getOrNull()
 
     // ---- 截图 ----
@@ -231,18 +277,30 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
     private suspend fun takeScreenshot(): Bitmap {
         // Android 14+ 只截最上层应用窗口：通知栏、系统弹窗不进图
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val windowId = windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }?.id
+            val window = applicationWindows().firstOrNull()
                 ?: error("No app window to capture.")
-            return awaitScreenshot { callback ->
-                takeScreenshotOfWindow(windowId, mainExecutor, callback)
+            val bitmap = awaitScreenshot { callback ->
+                service.takeScreenshotOfWindow(window.id, service.mainExecutor, callback)
+            }
+            if (!isVirtual) return bitmap
+            return withContext(Dispatchers.Default) {
+                val size = screenSize()
+                if (bitmap.width == size.x && bitmap.height == size.y) return@withContext bitmap
+                // ColorOS can launch an activity in a floating window on the secondary display.
+                // Keep screenshot coordinates in the same space as accessibility bounds and taps.
+                val bounds = Rect().also(window::getBoundsInScreen)
+                val fullFrame = Bitmap.createBitmap(size.x, size.y, Bitmap.Config.ARGB_8888)
+                Canvas(fullFrame).drawBitmap(bitmap, null, bounds, null)
+                bitmap.recycle()
+                fullFrame
             }
         }
         // Android 11–13 只能整屏；通知栏展开时系统窗口会一起进图，直接拒绝
-        check(windows.none { it.type == AccessibilityWindowInfo.TYPE_SYSTEM && it.isFocused }) {
+        check(targetWindows().none { it.type == AccessibilityWindowInfo.TYPE_SYSTEM && it.isFocused }) {
             "A system window (such as the notification shade) is open. Close it before taking a screenshot."
         }
         return awaitScreenshot { callback ->
-            takeScreenshot(Display.DEFAULT_DISPLAY, mainExecutor, callback)
+            service.takeScreenshot(displayId, service.mainExecutor, callback)
         }
     }
 
@@ -279,14 +337,14 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
     }
 
     private fun screenshotError(errorCode: Int): IllegalStateException = when (errorCode) {
-        ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT -> ScreenshotIntervalException()
-        ERROR_TAKE_SCREENSHOT_SECURE_WINDOW ->
+        AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT -> ScreenshotIntervalException()
+        AccessibilityService.ERROR_TAKE_SCREENSHOT_SECURE_WINDOW ->
             IllegalStateException("Screenshot blocked by a secure window (FLAG_SECURE).")
-        ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY ->
+        AccessibilityService.ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY ->
             IllegalStateException("Screenshot failed: invalid display.")
-        ERROR_TAKE_SCREENSHOT_INVALID_WINDOW ->
+        AccessibilityService.ERROR_TAKE_SCREENSHOT_INVALID_WINDOW ->
             IllegalStateException("Screenshot failed: the app window went away.")
-        ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS ->
+        AccessibilityService.ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS ->
             IllegalStateException("Screenshot failed: no accessibility access.")
         else -> IllegalStateException("Screenshot failed (code $errorCode).")
     }
@@ -299,13 +357,15 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
             moveTo(fromX.coerceAtLeast(0f), fromY.coerceAtLeast(0f))
             lineTo(toX.coerceAtLeast(0f), toY.coerceAtLeast(0f))
         }
+        if (isVirtual) check(targetRoots().isNotEmpty()) { "No app window on the Phone Use display." }
         val gesture = GestureDescription.Builder()
+            .apply { if (isVirtual) setDisplayId(displayId) }
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
         // 效果和手势同时开始；覆盖层不接收触摸，不会挡住手势
-        withContext(Dispatchers.Main) { indicator.show(fromX, fromY, toX, toY, durationMs) }
+        if (!isVirtual) withContext(Dispatchers.Main) { indicator.show(fromX, fromY, toX, toY, durationMs) }
         return suspendCancellableCoroutine { continuation ->
-            val dispatched = dispatchGesture(
+            val dispatched = service.dispatchGesture(
                 gesture,
                 object : GestureResultCallback() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
@@ -323,6 +383,7 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
     }
 
     override suspend fun setText(elementIndex: Int?, text: String): Boolean = withContext(Dispatchers.Default) {
+        if (isVirtual) targetWindows()
         val target = if (elementIndex != null) nodes.getOrNull(elementIndex) else focusedInput()
         // 模型可能选中了输入框外面的容器
         val input = target?.let { if (it.isEditable) it else it.firstEditableDescendant() }
@@ -347,34 +408,46 @@ class PhoneUseAccessibilityService : AccessibilityService(), PhoneController {
         return null
     }
 
-    override suspend fun pressKey(key: PhoneKey): Boolean = when (key) {
-        PhoneKey.BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
-        PhoneKey.HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
-        PhoneKey.RECENTS -> performGlobalAction(GLOBAL_ACTION_RECENTS)
-        PhoneKey.NOTIFICATIONS -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
-        PhoneKey.ENTER -> withContext(Dispatchers.Default) {
-            check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                "Enter needs Android 11 or later. Tap the search or send button on screen instead."
+    override suspend fun pressKey(key: PhoneKey): Boolean {
+        if (isVirtual && key != PhoneKey.ENTER) {
+            check(key == PhoneKey.BACK) { "Use open_app to switch apps on the Phone Use virtual display." }
+            targetWindows()
+            return withContext(Dispatchers.IO) { checkNotNull(virtual).back() }
+        }
+        return when (key) {
+            PhoneKey.BACK -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+            PhoneKey.HOME -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+            PhoneKey.RECENTS -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_RECENTS)
+            PhoneKey.NOTIFICATIONS -> service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS)
+            PhoneKey.ENTER -> withContext(Dispatchers.Default) {
+                check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    "Enter needs Android 11 or later. Tap the search or send button on screen instead."
+                }
+                focusedInput()?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id) == true
             }
-            focusedInput()?.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id) == true
         }
     }
 
     // ---- 应用 ----
 
     override fun listApps(): List<PhoneApp> {
+        virtual?.let { return it.apps }
         val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return packageManager.queryIntentActivities(launcher, 0)
-            .map { PhoneApp(it.activityInfo.packageName, it.loadLabel(packageManager).toString()) }
-            .filter { it.packageName != packageName }
+        return service.packageManager.queryIntentActivities(launcher, 0)
+            .map { PhoneApp(it.activityInfo.packageName, it.loadLabel(service.packageManager).toString()) }
+            .filter { it.packageName != service.packageName }
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
     }
 
     // 开启了无障碍服务的应用可以从后台启动 Activity
     override fun openApp(packageName: String): Boolean {
-        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
-        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        virtual?.let {
+            requireVirtualDisplay()
+            return it.openApp(packageName)
+        }
+        val intent = service.packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        service.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         return true
     }
 }

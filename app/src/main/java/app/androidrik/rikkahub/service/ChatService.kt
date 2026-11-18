@@ -4125,6 +4125,7 @@ class ChatService(
         preserveTasks: Boolean = false,
     ) {
         val session = sessions[conversationId] ?: return
+        session.phoneUseTurnBudget.closeDisplay()
         // 「停在工具审批上」也是被打断的一轮，但它**没有活跃 Job**（等用户决定时生成协程已经
         // 正常结束）⇒ 取消回调不会触发。这个状态要在收尾之前判定，收尾之后就看不到了。
         val stoppedRoot = session.externalNoticeRootScope ?: session.backgroundTaskOwner

@@ -37,7 +37,7 @@ object PhoneUseToolUI : ToolUIRenderer {
             "swipe" -> HugeIcons.SwipeRight01
             "scroll" -> HugeIcons.ScrollVertical
             "type" -> HugeIcons.Keyboard
-            "open_app" -> HugeIcons.Rocket01
+            "open_app", "open_url" -> HugeIcons.Rocket01
             "list_apps" -> HugeIcons.GridView
             "wait" -> HugeIcons.Hourglass
             else -> HugeIcons.SmartPhone01
@@ -95,6 +95,8 @@ object PhoneUseToolUI : ToolUIRenderer {
             "open_app" -> args.getStringContent("app")
                 ?.let { stringResource(R.string.chat_message_tool_phone_use_open_app_name, it) }
                 ?: stringResource(R.string.chat_message_tool_phone_use_open_app)
+
+            "open_url" -> args.getStringContent("app")?.let { "Open link in $it" } ?: "Open link"
 
             "list_apps" -> stringResource(R.string.chat_message_tool_phone_use_list_apps)
             // 不传 seconds 时工具等 2 秒

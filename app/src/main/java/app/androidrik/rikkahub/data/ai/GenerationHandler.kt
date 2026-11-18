@@ -534,6 +534,7 @@ class GenerationHandler(
         usageTag: UsageTag = UsageTag(UsageSource.CHAT),
         memoryToolBinding: String? = null,
     ): Flow<GenerationChunk> = flow {
+        val phoneUseDisplay = if (tools.any { it.name == PHONE_USE_TOOL_NAME }) phoneUseBudget.pinDisplay() else null
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = usageRecorder.wrap(providerManager.getProviderByType(provider), usageTag)
 
@@ -1203,7 +1204,13 @@ class GenerationHandler(
                         error("Invalid tool arguments JSON for ${tool.toolName}: ${t.message}")
                     }
                     Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
-                    val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
+                    val result = executeToolWithTimeout(toolDef, args) { input ->
+                        if (toolDef.name == PHONE_USE_TOOL_NAME) {
+                            withContext(checkNotNull(phoneUseDisplay)) { toolDef.execute(input) }
+                        } else {
+                            toolDef.execute(input)
+                        }
+                    }
                     if (toolDef.shouldEndTurn(result)) endTurnAfterTools = true
                     // 空输出补占位：否则 isExecuted 仍为假 ⇒ 下一轮又被选出来重复执行
                     val output = finalizeToolOutput(

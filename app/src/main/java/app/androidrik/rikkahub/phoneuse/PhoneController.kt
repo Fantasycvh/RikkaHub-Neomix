@@ -61,9 +61,11 @@ enum class PhoneKey { BACK, HOME, RECENTS, NOTIFICATIONS, ENTER }
 
 /**
  * 操作手机的底层能力，坐标都是屏幕像素。
- * 实现是 [PhoneUseAccessibilityService]；Android 11 以下与无服务时不可用。
+ * 由 [PhoneUseAccessibilityService] 提供；Android 11 以下与无服务时不可用。
  */
 interface PhoneController {
+    val isVirtual: Boolean get() = false
+
     /**
      * 屏幕上所有可见窗口所属的应用，和 [captureScreen] 读取的窗口范围一致，不算本应用自己的悬浮窗。
      * 分屏时不止一个；只用来判断屏幕上有谁，不影响元素编号
@@ -197,7 +199,9 @@ class PhoneUseManager {
     }
 
     fun detach(controller: PhoneController) {
-        _controller.compareAndSet(controller, null)
+        if (_controller.compareAndSet(controller, null)) {
+            PhoneUseVirtualDisplays.current.value?.close()
+        }
         invalidateScreenCache()
     }
 

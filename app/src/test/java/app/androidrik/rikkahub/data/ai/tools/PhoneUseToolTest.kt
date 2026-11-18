@@ -5,13 +5,17 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.tools.local.buildPhoneUseTool
 import app.androidrik.rikkahub.data.ai.tools.local.describe
 import app.androidrik.rikkahub.data.ai.tools.local.phoneUseActionNeedsApproval
+import app.androidrik.rikkahub.data.ai.PhoneUseTurnBudget
 import app.androidrik.rikkahub.phoneuse.PhoneApp
 import app.androidrik.rikkahub.phoneuse.PhoneController
 import app.androidrik.rikkahub.phoneuse.PhoneElement
 import app.androidrik.rikkahub.phoneuse.PhoneKey
 import app.androidrik.rikkahub.phoneuse.PhoneScreen
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
+import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplay
+import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
@@ -59,6 +63,7 @@ class PhoneUseToolTest {
         assertTrue(approval("type", "text" to "hi"))
         assertTrue(approval("swipe"))
         assertTrue(approval("open_app", "app" to "Demo"))
+        assertTrue(approval("open_url", "app" to "Demo", "url" to "https://example.com/"))
         assertTrue(approval("press", "key" to "back"))
         // 半截 JSON / 未知动作按最严格处理
         assertTrue(phoneUseActionNeedsApproval(Json.parseToJsonElement("{}")))
@@ -78,6 +83,95 @@ class PhoneUseToolTest {
         val error = runCatching { call { put("action", "press"); put("key", "home") } }.exceptionOrNull()
         assertTrue(error!!.message!!.contains("floating window"))
         assertTrue(controller.keys.isEmpty())
+    }
+
+    @Test
+    fun `a turn pinned to a closed virtual display cannot fall back to the main screen`() = runTest {
+        manager.attach(controller)
+        val secondaryController = FakeController(manager, isVirtual = true)
+        val display = FakeVirtualDisplay(secondaryController)
+        val budget = PhoneUseTurnBudget()
+        fun JsonObjectBuilder.tap() {
+            put("action", "tap")
+            put("element", 0)
+        }
+
+        assertTrue(PhoneUseVirtualDisplays.attach(display))
+        try {
+            selfInForeground = true
+            withContext(budget.pinDisplay()) {
+                call { put("action", "observe") }
+                call { tap() }
+            }
+            assertEquals(listOf(false), secondaryController.actingDuringGesture)
+            selfInForeground = false
+            display.close()
+
+            val result = runCatching { withContext(budget.pinDisplay()) { call { tap() } } }
+            assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("display changed"))
+            assertTrue(controller.gestures.isEmpty())
+
+            budget.reset()
+            withContext(budget.pinDisplay()) { call { tap() } }
+            assertEquals(1, controller.gestures.size)
+        } finally {
+            display.close()
+        }
+    }
+
+    @Test
+    fun `open_url validates links and opens an approved app only on the selected virtual display`() = runTest {
+        manager.attach(controller)
+        val display = FakeVirtualDisplay(FakeController(manager, isVirtual = true))
+
+        suspend fun openLink(url: String, app: String = "Demo") = call {
+            put("action", "open_url")
+            put("url", url)
+            put("app", app)
+        }
+
+        assertTrue(runCatching { openLink("https://example.com/") }.exceptionOrNull()?.message.orEmpty().contains("virtual display"))
+        assertTrue(PhoneUseVirtualDisplays.attach(display))
+        try {
+            withContext(PhoneUseTurnBudget().pinDisplay()) {
+                listOf("intent://example.com", "file:///index.html", "https://user:pass@example.com/").forEach { invalidUrl ->
+                    assertTrue(runCatching { openLink(invalidUrl) }.exceptionOrNull()?.message.orEmpty().contains("HTTP or HTTPS"))
+                }
+                assertTrue(runCatching { openLink("https://example.com/", "Alipay") }.exceptionOrNull()?.message.orEmpty().contains("blocked"))
+                assertTrue(display.links.isEmpty())
+                val output = openLink("https://example.com/?q=one&tab=two#section")
+                assertTrue(output.contains("App: Demo (com.demo)"))
+            }
+            assertEquals(listOf("com.demo" to "https://example.com/?q=one&tab=two#section"), display.links)
+            assertTrue(controller.opened.isEmpty())
+        } finally {
+            display.close()
+        }
+    }
+
+    @Test
+    fun `open_url reports when the requested browser does not appear on the virtual display`() = runTest {
+        manager.attach(controller)
+        val secondary = FakeController(manager, isVirtual = true)
+        secondary.screen = secondary.screen.copy(packageName = "com.other", packages = setOf("com.other"))
+        val display = FakeVirtualDisplay(secondary)
+        assertTrue(PhoneUseVirtualDisplays.attach(display))
+        try {
+            val result = runCatching {
+                withContext(PhoneUseTurnBudget().pinDisplay()) {
+                    call {
+                        put("action", "open_url")
+                        put("app", "Demo")
+                        put("url", "https://example.com/")
+                    }
+                }
+            }
+            assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("did not appear on the virtual display"))
+            assertEquals(listOf("com.demo" to "https://example.com/"), display.links)
+            assertTrue(controller.opened.isEmpty())
+        } finally {
+            display.close()
+        }
     }
 
     @Test
@@ -334,7 +428,23 @@ class PhoneUseToolTest {
         assertEquals(listOf("com.coloros.note", "com.coloros.note", "cn.wps.moffice_eng"), controller.opened)
     }
 
-    private class FakeController(private val manager: PhoneUseManager) : PhoneController {
+    private class FakeVirtualDisplay(override val controller: FakeController) : PhoneUseVirtualDisplay {
+        override val id = 23
+        override val apps = controller.listApps()
+        val links = mutableListOf<Pair<String, String>>()
+        override fun openApp(packageName: String) = error("Unexpected openApp")
+        override fun openUrl(packageName: String, url: String): Boolean {
+            links += packageName to url
+            return true
+        }
+        override fun back() = true
+        override fun close() = PhoneUseVirtualDisplays.detach(this)
+    }
+
+    private class FakeController(
+        private val manager: PhoneUseManager,
+        override val isVirtual: Boolean = false,
+    ) : PhoneController {
         var screen = PhoneScreen(
             packageName = "com.demo",
             appLabel = "Demo",
