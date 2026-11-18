@@ -2361,6 +2361,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="media_creation_status_succeeded">Completed</string>
   <string name="media_creation_status_failed">Generation failed</string>
   <string name="media_creation_status_cancelled">Cancelled</string>
+  <string name="media_creation_status_submit_unknown">Result unconfirmed</string>
+  <string name="media_creation_submit_unknown_text">The request may have reached the server, but no task ID was saved. It cannot be checked or reconciled. Submitting again will send a new request and may incur duplicate charges.</string>
+  <string name="media_creation_submit_unknown_retry_title">Submit again?</string>
+  <string name="media_creation_submit_unknown_retry_text">The server may have already created this task and charged for it. Submitting again sends a new request and may incur duplicate charges.</string>
   <string name="media_creation_role_first_frame">First frame</string>
   <string name="media_creation_role_last_frame">Last frame</string>
   <string name="media_creation_role_reference">Reference</string>

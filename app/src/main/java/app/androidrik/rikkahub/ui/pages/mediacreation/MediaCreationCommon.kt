@@ -75,6 +75,7 @@ internal val MediaCreationStatus.label: String
         MediaCreationStatus.PREPARING -> stringResource(R.string.media_creation_status_preparing)
         MediaCreationStatus.QUEUED -> stringResource(R.string.media_creation_status_queued)
         MediaCreationStatus.RUNNING -> stringResource(R.string.media_creation_status_running)
+        MediaCreationStatus.SUBMIT_UNKNOWN -> stringResource(R.string.media_creation_status_submit_unknown)
         MediaCreationStatus.DOWNLOADING -> stringResource(R.string.media_creation_status_downloading)
         MediaCreationStatus.SUCCEEDED -> stringResource(R.string.media_creation_status_succeeded)
         MediaCreationStatus.FAILED -> stringResource(R.string.media_creation_status_failed)

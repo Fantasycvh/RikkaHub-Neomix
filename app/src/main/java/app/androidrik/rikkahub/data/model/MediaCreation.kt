@@ -96,6 +96,13 @@ enum class MediaCreationStatus {
     QUEUED,
     RUNNING,
 
+    /**
+     * 提交结果待确认：进程在请求已发出、任务 ID 还没落库的窗口里中断。
+     * 服务端可能已经创建任务并计费，但本地没有可以续查的凭据，也无法对账；
+     * 重新提交会重新发送请求，可能重复计费。
+     */
+    SUBMIT_UNKNOWN,
+
     /** 接口已经给出结果，正在下载到本地。 */
     DOWNLOADING,
     SUCCEEDED,

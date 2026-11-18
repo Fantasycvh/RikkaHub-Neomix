@@ -1,6 +1,6 @@
 # 统一媒体生成接口、模型目录与定时任务
 
-> 2026-11-18。统一执行入口已在本地提交 `55efb216b`；统一模型目录、按任务授权和定时模板直跑连同本设计稿在本地提交落地，并随 Debug 包装机。真机业务验收和后续阶段见下文。
+> 2026-11-18。统一执行入口已在本地提交 `55efb216b`；统一模型目录、按任务授权和定时模板直跑连同本设计稿在本地提交落地，并随 Debug 包装机。提交结果待确认与恢复语义（阶段 2 主体）已在工作树实现，真机验收中途暂停（场景 1 部分完成）。真机业务验收和后续阶段见下文。
 
 ## 目标与范围
 
@@ -45,11 +45,28 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 
 [模板创建入口](../../../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/scheduled/ScheduledTaskCreatePage.kt) · [模板运行与对账](../../../app/src/main/java/app/androidrik/rikkahub/service/ScheduledMediaRunner.kt) · [运行历史](../../../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/scheduled/ScheduledTaskRunsPage.kt) · [Room 76 schema](../../../app/schemas/app.androidrik.rikkahub.data.db.AppDatabase/76.json) · [原定时任务设计](../completed/design-scheduled-ai-tasks.md)
 
+### 提交结果待确认与恢复语义
+
+一次媒体提交的三个时间点——请求发出、任务 ID 落库、结果下载完成——本地都先持久化再推进：`MediaCreationService` 在发请求**之前**把记录置为 RUNNING（提交前状态已持久化），服务端返回后立刻用 NonCancellable 写任务 ID。进程在窗口之间退出时按 `resolveMediaInterruption(taskId, status)` 处置：
+
+| 死亡时状态 | 处置 |
+| --- | --- |
+| 带任务 ID（QUEUED / RUNNING / DOWNLOADING） | 注册任务接着查询，下载被打断的续查后重新下载 |
+| RUNNING 且无任务 ID | 新状态 `SUBMIT_UNKNOWN`（提交结果待确认）：请求可能已到达服务端并计费，但本地没有可续查的凭据，也无法对账；不自动重试 |
+| PREPARING 等提交前 | 标记为中断失败，重新提交是安全的 |
+
+待确认的记录在时间线上有独立状态文案和说明，重试动作带确认弹窗（重新提交会重新发送请求，可能重复计费）；也可以直接删除。定时模板直跑的死轮在对账时按 FAILED 入运行账本，媒体记录保留待确认状态。
+
+供应商能力新增 `MediaGenerationProvider.supportsQuery`（同步返回结果的接口返回 false，当前只有 SiliconFlow 视频为 true），为将来接入幂等键或按请求 ID 查询、把待确认状态自动对账成可续查状态预留。聊天工具的流式生图维持会话内生命周期：同步接口没有任务可恢复，聊天消息本身就是这一轮请求的账本。
+
+[中断判定](../../../app/src/main/java/app/androidrik/rikkahub/service/MediaInterruption.kt) · [状态模型](../../../app/src/main/java/app/androidrik/rikkahub/data/model/MediaCreation.kt) · [能力声明](../../../mediagen/src/main/java/app/androidrik/mediagen/provider/MediaGenerationProvider.kt)
+
 ## 验证记录
 
 | 项目 | 结果 |
 | --- | --- |
 | 最终相关单元测试 | 应用 167 项，`:mediagen` 42 项，共 209 项通过。涉及目录合并、模型配置变更、授权单次消耗、预览与编辑、调度和 schema 版本 |
+| 提交中断判定测试 | `MediaInterruptionTest`（三窗口处置 + 终态不动）与 `MediaGenerationManagerTest.supportsQueryFollowsTheAdapter` 通过；媒体/定时相关套件复跑全绿 |
 | Room 75→76 | 在 SQLite 中执行 Room 生成的迁移 SQL。三张表的旧行得到保留，新列为空，列结构与新 schema 一致 |
 | 应用全量测试 | 实施期间复跑发现 1 项既有失败。`ImportFormatTest` 的断言只允许本地备份在选文件前确认，当前实现也要求原版整库备份先确认 |
 | 构建、装机与启动 | `:app:assembleDebug` 成功。2026-11-18 在 PJX110 上用 ARM64 Debug APK 覆盖安装，调试包从 beta.22 更新为 `1.0.28-beta.23`（327），包名 `app.androidrik.rikkahub.debug`。ADB 验证本地与装机包的 SHA-256 一致，冷启动成功 |
@@ -68,13 +85,12 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 | 同模型贯通 | 同一图片模型能在生图页、媒体创作页和定时任务中选到。生图页选为默认后，助手可按交互审批调用。检查输入参数、产物和历史位置 |
 | 两种定时聊天执行模式 | 分别验证会话注入与无界面执行。无授权时工具不可用，授权后成功调用一次，第二次及超出张数或分辨率限制的调用被拦截。撤回授权、删除模型或变更端点后无新增供应商请求 |
 | 定时直跑与恢复 | 各跑一轮文生图和文生视频，产物可从运行历史打开。视频轮询期间另一项到期任务可执行。持有供应商任务 ID 时重启能继续查询，无 ID 时无二次提交。取消只影响本轮 |
+| 提交窗口中断 | 任务型供应商提交瞬间杀进程，重启后媒体记录显示「结果待确认」且不自动重试；重试时出现可能重复计费的确认弹窗。提交前杀进程的记录直接标记为中断失败 |
 | 升级与回退准备 | 在隔离配置中以含媒体记录和旧定时任务的 v75 数据升级，核对 v76 开库、旧任务行为与产物链接。保留升级前备份作为回退依据 |
 
-### 2. 统一运行记录与恢复语义
+### 2. 接入按请求 ID 对账
 
-建议把应用层接口补到 `submit(request, caller) → generationId`、`observe(generationId)` 和 `cancel(generationId)`。已有的图片流和异步供应商任务继续由适配器转换成预览、状态和产物引用。调用身份由应用提供，聊天、创作和自动化仍沿各自的 UI 展示结果。
-
-先在媒体提交前持久化本地请求标识和明确的提交状态，再按供应商能力接入幂等键或按请求 ID 查询。对于已发出请求、结果未知且无法对账的情况，增加明确的「提交结果待确认」状态，并区分继续查询、重试下载与重新付费提交。验收覆盖进程在远端响应、本地写入和结果下载之间退出的情况。
+状态语义与恢复判定已落地（见「提交结果待确认与恢复语义」）。剩余部分：给支持幂等键或按请求 ID 查询的供应商把提交请求 ID 带上下发，`SUBMIT_UNKNOWN` 记录在下次启动时自动对账——查到任务就转回可续查状态，查不到再交由用户处置。需要先有厂商接口支持（当前已接入的适配器均无此端点）。
 
 ### 3. 扩充定时模板
 

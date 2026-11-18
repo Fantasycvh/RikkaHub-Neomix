@@ -2398,6 +2398,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="media_creation_status_succeeded">已完成</string>
   <string name="media_creation_status_failed">生成失败</string>
   <string name="media_creation_status_cancelled">已取消</string>
+  <string name="media_creation_status_submit_unknown">结果待确认</string>
+  <string name="media_creation_submit_unknown_text">请求可能已到达服务端，但没有保存可续查的任务 ID，无法对账。重新提交会重新发送请求，可能产生重复费用。</string>
+  <string name="media_creation_submit_unknown_retry_title">仍要重新提交吗？</string>
+  <string name="media_creation_submit_unknown_retry_text">服务端可能已经创建任务并计费。重新提交会发送一个新请求，可能产生重复费用。</string>
   <string name="media_creation_role_first_frame">首帧</string>
   <string name="media_creation_role_last_frame">尾帧</string>
   <string name="media_creation_role_reference">参考</string>

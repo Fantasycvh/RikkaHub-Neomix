@@ -3,6 +3,7 @@ package app.androidrik.mediagen.provider
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.mediagen.model.MediaGenerationTask
+import app.androidrik.mediagen.model.MediaKind
 
 /**
  * 媒体生成供应商只负责任务的提交与查询，不在网络层内部隐式轮询。
@@ -31,4 +32,10 @@ interface MediaGenerationProvider<S : MediaGenerationProviderSetting> {
                 "$id ${model.kind} generation returns results synchronously and has no task to query"
             )
         )
+
+    /**
+     * 任务提交后能否按任务 ID 查询进度与结果。同步返回结果的接口返回 false：
+     * 提交窗口内进程中断时，这类接口既无法续查也无法对账，只能重新提交。
+     */
+    fun supportsQuery(setting: S, kind: MediaKind): Boolean = false
 }

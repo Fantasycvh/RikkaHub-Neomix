@@ -79,6 +79,15 @@ class MediaGenerationManager(
     fun supportsModelList(setting: MediaGenerationProviderSetting): Boolean =
         provider(setting) is MediaModelLister<*>
 
+    /** 该供应商的这个模型是否支持按任务 ID 查询（上层据此决定中断后的恢复语义）。 */
+    fun supportsQuery(setting: MediaGenerationProviderSetting, model: MediaGenerationModel): Boolean {
+        val adapter = provider(setting) ?: return false
+        if (model.kind !in setting.supportedKinds) return false
+        @Suppress("UNCHECKED_CAST")
+        val typed = adapter as MediaGenerationProvider<MediaGenerationProviderSetting>
+        return typed.supportsQuery(setting, model.kind)
+    }
+
     /**
      * 拉取厂商可用的媒体模型。未接入或没有列表接口的供应商返回 [UnsupportedOperationException]，
      * 与 [create] / [query] 的「Provider not ported yet」保持同一口径。

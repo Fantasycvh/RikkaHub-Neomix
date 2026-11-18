@@ -208,17 +208,26 @@ class MediaCreationService(
     }
 
     /**
-     * 进程启动后接管上次没跑完的记录：有任务 ID 的接着查询，其余的在提交前就被中断了，标记为失败。
+     * 进程启动后接管上次没跑完的记录：有任务 ID 的接着查询；死在提交窗口的（RUNNING 且无任务 ID）
+     * 标记为提交结果待确认，不自动重试；其余在提交前就被中断了，标记为失败。
      */
     fun resumePending() {
         appScope.launch {
             runCatching {
                 repository.getActiveRecords().forEach { record ->
                     if (jobs.containsKey(record.id)) return@forEach
-                    if (record.taskId != null) {
-                        register(record.id, record.sessionId)?.start()
-                    } else {
-                        repository.updateRecord(record.id) {
+                    when (resolveMediaInterruption(record.taskId, record.status)) {
+                        MediaInterruptionOutcome.RESUME_QUERY -> register(record.id, record.sessionId)?.start()
+                        MediaInterruptionOutcome.SUBMIT_UNKNOWN -> repository.updateRecord(record.id) {
+                            // 条件守卫避免盖掉并发进来的 retry：它已经把状态改成 PREPARING 了
+                            if (it.status == MediaCreationStatus.RUNNING) {
+                                it.copy(status = MediaCreationStatus.SUBMIT_UNKNOWN)
+                            } else {
+                                it
+                            }
+                        }
+
+                        MediaInterruptionOutcome.MARK_FAILED -> repository.updateRecord(record.id) {
                             it.copy(
                                 status = MediaCreationStatus.FAILED,
                                 error = context.getString(R.string.media_creation_error_interrupted),

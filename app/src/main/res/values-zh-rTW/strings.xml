@@ -2406,6 +2406,10 @@
   <string name="media_creation_status_succeeded">已完成</string>
   <string name="media_creation_status_failed">生成失敗</string>
   <string name="media_creation_status_cancelled">已取消</string>
+  <string name="media_creation_status_submit_unknown">結果待確認</string>
+  <string name="media_creation_submit_unknown_text">請求可能已到達伺服器，但沒有保存可續查的任務 ID，無法對帳。重新提交會重新發送請求，可能產生重複費用。</string>
+  <string name="media_creation_submit_unknown_retry_title">仍要重新提交嗎？</string>
+  <string name="media_creation_submit_unknown_retry_text">伺服器可能已經建立任務並計費。重新提交會發送一個新請求，可能產生重複費用。</string>
   <string name="media_creation_role_first_frame">第一幀</string>
   <string name="media_creation_role_last_frame">最後一幀</string>
   <string name="media_creation_role_reference">參考</string>

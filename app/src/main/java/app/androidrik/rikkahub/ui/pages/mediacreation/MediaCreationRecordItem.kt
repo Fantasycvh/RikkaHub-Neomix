@@ -335,16 +335,15 @@ private fun elapsedSeconds(since: Instant): Long = Duration.between(since, Insta
 @Composable
 private fun RecordFailure(record: MediaCreationRecord) {
     val cancelled = record.status == MediaCreationStatus.CANCELLED
+    val submitUnknown = record.status == MediaCreationStatus.SUBMIT_UNKNOWN
     Surface(
-        color = if (cancelled) {
-            MaterialTheme.colorScheme.surfaceContainerHighest
-        } else {
-            MaterialTheme.colorScheme.errorContainer
+        color = when {
+            cancelled || submitUnknown -> MaterialTheme.colorScheme.surfaceContainerHighest
+            else -> MaterialTheme.colorScheme.errorContainer
         },
-        contentColor = if (cancelled) {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        } else {
-            MaterialTheme.colorScheme.onErrorContainer
+        contentColor = when {
+            cancelled || submitUnknown -> MaterialTheme.colorScheme.onSurfaceVariant
+            else -> MaterialTheme.colorScheme.onErrorContainer
         },
         shape = appSkinRoundedShape(12f),
         modifier = Modifier.fillMaxWidth(),
@@ -352,6 +351,7 @@ private fun RecordFailure(record: MediaCreationRecord) {
         SelectionContainer {
             Text(
                 text = when {
+                    submitUnknown -> stringResource(R.string.media_creation_submit_unknown_text)
                     !cancelled -> record.error ?: record.status.label
                     record.taskId != null -> stringResource(R.string.media_creation_page_cancelled_task_running)
                     else -> record.status.label
@@ -559,6 +559,7 @@ private fun RecordActions(
     val toaster = LocalToaster.current
     var confirmCancel by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var confirmRetry by remember { mutableStateOf(false) }
 
     // 右边的版本切换和左边的最后一行对齐
     Row(verticalAlignment = Alignment.Bottom) {
@@ -607,7 +608,14 @@ private fun RecordActions(
                             }
                         ),
                         icon = HugeIcons.Refresh,
-                    ) { vm.retry(record) }
+                    ) {
+                        // 提交结果待确认：重新提交会重新发送请求，可能重复计费，先说明清楚
+                        if (record.status == MediaCreationStatus.SUBMIT_UNKNOWN) {
+                            confirmRetry = true
+                        } else {
+                            vm.retry(record)
+                        }
+                    }
                     // 服务端的任务可能已经取不回来了（被清掉、结果地址失效），而这一点客户端判断不了：
                     // 留一个不依赖旧任务的出口，另起一个版本重新提交
                     if (record.taskId != null) {
@@ -641,6 +649,20 @@ private fun RecordActions(
         if (hasVersions) {
             VersionSwitcher(node = node, onSwitch = { vm.switchVersion(node, it) })
         }
+    }
+
+    RikkaConfirmDialog(
+        show = confirmRetry,
+        title = stringResource(R.string.media_creation_submit_unknown_retry_title),
+        confirmText = stringResource(R.string.media_creation_page_retry),
+        dismissText = stringResource(R.string.cancel),
+        onConfirm = {
+            confirmRetry = false
+            vm.retry(record)
+        },
+        onDismiss = { confirmRetry = false },
+    ) {
+        Text(stringResource(R.string.media_creation_submit_unknown_retry_text))
     }
 
     RikkaConfirmDialog(

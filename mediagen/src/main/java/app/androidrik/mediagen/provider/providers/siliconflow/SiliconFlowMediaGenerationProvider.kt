@@ -7,6 +7,7 @@ import app.androidrik.mediagen.model.MediaGenerationOutput
 import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.mediagen.model.MediaGenerationStatus
 import app.androidrik.mediagen.model.MediaGenerationTask
+import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationProvider
 import app.androidrik.mediagen.provider.MediaModelLister
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
@@ -84,6 +85,11 @@ class SiliconFlowMediaGenerationProvider(
             .build()
         parseTask(client.executeJson(httpRequest, id), taskId, model.modelId)
     }
+
+    override fun supportsQuery(
+        setting: MediaGenerationProviderSetting.SiliconFlow,
+        kind: MediaKind,
+    ): Boolean = kind == MediaKind.VIDEO
 
     internal fun buildSubmitBody(
         model: MediaGenerationModel,
