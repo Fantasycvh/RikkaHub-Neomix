@@ -2,6 +2,8 @@
 
 > **本仓说明**：本文写于私有开发仓的开发过程中，恢复时已按本仓实际改写——提交短哈希已重映射到本仓历史中的对应提交（映射不上的说明该提交未随本仓发布）；`<work>` / `<device>` / `<tmp>` 等尖括号串是路径与设备信息的占位符。本仓基线 = 上游 `2c980642`（RikkaHub `2.4.5`），此后对上游修复/功能按需**人工评估吸收**（不做 ff-only 同步、改动不回推上游）；包名 `app.androidrik.rikkahub`、显示名 **Neomix**、发布分支 `master`、**已发首个正式版 `v1.0.27`**（当前源码 `1.0.28-beta.20 (323)`（预发布，2026-11-11 发）；**自 `beta.7` 起随 release 提供 arm64-v8a APK 资产**，更早版本仅 tag、无资产；tag 触发的 CI 发版流水线自 `beta.14` 起启用）。
 
+> **同步点（2026-11-18 更新）**：已评估到上游 **`41d77f1ed`**（2026-11-17），`bfac2440c` 之后共 **2 提交**（逐条见「2026-11-18 同步评估」）。**候选 2（均 P3、只评不施）**：`63a5192d8` 消息概览标出压缩点（本仓 ChatListPreview 有同构宿主，增量 = 压缩点卡片 + 摘要入搜索）、`41d77f1ed` 快速入门页（onboarding 线，若跟只取通用引导思路与未配置模型提示卡，DeepSeek tab 不跟——本仓导入线已更强）。peer 侧同轮判决见 [peer-verdicts §十](peer-verdicts-2026-11-08.md)。
+
 > **同步点（2026-11-14 更新）**：已评估到上游 **`64452581d`**（tag `3.2.0`），`90269e39d` 之后共 **5 提交**（逐条见「2026-11-14 同步评估」）；issue 扫描维持 #2312。**唯一吸收候选 `c1c3c4d12`（message_node 复合索引）已当日落地**（fork `0bf49eed4`，DB 68→69）；`66149047e` 不跟、`3adeba476` 等价、Phone Use 两件不适用；**#2271（Mistral 422）确认关闭——本仓修复与上游语义一致，挂账销账**。peer 侧同轮评估见 [peer-verdicts §七](peer-verdicts-2026-11-08.md)。**同日晚复查：`upstream/master` 仍为 `64452581d`，无新增提交**（全量 peer 复检见 [peer-verdicts §八](peer-verdicts-2026-11-08.md)。**2026-11-15 本仓独立修复两条上游相关项**：#2317 空候选整条消失（75e669636，含落库前拦截空回复）与 Gemini 独立 `thoughtSignature` part 容忍 + 禁用签名推理编辑（d6f8140d1，判据 #14「不改写带签名产出块」同族的容错面）；上游侧无新增提交。）
 
 > **同步点（2026-11-17 更新）**：已评估到上游 **`bfac2440c`**（tag **`3.3.0`**），`64452581d` 之后共 **14 提交**（逐条见「2026-11-17 同步评估」）；issue 扫描 #2330–#2335（均由本批提交关闭，无新增 open 挂账）。**候选 5**：`fab0c077d` 工作区挂载共享存储（P2，与本仓草稿 `design-workspace-external-directories.md` 同题）、`27976e4da` 安全模式清超大设置（P2）、`f361bbc11` DeepSeek TTS/ASR（P3）、`cfb7d9613` 段落拆多气泡（P3）、Gemini trace 回归补用例（P3）；**已有等价 2**：`f93764e6a` DeepSeek 导入（本仓分支树/幂等/隔离更全）、`2898c3dea` thoughtSignature 兜底（本仓 d6f8140d1 同日独立修复）；**不同构免疫 1**：`a75f3f9cd` 弹窗宿主坑（本仓 CardGroup 常驻节点免疫）；**不适用 6**。本轮 fetch 方式变更：本机 7890 代理挂、https 全部连不上，改走 SSH fetch（Neomix 仓内临时 `upstream-fresh/master`，未改 remote 配置）。
@@ -1946,6 +1948,20 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 - ~~`fab0c077d` 与安全模式两件 P2~~ 两件均已落地（安全模式 `8a5d2f241`、工作区挂载 2026-11-17）；DeepSeek 导入补测与 DeepSeek TTS/ASR 两件 P3 排期随缘。
 - Gemini trace 回放可在下次动 ai 模块测试时顺手补。
+
+## 2026-11-18 同步评估（`bfac2440c..41d77f1ed`，2 提交）
+
+> fetch 方式：SSH（`git fetch git@github.com:rikkahub/rikkahub.git` 入 Neomix 仓内 `upstream-fresh/master`，未改 remote）。本轮规模小：上游 2 提交，**候选 2（均 P3，只评不施）**，无 issue 新增。
+
+| 提交 | 实质 | 判定 | 理由/前置 |
+|---|---|---|---|
+| `63a5192d8` | **消息概览标出上下文压缩点**：`ChatListPreview.kt` +82 行——压缩检查点在消息概览里单独显示为色调卡片，点击跳到对应位置，**摘要文本参与概览搜索** | **候选 P3（小件，~半天）** | 本仓有同构宿主：`ChatList.kt` 自研 `ChatListPreview`（搜索 + 按节点跳转，`ChatList.kt:1021`）且主列表已有 `CompactionCheckpointRow`（`ChatList.kt:646`）。实核缺口两点：① 概览列表直接用 `conversation.messageNodes`（`ChatList.kt:1048`），压缩摘要存在 `compressionSummaries` 不在其中——**摘要不可搜**；② 概览无压缩点标识行。落点 = 概览列表头部插压缩点卡片（复用 `onJumpToMessage` 跳转）+ 搜索流把摘要文本并入匹配源。与 11-10 候选 `5b7ca774b`（对话地图滑动卡顿，本仓自研实现已在档）同域不冲突 |
+| `41d77f1ed` | **快速入门页 + 未配置模型提示卡片**：quickstart 双 tab（通用引导按步骤显示完成状态 / DeepSeek 导入）；聊天列表找不到可用模型时显示提示卡；未配置提供商警告卡改跳快速入门；`DeepSeekMigrator` 从 BackupVM 抽出（避免初始化请求 WebDAV/S3 列表） | **候选 P3（需拍板，onboarding 线）** | 本仓无 QuickStart/引导页（grep 零命中）。拆开判：① **通用引导 tab + 未配置模型提示卡**可取——本仓是公开发行的 fork（v1.0.27+），新用户同样「没模型到处找」；② **DeepSeek tab 不跟**——本仓 DeepSeek 导入自研线更强（分支树/幂等/隔离，见 11-17 轮 `f93764e6a` 判已有等价）；③ `DeepSeekMigrator` 抽取手法（页面复用前把重初始化逻辑从 VM 里剥出来）是**判据级**：本仓 `BackupVM` 同构（初始化即请求 WebDAV/S3），若做引导页需同款剥离。与用户 2026-11-10 拍板不跟的推荐提供商弹窗线（`bbae6d3a7`）性质不同——弹窗是打扰式推荐，这是被动式引导，不冲突 |
+
+### 后续
+
+- 两件均待用户拍板；`63a5192d8` 成本低（同构宿主现成），可与「一轮中途压缩」（11-10 候选）等压缩域批次一起排。
+- quickstart 若立项，建议只移植通用 tab 的**步骤完成状态检测**思路（按当前设置逐项判定），UI 按本仓 CardGroup 自研。
 
 ## 关联
 

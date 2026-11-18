@@ -18,6 +18,10 @@
 
 > **2026-11-17 增量同步**：上游 `64452581d..bfac2440c`（14 提交 + tag **3.3.0**，候选 5：工作区共享存储挂载/安全模式清超大设置两件 P2 + DeepSeek TTS/ASR、段落拆气泡、Gemini trace 三件 P3；DeepSeek 导入与 thoughtSignature 兜底两件与 11-15 本仓独立实现正面互证判已有等价）；NMoi 24（超窗撤回重发 P2 + tool_call_* 覆写 P3）/ BiliPai ~50（v0.8.0–0.8.5，判据 3）/ PurrCat ~36（MCP Apps+GenUI 域外）/ dsh-Go ~80（v1.1.0，候选 1）/ 华灯 ~15 / SillyTavern ~30 / billion-context ~50 抽样（dispatch purpose 判据 P2 级）/ archify 7（GEO 营销线）；Miffan + 六源零新增。**吸收 0 / 候选 8 / 判据记账 ~10**。本轮起 https 代理全挂，**全部改走 SSH fetch**（不改各仓 remote 配置）。判决汇总见 [peer-verdicts §九](peer-verdicts-2026-11-08.md)，上游逐条见 [upstream-analysis 11-17 节](upstream-analysis.md)。
 
+> **2026-11-18 增量同步**：本轮规模历来最小——上游 `bfac2440c..41d77f1ed`（2 提交，候选 2 均 P3：消息概览标压缩点、快速入门页需拍板）；NMoi 2（D339 产物路径域分离记账）/ BiliPai 6（v0.8.6，首帧预算记账）/ PurrCat 14（检索置信截止 + 出厂资产只读可恢复记账）/ dsh-Go 33（v1.2.0，记账 ~8：根因分类不兜底、确定性失败不扣预算、列表限额按新鲜度等）/ 华灯远端分支重建（实质 = 上游 3.3.0 搬运，候选 0）/ bigeye 1（补评 11-09 漏检）/ OpenHands 1（域外）；kelivo 9 备注级；Miffan/SillyTavern/billion-context/archify/Yuihub/senera/rikkahub-agent/solab 八源零新增，agentd 未复检。**吸收 0 / 候选 2 / 判据记账 ~25**；另沉淀同步方法论两条（merge-base 核验祖先、零新增须报锚点）。判决汇总见 [peer-verdicts §十](peer-verdicts-2026-11-08.md)，上游逐条见 [upstream-analysis 11-18 节](upstream-analysis.md)。
+
+> **2026-11-18 新增 #16 OpenHands**：双仓克隆固定基准 `9590adf0a`（前端）+ `06f643ca4`（software-agent-sdk）正式评估，深度 源码（双仓逐文件）；聚焦上下文管理/净化，判定「架构同构互证不搬」，可借三件防线——压缩边界原子单元守卫（P2，入 §三 #19）、溢出反应式压缩兜底（P2，入 §三 #20）、结构化摘要模板（P3 记账）；本轮**只评不施**。原文 [`openhands.md`](references/other%20projects/openhands.md)。
+
 **怎么读这份文档**：
 
 1. 要**做事** → 直接看 §三「落地顺序与状态」（唯一口径的当前状态）。
@@ -48,6 +52,7 @@
 | 13 | BiliPai | B 站第三方客户端，液态玻璃工程化参照系 | 源码 | 2026-10-31 | **门控层 + 可读性 + 回归测试**是本仓液态玻璃缺的防线；haze 2.0.1 / SDK 分级 / 前后台 gate / 51 个 UI 回归 | [bilipai.md](references/other%20projects/bilipai.md) |
 | 14 | Miffan（Ayuilos/Miffan） | 同源 RikkaHub fork，划词翻译 / IM 模式 / 云电脑 | 源码 | 2026-10-31 | 跨应用划词翻译的**零权限正解**（PROCESS_TEXT 对话框 Activity）；本仓已有 90% 底层，缺口仅弹窗壳，半天级移植 | [miffan.md](references/other%20projects/miffan.md) |
 | 15 | dsh-Go（ccch1mneyyy/dsh-Go） | DeepSeek Harness 的 Android 客户端：Flutter + 纯 Dart DSH 客户端 + PRoot 里跑 DSH 引擎（本机 / SSH / 中继三档主机） | 文档+源码抽样 | 2026-11-06 | **不同架构、代码可移植 ≈ 0**；可借运行时安装事务与更新契约、危险操作分级 +「问 AI」、协议工程纪律；插件协议已在设计稿 §十一，不新增立项 | [dsh-go.md](references/other%20projects/dsh-go.md) |
+| 16 | OpenHands（OpenHands 主仓 + software-agent-sdk） | TS 前端 + Python SDK 的开源 Agent 宿主；本仓克隆专看**上下文管理 / 净化** | 源码（双仓） | 2026-11-18 | **架构同构互证不搬**（View/事件重放 ≈ 本仓检查点 + 稀疏加载）；可借三件防线：压缩边界原子单元守卫（P2）、溢出反应式压缩兜底（P2）、结构化摘要模板（P3） | [openhands.md](references/other%20projects/openhands.md) |
 
 > **2026-11-03 增量**：14 个应用全部做了一轮新增提交评估（各文件末新增「2026-11-03 增量」节，Miffan 为其首轮增量）；本轮判定吸收 9 / 候选 19 / 已有等价 27 / 补记判据 11；**P1 八项已实现**（2026-11-03），其余未动。
 >
@@ -96,6 +101,8 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | 16 | Yuihub 3.0.0 | 可选小件（记账不排期）：history_search/read、memory keywords、写入 Jaccard 去重、Skills 内联上限、增量 emit、整理事件流水、query≤128 校验、backup_rules 钉白名单 | 按需 |
 | 17 | NMoi-Agent | 小件打包（近期可做）：**备份快照发布前自校验**（VACUUM 快照上跑 integrity_check，通过才进 zip）+ **内容级脱敏**（工具输出进历史时 6 类正则，见 [`nmoi-agent.md` §13.1](references/other%20projects/nmoi-agent.md)） | 各 ~0.5 天 |
 | 18 | Yuihub 2.5.8+ | **工作区镜像站两件套**（rootfs 下载测速 + 包管理器一键换源）：`HttpProbe` / `AptSources` / `PackageMirrors` / `RootfsCatalog` / `RootfsMirrorSelector` **逐文件移植**（仅包名与标记文件名改名）；DB 57 `package_mirrors` + Repository 锁重试 / SSH 拒绝 + 三语 UI + 提示词注入为本仓接驳。✅ **已落地（2026-10-31，`9ec9ec79`）**，台账见 [`yuihub.md` §四.9](references/other%20projects/yuihub.md) | ~~低~~ 完成 |
+| 19 | OpenHands SDK | **压缩边界原子单元守卫（守卫六）**：删除区间不得切开 tool call↔result 配对、推理签名块、多段拆分单元，边界实施前做「原子区间不相交」校验（仿 SDK `view/properties/manipulation_indices`，不必搬四性质全量） | 低-中，纯逻辑层可单测 |
+| 20 | OpenHands SDK | **上下文溢出反应式兜底**：provider 报 context window exceeded / 长度类错误时自动触发一次压缩再重试（限一次，失败透传原错误；判据对照 SDK `agent.py` 溢出分支与触发链测试） | 低 |
 
 **记忆机制结论（Yuihub，详见 [`yuihub.md`](references/other%20projects/yuihub.md)）**：值得借鉴的是**检索与写入的组织方式**（打分校准 / 提取管道 / 整理器），**不是语义向量**——Yuihub 上线语义检索后第二天整套删除（`a8c33b2d` → `fbd15331`），构成「记忆语义检索不做」的独立二次印证（与 `design-auto-compaction.md` §6.3 成本结论一致）。
 
@@ -176,6 +183,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | §13、§13.1–§13.2 | NMoi-Agent | [nmoi-agent.md](references/other%20projects/nmoi-agent.md) |
 | —（按 §六 新约定直接入 §一 #14） | Miffan 划词翻译评估（2026-10-31） | [miffan.md](references/other%20projects/miffan.md) |
 | —（按 §六 新约定直接入 §一 #15） | dsh-Go 评估（2026-11-06，固定提交 `cf2f7c86`） | [dsh-go.md](references/other%20projects/dsh-go.md) |
+| —（按 §六 新约定直接入 §一 #16） | OpenHands 上下文管理/净化评估（2026-11-18，双仓基准 `9590adf0a` + `06f643ca4`） | [openhands.md](references/other%20projects/openhands.md) |
 | —（独立成文，未纳入本次拆分） | PurrCat 借鉴评估（2026-10-30） | [purrcat-analysis.md](purrcat-analysis.md) |
 
 **编号为什么是乱的**：原文按评估时间追加，`§11.4` 是插进 bigeye 序列里的另一个应用、`§十` 从未存在、`§六`/`§七` 的小节号与 `§6.x`/`§7.x` 混用。拆分时**保留原编号**（便于旧引用与提交历史对账），不做重排。

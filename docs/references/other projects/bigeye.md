@@ -844,3 +844,14 @@ bigeye 的判据：接口一次给齐「生效形态 / 可选档位 / 建议依�
 
 ① `_normalize_roles`（`server.py:1794-1816`）发送前合并连续同角色消息：本仓**有意**在对话尾部追加合成 USER 消息（记忆数据块 + 规则提醒块，`data/ai/PromptAssembly.kt:372-380`；理由见该文件注释：留 system 会让前缀从位置 0 起全断），多 provider 实测可接受；bigeye 的根因是"空正文截断分支只 append user 提示"恶性累积成 5 连 user，本仓补救提示走 `recoveryHint` 注入 system（`PromptAssembly.kt:354-359`），无该分支。
 ② 语音库（`tools/tts_hist.py`：200 条滚动、收藏永久、快捷键、短音频不存、id 白名单防目录穿越、原子写 meta）：本仓 `data/ai/tools/local/TextToSpeechTool.kt:22-52` 只发 `AppEvent.Speak`，系统 TTS 零成本可重放——缓存库只有在"合成贵/慢"（bigeye 的本地模型 TTS）时才有正收益，Android 端是负收益（占存储 + 多一套文件生命周期）。
+
+## 11.6、2026-11-18 补评（`a67fab1..4f4c0cf`，1 提交，标题级）
+
+> fetch：SSH（`ssh-fresh/main`）。**该提交 2026-11-09 即存在**，前几轮复检（11-17 轮判「零新增」）漏检——本轮盘点以 `a67fab1`（10-30）为锚重算才发现。**教训：零新增判决也要报出比对锚点哈希，不能只报「无新提交」**。
+> 证据级别：单条 squash 提交、仅标题，无分拆提交与 diff 抽样，判定从宽记账。
+
+| 实质 | 判定 |
+|---|---|
+| 侧栏任务分类 + **重试与断流恢复改进** + MCP 管理页 + 语音历史工具 + 界面交互优化 | 判据记账 1：「断流恢复」与本仓半截保留/取消安全落点（`GenerationHandler.kt:464-502`）同域，bigeye 是服务端长任务视角，方向互证；其余标题级不足以立判决。候选 0 |
+
+> 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §十。
