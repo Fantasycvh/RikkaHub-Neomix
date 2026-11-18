@@ -42,6 +42,9 @@ import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Refresh03
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
+import androidx.compose.ui.text.style.TextOverflow
+import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationManager
@@ -49,6 +52,7 @@ import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.FormItem
+import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import org.koin.compose.koinInject
 
@@ -170,22 +174,29 @@ fun MediaGenerationProviderConfigure(
                     )
                 }
 
-                FormItem(label = { Text("API Key") }) {
-                    OutlinedTextField(
-                        value = setting.apiKey,
-                        onValueChange = { onValueChange(setting.copyProvider(apiKey = it.trim())) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
+                if (setting is MediaGenerationProviderSetting.OpenAI) {
+                    CredentialReferenceField(setting = setting, onValueChange = onValueChange)
                 }
 
-                FormItem(label = { Text("Base URL") }) {
-                    OutlinedTextField(
-                        value = setting.baseUrl,
-                        onValueChange = { onValueChange(setting.copyProvider(baseUrl = it.trim())) },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                    )
+                // 引用旧 AI 供应商凭据时 Key/URL 跟着对方走，本地显式配置不再展示
+                if (!(setting is MediaGenerationProviderSetting.OpenAI && setting.credentialRef != null)) {
+                    FormItem(label = { Text("API Key") }) {
+                        OutlinedTextField(
+                            value = setting.apiKey,
+                            onValueChange = { onValueChange(setting.copyProvider(apiKey = it.trim())) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                    }
+
+                    FormItem(label = { Text("Base URL") }) {
+                        OutlinedTextField(
+                            value = setting.baseUrl,
+                            onValueChange = { onValueChange(setting.copyProvider(baseUrl = it.trim())) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                    }
                 }
 
                 if (setting is MediaGenerationProviderSetting.Aliyun) {
@@ -376,5 +387,92 @@ private fun ModelRow(
                 }
             }
         }
+    }
+}
+
+/**
+ * OpenAI 兼容媒体供应商的凭据来源：本地显式配置，或引用一个已有 AI 供应商（活引用，
+ * 改 key / 端点自动跟随）。引用的供应商被删时模型失效并在此提示。
+ */
+@Composable
+private fun CredentialReferenceField(
+    setting: MediaGenerationProviderSetting.OpenAI,
+    onValueChange: (MediaGenerationProviderSetting) -> Unit,
+) {
+    val candidates = LocalSettings.current.providers.filterIsInstance<ProviderSetting.OpenAI>()
+    val referenced = setting.credentialRef?.let { ref -> candidates.firstOrNull { it.id == ref } }
+    var picking by remember { mutableStateOf(false) }
+
+    FormItem(
+        label = { Text(stringResource(R.string.setting_media_page_credentials)) },
+        description = {
+            Text(
+                when {
+                    referenced != null -> stringResource(R.string.setting_media_page_credentials_referenced, referenced.name)
+                    setting.credentialRef != null -> stringResource(R.string.setting_media_page_credentials_missing)
+                    else -> stringResource(R.string.setting_media_page_credentials_manual)
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+        },
+    ) {
+        TextButton(
+            onClick = { picking = true },
+            enabled = setting.credentialRef != null || candidates.isNotEmpty(),
+        ) {
+            Text(
+                when {
+                    setting.credentialRef != null -> stringResource(R.string.setting_media_page_credentials_change)
+                    else -> stringResource(R.string.setting_media_page_credentials_pick)
+                }
+            )
+        }
+    }
+
+    if (picking) {
+        AlertDialog(
+            onDismissRequest = { picking = false },
+            title = { Text(stringResource(R.string.setting_media_page_credentials_pick)) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    item {
+                        TextButton(
+                            onClick = {
+                                onValueChange(setting.copy(credentialRef = null))
+                                picking = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.setting_media_page_credentials_none))
+                        }
+                    }
+                    items(candidates, key = { it.id }) { source ->
+                        TextButton(
+                            onClick = {
+                                // 快照留在本地兜底（解除引用时回退为显式配置），生效值以引用为准
+                                onValueChange(
+                                    setting.copy(
+                                        credentialRef = source.id,
+                                        baseUrl = source.baseUrl,
+                                        apiKey = source.effectiveApiKeys
+                                            .split(Regex("[\\s,]+")).firstOrNull { it.isNotBlank() }.orEmpty(),
+                                    )
+                                )
+                                picking = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("${source.name} · ${source.baseUrl}", maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { picking = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
 }

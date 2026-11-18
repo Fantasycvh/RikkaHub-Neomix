@@ -8,9 +8,11 @@ import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.mediagen.model.MediaGenerationStatus
 import app.androidrik.mediagen.model.MediaGenerationTask
 import app.androidrik.mediagen.model.MediaKind
+import app.androidrik.mediagen.model.ImageRole
 import app.androidrik.mediagen.provider.MediaGenerationProvider
 import app.androidrik.mediagen.provider.MediaModelLister
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import app.androidrik.mediagen.provider.modelCapabilities
 import app.androidrik.mediagen.provider.providers.bearerRequest
 import app.androidrik.mediagen.provider.providers.executeJson
 import app.androidrik.mediagen.provider.providers.siliconFlowVideoModels
@@ -58,7 +60,7 @@ class SiliconFlowMediaGenerationProvider(
         request: MediaGenerationRequest,
     ): Result<MediaGenerationTask> = runCatching {
         // 本地首帧要读出来编码成 data URI
-        val body = withContext(Dispatchers.IO) { buildSubmitBody(model, request) }
+        val body = withContext(Dispatchers.IO) { buildSubmitBody(setting, model, request) }
         val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/video/submit", setting.apiKey)
             .postJson(body)
             .build()
@@ -92,18 +94,19 @@ class SiliconFlowMediaGenerationProvider(
     ): Boolean = kind == MediaKind.VIDEO
 
     internal fun buildSubmitBody(
+        setting: MediaGenerationProviderSetting.SiliconFlow,
         model: MediaGenerationModel,
         request: MediaGenerationRequest,
     ): JsonObject = buildJsonObject {
         validate(request)
-        // 模型级约束：只有 I2V 接受首帧图，T2V 不接受图片输入。
+        // 模型级约束统一来自 modelCapabilities：只有 I2V 接受首帧图（且必填），T2V 不接受图片输入。
         // 不给这一层校验的话，选错模型会白白发一次注定 400 的请求。
-        val requiresFirstFrame = model.modelId.contains("I2V", ignoreCase = true)
-        require(requiresFirstFrame || request.inputs.isEmpty()) {
-            "SiliconFlow T2V model does not accept image inputs: ${model.modelId}"
-        }
-        require(!requiresFirstFrame || request.inputs.size == 1) {
+        val requiredInputs = setting.modelCapabilities(model)?.requiredImageInputs.orEmpty()
+        require(ImageRole.FIRST_FRAME !in requiredInputs || request.inputs.size == 1) {
             "SiliconFlow I2V model requires exactly one first-frame image: ${model.modelId}"
+        }
+        require(requiredInputs.isNotEmpty() || request.inputs.isEmpty()) {
+            "SiliconFlow T2V model does not accept image inputs: ${model.modelId}"
         }
         // 供应商私有参数（如 negative_prompt）先写入，公共字段再覆盖同名项
         request.extraParameters.forEach { (key, value) -> put(key, value) }

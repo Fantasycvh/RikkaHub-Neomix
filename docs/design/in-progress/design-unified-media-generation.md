@@ -1,6 +1,6 @@
 # 统一媒体生成接口、模型目录与定时任务
 
-> 2026-11-18/19。统一执行入口已在本地提交 `55efb216b`；统一模型目录、按任务授权和定时模板直跑连同本设计稿在本地提交落地，并随 Debug 包装机。提交结果待确认与恢复语义（阶段 2 主体）与定时模板的生成操作、素材引用（阶段 3 主体）已实现，真机验收中途暂停（场景 1 部分完成）。真机业务验收和后续阶段见下文。
+> 2026-11-18/19。统一执行入口已在本地提交 `55efb216b`；统一模型目录、按任务授权和定时模板直跑连同本设计稿在本地提交落地，并随 Debug 包装机。提交结果待确认与恢复语义（阶段 2 主体）、定时模板的生成操作与素材引用（阶段 3 主体）、能力下沉与凭据引用共享（阶段 4 M1+M2）均已实现；M3 适配器收敛与真机验收待做。真机业务验收和后续阶段见下文。
 
 ## 目标与范围
 
@@ -78,6 +78,7 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 | 最终相关单元测试 | 应用 167 项，`:mediagen` 42 项，共 209 项通过。涉及目录合并、模型配置变更、授权单次消耗、预览与编辑、调度和 schema 版本 |
 | 提交中断判定测试 | `MediaInterruptionTest`（三窗口处置 + 终态不动）与 `MediaGenerationManagerTest.supportsQueryFollowsTheAdapter` 通过；媒体/定时相关套件复跑全绿 |
 | 模板操作与素材测试 | `ScheduledMediaActionTest`（三操作 × 模型/角色门控 + 序列化往返 + 上传指纹）与 `ScheduledMediaAssetStoreTest`（清理/删除/路径越界）通过；全量 3627 项除既有 `ImportFormatTest` 外全绿 |
+| 能力下沉与凭据引用测试 | `MediaGenerationCapabilitiesTest`（SiliconFlow 按模型收紧 / 其他供应商直通）与 `ScheduledMediaActionTest`（引用解析、引用失效、端点变更重新批准、credentialRef 序列化往返）通过；全量 3630 项除既有 `ImportFormatTest` 外全绿 |
 | Room 75→76 | 在 SQLite 中执行 Room 生成的迁移 SQL。三张表的旧行得到保留，新列为空，列结构与新 schema 一致 |
 | 应用全量测试 | 实施期间复跑发现 1 项既有失败。`ImportFormatTest` 的断言只允许本地备份在选文件前确认，当前实现也要求原版整库备份先确认 |
 | 构建、装机与启动 | `:app:assembleDebug` 成功。2026-11-18 在 PJX110 上用 ARM64 Debug APK 覆盖安装，调试包从 beta.22 更新为 `1.0.28-beta.23`（327），包名 `app.androidrik.rikkahub.debug`。ADB 验证本地与装机包的 SHA-256 一致，冷启动成功 |
@@ -108,9 +109,23 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 
 生成操作与素材引用已实现（见「定时模板的生成操作与素材引用」）。剩余部分在真机验收中覆盖：素材型模板各跑一轮（编辑 + 首帧视频）、素材被删除后的失败报错、素材上传目的地变化后的授权失效、需要远端素材 URL 的接口（未配 S3 时明确失败）。
 
-### 4. 收敛供应商配置与能力声明
+### 4. 收敛供应商配置与能力声明（M1+M2 已实现，M3 待评估）
 
-统一目录当前汇总两套设置。后续可让兼容的模型共享供应商与凭据引用，并保留无法共用鉴权或协议的配置。先迁移稳定引用并验证旧备份、默认模型、历史记录、定时授权和模型自定义参数，再评估能否收敛重复适配代码。能力描述逐步下沉到模型级，供目录筛选、编辑器参数选项及运行前校验共用。
+现状问题：旧生图（`ProviderSetting`，ai 模块适配器）与媒体（`MediaGenerationProviderSetting`，mediagen 适配器）两套配置并存，目录在应用层合并；同一厂商常常配两份（同 baseUrl 同 key），凭据重复维护。能力声明是供应商级静态表（`MediaGenerationCapabilities` 按「厂商类型 × kind」），模型级差异散落在适配器的 `modelId.contains("I2V")` 字符串匹配与应用层 `supportsTextTemplate` 里，目录筛选、编辑器参数选项（presets）、运行前校验三处口径不完全一致。
+
+**M1 能力下沉到模型级（已实现）**
+- `MediaGenerationCapabilities` 新增 `requiredImageInputs`（模型必须携带的图片输入角色）；mediagen 新增模型级派生 `MediaGenerationProviderSetting.modelCapabilities(model)`：供应商静态能力之外按模型收紧，首个约束是 SiliconFlow 的 I2V（imageRoles={FIRST_FRAME} + 必填首帧）/ T2V（无图片输入）。
+- 三处字符串匹配收敛为这一个函数：SiliconFlow 适配器请求校验、应用层 `supportsTextTemplate`（改判 `requiredImageInputs.isEmpty()`）、模板首帧过滤（`ScheduledMediaFields` 按 imageRoles 过滤，自动生效）。
+- 无存储/DB 变化；`MediaGenerationModel` 的显式能力覆盖字段留待厂商能力接口出现时再加。
+
+**M2 凭据引用共享（已实现）**
+- `MediaGenerationProviderSetting.OpenAI` 新增可选 `credentialRef: Uuid?`（序列化向后兼容，旧备份/旧版本双向安全）；目录解析 `Settings.effectiveMediaProvider` 在引用有效时把 baseUrl/apiKey 替换为被引用的旧 `ProviderSetting.OpenAI` 的值，引用被删或对象不是凭据型供应商时整套配置的模型从目录消失（运行期走既有「模型不可用」报错）。
+- 媒体供应商自身 id 不变 ⇒ `MediaModelRef`、默认图片模型 UUID、历史记录、定时授权引用全部不受影响；授权指纹只看解析后的 baseUrl，改 key 不触发重新批准，换端点才要求重新批准。
+- 入口：编辑器「凭据」区（引用/更换引用/解除引用，解除后回退本地快照）+ 原有的「从聊天供应商导入」现在默认生成活引用；列表项显示引用标记。
+- 已知边界：被引用供应商的代理（proxy）设置不随引用生效（媒体适配器本来也不走代理）；多 key 轮询取第一个有效 key。
+
+**M3 重复适配收敛评估**（待评估）
+- 旧生图适配器与 mediagen OpenAI 图片适配器都实现 openai 兼容图片。评估方向：旧供应商 IMAGE 模型通过凭据引用挂进媒体目录，统一走 mediagen 适配器，最终把聊天 `generate_image` 改走统一执行器并退役 ai 模块的媒体用途。牵动聊天工具卡流式预览与 legacy customBodies 语义，需单独评估单。
 
 ### 待决范围
 

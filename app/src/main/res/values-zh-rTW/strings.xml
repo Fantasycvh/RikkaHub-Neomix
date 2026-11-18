@@ -2471,6 +2471,13 @@
   <string name="setting_media_page_providers">供應商</string>
   <string name="setting_media_page_edit_provider">編輯供應商</string>
   <string name="setting_media_page_delete_provider">刪除媒體供應商「%1$s」？</string>
+  <string name="setting_media_page_credentials">憑證</string>
+  <string name="setting_media_page_credentials_referenced">已引用 AI 供應商「%1$s」，金鑰與地址自動跟隨。</string>
+  <string name="setting_media_page_credentials_missing">被引用的 AI 供應商已不存在，請重新選擇或改用手動設定。</string>
+  <string name="setting_media_page_credentials_manual">手動填寫金鑰，或引用已有 AI 供應商的憑證。</string>
+  <string name="setting_media_page_credentials_change">更換引用</string>
+  <string name="setting_media_page_credentials_pick">引用 AI 供應商憑證</string>
+  <string name="setting_media_page_credentials_none">手動設定</string>
   <string name="setting_media_page_add_provider">新增供應商</string>
   <string name="media_kind_image">圖片</string>
   <string name="media_provider_type_aliyun">阿里雲百鍊</string>

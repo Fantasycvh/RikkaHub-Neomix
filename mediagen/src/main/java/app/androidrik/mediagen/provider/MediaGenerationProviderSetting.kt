@@ -42,6 +42,12 @@ sealed class MediaGenerationProviderSetting {
         override val name: String = "OpenAI",
         override val apiKey: String = "",
         override val baseUrl: String = "https://api.openai.com/v1",
+        /**
+         * 引用的旧 AI 供应商凭据 id（`ProviderSetting.ApiKey`）：设置后 baseUrl/apiKey 在目录
+         * 解析时取自被引用者，改 key 不用同步两处配置；被引用者被删或换端点后，引用它的模型
+         * 相应失效或以新地址生效。null = 本地显式配置（无法共用鉴权时保留这种形态）。
+         */
+        val credentialRef: Uuid? = null,
         override val models: List<MediaGenerationModel> = listOf(
             MediaGenerationModel(modelId = "gpt-image-2.5-sunburst", kind = MediaKind.IMAGE),
             MediaGenerationModel(modelId = "gpt-image-2.5-flare", kind = MediaKind.IMAGE),

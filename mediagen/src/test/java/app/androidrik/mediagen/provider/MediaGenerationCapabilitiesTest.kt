@@ -81,4 +81,27 @@ class MediaGenerationCapabilitiesTest {
             }
         }
     }
+
+    @Test
+    fun modelCapabilitiesNarrowSiliconFlowByModel() {
+        val setting = MediaGenerationProviderSetting.SiliconFlow()
+        val t2v = MediaGenerationModel(modelId = "Wan-AI/Wan2.2-T2V-A14B", kind = MediaKind.VIDEO)
+        val i2v = MediaGenerationModel(modelId = "Wan-AI/Wan2.2-I2V-A14B", kind = MediaKind.VIDEO)
+
+        // 文生视频不接受图片输入；图生视频必须恰好提供一张首帧
+        val t2vCaps = setting.modelCapabilities(t2v)!!
+        assertEquals(emptySet<app.androidrik.mediagen.model.ImageRole>(), t2vCaps.imageRoles)
+        assertTrue(t2vCaps.requiredImageInputs.isEmpty())
+
+        val i2vCaps = setting.modelCapabilities(i2v)!!
+        assertEquals(setOf(app.androidrik.mediagen.model.ImageRole.FIRST_FRAME), i2vCaps.imageRoles)
+        assertEquals(setOf(app.androidrik.mediagen.model.ImageRole.FIRST_FRAME), i2vCaps.requiredImageInputs)
+    }
+
+    @Test
+    fun modelCapabilitiesPassThroughOtherProviders() {
+        val setting = MediaGenerationProviderSetting.OpenAI()
+        val model = MediaGenerationModel(modelId = "gpt-image-2", kind = MediaKind.IMAGE)
+        assertEquals(setting.capabilities(MediaKind.IMAGE), setting.modelCapabilities(model))
+    }
 }

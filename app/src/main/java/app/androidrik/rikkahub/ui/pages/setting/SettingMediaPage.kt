@@ -361,6 +361,8 @@ private fun MediaProviderList(
                             .fillMaxWidth()
                             .scale(if (isDragging) 0.95f else 1f),
                         provider = provider,
+                        credentialName = (provider as? MediaGenerationProviderSetting.OpenAI)?.credentialRef
+                            ?.let { ref -> settings.providers.firstOrNull { it.id == ref }?.name },
                         onEdit = { onEdit(provider) },
                         onDelete = { deleteTarget = provider },
                         dragHandle = {
@@ -417,6 +419,7 @@ private fun MediaProviderList(
 private fun MediaProviderItem(
     provider: MediaGenerationProviderSetting,
     modifier: Modifier = Modifier,
+    credentialName: String? = null,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     dragHandle: @Composable () -> Unit,
@@ -455,7 +458,7 @@ private fun MediaProviderItem(
                 val modelCounts = MediaKind.entries
                     .map { kind -> kind to provider.models.count { it.kind == kind } }
                     .filter { it.second > 0 }
-                if (modelCounts.isNotEmpty()) {
+                if (modelCounts.isNotEmpty() || credentialName != null) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -463,6 +466,18 @@ private fun MediaProviderItem(
                         modelCounts.forEach { (kind, count) ->
                             Tag(type = TagType.INFO) {
                                 Text("${kind.label} $count")
+                            }
+                        }
+                        // 凭据活引用：key/端点跟被引用的 AI 供应商走
+                        if (credentialName != null) {
+                            Tag(type = TagType.INFO) {
+                                Text(
+                                    if (credentialName.isEmpty()) {
+                                        stringResource(R.string.setting_media_page_credentials)
+                                    } else {
+                                        stringResource(R.string.setting_media_page_credentials_referenced, credentialName)
+                                    }
+                                )
                             }
                         }
                     }

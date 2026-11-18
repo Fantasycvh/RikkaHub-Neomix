@@ -59,6 +59,7 @@ class SiliconFlowMediaGenerationProviderTest {
         val firstFrame = tempFolder.newFile("frame.png").apply { writeText("png") }
 
         val body = SiliconFlowMediaGenerationProvider(OkHttpClient()).buildSubmitBody(
+            setting = setting,
             model = imageToVideoModel,
             request = MediaGenerationRequest(
                 prompt = "一只猫",
@@ -90,6 +91,7 @@ class SiliconFlowMediaGenerationProviderTest {
         val provider = SiliconFlowMediaGenerationProvider(OkHttpClient())
 
         val textToVideo = provider.buildSubmitBody(
+            setting = setting,
             model = textToVideoModel,
             request = MediaGenerationRequest(prompt = "cat", resolution = "1280x720"),
         )
@@ -97,6 +99,7 @@ class SiliconFlowMediaGenerationProviderTest {
         assertNull(textToVideo["negative_prompt"])
 
         val remote = provider.buildSubmitBody(
+            setting = setting,
             model = imageToVideoModel,
             request = MediaGenerationRequest(
                 prompt = "cat",
@@ -317,10 +320,10 @@ class SiliconFlowMediaGenerationProviderTest {
                 MediaGenerationParameter.PROMPT_ENHANCEMENT -> base.copy(promptEnhancement = true)
             }
             if (parameter in capabilities.parameters) {
-                provider.buildSubmitBody(textToVideoModel, request)
+                provider.buildSubmitBody(setting, textToVideoModel, request)
             } else {
                 assertThrows("$parameter should be rejected", IllegalArgumentException::class.java) {
-                    provider.buildSubmitBody(textToVideoModel, request)
+                    provider.buildSubmitBody(setting, textToVideoModel, request)
                 }
             }
         }
@@ -329,7 +332,7 @@ class SiliconFlowMediaGenerationProviderTest {
     @Test
     fun invalidInputsAreRejectedBeforeHittingTheNetwork() {
         val provider = SiliconFlowMediaGenerationProvider(OkHttpClient())
-        fun body(request: MediaGenerationRequest) = provider.buildSubmitBody(imageToVideoModel, request)
+        fun body(request: MediaGenerationRequest) = provider.buildSubmitBody(setting, imageToVideoModel, request)
 
         // 提示词和 image_size 都是必填的
         assertThrows(IllegalArgumentException::class.java) {
@@ -403,6 +406,7 @@ class SiliconFlowMediaGenerationProviderTest {
         val t2v = MediaGenerationModel(modelId = "Wan-AI/Wan2.2-T2V-A14B", kind = MediaKind.VIDEO)
         val error = assertThrows(IllegalArgumentException::class.java) {
             provider.buildSubmitBody(
+                setting = setting,
                 model = t2v,
                 request = MediaGenerationRequest(
                     prompt = "a cat",
@@ -420,6 +424,7 @@ class SiliconFlowMediaGenerationProviderTest {
         val i2v = MediaGenerationModel(modelId = "Wan-AI/Wan2.2-I2V-14B-720P", kind = MediaKind.VIDEO)
         val error = assertThrows(IllegalArgumentException::class.java) {
             provider.buildSubmitBody(
+                setting = setting,
                 model = i2v,
                 request = MediaGenerationRequest(prompt = "a cat", resolution = "1280x720"),
             )

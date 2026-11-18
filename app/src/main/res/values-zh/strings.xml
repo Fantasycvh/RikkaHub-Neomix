@@ -2515,6 +2515,13 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_media_page_providers">提供商</string>
   <string name="setting_media_page_edit_provider">编辑提供商</string>
   <string name="setting_media_page_delete_provider">删除媒体提供商「%1$s」？</string>
+  <string name="setting_media_page_credentials">凭据</string>
+  <string name="setting_media_page_credentials_referenced">已引用 AI 供应商「%1$s」，密钥与地址自动跟随。</string>
+  <string name="setting_media_page_credentials_missing">被引用的 AI 供应商已不存在，请重新选择或改用手动配置。</string>
+  <string name="setting_media_page_credentials_manual">手动填写密钥，或引用已有 AI 供应商的凭据。</string>
+  <string name="setting_media_page_credentials_change">更换引用</string>
+  <string name="setting_media_page_credentials_pick">引用 AI 供应商凭据</string>
+  <string name="setting_media_page_credentials_none">手动配置</string>
   <string name="setting_media_page_add_provider">添加提供商</string>
   <string name="setting_media_page_empty">还没有媒体生成提供商，点右上角添加</string>
   <string name="setting_media_page_s3_desc">部分接口只接受公网地址的素材（如视频生成的参考图、参考视频）。在这里配置一个 S3 兼容的对象存储服务后，本地文件会先上传到它的桶里，再以临时地址交给接口；上传的文件 7 天后自动清理。此配置与备份的 S3 互相独立。</string>

@@ -1,6 +1,7 @@
 package app.androidrik.mediagen.provider
 
 import app.androidrik.mediagen.model.ImageRole
+import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.mediagen.model.MediaKind
 
@@ -43,6 +44,8 @@ data class MediaGenerationCapabilities(
     val requiredParameters: Set<MediaGenerationParameter> = emptySet(),
     /** 可用的图片输入角色，为空表示不接受图片输入。 */
     val imageRoles: Set<ImageRole>,
+    /** 模型必须携带的图片输入角色（[imageRoles] 的子集），例如依赖首帧的图生视频。 */
+    val requiredImageInputs: Set<ImageRole> = emptySet(),
     val videoInput: Boolean = false,
     /** 首帧 / 尾帧和参考素材（参考图、参考视频）是两种生成方式，不能出现在同一个请求里。 */
     val framesExcludeReferences: Boolean = false,
@@ -54,8 +57,7 @@ data class MediaGenerationCapabilities(
 
 /** 适配器没有实现 [kind] 时返回 null。 */
 fun MediaGenerationProviderSetting.capabilities(kind: MediaKind): MediaGenerationCapabilities? =
-    when (this) {
-        is MediaGenerationProviderSetting.OpenAI -> when (kind) {
+    when (this) {        is MediaGenerationProviderSetting.OpenAI -> when (kind) {
             MediaKind.IMAGE -> OPENAI_IMAGE
             MediaKind.VIDEO -> null
         }
@@ -203,3 +205,23 @@ private val SILICONFLOW_VIDEO = MediaGenerationCapabilities(
     imageRoles = setOf(ImageRole.FIRST_FRAME),
     requiresPrompt = true,
 )
+
+// SiliconFlow 的模型名带 I2V 标记的是图生视频（依赖首帧），其余视频模型是文生视频（无图片输入）
+private fun MediaGenerationModel.isSiliconFlowImageToVideo(): Boolean = modelId.contains("I2V", ignoreCase = true)
+
+/**
+ * 模型级能力：供应商静态能力之外，再按模型本身收紧。
+ *
+ * 供应商级 [capabilities] 描述的是整个接口能接受的请求形态；同一个接口下不同模型的差异
+ * （目前是 SiliconFlow 的 I2V / T2V）由这里收敛——上层（目录筛选、编辑器参数选项、运行前
+ * 校验、适配器内的请求校验）统一消费这一个函数，不再各自用模型 ID 做字符串匹配。
+ */
+fun MediaGenerationProviderSetting.modelCapabilities(model: MediaGenerationModel): MediaGenerationCapabilities? {
+    val base = capabilities(model.kind) ?: return null
+    if (this !is MediaGenerationProviderSetting.SiliconFlow || model.kind != MediaKind.VIDEO) return base
+    return if (model.isSiliconFlowImageToVideo()) {
+        base.copy(imageRoles = setOf(ImageRole.FIRST_FRAME), requiredImageInputs = setOf(ImageRole.FIRST_FRAME))
+    } else {
+        base.copy(imageRoles = emptySet())
+    }
+}
