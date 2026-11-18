@@ -1,36 +1,26 @@
 package app.androidrik.rikkahub.data.image
 
-import app.androidrik.ai.provider.ImageGenerationParams
 import app.androidrik.ai.provider.Model
-import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.ui.ImageGenerationItem
+import app.androidrik.mediagen.model.MediaGenerationInput
+import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.db.entity.GenMediaEntity
 import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.data.media.MediaGenerationExecutor
+import app.androidrik.rikkahub.data.media.MediaGenerationResult
+import app.androidrik.rikkahub.data.media.MediaGenerationTarget
 import app.androidrik.rikkahub.data.repository.GenMediaRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.uuid.Uuid
 
-/**
- * **生图产物的唯一写路径**（生成 → 落盘 → 落 `GenMediaEntity`）。
- *
- * 为什么要有这个类：会话内的 `generate_image` 工具（见
- * `docs/design/design-agent-image-tool.md`）与生图页 `ImgGenVM` 都要做同一件事——
- * 调 provider、把 base64 落成文件、写一条媒体记录。这段逻辑原本整块长在 `ImgGenVM` 里；
- * 直接复制一份到工具里意味着**文件名清洗、相对路径约定、落库字段三处各有一份**，
- * 而这三处任一走偏都会产生"库里有记录、图裂"或"图在但画廊看不见"这类难查的问题
- * （上游 `85af5b91` / #1993 就是这么来的）。
- *
- * 共用的边界刻意划在**编排之前**：本类提供
- *
- * - [resolveModel]：解析"设置里配置的生图模型"（会话内工具据此决定装不装配）
- * - [saveImageToStorage]：单张落盘 + 落库（生图页的**流式预览**也走它）
- * - [generate]：不关心中间态的调用方（工具）用的整段编排
- *
- * 生图页保留自己的 `collectImageGeneration`——它要把 `partial_images` 的中间预览推给 UI，
- * 那份编排是页面独有的，不该为了共用而牺牲。
- */
 /**
  * 设置里配置且**可用**的生图模型；`null` = 没配好（没配 / provider 解析不出来）。
  *
@@ -47,79 +37,71 @@ internal fun Settings.resolveImageGenerationModel(): Model? {
     return model.takeIf { it.findProvider(providers) != null }
 }
 
+internal sealed interface ImageGenerationUpdate {
+    data class Preview(
+        val item: ImageGenerationItem,
+        val modelName: String,
+    ) : ImageGenerationUpdate
+
+    data class Saved(val image: GeneratedImage) : ImageGenerationUpdate
+}
+
+/** Writes final images to the gallery used by chat tools and the standalone image page. */
 class ImageGenerationRunner(
-    private val providerManager: ProviderManager,
+    private val executor: MediaGenerationExecutor,
     private val filesManager: FilesManager,
     private val genMediaRepository: GenMediaRepository,
 ) {
 
-    /** 非流式整段生成（工具的入口）：只收终态图，中间预览丢弃。 */
-    suspend fun generate(
+    internal fun generate(
         settings: Settings,
-        prompt: String,
-        numOfImages: Int,
-        size: String,
-    ): List<GeneratedImage> {
-        val model = settings.resolveImageGenerationModel()
-            ?: error("no usable image generation model configured")
+        request: MediaGenerationRequest,
+    ): Flow<ImageGenerationUpdate> = flow {
+        val model = settings.findModelById(settings.imageGenerationModelId)
+            ?: error("No model selected")
         val provider = model.findProvider(settings.providers)
-            ?: error("image generation provider not found")
+            ?: error("Provider not found")
+        val result = executor.submit(MediaGenerationTarget.Image(provider, model), request)
+            as MediaGenerationResult.ImageStream
 
-        val params = ImageGenerationParams(
-            model = model,
-            prompt = prompt,
-            numOfImages = numOfImages,
-            size = size,
-            customHeaders = model.customHeaders,
-            customBody = model.customBodies,
-        )
-
-        val generated = mutableListOf<GeneratedImage>()
-        var index = 0
-        providerManager.getProviderByType(provider).generateImage(provider, params).collect { item ->
-            // 中间态（OpenAI `partial_images` 的流式预览）对工具没有意义：卡片渲染的是终态
-            if (item.partial) return@collect
-            val file = saveImageToStorage(
+        val prompt = requireNotNull(request.prompt)
+        val editInputs = request.inputs.filterIsInstance<MediaGenerationInput.Image>()
+        val type = if (editInputs.isEmpty()) GenMediaEntity.TYPE_IMAGE_GENERATION else GenMediaEntity.TYPE_IMAGE_EDIT
+        val sourcePaths = editInputs.takeIf { it.isNotEmpty() }?.joinToString("\n") { it.url }
+        result.images.collect { item ->
+            if (item.partial) {
+                emit(ImageGenerationUpdate.Preview(item, model.displayName))
+                return@collect
+            }
+            val image = saveImageToStorage(
                 item = item,
                 prompt = prompt,
                 modelName = model.displayName,
-                index = index,
+                type = type,
+                sourcePaths = sourcePaths,
             )
-            generated += GeneratedImage(
-                id = 0, // 落库后的自增 id 由画廊重新读取时带回（与生图页同款）
-                prompt = prompt,
-                filePath = file.absolutePath,
-                timestamp = System.currentTimeMillis(),
-                model = model.displayName,
-            )
-            index++
+            emit(ImageGenerationUpdate.Saved(image))
         }
-        return generated
     }
 
     /**
-     * 单张终态图落盘 + 落库，返回落盘后的文件。
+     * 单张终态图落盘 + 落库，返回图片信息。
      *
      * 库里的 `path` 存**相对路径**（`images/<文件名>`）：备份/迁移时目录整体搬走仍然有效，
      * 绝对路径会在换机后全部失效。绝对路径只在读取侧由 [toGeneratedImage] 拼回来。
      */
-    suspend fun saveImageToStorage(
+    private suspend fun saveImageToStorage(
         item: ImageGenerationItem,
         prompt: String,
         modelName: String,
-        index: Int,
-        type: String = GenMediaEntity.TYPE_IMAGE_GENERATION,
-        sourcePaths: String? = null,
-    ): File {
+        type: String,
+        sourcePaths: String?,
+    ): GeneratedImage = withContext(Dispatchers.IO) {
         val imagesDir = filesManager.getImagesDir()
 
         val timestamp = System.currentTimeMillis()
-        // 清洗模型名：含 "/" 时（OpenRouter `vendor/model`）裸拼会让文件落进子目录，而记录只存
-        // 文件名 ⇒ 图裂（上游 `85af5b91` / #1993）
-        val filename = "${timestamp}_${modelName.toFileNamePart()}_$index.png"
+        val filename = "${timestamp}_${Uuid.random()}.png"
         val imageFile = File(imagesDir, filename)
-
-        val createdFile = filesManager.createImageFileFromBase64(item.data, imageFile.absolutePath)
 
         val entity = GenMediaEntity(
             path = "images/${imageFile.name}",
@@ -129,8 +111,16 @@ class ImageGenerationRunner(
             type = type,
             sourcePaths = sourcePaths,
         )
-        genMediaRepository.insertMedia(entity)
-
-        return createdFile
+        // Finish the file and its row together if the caller cancels mid-write.
+        withContext(NonCancellable) {
+            try {
+                filesManager.createImageFileFromBase64(item.data, imageFile.absolutePath)
+                genMediaRepository.insertMedia(entity)
+            } catch (e: Exception) {
+                imageFile.delete()
+                throw e
+            }
+        }
+        entity.toGeneratedImage(filesManager)
     }
 }

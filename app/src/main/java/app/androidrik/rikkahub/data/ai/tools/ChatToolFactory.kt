@@ -15,6 +15,7 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.hasBuiltInSearch
 import app.androidrik.ai.util.ToolSchemaSize
+import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.rikkahub.data.ai.memoryId
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.mcp.McpNameSanitizer
@@ -22,6 +23,7 @@ import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.image.ImageGenerationRunner
+import app.androidrik.rikkahub.data.image.ImageGenerationUpdate
 import app.androidrik.rikkahub.data.image.resolveImageGenerationModel
 import app.androidrik.rikkahub.data.files.SkillInstaller
 import app.androidrik.rikkahub.data.files.SkillManager
@@ -39,6 +41,9 @@ import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.workspace.ExecutionScope
 import app.androidrik.workspace.WorkspaceShellStatus
 import app.androidrik.rikkahub.utils.getStringContent
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.toList
 
 private const val TAG = "ChatToolFactory"
 
@@ -305,7 +310,11 @@ class ChatToolFactory(
                 createImageTools(
                     assistant = assistant,
                     generate = { prompt, num, size ->
-                        imageGenerationRunner.generate(settings, prompt, num, size)
+                        val request = MediaGenerationRequest(prompt = prompt, count = num, resolution = size)
+                        imageGenerationRunner.generate(settings, request)
+                            .filterIsInstance<ImageGenerationUpdate.Saved>()
+                            .map { it.image }
+                            .toList()
                     },
                 ),
             )

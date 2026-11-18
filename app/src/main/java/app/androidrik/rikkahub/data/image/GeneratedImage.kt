@@ -26,8 +26,7 @@ data class GeneratedImage(
  *
  * 旧版本把含 `/` 的模型名（OpenRouter 的 `vendor/model`）直接拼进文件名 ⇒ 文件实际落在
  * 子目录 `images/<时间戳>_<vendor>/<name>`，而记录只存了最后一段。此处按旧形态回退查找，
- * 让这些老图重新可见（对齐上游 `85af5b91`；写入侧已改为先清洗，见
- * [ImageGenerationRunner.saveImageToStorage]）。
+ * 让这些老图重新可见（对齐上游 `85af5b91`）。新文件名由 [ImageGenerationRunner] 分配。
  */
 internal fun GenMediaEntity.toGeneratedImage(filesManager: FilesManager): GeneratedImage {
     val imagesDir = filesManager.getImagesDir()
@@ -46,10 +45,3 @@ internal fun GenMediaEntity.toGeneratedImage(filesManager: FilesManager): Genera
         model = this.modelId
     )
 }
-
-/**
- * 文件名安全化：模型名可能含 `/`（OpenRouter 的 `vendor/model`）等**路径分隔与保留字符**，
- * 直接拼进文件名会让产物落进子目录（而记录只存文件名 ⇒ 图裂）。
- * 对齐上游 `85af5b91` 的字符集。
- */
-internal fun String.toFileNamePart(): String = replace(Regex("""[\\/:*?"<>|]"""), "_")

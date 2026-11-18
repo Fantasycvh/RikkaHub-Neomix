@@ -13,18 +13,19 @@ import app.androidrik.mediagen.model.MediaGenerationOutput
 import app.androidrik.mediagen.model.MediaGenerationStatus
 import app.androidrik.mediagen.model.MediaGenerationTask
 import app.androidrik.mediagen.model.MediaKind
-import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.mediagen.provider.capabilities
 import app.androidrik.mediagen.provider.providers.MediaGenerationApiException
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.MEDIA_CREATION_NOTIFICATION_CHANNEL_ID
 import app.androidrik.rikkahub.R
-import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.files.MediaCreationFiles
 import app.androidrik.rikkahub.data.files.RemoteFileStore
+import app.androidrik.rikkahub.data.media.MediaGenerationExecutor
+import app.androidrik.rikkahub.data.media.MediaGenerationResult
+import app.androidrik.rikkahub.data.media.MediaGenerationTarget
 import app.androidrik.rikkahub.data.model.MediaCreationAsset
 import app.androidrik.rikkahub.data.model.MediaCreationOutput
 import app.androidrik.rikkahub.data.model.MediaCreationParams
@@ -46,7 +47,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -95,7 +95,7 @@ class MediaCreationService(
     private val appScope: AppScope,
     private val settingsStore: SettingsStore,
     private val repository: MediaCreationRepository,
-    private val manager: MediaGenerationManager,
+    private val executor: MediaGenerationExecutor,
     private val remoteFileStore: RemoteFileStore,
     private val okHttpClient: OkHttpClient,
 ) {
@@ -270,11 +270,12 @@ class MediaCreationService(
             .mediaGenerationProviders.find { it.id == record.providerId }
             ?: error(context.getString(R.string.media_creation_error_provider_deleted, record.providerName))
         val model = MediaGenerationModel(modelId = record.modelId, kind = record.kind)
+        val target = MediaGenerationTarget.Media(setting, model)
 
         val task = if (record.taskId != null) {
-            awaitTask(setting, model, record.id, record.taskId, since = record.updateAt)
+            awaitTask(target, record.id, record.taskId, since = record.updateAt)
         } else {
-            val created = create(setting, model, record)
+            val created = create(target, record)
             if (created.isTerminal) {
                 created
             } else {
@@ -285,7 +286,7 @@ class MediaCreationService(
                     }
                 }
                 delay(POLL_INTERVAL)
-                awaitTask(setting, model, record.id, created.id, since = Instant.now())
+                awaitTask(target, record.id, created.id, since = Instant.now())
             }
         }
 
@@ -317,10 +318,10 @@ class MediaCreationService(
     }
 
     private suspend fun create(
-        setting: MediaGenerationProviderSetting,
-        model: MediaGenerationModel,
+        target: MediaGenerationTarget.Media,
         record: MediaCreationRecord,
     ): MediaGenerationTask {
+        val setting = target.provider
         val capabilities = setting.capabilities(record.kind)
             ?: error(context.getString(R.string.media_creation_error_kind_unsupported, setting.name))
         val inputUrls = if (capabilities.requiresRemoteInputs && record.inputs.isNotEmpty()) {
@@ -335,10 +336,8 @@ class MediaCreationService(
         }
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.RUNNING) }
         val request = buildMediaGenerationRequest(record.prompt, record.params, record.inputs, inputUrls, capabilities)
-        return manager.create(setting, model, request).getOrElse {
-            currentCoroutineContext().ensureActive()
-            throw it
-        }
+        val result = executor.submit(target, request) as MediaGenerationResult.Task
+        return result.task
     }
 
     /**
@@ -349,8 +348,7 @@ class MediaCreationService(
      * 否则进程每重启一次时限就续一次，一个始终不结束的任务会被永远查下去。
      */
     private suspend fun awaitTask(
-        setting: MediaGenerationProviderSetting,
-        model: MediaGenerationModel,
+        target: MediaGenerationTarget.Media,
         recordId: Uuid,
         taskId: String,
         since: Instant,
@@ -358,7 +356,7 @@ class MediaCreationService(
         val deadline = since + MAX_WAIT.toJavaDuration()
         var failures = 0
         while (true) {
-            val result = manager.query(setting, model, taskId)
+            val result = executor.query(target, taskId)
             currentCoroutineContext().ensureActive()
             result.onSuccess { task ->
                 failures = 0

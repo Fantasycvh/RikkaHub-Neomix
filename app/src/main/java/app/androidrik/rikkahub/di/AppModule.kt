@@ -1,12 +1,14 @@
 package app.androidrik.rikkahub.di
 
 import kotlinx.serialization.json.Json
+import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
 import app.androidrik.rikkahub.data.perf.PerformanceSampler
 import app.androidrik.rikkahub.data.sync.BackupRunCoordinator
 import app.androidrik.rikkahub.data.ai.tools.ChatToolFactory
 import app.androidrik.rikkahub.data.image.ImageGenerationRunner
+import app.androidrik.rikkahub.data.media.MediaGenerationExecutor
 import app.androidrik.rikkahub.data.ai.tools.SubagentDispatcher
 import app.androidrik.rikkahub.data.ai.tools.local.LocalTools
 import app.androidrik.rikkahub.data.event.AppEventBus
@@ -211,11 +213,17 @@ val appModule = module {
         )
     }
 
-    // 生图产物的唯一写路径：会话内 generate_image 工具与生图页共用
-    // （生图页的 ImgGenVM 由 viewModelOf 构造，Koin 自动注入本 single）
+    single {
+        MediaGenerationExecutor(
+            imageProvider = get<ProviderManager>()::getProviderByType,
+            mediaGenerationManager = get(),
+        )
+    }
+
+    // 会话内生图工具与生图页共用画廊写入逻辑。
     single {
         ImageGenerationRunner(
-            providerManager = get(),
+            executor = get(),
             filesManager = get(),
             genMediaRepository = get(),
         )
@@ -346,7 +354,7 @@ val appModule = module {
             appScope = get(),
             settingsStore = get(),
             repository = get(),
-            manager = get(),
+            executor = get(),
             remoteFileStore = get(),
             okHttpClient = get(),
         )
