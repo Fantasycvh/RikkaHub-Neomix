@@ -1963,6 +1963,16 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - 两件均待用户拍板；`63a5192d8` 成本低（同构宿主现成），可与「一轮中途压缩」（11-10 候选）等压缩域批次一起排。
 - quickstart 若立项，建议只移植通用 tab 的**步骤完成状态检测**思路（按当前设置逐项判定），UI 按本仓 CardGroup 自研。
 
+## 2026-11-18 二次同步（`41d77f1ed..ce0e3607a`，3 新提交）
+
+> fetch：upstream HTTPS 直连（本机 7890 代理未运行，`-c http.proxy=` 绕过）。本轮 3 新提交，**移植 1 / 已等价 1 / 不适用 1**，已移植件随本地提交。
+
+| 提交 | 实质 | 判定 | 理由/前置 |
+|---|---|---|---|
+| `a8508e232` | **Android 9/10 导入含 `#` 文件名附件崩溃**：`URLConnection.guessContentTypeFromName` 在 `#` 位于最后一个 `.` 之前时以负长度 substring 抛异常（#2346）；上游抽 `guessMimeTypeFromFileName` 只传扩展名，导入与 S3 上传共用 | **已移植（2026-11-18）** | 本仓同款崩溃面在 [RemoteFileStore.kt:249](../app/src/main/java/app/androidrik/rikkahub/data/files/RemoteFileStore.kt#L249)（S3 上传猜 MIME；本仓 DeepSeekImporter 的 mime 由导入器显式传入，无该调用）。落点：`utils/StringUtils.kt` 新增 `guessMimeTypeFromFileName`（扩展名过滤 + `x.$ext` 假名调用）+ RemoteFileStore 换用；测试补 `#` 文件名/无扩展名用例（StringUtilsTest） |
+| `ce0e3607a` | 允许删除内置默认助手（原删除按钮禁用 + 设置规整按 id 补回）；空列表才恢复默认；删除走 AppScope + 按最新列表检查数量后再清理；assistantId 失效时改选剩余第一个 | **不移植（本仓已等价）** | 本仓 `AssistantVM.removeAssistant` 早已同构且更强：全部内置助手可删（`removedAssistantIds` 墓碑）、防删光（`size <= 1` 守卫）、AppScope 清理（注释明确同款理由）、指针显式重置 |
+| `2cd6acac2` | 开 VPN 时应用内更新包下载失败：去掉 `setAllowedNetworkTypes` 限制 | **不适用** | 本仓无 `UpdateChecker`/应用内更新线 |
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md

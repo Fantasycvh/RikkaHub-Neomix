@@ -8,6 +8,20 @@ import org.junit.Test
 class StringUtilsTest {
 
     @Test
+    fun `guess mime from file name`() {
+        assertEquals("image/png", guessMimeTypeFromFileName("photo.png"))
+        assertEquals("application/pdf", guessMimeTypeFromFileName("doc.PDF"))
+    }
+
+    @Test
+    fun `guess mime does not crash on hash in file name`() {
+        // Android 9/10 的 URLConnection.guessContentTypeFromName 在 '#' 位于最后一个 '.' 之前时崩溃
+        assertEquals("text/plain", guessMimeTypeFromFileName("a#b.txt"))
+        assertEquals("application/octet-stream", guessMimeTypeFromFileName("##"))
+        assertEquals("application/octet-stream", guessMimeTypeFromFileName("no-extension"))
+    }
+
+    @Test
     fun `extract chinese double quotes`() {
         assertEquals(listOf("你好"), "他说“你好”".extractQuotedContent())
     }

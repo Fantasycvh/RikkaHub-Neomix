@@ -13,8 +13,8 @@ import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.sync.s3.S3Client
 import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.data.sync.s3.S3ListResult
+import app.androidrik.rikkahub.utils.guessMimeTypeFromFileName
 import java.io.File
-import java.net.URLConnection
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZonedDateTime
@@ -245,8 +245,7 @@ private fun S3Config.requireUsableForUpload() {
     check(endpoint.startsWith("https://")) { "Upload S3 endpoint must use HTTPS" }
 }
 
-private fun guessContentType(file: File): String =
-    URLConnection.guessContentTypeFromName(file.name) ?: "application/octet-stream"
+private fun guessContentType(file: File): String = guessMimeTypeFromFileName(file.name)
 
 private fun File.sha256Hex(): String {
     val digest = MessageDigest.getInstance("SHA-256")
