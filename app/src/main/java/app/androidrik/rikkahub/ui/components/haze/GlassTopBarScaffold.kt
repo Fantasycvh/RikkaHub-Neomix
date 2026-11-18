@@ -75,15 +75,15 @@ fun GlassTopBarScaffold(
             // 放松 minHeight 让 topBar 按自然高度取值（Scaffold 同款处理）。
             val loose = constraints.copy(minHeight = 0)
             val bottomBarPlaceable = bottomBar?.let {
-                subcompose(BottomSlot) { it() }.first().measure(loose)
+                subcompose(BottomSlot) { it() }.firstOrNull()?.measure(loose)
             }
             val fabPlaceable = floatingActionButton?.let {
                 // FAB 必须同时放宽 minWidth：外层 Surface(fillMaxSize) 传入固定宽度约束，
                 // 只放宽 minHeight 会让 FloatingActionButton 被迫撑满整行（显示成一条卡片）
-                subcompose(FabSlot) { it() }.first().measure(loose.copy(minWidth = 0))
+                subcompose(FabSlot) { it() }.firstOrNull()?.measure(loose.copy(minWidth = 0))
             }
             val snackbarPlaceable = snackbarHost?.let {
-                subcompose(SnackbarSlot) { it() }.first().measure(loose)
+                subcompose(SnackbarSlot) { it() }.firstOrNull()?.measure(loose)
             }
             val topBarPlaceable = subcompose(TopBarSlot) {
                 CompositionLocalProvider(LocalPageGlassTheme provides glassOn) {
