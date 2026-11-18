@@ -107,6 +107,15 @@ class UpstreamConversationConfigTest {
     }
 
     @Test
+    fun deepSeekConversationSearchUsesTheDeepSeekTool() {
+        val model = Model(modelId = "deepseek-flash", tools = setOf(BuiltInTools.DeepSeekReadUrl))
+        val config = UpstreamConversationConfig(builtInSearch = true)
+        val withSearch = config.applyToModel(model)
+        assertEquals(model.tools + BuiltInTools.DeepSeekWebSearch, withSearch.tools)
+        assertEquals(model, config.copy(builtInSearch = false).applyToModel(withSearch))
+    }
+
+    @Test
     fun unknownFieldsArePreservedWithoutInventingMappings() {
         val raw = """{"futureField":{"enabled":false},"modelId":"not-chatModelId"}"""
         val config = requireNotNull(UpstreamConversationConfig.fromLegacyJson(raw))

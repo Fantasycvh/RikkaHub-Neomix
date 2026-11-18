@@ -37,6 +37,8 @@ import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.providers.asDowngradedSystemMessage
 import app.androidrik.ai.provider.BuiltInTools
+import app.androidrik.ai.provider.isDeepSeekWebTool
+import app.androidrik.ai.provider.supportsDeepSeekWebTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderProxy
@@ -340,6 +342,7 @@ class ResponseAPI(
         stream = stream,
         reasoningOverride = endpoint.reasoningOverride,
         reasoningTextRequired = isKnownReasoningTextValidator(endpoint.url.toHttpUrl().host),
+        supportsDeepSeekWebTools = params.model.supportsDeepSeekWebTools(endpoint.url.toHttpUrl()),
     )
 
     /**
@@ -361,6 +364,7 @@ class ResponseAPI(
             stream = stream,
             reasoningOverride = providerSetting.reasoningOverride,
             reasoningTextRequired = isKnownReasoningTextValidator(providerSetting.baseUrl.toHttpUrl().host),
+            supportsDeepSeekWebTools = params.model.supportsDeepSeekWebTools(providerSetting),
         )
     }
 
@@ -376,6 +380,7 @@ class ResponseAPI(
         stream: Boolean,
         reasoningOverride: ReasoningOverride? = null,
         reasoningTextRequired: Boolean = false,
+        supportsDeepSeekWebTools: Boolean = false,
     ): JsonObject {
         val systemPrompt = messages.firstOrNull { it.role == MessageRole.SYSTEM }
             ?.parts
@@ -450,7 +455,8 @@ class ResponseAPI(
             // 否则后写入的会覆盖前者
             val useFunctionTools =
                 params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()
-            if (useFunctionTools || params.model.tools.isNotEmpty()) {
+            val builtInTools = params.model.tools.filter { supportsDeepSeekWebTools || !it.isDeepSeekWebTool }
+            if (useFunctionTools || builtInTools.isNotEmpty()) {
                 putJsonArray("tools") {
                     if (useFunctionTools) {
                         params.tools.forEach { tool ->
@@ -472,7 +478,7 @@ class ResponseAPI(
                         }
                     }
                     // built-in tools
-                    params.model.tools.forEach { builtInTool ->
+                    builtInTools.forEach { builtInTool ->
                         when (builtInTool) {
                             BuiltInTools.Search -> {
                                 add(buildJsonObject {

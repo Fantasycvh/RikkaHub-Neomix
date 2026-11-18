@@ -39,6 +39,7 @@ import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.BuiltInTools
+import app.androidrik.ai.provider.supportsDeepSeekWebTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
@@ -577,13 +578,15 @@ class ChatCompletionsAPI(
             // function 工具混排。tool_choice **不能**指定它们（官方 400），故 tool_choice=auto
             // 只在真有 function 工具时下发；`web_search_options` / `logprobs` / 非 text 的
             // `response_format` 官方一律 400，本仓不构造这些字段。
-            val serverToolTypes = params.model.tools.mapNotNull { builtIn ->
-                when (builtIn) {
-                    is BuiltInTools.DeepSeekWebSearch -> "deepseek_web_search"
-                    is BuiltInTools.DeepSeekReadUrl -> "deepseek_read_url"
-                    else -> null
+            val serverToolTypes = if (params.model.supportsDeepSeekWebTools(providerSetting)) {
+                params.model.tools.mapNotNull { builtIn ->
+                    when (builtIn) {
+                        BuiltInTools.DeepSeekWebSearch -> "deepseek_web_search"
+                        BuiltInTools.DeepSeekReadUrl -> "deepseek_read_url"
+                        else -> null
+                    }
                 }
-            }
+            } else emptyList()
             if (params.model.abilities.contains(ModelAbility.TOOL) &&
                 (params.tools.isNotEmpty() || serverToolTypes.isNotEmpty())
             ) {

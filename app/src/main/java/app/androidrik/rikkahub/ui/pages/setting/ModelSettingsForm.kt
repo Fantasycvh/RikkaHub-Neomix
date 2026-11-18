@@ -59,6 +59,8 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.isDeepSeekWebTool
+import app.androidrik.ai.provider.supportsDeepSeekWebTools
 import app.androidrik.ai.registry.ModelRegistry
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
@@ -285,6 +287,7 @@ internal fun ModelSettingsForm(
                     // 内置工具页面
                     BuiltInToolsSettings(
                         tools = model.tools,
+                        supportsDeepSeekWebTools = model.supportsDeepSeekWebTools(model.providerOverwrite ?: parentProvider),
                         onUpdateTools = { tools ->
                             onModelChange(model.copy(tools = tools))
                         }
@@ -449,6 +452,7 @@ fun ModalAbilitySelector(
 @Composable
 internal fun BuiltInToolsSettings(
     tools: Set<BuiltInTools>,
+    supportsDeepSeekWebTools: Boolean,
     onUpdateTools: (Set<BuiltInTools>) -> Unit
 ) {
     Column(
@@ -490,7 +494,7 @@ internal fun BuiltInToolsSettings(
                 stringResource(R.string.setting_page_built_in_tools_deepseek_read_url),
                 stringResource(R.string.setting_page_built_in_tools_deepseek_read_url_desc)
             ),
-        )
+        ).filter { (tool, _) -> supportsDeepSeekWebTools || !tool.isDeepSeekWebTool }
 
         availableTools.forEach { (tool, info) ->
             val (title, description) = info

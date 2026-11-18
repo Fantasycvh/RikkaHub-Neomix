@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.model
 
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.provider.BuiltInTools
+import app.androidrik.ai.provider.DEEPSEEK_WEB_TOOLS_MODEL_ID
 import app.androidrik.ai.provider.Model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -37,9 +38,19 @@ data class UpstreamConversationConfig(
         enabledSkills = enabledSkills,
     )
 
-    fun applyToModel(model: Model): Model = model.copy(
-        tools = if (builtInSearch) model.tools + BuiltInTools.Search else model.tools - BuiltInTools.Search,
-    )
+    fun applyToModel(model: Model): Model {
+        val searchTool = if (model.modelId == DEEPSEEK_WEB_TOOLS_MODEL_ID) {
+            BuiltInTools.DeepSeekWebSearch
+        } else {
+            BuiltInTools.Search
+        }
+        val tools = if (searchTool == BuiltInTools.DeepSeekWebSearch) {
+            model.tools - BuiltInTools.Search
+        } else {
+            model.tools
+        }
+        return model.copy(tools = if (builtInSearch) tools + searchTool else tools - searchTool)
+    }
 
     companion object {
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }

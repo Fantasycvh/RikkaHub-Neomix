@@ -3,6 +3,8 @@ package app.androidrik.ai.provider
 import app.androidrik.ai.core.ReasoningOverride
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.uuid.Uuid
 
 @Serializable
@@ -100,17 +102,23 @@ sealed class BuiltInTools {
     data object DeepSeekReadUrl : BuiltInTools()
 }
 
-/**
- * 模型是否带「搜索类」内置工具（Gemini/GPT 的 [BuiltInTools.Search] 或 DeepSeek 的
- * [BuiltInTools.DeepSeekWebSearch]）。
- *
- * 双计费守卫判据（DeepSeek 适配备料 03 §5.1）：模型任一搜索类内置工具开启时，
- * 助手的外挂搜索（`search_web`/`scrape_web`）不再注册，否则同一问题走两条搜索路径，
- * token 之外按次双重计费（¥5/千次）。[BuiltInTools.DeepSeekReadUrl] 不算搜索——
- * 它只抓取用户消息里的 URL，与外挂搜索不冲突。
- */
-val Model.hasBuiltInSearch: Boolean
-    get() = BuiltInTools.Search in tools || BuiltInTools.DeepSeekWebSearch in tools
+const val DEEPSEEK_WEB_TOOLS_MODEL_ID = "deepseek-flash"
+
+val BuiltInTools.isDeepSeekWebTool: Boolean
+    get() = this == BuiltInTools.DeepSeekWebSearch || this == BuiltInTools.DeepSeekReadUrl
+
+/** DeepSeek documents these server tools for deepseek-flash on its official API. */
+fun Model.supportsDeepSeekWebTools(provider: ProviderSetting?): Boolean =
+    provider is ProviderSetting.OpenAI &&
+        supportsDeepSeekWebTools(provider.baseUrl.toHttpUrlOrNull())
+
+internal fun Model.supportsDeepSeekWebTools(endpoint: HttpUrl?): Boolean =
+    modelId == DEEPSEEK_WEB_TOOLS_MODEL_ID &&
+        endpoint?.isHttps == true && endpoint.host == "api.deepseek.com"
+
+fun Model.hasBuiltInSearch(provider: ProviderSetting?): Boolean =
+    BuiltInTools.Search in tools ||
+        (BuiltInTools.DeepSeekWebSearch in tools && supportsDeepSeekWebTools(provider))
 
 
 

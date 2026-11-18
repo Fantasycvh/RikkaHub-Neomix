@@ -10,6 +10,9 @@ import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.findModelById
+import app.androidrik.rikkahub.data.datastore.findProvider
+import app.androidrik.ai.provider.isDeepSeekWebTool
+import app.androidrik.ai.provider.supportsDeepSeekWebTools
 import app.androidrik.rikkahub.web.BadRequestException
 import app.androidrik.rikkahub.web.NotFoundException
 import app.androidrik.rikkahub.web.dto.UpdateAssistantModelRequest
@@ -163,6 +166,11 @@ fun Route.settingsRoutes(
                     ?: throw NotFoundException("Model not found")
                 if (model.type != ModelType.CHAT) {
                     throw BadRequestException("modelId must be a chat model")
+                }
+                if (request.enabled && targetTool.isDeepSeekWebTool &&
+                    !model.supportsDeepSeekWebTools(model.findProvider(settings.providers))
+                ) {
+                    throw BadRequestException("DeepSeek web tools require deepseek-flash on the official DeepSeek API")
                 }
 
                 val updatedModel = model.copy(

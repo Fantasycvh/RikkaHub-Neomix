@@ -1648,7 +1648,7 @@ class ChatService(
         }
 
         // 模型自带内置搜索时不注册外挂搜索（上游 #1666）：工具注册与「工具不可用」告警同口径
-        val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model)
+        val useExternalWebSearch = shouldUseExternalWebSearch(assistant, model, model.findProvider(settings.providers))
 
         // 流式检查点节流时间戳（见 STREAM_CHECKPOINT_INTERVAL_MS）
         var lastCheckpointAt = 0L

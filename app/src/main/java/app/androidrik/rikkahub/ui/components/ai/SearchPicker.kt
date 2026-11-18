@@ -41,6 +41,8 @@ import kotlinx.coroutines.launch
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.hasBuiltInSearch
+import app.androidrik.ai.provider.isDeepSeekWebTool
+import app.androidrik.ai.provider.supportsDeepSeekWebTools
 import app.androidrik.ai.registry.ModelRegistry
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.GlobalSearch
@@ -51,6 +53,8 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.datastore.findModelById
+import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.ToggleSurface
 import app.androidrik.rikkahub.ui.context.LocalNavController
@@ -72,10 +76,11 @@ fun SearchPickerButton(
 ) {
     var showSearchPicker by remember { mutableStateOf(false) }
     val currentService = settings.searchServices.getOrNull(settings.searchServiceSelected)
+    val builtInSearchEnabled = model?.let { it.hasBuiltInSearch(it.findProvider(settings.providers)) } == true
 
     ToggleSurface(
         modifier = modifier,
-        checked = enableSearch || model?.hasBuiltInSearch == true,
+        checked = enableSearch || builtInSearchEnabled,
         onClick = {
             showSearchPicker = true
         }
@@ -91,7 +96,7 @@ fun SearchPickerButton(
                 modifier = Modifier.size(24.dp),
                 contentAlignment = Alignment.Center
             ) {
-                if (model?.hasBuiltInSearch == true) {
+                if (builtInSearchEnabled) {
                     Icon(
                         imageVector = HugeIcons.AiSearch02,
                         contentDescription = stringResource(R.string.use_web_search),
@@ -165,18 +170,19 @@ private fun SearchPicker(
 ) {
     val navBackStack = LocalNavController.current
 
-    // 模型是否支持内置搜索（DeepSeek 的内置 web tools 按 modelId 识别——注册表 DeepSeek
-    // 分组是 private，且此处判定历史上就是 id 前缀白名单，沿用同款口径）
-    val supportsBuiltInSearch = model != null &&
-        (ModelRegistry.GEMINI_SERIES.match(model.modelId) ||
-            model.modelId.contains("gpt-") ||
-            model.modelId.contains("deepseek"))
-    // 模型是否已开启内置搜索（可能是不支持的模型残留的孤儿状态）
-    val hasBuiltInSearchEnabled = model?.hasBuiltInSearch == true
-
-    // 模型支持内置搜索，或已开启内置搜索（后者保证残留状态也能被关闭）时显示开关
-    if (model != null && (supportsBuiltInSearch || hasBuiltInSearchEnabled)) {
-        BuiltInSearchSetting(model = model, onUpdateBuiltInSearch = onUpdateBuiltInSearch)
+    val provider = model?.findProvider(settings.providers)
+    val hasBuiltInSearchEnabled = model?.hasBuiltInSearch(provider) == true
+    if (model != null) {
+        val searchTool = when {
+            model.supportsDeepSeekWebTools(provider) -> BuiltInTools.DeepSeekWebSearch
+            ModelRegistry.GEMINI_SERIES.match(model.modelId) ||
+                model.modelId.contains("gpt-") ||
+                BuiltInTools.Search in model.tools -> BuiltInTools.Search
+            else -> null
+        }
+        if (searchTool != null) {
+            BuiltInSearchSetting(model, searchTool, onUpdateBuiltInSearch)
+        }
     }
 
     // 如果没有开启内置搜索，显示搜索服务选择
@@ -329,18 +335,13 @@ private fun AppSearchSettings(
 }
 
 @Composable
-private fun BuiltInSearchSetting(model: Model, onUpdateBuiltInSearch: ((Boolean) -> Unit)? = null) {
+private fun BuiltInSearchSetting(
+    model: Model,
+    searchTool: BuiltInTools,
+    onUpdateBuiltInSearch: ((Boolean) -> Unit)?,
+) {
     val settingsStore = koinInject<SettingsStore>()
     val scope = rememberCoroutineScope()
-    // 本开关管理的「搜索类」工具：DeepSeek 模型切 deepseek_web_search（¥5/千次按次计费），
-    // 其余模型维持原生 search。关闭时把所有搜索类变体一并清掉，避免残留孤儿状态继续压住外挂搜索。
-    val searchTool = remember(model) {
-        if (model.modelId.contains("deepseek", ignoreCase = true)) {
-            BuiltInTools.DeepSeekWebSearch
-        } else {
-            BuiltInTools.Search
-        }
-    }
     Card {
         Row(
             modifier = Modifier
@@ -372,23 +373,26 @@ private fun BuiltInSearchSetting(model: Model, onUpdateBuiltInSearch: ((Boolean)
                         onUpdateBuiltInSearch(checked)
                         return@Switch
                     }
-                    val settings = settingsStore.settingsFlow.value
                     scope.launch {
-                        settingsStore.update(
+                        settingsStore.update { settings ->
+                            val currentModel = settings.findModelById(model.id) ?: return@update settings
+                            if (checked && searchTool.isDeepSeekWebTool &&
+                                !currentModel.supportsDeepSeekWebTools(currentModel.findProvider(settings.providers))
+                            ) return@update settings
                             settings.copy(
                                 providers = settings.providers.map { providerSetting ->
                                     providerSetting.editModel(
-                                        model.copy(
+                                        currentModel.copy(
                                             tools = if (checked) {
-                                                model.tools + searchTool
+                                                currentModel.tools + searchTool
                                             } else {
-                                                model.tools - BuiltInTools.Search - BuiltInTools.DeepSeekWebSearch
+                                                currentModel.tools - BuiltInTools.Search - BuiltInTools.DeepSeekWebSearch
                                             }
                                         )
                                     )
                                 }
                             )
-                        )
+                        }
                     }
                 }
             )

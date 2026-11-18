@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.ai.tools
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.hasBuiltInSearch
 import app.androidrik.rikkahub.data.model.Assistant
 import org.junit.Assert.assertEquals
@@ -18,12 +19,14 @@ import org.junit.Test
  */
 class ChatToolFactoryTest {
 
+    private val deepSeek = ProviderSetting.OpenAI(baseUrl = "https://api.deepseek.com/v1")
+
     @Test
     fun `external web search is disabled when assistant preference is disabled`() {
         val assistant = Assistant(enableWebSearch = false)
         val model = Model()
 
-        assertFalse(shouldUseExternalWebSearch(assistant, model))
+        assertFalse(shouldUseExternalWebSearch(assistant, model, null))
     }
 
     @Test
@@ -31,7 +34,7 @@ class ChatToolFactoryTest {
         val assistant = Assistant(enableWebSearch = true)
         val model = Model()
 
-        assertTrue(shouldUseExternalWebSearch(assistant, model))
+        assertTrue(shouldUseExternalWebSearch(assistant, model, null))
     }
 
     @Test
@@ -39,7 +42,7 @@ class ChatToolFactoryTest {
         val assistant = Assistant(enableWebSearch = true)
         val model = Model(tools = setOf(BuiltInTools.Search))
 
-        assertFalse(shouldUseExternalWebSearch(assistant, model))
+        assertFalse(shouldUseExternalWebSearch(assistant, model, null))
     }
 
     @Test
@@ -47,7 +50,7 @@ class ChatToolFactoryTest {
         val assistant = Assistant(enableWebSearch = false)
         val model = Model(tools = setOf(BuiltInTools.Search))
 
-        assertFalse(shouldUseExternalWebSearch(assistant, model))
+        assertFalse(shouldUseExternalWebSearch(assistant, model, null))
     }
 
     // ---- DeepSeek 内置 web tools（配料 03 §5.1 双计费守卫）----
@@ -55,22 +58,29 @@ class ChatToolFactoryTest {
     @Test
     fun `deepseek built-in web search suppresses enabled external web search`() {
         val assistant = Assistant(enableWebSearch = true)
-        val model = Model(tools = setOf(BuiltInTools.DeepSeekWebSearch))
+        val model = Model(modelId = "deepseek-flash", tools = setOf(BuiltInTools.DeepSeekWebSearch))
 
         // 守卫只认「搜索类」变体：deepseek_web_search 开启时若仍注册外挂搜索，
         // 同一问题走两条搜索路径，token 之外按 ¥5/千次双重计费
-        assertFalse(shouldUseExternalWebSearch(assistant, model))
-        assertFalse(shouldUseExternalWebSearch(assistant, model.copy(tools = setOf(BuiltInTools.Search, BuiltInTools.DeepSeekWebSearch))))
+        assertFalse(shouldUseExternalWebSearch(assistant, model, deepSeek))
+    }
+
+    @Test
+    fun `stale deepseek built-in web search does not suppress external search on a gateway`() {
+        val assistant = Assistant(enableWebSearch = true)
+        val model = Model(modelId = "deepseek-flash", tools = setOf(BuiltInTools.DeepSeekWebSearch))
+        val gateway = deepSeek.copy(baseUrl = "https://api.deepseek.com.gateway.example/v1")
+        assertTrue(shouldUseExternalWebSearch(assistant, model, gateway))
     }
 
     @Test
     fun `deepseek read-url is not a search-class tool`() {
         val assistant = Assistant(enableWebSearch = true)
-        val model = Model(tools = setOf(BuiltInTools.DeepSeekReadUrl))
+        val model = Model(modelId = "deepseek-flash", tools = setOf(BuiltInTools.DeepSeekReadUrl))
 
         // deepseek_read_url 只抓用户消息里的 URL，与外挂搜索不冲突——不能误伤外挂搜索
-        assertTrue(shouldUseExternalWebSearch(assistant, model))
-        assertFalse(model.hasBuiltInSearch)
+        assertTrue(shouldUseExternalWebSearch(assistant, model, deepSeek))
+        assertFalse(model.hasBuiltInSearch(deepSeek))
     }
 
     @Test

@@ -3,6 +3,7 @@ package app.androidrik.ai.provider.providers.openai
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
+import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.util.KeyRoulette
@@ -14,7 +15,9 @@ import app.androidrik.ai.provider.TextGenerationParams
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -143,16 +146,20 @@ class ChatCompletionsServerToolTest {
 
     // ---------------- 发送：裸 type 项混排 ----------------
 
-    private val deepseekProvider = app.androidrik.ai.provider.ProviderSetting.OpenAI(
+    private val deepseekProvider = ProviderSetting.OpenAI(
         name = "DeepSeek",
         baseUrl = "https://api.deepseek.com/v1",
     )
 
-    private fun buildBody(model: Model, tools: List<Tool>): JsonObject =
+    private fun buildBody(
+        model: Model,
+        tools: List<Tool>,
+        provider: ProviderSetting.OpenAI = deepseekProvider,
+    ): JsonObject =
         api.buildChatCompletionRequestBodyForTest(
             messages = listOf(app.androidrik.ai.ui.UIMessage.user("hi")),
             params = TextGenerationParams(model = model, tools = tools),
-            providerSetting = deepseekProvider,
+            providerSetting = provider,
         )
 
     @Test
@@ -200,6 +207,45 @@ class ChatCompletionsServerToolTest {
         )
         val toolsArray = body["tools"] as kotlinx.serialization.json.JsonArray
         assertTrue(toolsArray.all { it is JsonObject && ((it)["type"] as JsonPrimitive).content == "function" })
+    }
+
+    @Test
+    fun `unsupported deepseek targets omit stale server tools and keep function tools`() {
+        val model = Model(
+            modelId = "deepseek-flash",
+            abilities = listOf(ModelAbility.TOOL),
+            tools = setOf(BuiltInTools.DeepSeekWebSearch, BuiltInTools.DeepSeekReadUrl),
+        )
+        val function = Tool(name = "search_web", description = "", execute = { emptyList() })
+        val gateway = deepseekProvider.copy(baseUrl = "https://gateway.example/v1")
+        val gatewayRequest = buildBody(model, listOf(function), gateway)
+        val officialProRequest = buildBody(model.copy(modelId = "deepseek-pro"), listOf(function))
+
+        for (body in listOf(gatewayRequest, officialProRequest)) {
+            val tool = body.getValue("tools").jsonArray.single().jsonObject
+            assertEquals("function", tool.getValue("type").jsonPrimitive.content)
+            assertEquals("search_web", tool.getValue("function").jsonObject.getValue("name").jsonPrimitive.content)
+        }
+        assertTrue(!buildBody(model, emptyList(), gateway).containsKey("tools"))
+    }
+
+    @Test
+    fun `responses only declares deepseek web tools on the official flash endpoint`() {
+        val api = ResponseAPI(OkHttpClient())
+        val model = Model(
+            modelId = "deepseek-flash",
+            tools = setOf(BuiltInTools.DeepSeekWebSearch, BuiltInTools.DeepSeekReadUrl),
+        )
+        val params = TextGenerationParams(model = model)
+        val official = api.buildRequestBody(deepseekProvider, emptyList(), params, stream = false)
+        val gateway = deepseekProvider.copy(baseUrl = "https://gateway.example/v1")
+        val thirdParty = api.buildRequestBody(gateway, emptyList(), params, stream = false)
+
+        assertEquals(
+            listOf("deepseek_web_search", "deepseek_read_url"),
+            official.getValue("tools").jsonArray.map { it.jsonObject.getValue("type").jsonPrimitive.content },
+        )
+        assertTrue(!thirdParty.containsKey("tools"))
     }
 // ---- P2：usage.server_tool_use 计费次数解析（配料 04 §9 实测形态）----
 

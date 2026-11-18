@@ -12,6 +12,7 @@ import app.androidrik.ai.core.TOOL_NO_APPROVAL
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.BuiltInTools
 import app.androidrik.ai.provider.Model
+import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.hasBuiltInSearch
 import app.androidrik.ai.util.ToolSchemaSize
 import app.androidrik.rikkahub.data.ai.memoryId
@@ -50,8 +51,12 @@ private const val TAG = "ChatToolFactory"
  * （上游 `aac6e963` / #1666「统一内置搜索与外挂搜索行为」）；
  * 对 DeepSeek 内置搜索还意味着**双重计费**（内置与外挂各按 ¥5/千次叠加）。
  */
-internal fun shouldUseExternalWebSearch(assistant: Assistant, model: Model): Boolean {
-    return assistant.enableWebSearch && !model.hasBuiltInSearch
+internal fun shouldUseExternalWebSearch(
+    assistant: Assistant,
+    model: Model,
+    provider: ProviderSetting?,
+): Boolean {
+    return assistant.enableWebSearch && !model.hasBuiltInSearch(provider)
 }
 
 /**
@@ -277,7 +282,7 @@ class ChatToolFactory(
             segments += ToolSegment(ToolSource.Local, listOf(createViewImageTool(filesDirPath)))
         }
 
-        if (shouldUseExternalWebSearch(assistant, model)) {
+        if (shouldUseExternalWebSearch(assistant, model, model.findProvider(settings.providers))) {
             segments += ToolSegment(ToolSource.Search, createSearchTools(settings).toList())
         }
 
