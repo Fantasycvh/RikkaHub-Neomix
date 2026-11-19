@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.scheduled
 import app.androidrik.ai.provider.CustomBody
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelType
+import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.mediagen.model.ImageRole
 import app.androidrik.mediagen.model.MediaGenerationModel
@@ -116,6 +117,61 @@ class ScheduledMediaActionTest {
             .mediaModelCatalog().single { it.model.id == modified.id }
         val grant = ScheduledMediaAction(option.ref, MediaCreationParams(count = 1), option.authorizationFingerprint())
         assertFalse(grant.permits(option))
+    }
+
+    @Test
+    fun `google image-output models enter the catalog by output modality`() {
+        // Gemini 图片模型通常以 CHAT 类型录入（models.dev 注册表回填 IMAGE 输出模态）——
+        // 收录口径是执行能力（generateContent IMAGE 模态），不是类型声明
+        val gemini = Model(
+            modelId = "gemini-2.5-flash-image",
+            outputModalities = listOf(Modality.TEXT, Modality.IMAGE),
+        )
+        val google = ProviderSetting.Google(models = listOf(gemini))
+        val catalog = Settings.dummy().copy(providers = listOf(google)).mediaModelCatalog()
+        val option = catalog.single { it.model.id == gemini.id }
+        assertEquals(google.id, option.ref.providerId)
+        assertEquals(google.id, requireNotNull(
+            Settings.dummy().copy(providers = listOf(google)).defaultImageModel()
+        ).ref.providerId)
+        // 显式 IMAGE 类型声明同样收录（目录拉取不出模态时用户手动标类型）
+        val typed = Settings.dummy().copy(providers = listOf(
+            google.copy(models = listOf(Model(modelId = "gemini-image", type = ModelType.IMAGE)))
+        )).mediaModelCatalog()
+        assertEquals(1, typed.size)
+    }
+
+    @Test
+    fun `non-executable image models stay out of the catalog`() {
+        // Claude 的 generateImage 是 error 占位（Anthropic 无生图端点）；Google 纯文本模型
+        // 没有 IMAGE 输出模态也不收录——收录即「能选但一跑就报错」
+        val dead = Settings.dummy().copy(providers = listOf(
+            ProviderSetting.Claude(models = listOf(legacyImage)),
+            ProviderSetting.Google(models = listOf(Model(modelId = "gemini-2.5-flash"))),
+        )).mediaModelCatalog()
+        assertTrue(dead.isEmpty())
+        assertNull(Settings.dummy().copy(providers = listOf(
+            ProviderSetting.Claude(models = listOf(legacyImage)),
+        )).defaultImageModel())
+    }
+
+    @Test
+    fun `google fingerprint tracks endpoint and differs from the openai branch`() {
+        val gemini = Model(modelId = "gemini-2.5-flash-image",
+            outputModalities = listOf(Modality.TEXT, Modality.IMAGE))
+        val google = ProviderSetting.Google(models = listOf(gemini))
+        val option = requireNotNull(
+            Settings.dummy().copy(providers = listOf(google)).defaultImageModel()
+        )
+        val grant = ScheduledMediaAction(option.ref, MediaCreationParams(count = 1), option.authorizationFingerprint())
+        assertTrue(grant.permits(option))
+        // 端点变化 → 重新批准（与 OpenAI 分支同一语义）
+        val moved = Settings.dummy().copy(providers = listOf(google.copy(baseUrl = "https://other.test")))
+        assertFalse(grant.permits(requireNotNull(moved.defaultImageModel())))
+        // 同配置不同分支类型指纹不同，不能互相顶替
+        val openaiOption = Settings.dummy().copy(providers = listOf(legacy))
+            .mediaModelCatalog().single { it.model.id == legacyImage.id }
+        assertNotEquals(option.authorizationFingerprint(), openaiOption.authorizationFingerprint())
     }
 
     @Test

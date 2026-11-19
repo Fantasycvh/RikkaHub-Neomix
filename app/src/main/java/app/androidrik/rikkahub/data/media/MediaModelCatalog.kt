@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.data.media
 
+import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelType
+import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.mediagen.model.MediaGenerationModel
@@ -51,15 +53,23 @@ internal data class MediaModelOption(
 
     fun authorizationFingerprint(): String {
         val configuration = when (target) {
-            is MediaGenerationTarget.Image -> {
-                val provider = target.provider as ProviderSetting.OpenAI
-                listOf(
+            is MediaGenerationTarget.Image -> when (val provider = target.provider) {
+                // OpenAI 分支的字段顺序是既有定时授权的指纹来源，改动会使存量批准整体失效——保持逐字节不变
+                is ProviderSetting.OpenAI -> listOf(
                     "image",
                     provider.baseUrl,
                     JsonInstant.encodeToString(provider.customHeaders),
                     JsonInstant.encodeToString(target.model.customHeaders),
                     JsonInstant.encodeToString(target.model.customBodies),
                 )
+                is ProviderSetting.Google -> listOf(
+                    "image-google",
+                    provider.baseUrl,
+                    JsonInstant.encodeToString(provider.customHeaders),
+                    JsonInstant.encodeToString(target.model.customHeaders),
+                    JsonInstant.encodeToString(target.model.customBodies),
+                )
+                else -> error("Unsupported legacy image provider: ${target.provider::class.simpleName}")
             }
             is MediaGenerationTarget.Media -> listOf(target.provider.javaClass.name, target.provider.baseUrl)
         }
@@ -84,15 +94,35 @@ internal fun Settings.mediaModelCatalog(): List<MediaModelOption> = buildList {
     }
     for (provider in providers) {
         for (model in provider.models) {
-            if (model.type != ModelType.IMAGE && model.id != imageGenerationModelId) continue
+            val effective = model.findProvider(providers) ?: continue
+            // 收录口径 = 执行能力（见 [legacyImageExecutable]），不可执行的一律不进目录：
+            // 收录即「能选但一跑就报错」——工具门控的定式是宁可没有工具。
+            if (!legacyImageExecutable(effective, model)) continue
             if (model.modelId.isBlank()) continue
-            val effective = model.findProvider(providers) as? ProviderSetting.OpenAI ?: continue
             val presentation = MediaGenerationModel(model.modelId, MediaKind.IMAGE, model.displayName, model.id)
             add(MediaModelOption(MediaGenerationTarget.Image(effective, model), presentation, provider.id,
                 provider.name.ifBlank { "OpenAI" }, legacyImageCapabilities,
-                visible = provider.enabled && model.enabled && model.type == ModelType.IMAGE))
+                visible = provider.enabled && model.enabled))
         }
     }
+}
+
+/**
+ * legacy 分支（旧 [ProviderSetting] 生图）的收录口径，与执行层严格对齐
+ * （`MediaGenerationExecutor` → `Provider.generateImage` 的真实实现）：
+ *
+ * - **OpenAI 兼容**：`/images` 端点族（generations/edits），按 IMAGE 类型声明收录。
+ * - **Google**：`generateContent` 的 IMAGE 输出模态（[GoogleProvider.generateImage]）。
+ *   Gemini 图片模型（gemini-2.5-flash-image 等）通常以 CHAT 类型录入、靠 models.dev
+ *   注册表回填 IMAGE 输出模态（`ModelListPage` 添加模型时），所以不能只认类型声明。
+ * - **其余类型**（Claude/ChatGPT/Grok 账号）：`generateImage` 是 error 占位（Anthropic
+ *   API 没有生图端点），不收录。
+ */
+private fun legacyImageExecutable(provider: ProviderSetting, model: Model): Boolean = when (provider) {
+    is ProviderSetting.OpenAI -> model.type == ModelType.IMAGE
+    is ProviderSetting.Google -> model.type == ModelType.IMAGE ||
+        model.outputModalities.contains(Modality.IMAGE)
+    else -> false
 }
 
 /**

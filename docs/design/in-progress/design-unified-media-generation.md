@@ -26,6 +26,16 @@
 
 [统一执行入口](../../../app/src/main/java/app/androidrik/rikkahub/data/media/MediaGenerationExecutor.kt) · [模型目录与历史记录解析](../../../app/src/main/java/app/androidrik/rikkahub/data/media/MediaModelCatalog.kt) · [原媒体生成设计](../completed/design-media-generation.md)
 
+### 目录收录口径与 legacy 生图执行层（2026-11-19 补）
+
+统一目录落地时暴露过一则误判：「legacy 分支过滤比执行能力窄（Claude 已实现 generateImage）」。核实结果相反——`ClaudeProvider.generateImage` 是 override 但函数体为 `error` 占位（Anthropic API 无生图端点，上游同款），`GoogleProvider` 此前无实现走接口默认 error；执行能力实际只有 OpenAI 兼容一档。重构前的行为是 Google/Claude 模型「能选但一跑就报错」，统一目录把它们挡在目录外正是把门控对齐到执行能力。本轮把 Google 从「挡掉」变成「真支持」：
+
+- **收录口径 = 执行能力**（`MediaModelCatalog.legacyImageExecutable`）：OpenAI 兼容按 IMAGE 类型声明；Google 按「IMAGE 类型声明 或 IMAGE 输出模态」（Gemini 图片模型以 CHAT 类型录入、添加模型时由 models.dev 注册表回填输出模态，不能只认类型）；Claude/账号类不收录。原 `model.id == imageGenerationModelId` 逃生舱移除——指向不可执行模型的存量 id 会走兜底解析。
+- **`GoogleProvider.generateImage`/`editImage`**：复用 generateContent 端点与聊天路径的 IMAGE 输出模态请求形态（systemInstruction 语义、safetySettings 全 OFF、customBody 顶层合并同约定），鉴权/代理/Vertex 服务账号走既有 transformRequest/buildUrl。张数按 n 语义循环（Gemini 图片模型单请求只稳定产一张，candidateCount 不稳）；显式尺寸映射 aspectRatio（auto/未知值不下发）；响应解析跳过思考草稿图，无图时把模型文本/拦截原因透传成错误（会话内工具会把失败转成文本回给模型）。
+- **授权指纹**：OpenAI 分支逐字节不变（存量定时批准不作废），Google 用 `image-google` 前缀新分支。`getProviderByType` 已能分发 Google，`MediaGenerationExecutor` 无需改动。
+
+测试：`GoogleProviderImageTest`（请求体形态/宽高比/解析）、`ScheduledMediaActionTest` 新增收录/排除/指纹三例。
+
 ### 按任务授权
 
 - 用户在任务编辑页授权。授权记录 `ScheduledMediaAction` 保存模型引用、参数和配置指纹，直跑模板另存已批准的提示词。配置指纹覆盖适配器和端点，旧生图适配器还绑定相关自定义请求头和请求体。任务运行时按当前配置精确解析，端点或请求配置变化后需重新授权。模型缺失时报告错误。

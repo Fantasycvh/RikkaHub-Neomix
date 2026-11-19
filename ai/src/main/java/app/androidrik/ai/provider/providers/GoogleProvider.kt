@@ -53,6 +53,8 @@ import app.androidrik.ai.provider.providers.google.googleThoughtMetadata
 import app.androidrik.ai.provider.providers.google.stringOrNull
 import app.androidrik.ai.provider.providers.google.withGoogleSignature
 import app.androidrik.ai.provider.stream.SseEvent
+import app.androidrik.ai.ui.ImageGenSize
+import app.androidrik.ai.ui.ImageGenerationItem
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.provider.providers.vertex.ServiceAccountTokenProvider
 import app.androidrik.ai.registry.ModelRegistry
@@ -90,6 +92,8 @@ import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import org.apache.commons.text.StringEscapeUtils
+import java.io.File
+import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
 import app.androidrik.ai.util.summarizeRequestBody
@@ -234,6 +238,177 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         client.configureClientWithProxy(providerSetting.proxy).runQuotaQuery(providerSetting) {
             keyRoulette.next(providerSetting.effectiveApiKeys, providerSetting.id.toString())
         }
+
+    /**
+     * Gemini 图片生成：复用 generateContent 端点（与聊天路径的 IMAGE 输出模态同一套请求形态，
+     * 见 [buildCompletionRequestBody] 的 responseModalities 分支），鉴权/代理/Vertex 全部走
+     * 既有 [transformRequest]/[buildUrl]，AI Studio 与 Vertex 服务账号两种形态都能跑。
+     */
+    override suspend fun generateImage(
+        providerSetting: ProviderSetting,
+        params: ImageGenerationParams
+    ): Flow<ImageGenerationItem> = flow {
+        require(providerSetting is ProviderSetting.Google) {
+            "Expected Google provider setting"
+        }
+        // Gemini 图片模型（nano banana 系）一次请求只稳定产一张，candidateCount 对图片输出
+        // 模型的多候选支持不稳定——按 OpenAI 路径的 n 语义循环补齐张数。
+        repeat(params.numOfImages.coerceAtLeast(1)) {
+            requestImage(providerSetting, params.model.modelId, params.customHeaders, imageGenerationBody(params))
+                .forEach { emit(it) }
+        }
+    }
+
+    override suspend fun editImage(
+        providerSetting: ProviderSetting,
+        params: ImageEditParams
+    ): Flow<ImageGenerationItem> = flow {
+        require(providerSetting is ProviderSetting.Google) {
+            "Expected Google provider setting"
+        }
+        require(params.images.isNotEmpty()) {
+            "At least one image is required"
+        }
+        repeat(params.numOfImages.coerceAtLeast(1)) {
+            requestImage(providerSetting, params.model.modelId, params.customHeaders, imageEditBody(params))
+                .forEach { emit(it) }
+        }
+    }
+
+    /** 生成请求体：单条 user 文本 + IMAGE 输出模态；模型级 customBody 合并进顶层（与聊天路径同约定）。 */
+    internal fun imageGenerationBody(params: ImageGenerationParams): JsonObject = buildJsonObject {
+        put("contents", buildJsonArray {
+            add(buildJsonObject {
+                put("role", "user")
+                putJsonArray("parts") {
+                    add(buildJsonObject { put("text", params.prompt) })
+                }
+            })
+        })
+        put("generationConfig", imageGenerationConfig(params.size))
+        put("safetySettings", safetySettingsOff())
+    }.mergeCustomBody(params.customBody)
+
+    /** 编辑请求体：参考图在前、提示词在后（Gemini 官方编辑示例顺序），参考图转 inlineData。 */
+    internal suspend fun imageEditBody(params: ImageEditParams): JsonObject {
+        val references = withContext(Dispatchers.IO) {
+            params.images.map { path -> referenceImagePart(path) }
+        }
+        return buildJsonObject {
+            put("contents", buildJsonArray {
+                add(buildJsonObject {
+                    put("role", "user")
+                    putJsonArray("parts") {
+                        references.forEach { add(it) }
+                        add(buildJsonObject { put("text", params.prompt) })
+                    }
+                })
+            })
+            put("generationConfig", imageGenerationConfig(params.size))
+            put("safetySettings", safetySettingsOff())
+        }.mergeCustomBody(params.customBody)
+    }
+
+    /** ImageGenSize 的 OpenAI 系数值 → Gemini aspectRatio；`auto` 与未知值都不下发（保守口径）。 */
+    private fun imageAspectRatio(size: String): String? = when (size) {
+        ImageGenSize.AUTO.value -> null
+        "1024x1024", "256x256", "512x512" -> "1:1"
+        "1536x1024" -> "3:2"
+        "1024x1536" -> "2:3"
+        "1792x1024" -> "16:9"
+        "1024x1792" -> "9:16"
+        else -> null
+    }
+
+    private fun imageGenerationConfig(size: String): JsonObject = buildJsonObject {
+        put("responseModalities", buildJsonArray {
+            add(JsonPrimitive("TEXT"))
+            add(JsonPrimitive("IMAGE"))
+        })
+        imageAspectRatio(size)?.let {
+            put("imageConfig", buildJsonObject { put("aspectRatio", it) })
+        }
+    }
+
+    private fun referenceImagePart(path: String): JsonObject {
+        val file = File(path)
+        require(file.exists()) { "Image file does not exist: $path" }
+        return buildJsonObject {
+            put("inlineData", buildJsonObject {
+                put("mimeType", file.imageMediaType())
+                put("data", Base64.encode(file.readBytes()))
+            })
+        }
+    }
+
+    private suspend fun requestImage(
+        providerSetting: ProviderSetting.Google,
+        modelId: String,
+        customHeaders: List<CustomHeader>,
+        requestBody: JsonObject,
+    ): List<ImageGenerationItem> = withContext(Dispatchers.IO) {
+        val url = buildUrl(
+            providerSetting = providerSetting,
+            path = if (providerSetting.vertexAI) {
+                "publishers/google/models/$modelId:generateContent"
+            } else {
+                "models/$modelId:generateContent"
+            }
+        )
+        val request = transformRequest(
+            providerSetting = providerSetting,
+            request = Request.Builder()
+                .url(url)
+                .post(json.encodeToString(requestBody).toRequestBody("application/json".toMediaType()))
+                .configureReferHeaders(providerSetting.baseUrl)
+                .applyCustomHeaders(providerSetting, customHeaders)
+                .build()
+        )
+        val response = client.configureClientWithProxy(providerSetting.proxy).newCall(request).await()
+        if (!response.isSuccessful) {
+            throw Exception("Failed to generate image: ${response.code} ${response.body?.string()}")
+        }
+        parseImageResponse(response.body.string())
+    }
+
+    /**
+     * 生图响应解析：收集所有候选里的 inlineData 图片（跳过思考草稿图，与聊天解析同口径）。
+     * 图片为空时把模型的文本回复/拦截原因作为错误抛出——会话内工具会把 provider 失败转成
+     * 文本回给模型（ImageToolTest 口径），纯文本拒绝能透传，比笼统的 "no image" 有用。
+     */
+    internal fun parseImageResponse(bodyStr: String): List<ImageGenerationItem> {
+        val bodyJson = json.parseToJsonElement(bodyStr).jsonObject
+        val candidates = bodyJson["candidates"]?.jsonArray
+        if (candidates.isNullOrEmpty()) {
+            val blockReason = bodyJson["promptFeedback"]?.jsonObject
+                ?.get("blockReason")?.jsonPrimitiveOrNull?.contentOrNull
+            throw Exception(if (blockReason != null) "Prompt blocked: $blockReason" else "No candidates in response")
+        }
+        val images = mutableListOf<ImageGenerationItem>()
+        val texts = mutableListOf<String>()
+        for (candidate in candidates) {
+            val parts = candidate.jsonObject["content"]?.jsonObject?.get("parts")?.jsonArray.orEmpty()
+            for (part in parts) {
+                val obj = part.jsonObject
+                if (obj["thought"]?.jsonPrimitive?.booleanOrNull == true) continue
+                val inline = obj["inlineData"]?.jsonObject
+                if (inline == null) {
+                    obj["text"]?.jsonPrimitive?.contentOrNull
+                        ?.takeIf { it.isNotBlank() }?.let(texts::add)
+                    continue
+                }
+                val mime = inline["mimeType"]?.jsonPrimitive?.content ?: "image/png"
+                val data = inline["data"]?.jsonPrimitive?.content ?: ""
+                if (mime.startsWith("image/") && data.isNotBlank()) {
+                    images.add(ImageGenerationItem(data, mime))
+                }
+            }
+        }
+        if (images.isEmpty()) {
+            throw Exception(texts.joinToString("\n").ifBlank { "No image in response" })
+        }
+        return images
+    }
 
     override suspend fun streamText(
         providerSetting: ProviderSetting.Google,
@@ -513,29 +688,24 @@ class GoogleProvider(private val client: OkHttpClient, context: Context? = null)
         }
 
         // Safety Settings
-        putJsonArray("safetySettings") {
+        put("safetySettings", safetySettingsOff())
+    }.mergeCustomBody(params.customBody)
+
+    /** 全类目 OFF（与聊天路径同一口径）：图片输出模型对安全拦截更敏感，保持与聊天可用性一致。 */
+    private fun safetySettingsOff(): JsonArray = buildJsonArray {
+        for (category in listOf(
+            "HARM_CATEGORY_HARASSMENT",
+            "HARM_CATEGORY_HATE_SPEECH",
+            "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            "HARM_CATEGORY_DANGEROUS_CONTENT",
+            "HARM_CATEGORY_CIVIC_INTEGRITY",
+        )) {
             add(buildJsonObject {
-                put("category", "HARM_CATEGORY_HARASSMENT")
-                put("threshold", "OFF")
-            })
-            add(buildJsonObject {
-                put("category", "HARM_CATEGORY_HATE_SPEECH")
-                put("threshold", "OFF")
-            })
-            add(buildJsonObject {
-                put("category", "HARM_CATEGORY_SEXUALLY_EXPLICIT")
-                put("threshold", "OFF")
-            })
-            add(buildJsonObject {
-                put("category", "HARM_CATEGORY_DANGEROUS_CONTENT")
-                put("threshold", "OFF")
-            })
-            add(buildJsonObject {
-                put("category", "HARM_CATEGORY_CIVIC_INTEGRITY")
+                put("category", category)
                 put("threshold", "OFF")
             })
         }
-    }.mergeCustomBody(params.customBody)
+    }
 
     private fun commonRoleToGoogleRole(role: MessageRole): String {
         return when (role) {
