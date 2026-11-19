@@ -35,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -115,6 +116,14 @@ fun ColumnScope.ConversationList(
      * （`docs/design/design-memory-injection-tiering.md` §5）。
      */
     onFreezeMemory: (Conversation) -> Unit = {},
+    /** 多选模式：条目显示勾选框、点击改勾选、长按菜单隐藏 */
+    selectionMode: Boolean = false,
+    /** 多选模式下已勾选的会话 id（字符串形式的 Uuid） */
+    selectedIds: Set<String> = emptySet(),
+    /** 多选模式下点击条目 = 切换勾选 */
+    onToggleSelect: (Conversation) -> Unit = {},
+    /** 长按菜单里的「多选」入口：进入多选模式并选中该条 */
+    onEnterSelect: (Conversation) -> Unit = {},
 ) {
     // 列表顶部若放了 header，会话项在 LazyColumn 中的位置要往后挪一位。
     // 旋转使 header 插入/移出时也重新校验当前位置，避免沿用旧布局的索引。
@@ -210,7 +219,10 @@ fun ColumnScope.ConversationList(
                             .takeIf { showLastActive },
                         selected = item.conversation.id == current.id,
                         loading = item.conversation.id in conversationJobs,
-                        onClick = onClick,
+                        selectionMode = selectionMode,
+                        isSelected = item.conversation.id.toString() in selectedIds,
+                        onClick = if (selectionMode) onToggleSelect else onClick,
+                        onEnterSelect = onEnterSelect,
                         onDelete = onDelete,
                         onRegenerateTitle = onRegenerateTitle,
                         onPin = onPin,
@@ -304,12 +316,17 @@ private fun ConversationItem(
     selected: Boolean,
     loading: Boolean,
     modifier: Modifier = Modifier,
+    /** 多选模式：行首显示勾选框，长按菜单隐藏 */
+    selectionMode: Boolean = false,
+    isSelected: Boolean = false,
     onDelete: (Conversation) -> Unit = {},
     onRegenerateTitle: (Conversation) -> Unit = {},
     onPin: (Conversation) -> Unit = {},
     onMoveToAssistant: (Conversation) -> Unit = {},
     onMoveToFolder: (Conversation) -> Unit = {},
     onShare: (Conversation) -> Unit = {},
+    /** 长按菜单里的「多选」入口（浏览态才有菜单，故仅浏览态可达） */
+    onEnterSelect: (Conversation) -> Unit = {},
     /** 会话级「不使用记忆」（隐身对话）开关，见 docs/design/design-memory-discipline.md §4.4 */
     onToggleMemory: (Conversation) -> Unit = {},
     /**
@@ -341,7 +358,12 @@ private fun ConversationItem(
                 indication = LocalIndication.current,
                 onClick = { onClick(conversation) },
                 onLongClick = {
-                    showDropdownMenu = true
+                    if (selectionMode) {
+                        // 多选态长按等价点击：切换勾选
+                        onClick(conversation)
+                    } else {
+                        showDropdownMenu = true
+                    }
                 }
             )
             .appSkinPanelBackground(panel, MaterialTheme.colorScheme.surfaceContainerLow, itemInk, itemShape)
@@ -354,6 +376,13 @@ private fun ConversationItem(
                 .padding(horizontal = (panel.paddingHorizontalDp ?: 12f).dp, vertical = (panel.paddingVerticalDp ?: 6f).dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 多选模式行首勾选框
+            if (selectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onClick(conversation) }
+                )
+            }
             Text(
                 text = conversation.title.ifBlank { stringResource(id = R.string.chat_page_new_message) },
                 color = itemInk,
@@ -399,6 +428,19 @@ private fun ConversationItem(
                 onDismissRequest = { showDropdownMenu = false },
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(stringResource(R.string.conversation_multi_select_enter))
+                    },
+                    onClick = {
+                        onEnterSelect(conversation)
+                        showDropdownMenu = false
+                    },
+                    leadingIcon = {
+                        Icon(HugeIcons.CheckmarkCircle02, null)
+                    }
+                )
+
                 DropdownMenuItem(
                     text = {
                         Text(

@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+﻿<?xml version='1.0' encoding='UTF-8'?>
 <resources>
   <string name="about_page_github">Github</string>
   <string name="about_page_license">License</string>
@@ -3383,5 +3383,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_model_page_ocr_deepseek_base_url_desc">OCR 请求发往 {base}/v1/tools/ocr。仅镜像站需要修改。</string>
   <string name="setting_model_page_ocr_deepseek_max_pages">PDF 页数上限</string>
   <string name="setting_model_page_ocr_deepseek_max_pages_desc">上传前本地预检页数，避免超长 PDF 白发请求。服务端上限 1000 页。</string>
+  <string name="conversation_multi_select_enter">多选</string>
+  <string name="conversation_multi_select_title">已选 %1$d 项</string>
+  <string name="conversation_multi_select_select_all">全选</string>
+  <string name="conversation_multi_select_delete_selected">删除所选</string>
+  <string name="conversation_multi_select_exit">退出多选</string>
+  <string name="conversation_multi_select_delete_confirm_title">删除所选会话？</string>
+  <string name="conversation_multi_select_delete_confirm_text">将删除所选的 %1$d 个会话，此操作无法撤销。</string>
+  <string name="conversation_multi_select_deleted_toast">已删除 %1$d 个会话</string>
 </resources>
-

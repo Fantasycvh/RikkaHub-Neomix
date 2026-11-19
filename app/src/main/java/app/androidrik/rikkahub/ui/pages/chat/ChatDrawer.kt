@@ -50,6 +50,7 @@ import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -75,6 +76,7 @@ import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowUpDown
 import me.rerere.hugeicons.stroke.ChartColumn
+import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.File01
 import me.rerere.hugeicons.stroke.Folder01
@@ -143,6 +145,22 @@ fun ChatDrawerContent(
     // 「编辑顺序」模式（设计稿 §一.4）：进入后长按即拖、退出即锁定；不持久化（每次进来都是浏览态）
     var editOrderMode by rememberSaveable { mutableStateOf(false) }
     var showResetOrderDialog by rememberSaveable { mutableStateOf(false) }
+
+    // 多选批量删除（入口：长按菜单「多选」）：勾选后整批删除，无撤销故加确认对话框
+    var selectionMode by rememberSaveable { mutableStateOf(false) }
+    val selectedIds = remember { mutableStateListOf<String>() }
+    var showBatchDeleteDialog by remember { mutableStateOf(false) }
+
+    fun exitSelectionMode() {
+        selectionMode = false
+        selectedIds.clear()
+    }
+
+    fun toggleSelect(conversation: Conversation) {
+        val id = conversation.id.toString()
+        if (id in selectedIds) selectedIds.remove(id) else selectedIds.add(id)
+    }
+
     val editableConversations by drawerVm.editableConversations.collectAsStateWithLifecycle(initialValue = emptyList())
     val conversationListState = rememberLazyListState(
         initialFirstVisibleItemIndex = drawerVm.scrollIndex,
@@ -309,22 +327,27 @@ fun ChatDrawerContent(
             }
 
             if (conversationPanelVisible) {
-                // 「排序」入口（设计稿 §四.1）：会话面板顶部，与文件夹条同层
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { editOrderMode = !editOrderMode }) {
-                        Icon(
-                            imageVector = HugeIcons.ArrowUpDown,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.size(4.dp))
-                        Text(stringResource(R.string.conversation_order_entry))
+                // 「排序」入口（设计稿 §四.1）：会话面板顶部，与文件夹条同层；多选模式下隐藏避免语义冲突
+                if (!selectionMode) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = {
+                            if (selectionMode) exitSelectionMode()
+                            editOrderMode = !editOrderMode
+                        }) {
+                            Icon(
+                                imageVector = HugeIcons.ArrowUpDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.size(4.dp))
+                            Text(stringResource(R.string.conversation_order_entry))
+                        }
                     }
                 }
 
@@ -396,19 +419,74 @@ fun ChatDrawerContent(
                             .fillMaxWidth()
                             .weight(1f),
                     )
-                } else ConversationList(
-                current = current,
-                showLastActive = customOrderActive,
-                conversations = conversations,
-                conversationJobs = conversationJobs.keys,
-                listState = conversationListState,
-                header = if (headerInList) drawerHeader else null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                onClick = {
-                    navigateToChatPage(navController, it.id)
-                },
+                } else {
+                    if (selectionMode) {
+                        // 多选模式操作条：退出 / 已选计数 + 全选 / 删除所选
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = { exitSelectionMode() }) {
+                                Icon(
+                                    imageVector = HugeIcons.Cancel01,
+                                    contentDescription = stringResource(R.string.conversation_multi_select_exit)
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.conversation_multi_select_title, selectedIds.size),
+                                style = MaterialTheme.typography.titleMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = {
+                                val ids = (0 until conversations.itemCount).mapNotNull { i ->
+                                    (conversations[i] as? ConversationListItem)?.let { item ->
+                                        when (item) {
+                                            is ConversationListItem.Item -> item.conversation.id.toString()
+                                            else -> null
+                                        }
+                                    }
+                                }
+                                selectedIds.clear()
+                                selectedIds.addAll(ids)
+                            }) {
+                                Text(stringResource(R.string.conversation_multi_select_select_all))
+                            }
+                            TextButton(
+                                onClick = { showBatchDeleteDialog = true },
+                                enabled = selectedIds.isNotEmpty(),
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.conversation_multi_select_delete_selected),
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                    }
+                    ConversationList(
+                    current = current,
+                    showLastActive = customOrderActive,
+                    conversations = conversations,
+                    conversationJobs = conversationJobs.keys,
+                    listState = conversationListState,
+                    header = if (headerInList) drawerHeader else null,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    selectionMode = selectionMode,
+                    selectedIds = selectedIds.toSet(),
+                    onToggleSelect = { toggleSelect(it) },
+                    onEnterSelect = { conversation ->
+                        // 进入多选：退出排序模式并选中当前条目
+                        editOrderMode = false
+                        selectionMode = true
+                        val id = conversation.id.toString()
+                        if (id !in selectedIds) selectedIds.add(id)
+                    },
+                    onClick = {
+                        navigateToChatPage(navController, it.id)
+                    },
                 onRegenerateTitle = { conversation ->
                     // #1975：标题模型没配好时服务会报错误卡（带「检查标题模型设置」跳转），
                     // 但错误卡渲染在聊天页、此刻被抽屉挡着 ⇒ 这里补一条即时 toast。
@@ -482,7 +560,8 @@ fun ChatDrawerContent(
                         showExportSheet = true
                     }
                 }
-            )
+                    )
+                } // else：ConversationList（含多选操作条）
             } // else：会话面板（FolderBar + ConversationList）
 
             // 助手选择器
@@ -531,6 +610,44 @@ fun ChatDrawerContent(
             dismissButton = {
                 TextButton(onClick = { showResetOrderDialog = false }) {
                     Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    // 多选批量删除确认（抽屉删除无撤销队列，故需二次确认）
+    if (showBatchDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteDialog = false },
+            title = { Text(stringResource(R.string.conversation_multi_select_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.conversation_multi_select_delete_confirm_text, selectedIds.size)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showBatchDeleteDialog = false
+                    scope.launch {
+                        val ids = selectedIds.toList()
+                        val containsCurrent = current.id.toString() in ids
+                        ids.forEach { id ->
+                            // 列表项是轻量摘要（messageNodes 为空），删除前取完整会话以正确清理附件文件
+                            val full = repo.getConversationById(Uuid.parse(id)) ?: return@forEach
+                            vm.deleteConversation(full).join()
+                        }
+                        exitSelectionMode()
+                        conversations.refresh()
+                        if (containsCurrent) navigateToChatPage(navController)
+                        toaster.show(
+                            message = resources.getString(
+                                R.string.conversation_multi_select_deleted_toast, ids.size
+                            )
+                        )
+                    }
+                }) {
+                    Text(stringResource(R.string.chat_page_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteDialog = false }) {
+                    Text(stringResource(R.string.chat_page_cancel))
                 }
             },
         )

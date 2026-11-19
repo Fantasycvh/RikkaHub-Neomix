@@ -441,7 +441,7 @@
   <string name="chat_message_tool_approve_all">Approve all</string>
   <string name="chat_message_tool_ask_questions">Ask %d questions</string>
   <string name="chat_message_tool_call_generic">Called tool %1$s</string>
-<string name="chat_stage_thinking">Thinking…</string>
+  <string name="chat_stage_thinking">Thinking…</string>
   <string name="chat_stage_generating">Writing…</string>
   <string name="chat_stage_tool_running">Running %1$s…</string>
   <string name="chat_stage_tool_awaiting">Waiting for tool approval…</string>
@@ -3383,5 +3383,13 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_display_page_chat_input_pill_desc">Capsule input bar floating above the keyboard</string>
   <string name="setting_display_page_chat_input_icon_fade_title">Fade icons while typing</string>
   <string name="setting_display_page_chat_input_icon_fade_desc">Model, search and reasoning icons fade in while typing and fade out hidden (space kept) otherwise; context and memory stay visible</string>
+  <string name="conversation_multi_select_enter">Multi-select</string>
+  <string name="conversation_multi_select_title">%1$d selected</string>
+  <string name="conversation_multi_select_select_all">Select all</string>
+  <string name="conversation_multi_select_delete_selected">Delete selected</string>
+  <string name="conversation_multi_select_exit">Exit multi-select</string>
+  <string name="conversation_multi_select_delete_confirm_title">Delete selected conversations?</string>
+  <string name="conversation_multi_select_delete_confirm_text">The %1$d selected conversations will be deleted and cannot be undone.</string>
+  <string name="conversation_multi_select_deleted_toast">Deleted %1$d conversations</string>
 </resources>
 
