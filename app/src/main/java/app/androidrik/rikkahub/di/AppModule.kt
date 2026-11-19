@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.di
 
 import kotlinx.serialization.json.Json
+import android.content.Context
+import android.os.PowerManager
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.ai.account.ProviderAccountManager
@@ -70,7 +72,9 @@ val appModule = module {
 
     // 无障碍服务可能在 startKoin 之前绑定，必须与静态单例共享同一个实例
     single {
-        PhoneUseManager.instance
+        PhoneUseManager.instance.apply {
+            providePowerManager(get<Context>().getSystemService(PowerManager::class.java))
+        }
     }
 
     single {

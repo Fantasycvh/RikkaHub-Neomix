@@ -2,12 +2,25 @@ package app.androidrik.rikkahub.phoneuse
 
 import android.content.Context
 import android.os.Build
+import android.os.PowerManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import app.androidrik.rikkahub.data.datastore.Settings
+
+// 亮屏锁的兜底上限：正常由空闲释放逻辑显式 release，进程被杀时系统也会兜底
+private const val SCREEN_HOLD_TIMEOUT_MS = 24 * 60 * 60 * 1000L
+
+// 两次手机操作之间（模型思考、等审批）允许的息屏宽限
+private const val SCREEN_IDLE_RELEASE_MS = 120_000L
 
 /** 屏幕上一个可以操作或带文字的元素，[index] 在下一次 [PhoneController.captureScreen] 之前有效，坐标是屏幕像素 */
 data class PhoneElement(
@@ -131,13 +144,52 @@ class PhoneUseManager {
      *
      * [owner] 是同一次工具调用会话的稳定对象：连续动作不换世代，中间被别的会话插进来才换。
      * 调用方保存世代；下一次取得控制权后若世代变了，必须丢弃上一次的 [PhoneScreen]。
+     *
+     * 持有控制权期间保持亮屏（WakeLock）：本应用在后台时 FLAG_KEEP_SCREEN_ON 无效。
+     * 释放锁后再空闲 [SCREEN_IDLE_RELEASE_MS] 才熄屏，覆盖两次动作之间的模型思考与审批等待。
      */
     suspend fun <T> withPhoneControl(owner: Any, block: suspend (epoch: Long) -> T): T =
         controlMutex.withLock {
-            if (lastOwner !== owner) epochCounter++
-            lastOwner = owner
-            block(epochCounter)
+            keepScreenOn()
+            try {
+                if (lastOwner !== owner) epochCounter++
+                lastOwner = owner
+                block(epochCounter)
+            } finally {
+                scheduleScreenRelease()
+            }
         }
+
+    /**
+     * 由 Koin 装配时注入。不能在构造时拿 Context：无障碍服务可能早于 startKoin 使用本类；
+     * 工具执行一定发生在 Koin 就绪之后，所以 [keepScreenOn] 时它已可用。未注入时静默跳过（单测）。
+     */
+    fun providePowerManager(manager: PowerManager) {
+        wakeLock = manager.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "rikkahub:phone_use")
+            .apply { setReferenceCounted(false) }
+    }
+
+    private fun keepScreenOn() {
+        screenReleaseJob?.cancel()
+        screenReleaseJob = null
+        runCatching {
+            wakeLock?.takeIf { !it.isHeld }?.acquire(SCREEN_HOLD_TIMEOUT_MS)
+        }
+    }
+
+    private fun scheduleScreenRelease() {
+        screenReleaseJob?.cancel()
+        screenReleaseJob = screenScope.launch {
+            delay(SCREEN_IDLE_RELEASE_MS)
+            runCatching {
+                wakeLock?.takeIf { it.isHeld }?.release()
+            }
+        }
+    }
+
+    private val screenScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var screenReleaseJob: Job? = null
 
     fun attach(controller: PhoneController) {
         _controller.value = controller
