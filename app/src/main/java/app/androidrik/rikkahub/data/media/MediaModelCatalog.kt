@@ -119,8 +119,21 @@ private val legacyImageCapabilities =
 internal fun Settings.resolveMediaModel(ref: MediaModelRef): MediaModelOption? =
     mediaModelCatalog().singleOrNull { it.ref == ref }
 
-internal fun Settings.defaultImageModel(): MediaModelOption? =
-    mediaModelCatalog().singleOrNull { it.model.id == imageGenerationModelId && it.model.kind == MediaKind.IMAGE }
+/**
+ * 默认生图模型的解析口径（2026-11-19 真机反馈后定的）：
+ *
+ * 1. **显式选择优先**：`imageGenerationModelId` 只在生图页选择器里写入，命中即用。
+ * 2. **未命中时兜底**：该 id 的默认值是随机 Uuid（[Settings.imageGenerationModelId]），从未在
+ *    生图页手动选过就永远命中不了——于是「供应商里明明配好了生图模型」，工具门控却判
+ *    「未配置」不装配，助手生图页也显示未配置。兜底 = 目录里第一个**可见**的生图模型
+ *    （可见 = 供应商与模型均启用；媒体供应商恒可见），目录顺序即优先级（媒体供应商在前、
+ *    旧 AI 供应商在后）。目录为空时仍返回 null，工具照旧不装配。
+ */
+internal fun Settings.defaultImageModel(): MediaModelOption? {
+    val catalog = mediaModelCatalog()
+    return catalog.singleOrNull { it.model.id == imageGenerationModelId && it.model.kind == MediaKind.IMAGE }
+        ?: catalog.firstOrNull { it.model.kind == MediaKind.IMAGE && it.visible }
+}
 
 internal fun Settings.resolveMediaRecord(record: MediaCreationRecord): MediaModelOption? {
     record.catalogModelId?.let { id ->

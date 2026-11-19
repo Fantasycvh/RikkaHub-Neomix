@@ -480,7 +480,9 @@ private fun InputBar(
     if (showModels) {
         MediaModelPicker(
             models = settings.mediaModelCatalog().filter { it.model.kind == MediaKind.IMAGE },
-            selectedModelId = settings.imageGenerationModelId,
+            // 高亮用解析口径而不是裸 id：未手动选过时 defaultImageModel 会兜底到第一个可用
+            // 生图模型，裸 id 会让选择器看起来「什么都没选」，与实际生效的模型不一致。
+            selectedModelId = settings.defaultImageModel()?.model?.id,
             onSelect = { option ->
                 showModels = false
                 scope.launch { vm.settingsStore.update { it.copy(imageGenerationModelId = option.model.id) } }

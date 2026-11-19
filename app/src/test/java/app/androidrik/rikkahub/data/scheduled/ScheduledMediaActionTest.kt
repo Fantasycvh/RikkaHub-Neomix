@@ -53,6 +53,40 @@ class ScheduledMediaActionTest {
     }
 
     @Test
+    fun `unset default id falls back to the first visible image model`() {
+        // imageGenerationModelId 保持 dummy 默认的随机 Uuid（从未在生图页手动选过）：
+        // 目录里有可用生图模型时必须兜底解析出来，否则工具门控会误判「未配置」。
+        val fallback = Settings.dummy().copy(
+            providers = listOf(legacy),
+            mediaGenerationProviders = listOf(video, media),
+        ).defaultImageModel()
+        assertEquals(media.id, requireNotNull(fallback).ref.providerId)
+    }
+
+    @Test
+    fun `explicit default selection wins over the fallback order`() {
+        // 显式选了旧供应商的模型时，即使媒体供应商在目录里排前面也要尊重选择。
+        val explicit = Settings.dummy().copy(
+            providers = listOf(legacy),
+            mediaGenerationProviders = listOf(media),
+            imageGenerationModelId = legacyImage.id,
+        ).defaultImageModel()
+        assertEquals(legacy.id, requireNotNull(explicit).ref.providerId)
+    }
+
+    @Test
+    fun `fallback skips disabled providers and models`() {
+        val disabledProvider = Settings.dummy().copy(
+            providers = listOf(legacy.copy(enabled = false)),
+        ).defaultImageModel()
+        assertNull(disabledProvider)
+        val disabledModel = Settings.dummy().copy(
+            providers = listOf(legacy.copy(models = listOf(legacyImage.copy(enabled = false)))),
+        ).defaultImageModel()
+        assertNull(disabledModel)
+    }
+
+    @Test
     fun `authorization survives serialization but requires approval after endpoint changes`() {
         val option = requireNotNull(settings.defaultImageModel())
         val grant = ScheduledMediaAction(option.ref, MediaCreationParams(count = 1),
