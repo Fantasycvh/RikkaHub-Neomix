@@ -108,6 +108,47 @@ class StreamChunkHandlerTest {
     }
 
     @Test
+    fun `image snapshot without start should honor the chunk mime type`() {
+        // #2311 同族（fork 6b901177e）：快照可能不经 ImageStart 冷启动；decoder 给了
+        // output_format 时按真值拼前缀，jpeg 不再被误标成 png。未知 mime 仍落回 png。
+        var messages = listOf(UIMessage.user("draw an image"))
+        val handler = StreamChunkHandler(model)
+
+        messages = handler.handle(
+            messages,
+            StreamChunk.ImageSnapshot("image-1", "final", mimeType = "image/jpeg"),
+        )
+        messages = handler.handle(messages, StreamChunk.ImageEnd("image-1"))
+
+        val jpeg = messages.last().parts.single() as UIMessagePart.Image
+        assertEquals("data:image/jpeg;base64,final", jpeg.url)
+
+        messages = handler.handle(messages, StreamChunk.ImageSnapshot("image-2", "final"))
+        val defaulted = messages.last().parts.last() as UIMessagePart.Image
+        assertEquals("data:image/png;base64,final", defaulted.url)
+    }
+
+    @Test
+    fun `image snapshot mime should not downgrade the mime chosen by image start`() {
+        // 快照未带 mime（null）时保留部件已有前缀（ImageStart 可能是 webp）；
+        // 显式 mime（decoder 知道 output_format）才是权威，可以覆盖。
+        var messages = listOf(UIMessage.user("draw an image"))
+        val handler = StreamChunkHandler(model)
+
+        messages = handler.handle(messages, StreamChunk.ImageStart("image-1", mimeType = "image/webp"))
+        messages = handler.handle(messages, StreamChunk.ImageSnapshot("image-1", "partial"))
+        val partial = messages.last().parts.single() as UIMessagePart.Image
+        assertEquals("data:image/webp;base64,partial", partial.url)
+
+        messages = handler.handle(
+            messages,
+            StreamChunk.ImageSnapshot("image-1", "final", mimeType = "image/jpeg"),
+        )
+        val final = messages.last().parts.single() as UIMessagePart.Image
+        assertEquals("data:image/jpeg;base64,final", final.url)
+    }
+
+    @Test
     fun `non streaming result should keep image data url intact`() {
         val messages = listOf(UIMessage.user("draw an image"))
         val result = TextGenerationResult(

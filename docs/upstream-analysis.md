@@ -12,7 +12,7 @@
 
 > **同步点（2026-11-10 更新）**：已评估到上游 **`8a837b27e`**（2026-11-10，上游 HEAD），`fe5a28f9a` 之后共 **16 提交**（逐条见「2026-11-10 同步评估」）；issue 扫描到 **#2310**。本批**只评不施**（未改源码、未提交）：**吸收 0 条**；**候选 8 条**——`bcc649abc` 一轮中途自动压缩（P2）、`5b7ca774b` 对话地图滑动卡顿（P2）、`921427f95` web 输入 token 取最后一次（P2，连带补 `UIMessage.lastUsage` 旧账）、`e1667163c` 的两处残件（P2：`signature_delta` 累加 / 非流式相邻 thinking 不合并）、`62d6acd31` 通知权限卡（P3）、`90fe936ed` 信任用户 CA（P3，需拍板）、`1c93ca72c` 500k token 调试对话（P3）、`9bc0fd658` 默认提供商全开（**用户 2026-11-10 已放弃，不再列为候选**）（P3，需拍板）；**已有等价 2 条**（`5863c4e4c` 地图搜索框悬浮、`0cd90ef12` 比例自动压缩——本仓压缩引擎更强，仅「压缩组装搬离主线程」留 P3 残件）；**不跟/不适用 6 条**（`25b70392a`+`ffb1c79e1` Phone Use 线、`da498cb2d` STA1N、`7691e385d`/`8a837b27e` i18n、`9135903d1` specialUse）。issue **#2306 多图上传跳过图片编辑＝本仓同构 bug（`ChatFilesPickerSheet.kt:125`）**，待用户拍板立项。
 
-> **同步点（2026-11-11 更新）**：已评估到上游 **`90269e39d`**（2026-11-10 HEAD，已发 `3.2.0`），`8a837b27e` 之后共 **6 提交**（逐条见「2026-11-11 同步评估」）；issue 扫描到 **#2312**。本批评估阶段只评不施，随后按用户指令落地 `d3ef8174b`（Mistral 422 修复，本地未提交）。**吸收候选 2 条**——`d3ef8174b` Mistral 推理多轮 422（P2，已修 + 解析丢字同构风险实核）、`055faeb38` 快捷消息换行/长按替换（P3，即 11-10 轮 #2305 挂账项，源码已到手）；**已有等价 1 条**（`88a11a3b2` 模型面板手动刷新——本仓模型目录线刷新/错误/保留旧列表更强）；**不适用 3 条**（3.2.0 版本号、publish skill、README）。issue：**#2311 gpt-6 内置生图崩溃＝本仓有防线、待真机核（观察项）**；**#2312 自定义压缩提示词＝已有等价**（`Settings.compressPrompt` 全局可编辑 + `{content}`/`{target_tokens}`/`{additional_context}` 变量 + 手动压缩附加指令 + 一键重置；2026-11-11 复核修正原「无自定义位」误判）。
+> **同步点（2026-11-11 更新）**：已评估到上游 **`90269e39d`**（2026-11-10 HEAD，已发 `3.2.0`），`8a837b27e` 之后共 **6 提交**（逐条见「2026-11-11 同步评估」）；issue 扫描到 **#2312**。本批评估阶段只评不施，随后按用户指令落地 `d3ef8174b`（Mistral 422 修复，本地未提交）。**吸收候选 2 条**——`d3ef8174b` Mistral 推理多轮 422（P2，已修 + 解析丢字同构风险实核）、`055faeb38` 快捷消息换行/长按替换（P3，即 11-10 轮 #2305 挂账项，源码已到手）；**已有等价 1 条**（`88a11a3b2` 模型面板手动刷新——本仓模型目录线刷新/错误/保留旧列表更强）；**不适用 3 条**（3.2.0 版本号、publish skill、README）。issue：**#2311 gpt-6 内置生图崩溃＝已关闭（2026-11-19 复核：结构性免疫，见「2026-11-19 issue 复核」）**；**#2312 自定义压缩提示词＝已有等价**（`Settings.compressPrompt` 全局可编辑 + `{content}`/`{target_tokens}`/`{additional_context}` 变量 + 手动压缩附加指令 + 一键重置；2026-11-11 复核修正原「无自定义位」误判）。
 
 > **同步点（2026-11-03 更新）**：已评估到上游 **`903e058b9`**，`a5db9c9b7` 之后共 **3 提交**；issue 扫描到 **#2290**。按用户指定分四批落地：收藏重复 key 防崩、设置页局域网权限入口、OCR 配置失效明确报错、多关键词模型搜索。`20e9ddcc5`（配色库去 submodule）暂缓；后台 shell PR #2268 仍未合并，继续专项观察。详见文末「2026-11-03 同步评估与四批吸收」。
 
@@ -1885,7 +1885,7 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 ### issue 扫描（#2311–#2312，2026-11-10 之后新增）
 
-- **#2311 gpt-6 等模型内置图像生成报错 failed requirement（open，3.2.0 用户上报）**——崩溃点是上游 `ConversationRepository.conversationToConversationEntity` 的 `require(no base64 part)`。**本仓同族防线已在**：生成图以 `data:image/png;base64,…` 进 Image part（`StreamChunkHandler.kt:248-256`）→ 生成结束 `Base64ImageToLocalFileTransformer` 转本地文件（注册于 `TransformerChainRegistry.kt:120`）→ 保存前 `Base64ImageSanitizer` 再兜底转占位（`FilesManager.kt:408-411`、`ConversationEntityMapper.kt:23`）。上游仍未修（open，无 diff 可借）。判**观察项**：本仓生图路径未真机验证，若复现再按「生图结果不走 output transformer」排查，不立项。
+- **#2311 gpt-6 等模型内置图像生成报错 failed requirement（open，3.2.0 用户上报）**——崩溃点是上游 `ConversationRepository.conversationToConversationEntity` 的 `require(no base64 part)`。**本仓同族防线已在**：生成图以 `data:image/png;base64,…` 进 Image part（`StreamChunkHandler.kt:248-256`）→ 生成结束 `Base64ImageToLocalFileTransformer` 转本地文件（注册于 `TransformerChainRegistry.kt:120`）→ 保存前 `sanitizeBase64ImageParts` 再兜底转占位（`FilesManager.kt` convertBase64ImagePartToLocalFile；`ConversationEntityMapper.kt:23` 是 require 本身）。~~上游仍未修（open，无 diff 可借）~~ **勘误 2026-11-19：报告者在 fork 分支 `FYNIXqwq/rikkahub@fix/responses-image-generation` 修了 5 笔（当时扫描漏跟外链 fork 评论）——已复核并部分吸收，见「2026-11-19 issue 复核」。**
 - **#2312 自定义压缩提示词（open，需求）**——**已有等价（2026-11-11 复核修正，此前误判为「无自定义位」）**：本仓全局 `Settings.compressPrompt` 可在「设置 → 模型 → 提示词 → 压缩提示词」编辑与一键重置（`SettingModelPromptPage.kt:101`，默认 `DEFAULT_COMPRESS_PROMPT`）；支持 `{content}` / `{target_tokens}` / `{additional_context}`（代码另支持 `{locale}`，UI 变量提示未列出）；手动压缩对话框另有 `additionalPrompt` 附加指令（`CompressContextDialog.kt:151`，注入 `{additional_context}`）。仅与上游要求存在粒度差异：本仓为**全局模板**而非按助手/按会话覆盖，但核心诉求（自定义摘要风格、写作连续性指令）已满足，不立项。
 
 ### 本轮实施状态
@@ -1897,7 +1897,7 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - **请求侧**：`buildChatCompletionRequest` 按 `host == "api.mistral.ai"` 传 `mistralThinkingReplay`；`buildAssistantMessageJson` 在该模式下**不写 `reasoning_content`**（含 backfill 分支），把历史思考写成 `content` 首块 `{"type":"thinking","thinking":[{"type":"text","text":…}]}`，再跟原有 text/image 块。本仓无 OpenRouter `reasoning_details` 回传，故用布尔开关而非上游三态枚举。
 - **测试**：新增 `ChatCompletionsMistralContentTest`（5 例：流式过渡帧、非流式块列表、字符串兜底、Mistral 回传形状、默认仍回 reasoning_content）；`ChatCompletionsAPIMessageTest` 反射 helper 补第 5 参。`./gradlew :ai:testDebugUnitTest` **532 项 0 失败**。
 - **`055faeb38` 快捷消息也已落地（本地未提交）**：`ChatInputState.appendText` 非空且不以换行结尾时自动补 `\n`；`QuickMessageButton` 改 `combinedClickable`，长按触感反馈 + `setMessageText` 整段替换。`ChatInputTextUpdatesTest` 补 2 项并更新追加断言；真机 PJX110 验证：空输入短按无前导换行、二次短按自动换行、长按整段替换均通过。
-- **未做**：`#2311` 待真机核验。Mistral 真机验证需自建 `api.mistral.ai` 的 OpenAI 兼容 provider 并做「带历史思考的多轮」对话。
+- **未做**：`#2311` 待真机核验（2026-11-19 已复核关闭，见「2026-11-19 issue 复核」）。Mistral 真机验证需自建 `api.mistral.ai` 的 OpenAI 兼容 provider 并做「带历史思考的多轮」对话。
 - **附带修复（非上游批次）**：真机验证时复现 `MemoryTriggerBootReceiver` 在「startKoin 推迟到换库之后」窗口内解析 Koin → `NoDefinitionFoundException` 崩溃（安装后 ROM 重投 BOOT_COMPLETED 触发）；改为独立 scope + `RikkaHubApp.awaitBootReady(8s)`，等不到即放弃（下次启动 reconcile）。真机两轮 BOOT 重投无 FATAL。详见 `docs/changelog/2026-11.md` 同日条目。
 
 ## 2026-11-14 同步评估（`90269e39d`..`64452581d`，5 提交，上游 3.2.0 收口批）
@@ -1972,6 +1972,36 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 | `a8508e232` | **Android 9/10 导入含 `#` 文件名附件崩溃**：`URLConnection.guessContentTypeFromName` 在 `#` 位于最后一个 `.` 之前时以负长度 substring 抛异常（#2346）；上游抽 `guessMimeTypeFromFileName` 只传扩展名，导入与 S3 上传共用 | **已移植（2026-11-18）** | 本仓同款崩溃面在 [RemoteFileStore.kt:249](../app/src/main/java/app/androidrik/rikkahub/data/files/RemoteFileStore.kt#L249)（S3 上传猜 MIME；本仓 DeepSeekImporter 的 mime 由导入器显式传入，无该调用）。落点：`utils/StringUtils.kt` 新增 `guessMimeTypeFromFileName`（扩展名过滤 + `x.$ext` 假名调用）+ RemoteFileStore 换用；测试补 `#` 文件名/无扩展名用例（StringUtilsTest） |
 | `ce0e3607a` | 允许删除内置默认助手（原删除按钮禁用 + 设置规整按 id 补回）；空列表才恢复默认；删除走 AppScope + 按最新列表检查数量后再清理；assistantId 失效时改选剩余第一个 | **不移植（本仓已等价）** | 本仓 `AssistantVM.removeAssistant` 早已同构且更强：全部内置助手可删（`removedAssistantIds` 墓碑）、防删光（`size <= 1` 守卫）、AppScope 清理（注释明确同款理由）、指针显式重置 |
 | `2cd6acac2` | 开 VPN 时应用内更新包下载失败：去掉 `setAllowedNetworkTypes` 限制 | **不适用** | 本仓无 `UpdateChecker`/应用内更新线 |
+
+## 2026-11-19 issue 复核（#2311 关闭 + fork 分支评估 + mimeType 吸收）
+
+> 起因：复核 11-11 节 issue 扫描时发现「上游无 diff 可借」是**漏判**——#2311 唯一评论是报告者指到自己 fork 分支 `FYNIXqwq/rikkahub@fix/responses-image-generation`（5 笔提交，2026-11-10/11），扫描时只看了 upstream/master 没跟外链。今日全量拉取复核。issue 本体：上游仍 OPEN、无上游修复提交；崩溃机制 = Responses API `image_generation` 服务端工具把 data URL 图片写进 Image part 后，**ChatPage Paging collect 驱动的随流式写库**撞上 `conversationToConversationEntity` 的 `require(no base64 part)`（上游源码 :392）。
+
+### fork 5 笔逐条判决
+
+| fork 提交 | 实质 | 判决 |
+|---|---|---|
+| `6b901177e` | 核心修复：落库前持久化生成图。**保留 require（只加 message）**、改数据侧：mimeType 感知 data URL、流式空占位不落库（`decodeGeneratedImage` 返 null）、仅头部解码防内存暴涨 | **核心语义本仓已等价覆盖**（见下「结构性免疫」）；mimeType 部分今日吸收 |
+| `63d0e64f3` | 模型级生图参数设置（280 行 UI + ChatRequestFactory +85/-9） | **不吸收**：本仓阶段 4 M1 `modelCapabilities`（66292d343）形态更强（能力+凭据引用） |
+| `750de4fb5` | GPT Image 2.5 与聊天推理隔离（TwoStepImageSession +117） | **不吸收**：Response API 原生工具行为优化，非崩溃修复；本仓统一媒体生成线已自建管线 |
+| `6138b4da4` | GPT Image 2 省略 complexity 参数 | **不吸收**（同上） |
+| `c782bbbe9` | native Responses 生图前先 plan（IndependentImageToolSession +151） | **不吸收**（同上） |
+
+另 fork 解码器带 `completeImage` 终态兜底（`response.completed` output 数组补收漏图 + `completedImageIds` 去重，避免 output_item.done 与终态响应双发图片）——**未吸收**：本仓 `output_item.done` 路径已守空 result（`takeIf(String::isNotEmpty)`），双发场景未实见，留观察。
+
+### 本仓结构性免疫（#2311 观察项正式关闭）
+
+关键差异在**写库拓扑**：上游崩溃栈是 `ChatPage → Paging collect → insertConversation`（流式期间随时写库）；本仓 `insertConversation` 调用点仅 ChatService:603/:3291 + 备份导入 + DebugVM，**无 UI 驱动的随流式写库**。三条生成写库路径全部先转图：① 正常完成走 transformer 链 `onGenerationFinish`（GenerationHandler.kt:709，注册于 TransformerChainRegistry.kt:120）；② 半截失败草稿（#1812）ChatService.kt:2183 显式 convert（注释注明「Failure skips onGenerationFinish」）；③ 停止生成 `persistStoppedGeneration`（ChatService.kt:3986，NonCancellable）。converter 本身永不抛：`sanitizeBase64ImageParts`（FilesManager.kt convertBase64ImagePartToLocalFile，P1-6）失败降级为可见占位文本并递归处理 Tool.output 嵌套图。`ConversationEntityMapper.kt:23` 的 require 保留为 tripwire（与 fork「保留 require」哲学一致）。
+
+**勘误**：11-11 节防线第三层原写「`Base64ImageSanitizer`」类名不存在，实为 `sanitizeBase64ImageParts` helper；`ConversationEntityMapper.kt:23` 引用是 require 本身非兜底点。
+
+### 吸收件：ImageSnapshot mimeType 感知（fork `6b901177e` 局部）
+
+- `StreamChunk.ImageSnapshot` 新增可空 `mimeType`（null = decoder 未知 → handler 保留部件已有前缀，**不覆盖** ImageStart 已设的非 png mime——Google 线 ImageStart 带真 mime；全仓只有 Responses decoder 发 Snapshot）。
+- `StreamChunkHandler` 两分支：冷启动 `data:{mime ?: png}`；替换优先 `chunk.mimeType` → 部件已有前缀 → png（fork 同构）。
+- `ResponseApiStreamDecoder` 两发射点（output_item.done / partial_image）传 `output_format` 派生 mime；新增 `JsonObject.imageGenerationMimeType()`（ResponseAPI.kt，fork 同款映射 jpeg/jpg/webp→真 mime，缺省 png）。
+- 测试 +3：handler 冷启动 mime / 不降级 ImageStart mime / decoder 透传（ResponseApiStreamDecoderTest 11 项、StreamChunkHandlerTest 12 项全绿）。
+- 未动：`Message.kt` 非流式合并路径的 png 前缀（raw base64 场景 mime 本质未知，fork 亦未动）。
 
 ## 关联
 

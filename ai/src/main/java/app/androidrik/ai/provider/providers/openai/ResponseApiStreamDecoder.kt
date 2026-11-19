@@ -171,7 +171,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                     "image_generation_call" -> buildList {
                         addAll(state.startImage(id))
                         item["result"]?.jsonPrimitive?.contentOrNull?.takeIf(String::isNotEmpty)?.let {
-                            add(StreamChunk.ImageSnapshot(id, it))
+                            add(StreamChunk.ImageSnapshot(id, it, mimeType = item.imageGenerationMimeType()))
                         }
                         addAll(state.endImage(id))
                     }
@@ -222,6 +222,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                         StreamChunk.ImageSnapshot(
                             requiredItemId,
                             payload["partial_image_b64"]?.jsonPrimitive?.contentOrNull ?: "",
+                            mimeType = payload.imageGenerationMimeType(),
                         )
                     )
                 }

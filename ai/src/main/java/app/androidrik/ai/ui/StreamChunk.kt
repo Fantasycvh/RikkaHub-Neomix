@@ -125,6 +125,12 @@ sealed class StreamChunk {
     data class ImageSnapshot(
         val id: String,
         val data: String,
+        /**
+         * 快照数据的真实 mime（fork #2311 修复语义）：decoder 知道（如 Responses 的
+         * `output_format`）才传，未知保持 null——handler 会回退到部件已有前缀，
+         * 绝不无条件覆盖 [ImageStart] 已设置的非 png mime。
+         */
+        val mimeType: String? = null,
         val metadata: JsonObject? = null,
     ) : StreamChunk()
 

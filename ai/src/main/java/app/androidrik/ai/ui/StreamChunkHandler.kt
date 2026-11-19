@@ -251,7 +251,9 @@ class StreamChunkHandler(
                 if (index == null || parts.getOrNull(index) !is UIMessagePart.Image) {
                     copy(
                         parts = parts + UIMessagePart.Image(
-                            url = "data:image/png;base64,${chunk.data}",
+                            // 快照可能不经 ImageStart 冷启动（#2311 同族）：mime 用 decoder 给的
+                            // 真值，未知（null）才落回 png 默认——jpeg/webp 不再被误标成 png。
+                            url = "data:${chunk.mimeType ?: "image/png"};base64,${chunk.data}",
                             metadata = chunk.metadata,
                         )
                     ).also { imagePartIndexes[chunk.id] = parts.size }
@@ -260,7 +262,10 @@ class StreamChunkHandler(
                         val image = get(index) as UIMessagePart.Image
                         // Snapshot 是一张完整的可渲染图片，只替换 data URL 的数据部分；
                         // 与 ImageDelta 不同，它不会把数据追加到上一帧之后。
-                        val dataUrlPrefix = image.url.substringBefore(",").takeIf { it.startsWith("data:") }
+                        // decoder 显式给了 mime（如 Responses output_format）就以它为准；
+                        // 没给则保留部件已有前缀（ImageStart 可能为非 png），最后才落 png。
+                        val dataUrlPrefix = chunk.mimeType?.let { "data:$it;base64" }
+                            ?: image.url.substringBefore(",").takeIf { it.startsWith("data:") }
                             ?: "data:image/png;base64"
                         set(index, image.copy(
                             url = "$dataUrlPrefix,${chunk.data}",

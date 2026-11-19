@@ -399,6 +399,65 @@ class ResponseApiStreamDecoderTest {
         }
     }
 
+    @Test
+    fun `image generation output format should flow into snapshot mime type`() {
+        // fork #2311 修复语义：output_item.done 与 partial_image 都带 output_format 时，
+        // ImageSnapshot 必须携带真实 mime，jpg/jpeg/webp 不再一律按 png 拼前缀。
+        val decoder = ResponseApiStreamDecoder()
+        val chunks = buildList {
+            addAll(
+                decoder.decode(
+                    buildJsonObject {
+                        put("type", "response.output_item.added")
+                        put("output_index", 0)
+                        put("item", buildJsonObject {
+                            put("type", "image_generation_call")
+                            put("id", "img_1")
+                            put("status", "in_progress")
+                            put("output_format", "webp")
+                        })
+                    }
+                )
+            )
+            addAll(
+                decoder.decode(
+                    buildJsonObject {
+                        put("type", "response.image_generation_call.partial_image")
+                        put("item_id", "img_1")
+                        put("partial_image_index", 0)
+                        put("partial_image_b64", "cGFydGlhbA==")
+                        put("output_format", "webp")
+                    }
+                )
+            )
+            addAll(
+                decoder.decode(
+                    buildJsonObject {
+                        put("type", "response.output_item.done")
+                        put("output_index", 0)
+                        put("item", buildJsonObject {
+                            put("type", "image_generation_call")
+                            put("id", "img_1")
+                            put("status", "completed")
+                            put("result", "ZmluYWw=")
+                            put("output_format", "jpg")
+                        })
+                    }
+                )
+            )
+        }
+
+        assertEquals("image/webp", (chunks[1] as StreamChunk.ImageSnapshot).mimeType)
+        assertEquals("image/jpeg", (chunks[2] as StreamChunk.ImageSnapshot).mimeType)
+
+        // 经 handler 后最终 URL 用真 mime：jpg → image/jpeg（此前一律 image/png）
+        var messages = listOf(UIMessage.user("draw"))
+        val handler = StreamChunkHandler()
+        chunks.forEach { chunk -> messages = handler.handle(messages, chunk) }
+        val image = messages.last().parts.single() as UIMessagePart.Image
+        assertEquals("data:image/jpeg;base64,ZmluYWw=", image.url)
+    }
+
     private fun webSearchItem(status: String) = buildJsonObject {
         put("type", "web_search_call")
         put("id", "ws_1")

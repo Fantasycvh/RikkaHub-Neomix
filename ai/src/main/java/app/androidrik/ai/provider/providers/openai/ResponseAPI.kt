@@ -996,6 +996,20 @@ internal fun JsonObject.functionCallOutputText(): String = when (val output = ge
     else -> output.toString()
 }
 
+/**
+ * `image_generation_call` 的真实输出 mime（`output_format` 字段；fork #2311 修复语义）。
+ *
+ * 生成图可能是 jpeg/webp，此前一律按 png 拼前缀会让流式渲染期间 mime 不准。
+ * 字段缺失/未知格式时回退 `image/png`（与 [StreamChunk.ImageStart] 的默认一致）。
+ */
+internal fun JsonObject.imageGenerationMimeType(): String = when (
+    get("output_format")?.jsonPrimitive?.contentOrNull
+) {
+    "jpeg", "jpg" -> "image/jpeg"
+    "webp" -> "image/webp"
+    else -> "image/png"
+}
+
 private fun List<UIMessagePart>.isOnlyTextPart(): Boolean {
     val gonnaSend = filter { it is UIMessagePart.Text || it is UIMessagePart.Image }.size
     val texts = filter { it is UIMessagePart.Text }.size
