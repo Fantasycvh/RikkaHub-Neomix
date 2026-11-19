@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.pages.chat
 
 import app.androidrik.rikkahub.ui.components.ui.appSkinButtonShape
 import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.Archive02
 import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.hugeicons.stroke.CursorPointer01
 import me.rerere.hugeicons.stroke.Search01
@@ -97,9 +98,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlinx.datetime.toJavaLocalDateTime
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.prompts.compactionCheckpointBody
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.model.Conversation
@@ -131,6 +136,9 @@ import kotlin.uuid.Uuid
 private const val TAG = "ChatList"
 private const val LoadingIndicatorKey = "LoadingIndicator"
 private const val ScrollBottomKey = "ScrollBottomKey"
+
+/** 预览检查点卡片的时间列格式（native 摘要是 Instant，导入检查点是 kotlinx LocalDateTime，统一转 java.time 格式化） */
+private val PreviewCheckpointTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 
 /**
  * #1906-B：引用块跳转——目标消息在**当前渲染列表**中的下标（已含压缩检查点行的偏移）。
@@ -1046,7 +1054,7 @@ private fun ChatListPreview(
     // `messageNodes` 是普通参数（不是 State），要经 `rememberUpdatedState` 包一层才能在
     // `snapshotFlow` 里被观察到；`searchQuery` 本身就是 State，直接读即可。
     val previewNodes by rememberUpdatedState(conversation.messageNodes)
-    val searchMatches by produceState<List<MessageNode>?>(initialValue = null) {
+    val searchMatchedIds by produceState<Set<Uuid>?>(initialValue = null) {
         snapshotFlow { previewNodes to searchQuery }
             .conflate()
             .collect { (nodes, query) ->
@@ -1054,12 +1062,83 @@ private fun ChatListPreview(
                 value = withContext(Dispatchers.Default) {
                     nodes.filter { node ->
                         node.currentMessage.toText().contains(query, ignoreCase = true)
-                    }
+                    }.map { it.id }.toSet()
                 }
             }
     }
-    val filteredMessages =
-        if (searchQuery.isBlank()) conversation.messageNodes else searchMatches.orEmpty()
+
+    // 预览条目 = 消息节点 + 压缩检查点卡片（移植上游 63a5192d8「消息概览标出压缩点」）。
+    // 本仓检查点有两个来源，与上游（检查点本身是消息节点）不同：
+    // - native 压缩：摘要是独立 CompressionSummary 而非消息节点，预览里完全不可见——
+    //   在保留窗口第一个节点前插入标记卡片（boundaryNodeId 指向最后一个被排除的节点）；
+    //   边界节点未加载（稀疏模式）或边界本身是导入检查点（已自有卡片）时不插。
+    // - 导入检查点：本身就是持久化消息节点（isContextCheckpoint），包装为卡片而非
+    //   原始标签文本气泡，跳转目标是自己。
+    val activeCheckpoint = conversation.activeCompression()
+    val nodes = conversation.messageNodes
+    val fullEntries = buildList {
+        var nativeMarkerInserted = false
+        nodes.forEachIndexed { index, node ->
+            val isImportedCheckpoint = node.currentMessage.isContextCheckpoint
+            val checkpoint = activeCheckpoint
+            if (!isImportedCheckpoint && !nativeMarkerInserted && checkpoint != null) {
+                val boundaryId = checkpoint.boundaryNodeId
+                if (boundaryId != null && node.id.toString() == boundaryId) {
+                    val jumpTo = nodes.getOrNull(index + 1)
+                    if (jumpTo != null) {
+                        add(
+                            PreviewEntry.Checkpoint(
+                                jumpTo = jumpTo,
+                                messageCount = checkpoint.messageCount,
+                                snippet = checkpoint.content,
+                                timeText = PreviewCheckpointTimeFormatter
+                                    .withZone(ZoneId.systemDefault())
+                                    .format(checkpoint.createdAt),
+                                id = "summary-${checkpoint.id}",
+                            )
+                        )
+                        nativeMarkerInserted = true
+                    }
+                }
+            }
+            if (isImportedCheckpoint) {
+                add(
+                    PreviewEntry.Checkpoint(
+                        jumpTo = node,
+                        // 根检查点（「压缩后在新会话继续」）前面没有节点，沿用迁移过来的累计条数；
+                        // 其余按预览同款扁平序统计，与主聊天列表 pathNodes 口径一致即可
+                        messageCount = if (node.parentId == null) {
+                            activeCheckpoint?.messageCount ?: 0
+                        } else {
+                            nodes.takeWhile { it.id != node.id }
+                                .count { !it.currentMessage.isContextCheckpoint }
+                        },
+                        snippet = compactionCheckpointBody(node.currentMessage.toText()),
+                        timeText = node.currentMessage.createdAt
+                            .toJavaLocalDateTime()
+                            .format(PreviewCheckpointTimeFormatter),
+                        id = "node-${node.id}",
+                    )
+                )
+            } else {
+                add(PreviewEntry.Message(node))
+            }
+        }
+    }
+    // 查询为空 = 结构标注全显示；非空 = 摘要入搜索——节点按后台全文匹配的 id 集，
+    // 检查点卡片按摘要正文命中（导入检查点的正文已剥前导语与标签）。
+    val previewEntries: List<PreviewEntry> =
+        if (searchQuery.isBlank()) {
+            fullEntries
+        } else {
+            val matched = searchMatchedIds
+            fullEntries.filter { entry ->
+                when (entry) {
+                    is PreviewEntry.Message -> matched?.contains(entry.node.id) == true
+                    is PreviewEntry.Checkpoint -> entry.snippet.contains(searchQuery, ignoreCase = true)
+                }
+            }
+        }
 
     // 与 ChatListNormal 统一：列表全尺寸延伸到顶栏底下（contentPadding 穿底），
     // 搜索框悬浮在顶栏下缘（自带底色保证从内容上滚过时可读）
@@ -1079,55 +1158,67 @@ private fun ChatListPreview(
             modifier = Modifier
                 .fillMaxSize(),
         ) {
-            itemsIndexed(
-                items = filteredMessages,
-                key = { _, item -> item.id },
-            ) { _, node ->
-                val message = node.currentMessage
-                val isUser = message.role == app.androidrik.ai.core.MessageRole.USER
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (!isUser) Modifier.padding(end = 24.dp) else Modifier
-                        ),
-                    horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
-                ) {
-                    Surface(
-                        shape = MaterialTheme.shapes.medium,
-                        color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                    ) {
-                        Row(
+            items(
+                items = previewEntries,
+                key = { it.stableKey },
+            ) { entry ->
+                when (entry) {
+                    is PreviewEntry.Checkpoint -> {
+                        PreviewCheckpointCard(
+                            entry = entry,
+                            query = searchQuery,
+                            onJumpToMessage = onJumpToMessage,
+                        )
+                    }
+                    is PreviewEntry.Message -> {
+                        val node = entry.node
+                        val message = node.currentMessage
+                        val isUser = message.role == app.androidrik.ai.core.MessageRole.USER
+                        Column(
                             modifier = Modifier
-                                .clickable {
-                                    onJumpToMessage(node)
-                                }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .fillMaxWidth()
+                                .then(
+                                    if (!isUser) Modifier.padding(end = 24.dp) else Modifier
+                                ),
+                            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
                         ) {
-                            val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
-                            val highlightedText = remember(searchQuery, message) {
-                                val fullText = message.toText().trim().ifBlank { "[...]" }
-                                // 匹配在全文里找（片段从命中处开始），交给 Text 的字符串只留前
-                                // PreviewCardMaxLength 个字符：maxLines 只裁显示，不省排版的
-                                // span 解析/断行扫描，长回复每滑进一张卡片都要主线程扫全文。
-                                val messageText = extractMatchingSnippet(
-                                    text = fullText,
-                                    query = searchQuery
-                                ).take(PreviewCardMaxLength)
-                                buildHighlightedText(
-                                    text = messageText,
-                                    query = searchQuery,
-                                    highlightColor = highlightColor
-                                )
+                            Surface(
+                                shape = MaterialTheme.shapes.medium,
+                                color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .clickable {
+                                            onJumpToMessage(node)
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
+                                    val highlightedText = remember(searchQuery, message) {
+                                        val fullText = message.toText().trim().ifBlank { "[...]" }
+                                        // 匹配在全文里找（片段从命中处开始），交给 Text 的字符串只留前
+                                        // PreviewCardMaxLength 个字符：maxLines 只裁显示，不省排版的
+                                        // span 解析/断行扫描，长回复每滑进一张卡片都要主线程扫全文。
+                                        val messageText = extractMatchingSnippet(
+                                            text = fullText,
+                                            query = searchQuery
+                                        ).take(PreviewCardMaxLength)
+                                        buildHighlightedText(
+                                            text = messageText,
+                                            query = searchQuery,
+                                            highlightColor = highlightColor
+                                        )
+                                    }
+                                    Text(
+                                        text = highlightedText,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                             }
-                            Text(
-                                text = highlightedText,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
                         }
                     }
                 }
@@ -1166,6 +1257,97 @@ private fun ChatListPreview(
             shape = CircleShape,
             maxLines = 1,
         )
+    }
+}
+
+/** 预览条目：普通消息节点卡片，或压缩检查点卡片（移植上游 63a5192d8，摘要入概览搜索）。 */
+private sealed interface PreviewEntry {
+    /** 稳定 key（Lazy item 复用依据，禁内容哈希） */
+    val stableKey: String
+
+    data class Message(
+        val node: MessageNode,
+    ) : PreviewEntry {
+        override val stableKey: String get() = node.id.toString()
+    }
+
+    data class Checkpoint(
+        /** 点击跳转目标：native = 保留窗口第一个节点，导入 = 检查点节点自身 */
+        val jumpTo: MessageNode,
+        val messageCount: Int,
+        /** 摘要正文（已剥前导语与 <compressed-summary> 标签），参与概览搜索 */
+        val snippet: String,
+        /** 预格式化的时间列文本（构建条目时算好，组合期零解析） */
+        val timeText: String,
+        /** 稳定 key 来源：summary-<DB id> / node-<节点 id> */
+        val id: String,
+    ) : PreviewEntry {
+        override val stableKey: String get() = "preview-checkpoint-$id"
+    }
+}
+
+/**
+ * 预览中的压缩检查点卡片：用容器色 + 图标与普通对话气泡区分，一眼看出上下文
+ * 从哪里开始被摘要替代（对齐上游 PreviewCheckpointCard 的视觉设计）。
+ */
+@Composable
+private fun PreviewCheckpointCard(
+    entry: PreviewEntry.Checkpoint,
+    query: String,
+    onJumpToMessage: (MessageNode) -> Unit,
+) {
+    // remember 计算块里不能读 Composable 属性（MaterialTheme.colorScheme 是 Composable getter），先在组合期取出
+    val snippetColor = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+    Surface(
+        onClick = { onJumpToMessage(entry.jumpTo) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Archive02,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = stringResource(R.string.compaction_row_title, entry.messageCount),
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = entry.timeText,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                )
+            }
+            if (entry.snippet.isNotBlank()) {
+                val snippet = remember(entry.snippet, query) {
+                    buildHighlightedText(
+                        text = entry.snippet,
+                        query = query,
+                        highlightColor = snippetColor,
+                    )
+                }
+                Text(
+                    text = snippet,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = snippetColor,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
