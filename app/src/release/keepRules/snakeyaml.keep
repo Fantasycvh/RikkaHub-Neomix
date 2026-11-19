@@ -1,0 +1,3 @@
+# SnakeYAML 2.6 initializes loggers via Class.getPackage().getName().
+# Keep these packages named because Android returns null for a class in the default package.
+-keeppackagenames org.yaml.snakeyaml,org.yaml.snakeyaml.introspector
