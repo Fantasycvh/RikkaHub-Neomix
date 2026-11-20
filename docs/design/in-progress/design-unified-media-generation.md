@@ -93,6 +93,7 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 | 应用全量测试 | 实施期间复跑发现 1 项既有失败。`ImportFormatTest` 的断言只允许本地备份在选文件前确认，当前实现也要求原版整库备份先确认 |
 | 构建、装机与启动 | `:app:assembleDebug` 成功。2026-11-18 在 PJX110 上用 ARM64 Debug APK 覆盖安装，调试包从 beta.22 更新为 `1.0.28-beta.23`（327），包名 `app.androidrik.rikkahub.debug`。ADB 验证本地与装机包的 SHA-256 一致，冷启动成功 |
 | 真机业务验收 | 2026-11-19 在 PJX110（Android 15）完成本地模拟供应商的核心流程验收，含带数据的 Room 开库、两种定时聊天授权、四种模板生成路径、取消和进程重启后的续查。真实供应商调用与界面手测仍单独记录 |
+| 真机实弹验收 | 2026-11-20 在 PJX110 装入 `98ea41fc8`（Debug 包覆盖安装，冷启动 0 FATAL）完成真实供应商实弹：兜底解析（`imageGenerationModelId` 从未设置时默认模型解析为目录首个可见生图模型）、生图页与媒体创作页选择器同目录贯通、玩转ai生图（OpenAI 兼容）真实出图落盘入画廊、聊天 `generate_image` 工具实弹（deepseek-flash 调用，工具卡展开提示词/尺寸正常，产物落库）。Google (Gemini) 实弹按用户决定跳过（执行层有 9 例单测覆盖）；待确认重试弹窗设备无 `SUBMIT_UNKNOWN` 存量记录，状态机已由 2026-11-19 模拟验收覆盖，真实中断场景留待日常使用中自然出现 |
 
 本次 ARM64 APK 的 SHA-256 为 `1cc4ecc83599baaa3a4a39a1bf3f7bc7763cfccc65ead3b5d307de9dcacfeb90`，构建路径为 `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`。
 
