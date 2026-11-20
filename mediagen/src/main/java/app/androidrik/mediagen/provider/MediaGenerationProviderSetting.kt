@@ -232,8 +232,9 @@ sealed class MediaGenerationProviderSetting {
             MediaGenerationModel(modelId = "google/veo-3.1", kind = MediaKind.VIDEO),
         ),
     ) : MediaGenerationProviderSetting() {
+        // 仅图片已接入（OpenRouterMediaGenerationProvider 走生成端点）；veo 等视频能力待厂商接口后接
         override val supportedKinds: Set<MediaKind>
-            get() = setOf(MediaKind.IMAGE, MediaKind.VIDEO)
+            get() = setOf(MediaKind.IMAGE)
 
         // 密钥只发给 baseUrl 所在的站点，结果地址指向别处时原样下载
         override fun downloadHeaders(url: String): Map<String, String> {
