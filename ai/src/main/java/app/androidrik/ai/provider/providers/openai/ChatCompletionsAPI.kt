@@ -63,7 +63,7 @@ import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64
 import app.androidrik.ai.util.json
-import app.androidrik.ai.util.mergeCustomBody
+import app.androidrik.common.http.mergeCustomBody
 import app.androidrik.ai.util.parseErrorDetail
 import app.androidrik.ai.util.stringSafe
 import app.androidrik.ai.util.applyCustomHeaders

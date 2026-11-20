@@ -173,6 +173,36 @@ class OpenAIMediaGenerationProviderTest {
     }
 
     @Test
+    fun modelCustomBodiesOverridePublicFieldsInGenerationBody() {
+        // M3a-2 parity：模型级 customBodies 最后合并，可覆盖 model/prompt/n/size 等公共字段
+        val customized = model.copy(
+            customBodies = listOf(app.androidrik.common.http.CustomBody("n", JsonPrimitive(2))),
+        )
+        val body = OpenAIMediaGenerationProvider(OkHttpClient()).buildGenerationBody(
+            setting = setting,
+            model = customized,
+            request = MediaGenerationRequest(prompt = "cat", count = 1),
+        ).jsonObject
+        assertEquals(JsonPrimitive(2), body["n"])
+        assertEquals(JsonPrimitive("cat"), body["prompt"])
+    }
+
+    @Test
+    fun modelCustomHeadersAreSentWithTheRequest() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val customized = model.copy(
+            customHeaders = listOf(app.androidrik.common.http.CustomHeader("X-Test", "yes")),
+        )
+        val manager = MediaGenerationManager(fakeClient(requests) {
+            jsonResponse(request = it, body = """{"data":[{"b64_json":"aGVsbG8="}]}""")
+        })
+
+        manager.generate(setting.copy(), customized, MediaGenerationRequest(prompt = "cat")).toList()
+
+        assertEquals("yes", requests.single().header("X-Test"))
+    }
+
+    @Test
     fun urlOnlyImagesAreReturnedAsUrlOutputs() {
         val root = mediaGenerationJson.parseToJsonElement(
             """{"data":[{"url":"https://cdn.example.com/out.png"}]}"""

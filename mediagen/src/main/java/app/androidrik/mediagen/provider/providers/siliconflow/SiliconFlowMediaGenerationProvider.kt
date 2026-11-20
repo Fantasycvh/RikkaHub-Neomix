@@ -15,6 +15,7 @@ import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.mediagen.provider.effectiveMediaApiKeys
 import app.androidrik.mediagen.provider.modelCapabilities
 import app.androidrik.common.http.KeyRoulette
+import app.androidrik.common.http.mergeCustomBody
 import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.mediagen.provider.providers.bearerRequest
 import app.androidrik.mediagen.provider.providers.executeJson
@@ -30,6 +31,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
+import okhttp3.Request
 
 /**
  * 硅基流动的视频接口：先 POST `/video/submit` 拿到 requestId，再 POST `/video/status` 轮询。
@@ -74,6 +76,7 @@ class SiliconFlowMediaGenerationProvider(
         // 本地首帧要读出来编码成 data URI
         val body = withContext(Dispatchers.IO) { buildSubmitBody(setting, model, request) }
         val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/video/submit", apiKey(setting))
+            .modelHeaders(model)
             .postJson(body)
             .build()
         val root = client.withProxy(setting).executeJson(httpRequest, id)
@@ -95,9 +98,15 @@ class SiliconFlowMediaGenerationProvider(
     ): Result<MediaGenerationTask> = runCatching {
         val body = buildJsonObject { put("requestId", taskId) }
         val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/video/status", apiKey(setting))
+            .modelHeaders(model)
             .postJson(body)
             .build()
         parseTask(client.withProxy(setting).executeJson(httpRequest, id), taskId, model.modelId)
+    }
+
+    /** 模型级自定义请求头（M3a-2 parity，与 OpenAI 适配器同语义）。 */
+    private fun Request.Builder.modelHeaders(model: MediaGenerationModel): Request.Builder = apply {
+        model.customHeaders.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
     }
 
     override fun supportsQuery(
@@ -133,6 +142,8 @@ class SiliconFlowMediaGenerationProvider(
         }
         request.seed?.let { put("seed", it) }
     }
+        // 模型级 customBodies 最后合并：custom 值可覆盖公共字段（与 OpenAI 适配器同语义）
+        .mergeCustomBody(model.customBodies)
 
     internal fun parseTask(
         root: JsonObject,

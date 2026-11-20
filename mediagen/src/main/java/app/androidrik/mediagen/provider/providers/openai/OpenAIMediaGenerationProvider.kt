@@ -28,6 +28,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import app.androidrik.common.http.KeyRoulette
 import app.androidrik.common.http.configureClientWithProxy
+import app.androidrik.common.http.mergeCustomBody
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -57,6 +58,11 @@ class OpenAIMediaGenerationProvider(
     private fun apiKey(setting: MediaGenerationProviderSetting.OpenAI): String =
         keyRoulette.next(setting.effectiveMediaApiKeys, setting.id.toString())
 
+    /** 模型级自定义请求头（M3a-2 parity，对齐旧链路 Model.customHeaders 的下发方式）。 */
+    private fun Request.Builder.modelHeaders(model: MediaGenerationModel): Request.Builder = apply {
+        model.customHeaders.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
+    }
+
     /** `GET {baseUrl}/models`：官方接口会列出 `dall-e-*` / `gpt-image-*`，兼容端点会列全部。 */
     override suspend fun listModels(
         setting: MediaGenerationProviderSetting.OpenAI,
@@ -71,7 +77,9 @@ class OpenAIMediaGenerationProvider(
         request: MediaGenerationRequest,
     ): Result<MediaGenerationTask> = runCatching {
         val baseUrl = setting.baseUrl.trimEnd('/')
-        val builder = Request.Builder().addHeader("Authorization", "Bearer ${apiKey(setting)}")
+        val builder = Request.Builder()
+            .addHeader("Authorization", "Bearer ${apiKey(setting)}")
+            .modelHeaders(model)
         val httpRequest = if (request.inputs.isEmpty()) {
             builder.url("$baseUrl/images/generations").postJson(buildGenerationBody(setting, model, request))
         } else {
@@ -92,6 +100,8 @@ class OpenAIMediaGenerationProvider(
         request.count?.let { put("n", it) }
         resolveSize(setting, model, request.resolution)?.let { put("size", it) }
     }
+        // 模型级 customBodies 最后合并：custom 值可覆盖公共字段（对齐旧链路 mergeCustomBody 语义）
+        .mergeCustomBody(model.customBodies)
 
     internal fun buildEditBody(
         setting: MediaGenerationProviderSetting.OpenAI,
@@ -121,6 +131,16 @@ class OpenAIMediaGenerationProvider(
             val mediaType = EDIT_IMAGE_MEDIA_TYPES[file.extension.lowercase()]
                 ?: throw IllegalArgumentException("Unsupported image file type for OpenAI edit: ${file.extension}")
             builder.addFormDataPart(imageFieldName, file.name, file.asRequestBody(mediaType.toMediaType()))
+        }
+
+        // 模型级 customBodies 以表单字段下发（对齐旧链路 editImage 的 customBody 追加方式）
+        model.customBodies.forEach { body ->
+            if (body.key.isBlank()) return@forEach
+            val value = when (val element = body.value) {
+                is JsonPrimitive -> element.contentOrNull ?: element.toString()
+                else -> element.toString()
+            }
+            builder.addFormDataPart(body.key, value)
         }
         return builder.build()
     }

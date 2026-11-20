@@ -134,28 +134,6 @@ fun List<CustomBody>.reasoningOverrideKeys(): Set<String> =
         body.key.trim().takeIf { it in REASONING_OVERRIDE_BODY_KEYS }
     }
 
-fun JsonObject.mergeCustomBody(bodies: List<CustomBody>): JsonObject {
-    if (bodies.isEmpty()) return this
-
-    val content = toMutableMap()
-    bodies.forEach { body ->
-        if (body.key.isNotBlank()) {
-            // 如果已存在相同键且两者都是JsonObject，则需要递归合并
-            val existingValue = content[body.key]
-            val newValue = body.value
-
-            if (existingValue is JsonObject && newValue is JsonObject) {
-                // 递归合并两个JsonObject
-                content[body.key] = mergeJsonObjects(existingValue, newValue)
-            } else {
-                // 直接替换或添加
-                content[body.key] = newValue
-            }
-        }
-    }
-    return JsonObject(content)
-}
-
 /**
  * 拼接 API endpoint，baseUrl 已含 path 时不重复追加（如 /responses/responses 404）。
  */

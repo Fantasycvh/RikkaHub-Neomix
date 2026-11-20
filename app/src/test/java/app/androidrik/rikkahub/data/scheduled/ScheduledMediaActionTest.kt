@@ -120,6 +120,27 @@ class ScheduledMediaActionTest {
     }
 
     @Test
+    fun `media models with skeleton-overriding custom bodies need re-approval`() {
+        // M3a-2 parity：模型级 customBodies 命中骨架键（n）时，Media 分支同样拒绝无界模板直跑
+        val mediaCustom = media.copy(models = listOf(
+            MediaGenerationModel("image-b", MediaKind.IMAGE, customBodies = listOf(CustomBody("n", JsonPrimitive(20)))),
+        ))
+        val option = settings.copy(mediaGenerationProviders = listOf(mediaCustom))
+            .mediaModelCatalog().single { it.model.modelId == "image-b" }
+        val grant = ScheduledMediaAction(option.ref, MediaCreationParams(count = 1), option.authorizationFingerprint())
+        assertFalse(grant.permits(option))
+        // 非骨架键不触发
+        val benign = media.copy(models = listOf(
+            MediaGenerationModel("image-b", MediaKind.IMAGE, customBodies = listOf(CustomBody("negative_prompt", JsonPrimitive("blur")))),
+        ))
+        val benignOption = settings.copy(mediaGenerationProviders = listOf(benign))
+            .mediaModelCatalog().single { it.model.modelId == "image-b" }
+        assertTrue(ScheduledMediaAction(
+            benignOption.ref, MediaCreationParams(count = 1), benignOption.authorizationFingerprint(),
+        ).permits(benignOption))
+    }
+
+    @Test
     fun `google image-output models enter the catalog by output modality`() {
         // Gemini 图片模型通常以 CHAT 类型录入（models.dev 注册表回填 IMAGE 输出模态）——
         // 收录口径是执行能力（generateContent IMAGE 模态），不是类型声明

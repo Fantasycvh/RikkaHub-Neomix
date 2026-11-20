@@ -57,7 +57,7 @@ import app.androidrik.ai.util.encodeBase64
 import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.util.HttpException
 import app.androidrik.ai.util.json
-import app.androidrik.ai.util.mergeCustomBody
+import app.androidrik.common.http.mergeCustomBody
 import app.androidrik.ai.util.parseErrorDetail
 import app.androidrik.ai.util.removeElements
 import app.androidrik.common.http.await

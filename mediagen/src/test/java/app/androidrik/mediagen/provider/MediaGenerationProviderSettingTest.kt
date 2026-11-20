@@ -101,4 +101,24 @@ class MediaGenerationProviderSettingTest {
         assertEquals(listOf("k1", "k2"), copy.apiKeys)
         assertEquals("k1", copy.firstMediaApiKey())
     }
+
+    @Test
+    fun modelCustomHeadersAndBodiesSurviveSerializationAndOldPayloadsFallBackToEmpty() {
+        // M3a-2 parity：模型级请求定制序列化往返；旧数据无字段 → 空列表
+        val model = MediaGenerationModel(
+            modelId = "gpt-image-2",
+            kind = MediaKind.IMAGE,
+            customHeaders = listOf(app.androidrik.common.http.CustomHeader("X-Test", "yes")),
+            customBodies = listOf(app.androidrik.common.http.CustomBody("n", kotlinx.serialization.json.JsonPrimitive(2))),
+        )
+        val encoded = Json.encodeToString(MediaGenerationModel.serializer(), model)
+        assertEquals(model, Json.decodeFromString(MediaGenerationModel.serializer(), encoded))
+
+        val legacy = Json.decodeFromString(
+            MediaGenerationModel.serializer(),
+            """{"modelId":"gpt-image-2","kind":"IMAGE"}""",
+        )
+        assertTrue(legacy.customHeaders.isEmpty())
+        assertTrue(legacy.customBodies.isEmpty())
+    }
 }

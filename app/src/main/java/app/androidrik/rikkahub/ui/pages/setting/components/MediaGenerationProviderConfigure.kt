@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -40,9 +42,14 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Refresh03
+import me.rerere.hugeicons.stroke.Settings02
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.common.http.ProviderProxy
+import app.androidrik.rikkahub.ui.pages.assistant.detail.CustomBodies
+import app.androidrik.rikkahub.ui.pages.assistant.detail.CustomHeaders
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -51,6 +58,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import com.dokar.sonner.ToastType
+import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import app.androidrik.ai.provider.ProviderSetting
@@ -113,6 +121,9 @@ fun MediaGenerationProviderConfigure(
     // 非 null 时显示勾选对话框
     var candidates by remember { mutableStateOf<List<MediaGenerationModel>?>(null) }
     var selectedModelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // 非 null 时显示该模型的高级参数 sheet（自定义头/body）
+    var advancedModelId by remember { mutableStateOf<Uuid?>(null) }
+    val advancedModel = models.firstOrNull { it.id == advancedModelId }
 
     fun fetchModels() {
         if (fetching) return
@@ -267,6 +278,7 @@ fun MediaGenerationProviderConfigure(
                                     }
                                 )
                             },
+                            onAdvanced = { advancedModelId = model.id },
                             onDelete = { updateModels(models.filter { it.id != model.id }) },
                         )
                     },
@@ -306,6 +318,41 @@ fun MediaGenerationProviderConfigure(
                 supportingContent = { Text(stringResource(R.string.setting_media_page_models_desc)) },
                 leadingContent = { Icon(HugeIcons.Add01, contentDescription = null) },
             )
+        }
+    }
+
+    // 模型级高级参数 sheet（自定义头/body）：编辑器进 sheet 而非内联行（AGENTS.md TextField 宿主规则），
+    // Column+verticalScroll 子项常驻；写回走 updateModels 与其它字段同一通路
+    advancedModel?.let { model ->
+        ModalBottomSheet(
+            onDismissRequest = { advancedModelId = null },
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    text = "${model.modelId} · 高级参数",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                CustomHeaders(
+                    headers = model.customHeaders,
+                    onUpdate = { headers ->
+                        updateModels(models.map { if (it.id == model.id) model.copy(customHeaders = headers) else it })
+                    },
+                )
+                CustomBodies(
+                    customBodies = model.customBodies,
+                    onUpdate = { bodies ->
+                        updateModels(models.map { if (it.id == model.id) model.copy(customBodies = bodies) else it })
+                    },
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+            }
         }
     }
 
@@ -379,6 +426,7 @@ private fun ModelRow(
     kinds: List<MediaKind>,
     onModelIdChange: (String) -> Unit,
     onKindChange: (MediaKind) -> Unit,
+    onAdvanced: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -393,6 +441,9 @@ private fun ModelRow(
                 placeholder = { Text(stringResource(R.string.setting_media_page_model_id)) },
                 singleLine = true,
             )
+            IconButton(onClick = onAdvanced) {
+                Icon(HugeIcons.Settings02, contentDescription = "高级参数")
+            }
             IconButton(onClick = onDelete) {
                 Icon(HugeIcons.Delete01, stringResource(R.string.delete))
             }

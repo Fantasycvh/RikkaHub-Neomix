@@ -44,7 +44,7 @@ import app.androidrik.common.http.KeyRoulette
 import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.json
-import app.androidrik.ai.util.mergeCustomBody
+import app.androidrik.common.http.mergeCustomBody
 import app.androidrik.ai.util.applyCustomHeaders
 import app.androidrik.ai.util.toHeaders
 import app.androidrik.common.http.await

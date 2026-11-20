@@ -44,11 +44,19 @@ internal data class MediaModelOption(
         is MediaGenerationTarget.Media -> capabilities.requiredImageInputs.isEmpty()
     }
 
+    /**
+     * 纯文本模板直跑是否可用：模型没有必填的图片输入（SiliconFlow I2V 必填首帧，
+     * 见 [modelCapabilities] 的模型级约束），且模型级 customBodies 没有覆盖请求骨架键
+     * （M3a-2 parity：旧链路模型可用 customBodies 覆盖 n/prompt/size，定时授权据此做
+     * bounded count 检查——模型自定义了骨架键就拒绝无界的模板直跑）。
+     */
     val permitsBoundedCount: Boolean get() = when (target) {
         is MediaGenerationTarget.Image -> target.model.customBodies.none {
-            it.key in setOf("model", "n", "prompt", "size", "input_references")
+            it.key in BOUNDED_COUNT_OVERRIDE_KEYS
         }
-        is MediaGenerationTarget.Media -> true
+        is MediaGenerationTarget.Media -> target.model.customBodies.none {
+            it.key in BOUNDED_COUNT_OVERRIDE_KEYS
+        }
     }
 
     fun authorizationFingerprint(): String {
@@ -151,6 +159,9 @@ internal fun Settings.effectiveMediaProvider(stored: MediaGenerationProviderSett
 
 private val legacyImageCapabilities =
     requireNotNull(MediaGenerationProviderSetting.OpenAI().capabilities(MediaKind.IMAGE))
+
+/** 模型级 customBodies 命中这些键 = 可能覆盖请求骨架（n/prompt/size 等），模板直跑需重新批准 */
+private val BOUNDED_COUNT_OVERRIDE_KEYS = setOf("model", "n", "prompt", "size", "input_references")
 
 internal fun Settings.resolveMediaModel(ref: MediaModelRef): MediaModelOption? =
     mediaModelCatalog().singleOrNull { it.ref == ref }
