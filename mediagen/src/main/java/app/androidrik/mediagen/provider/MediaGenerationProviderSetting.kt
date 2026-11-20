@@ -1,5 +1,6 @@
 package app.androidrik.mediagen.provider
 
+import app.androidrik.common.http.ProviderProxy
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaKind
 import kotlinx.serialization.SerialName
@@ -18,6 +19,19 @@ sealed class MediaGenerationProviderSetting {
     abstract val baseUrl: String
     abstract val models: List<MediaGenerationModel>
 
+    /**
+     * per-provider 代理（M3a-1 parity，对齐旧链路 `ProviderSetting.proxy`）：[ProviderProxy.Inherit]
+     * 跟随全局、[ProviderProxy.None] 显式直连、Http/Socks5 自身配置优先。旧备份没有该字段，
+     * 反序列化落默认值 [ProviderProxy.Inherit]，行为与升级前一致。
+     */
+    abstract val proxy: ProviderProxy
+
+    /**
+     * 多 key 轮询列表（M3a-1 parity，对齐旧链路 `ProviderSetting.ApiKey.apiKeys`）：非空时以
+     * [effectiveMediaApiKeys] 为准，空列表回退旧单 key 字段（单 key 用户零迁移）。
+     */
+    abstract val apiKeys: List<String>
+
     // What our adapter implements, not every API offered by this vendor.
     abstract val supportedKinds: Set<MediaKind>
 
@@ -32,6 +46,8 @@ sealed class MediaGenerationProviderSetting {
         name: String = this.name,
         apiKey: String = this.apiKey,
         baseUrl: String = this.baseUrl,
+        proxy: ProviderProxy = this.proxy,
+        apiKeys: List<String> = this.apiKeys,
         models: List<MediaGenerationModel> = this.models,
     ): MediaGenerationProviderSetting
 
@@ -42,9 +58,11 @@ sealed class MediaGenerationProviderSetting {
         override val name: String = "OpenAI",
         override val apiKey: String = "",
         override val baseUrl: String = "https://api.openai.com/v1",
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val apiKeys: List<String> = emptyList(),
         /**
-         * 引用的旧 AI 供应商凭据 id（`ProviderSetting.ApiKey`）：设置后 baseUrl/apiKey 在目录
-         * 解析时取自被引用者，改 key 不用同步两处配置；被引用者被删或换端点后，引用它的模型
+         * 引用的旧 AI 供应商凭据 id（`ProviderSetting.ApiKey`）：设置后 baseUrl/apiKey/proxy/apiKeys
+         * 在目录解析时取自被引用者，改 key 不用同步两处配置；被引用者被删或换端点后，引用它的模型
          * 相应失效或以新地址生效。null = 本地显式配置（无法共用鉴权时保留这种形态）。
          */
         val credentialRef: Uuid? = null,
@@ -61,6 +79,8 @@ sealed class MediaGenerationProviderSetting {
             name: String,
             apiKey: String,
             baseUrl: String,
+            proxy: ProviderProxy,
+            apiKeys: List<String>,
             models: List<MediaGenerationModel>,
         ): MediaGenerationProviderSetting {
             return this.copy(
@@ -68,6 +88,8 @@ sealed class MediaGenerationProviderSetting {
                 name = name,
                 apiKey = apiKey,
                 baseUrl = baseUrl,
+                proxy = proxy,
+                apiKeys = apiKeys,
                 models = models,
             )
         }
@@ -85,6 +107,8 @@ sealed class MediaGenerationProviderSetting {
         override val apiKey: String = "",
         val workspaceId: String = "",
         override val baseUrl: String = "https://$WORKSPACE_PLACEHOLDER.cn-beijing.maas.aliyuncs.com/api/v1",
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val apiKeys: List<String> = emptyList(),
         override val models: List<MediaGenerationModel> = listOf(
             MediaGenerationModel(modelId = "qwen-image-3.0", kind = MediaKind.IMAGE),
             MediaGenerationModel(modelId = "wan3.0-video", kind = MediaKind.VIDEO),
@@ -98,6 +122,8 @@ sealed class MediaGenerationProviderSetting {
             name: String,
             apiKey: String,
             baseUrl: String,
+            proxy: ProviderProxy,
+            apiKeys: List<String>,
             models: List<MediaGenerationModel>,
         ): MediaGenerationProviderSetting {
             return this.copy(
@@ -105,6 +131,8 @@ sealed class MediaGenerationProviderSetting {
                 name = name,
                 apiKey = apiKey,
                 baseUrl = baseUrl,
+                proxy = proxy,
+                apiKeys = apiKeys,
                 models = models,
             )
         }
@@ -121,6 +149,8 @@ sealed class MediaGenerationProviderSetting {
         override val name: String = "Volcengine",
         override val apiKey: String = "",
         override val baseUrl: String = "https://ark.cn-beijing.volces.com/api/v3",
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val apiKeys: List<String> = emptyList(),
         override val models: List<MediaGenerationModel> = listOf(
             MediaGenerationModel(modelId = "doubao-seedream-5-0-pro-260628", kind = MediaKind.IMAGE),
             MediaGenerationModel(modelId = "doubao-seedance-2-5-260628", kind = MediaKind.VIDEO),
@@ -134,6 +164,8 @@ sealed class MediaGenerationProviderSetting {
             name: String,
             apiKey: String,
             baseUrl: String,
+            proxy: ProviderProxy,
+            apiKeys: List<String>,
             models: List<MediaGenerationModel>,
         ): MediaGenerationProviderSetting {
             return this.copy(
@@ -141,6 +173,8 @@ sealed class MediaGenerationProviderSetting {
                 name = name,
                 apiKey = apiKey,
                 baseUrl = baseUrl,
+                proxy = proxy,
+                apiKeys = apiKeys,
                 models = models,
             )
         }
@@ -153,6 +187,8 @@ sealed class MediaGenerationProviderSetting {
         override val name: String = "MiniMax",
         override val apiKey: String = "",
         override val baseUrl: String = "https://api.minimaxi.com/v2",
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val apiKeys: List<String> = emptyList(),
         override val models: List<MediaGenerationModel> = listOf(
             MediaGenerationModel(modelId = "MiniMax-H3", kind = MediaKind.VIDEO),
         ),
@@ -165,6 +201,8 @@ sealed class MediaGenerationProviderSetting {
             name: String,
             apiKey: String,
             baseUrl: String,
+            proxy: ProviderProxy,
+            apiKeys: List<String>,
             models: List<MediaGenerationModel>,
         ): MediaGenerationProviderSetting {
             return this.copy(
@@ -172,6 +210,8 @@ sealed class MediaGenerationProviderSetting {
                 name = name,
                 apiKey = apiKey,
                 baseUrl = baseUrl,
+                proxy = proxy,
+                apiKeys = apiKeys,
                 models = models,
             )
         }
@@ -184,6 +224,8 @@ sealed class MediaGenerationProviderSetting {
         override val name: String = "OpenRouter",
         override val apiKey: String = "",
         override val baseUrl: String = "https://openrouter.ai/api/v1",
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val apiKeys: List<String> = emptyList(),
         override val models: List<MediaGenerationModel> = listOf(
             MediaGenerationModel(modelId = "openai/gpt-image-2.5-sunburst", kind = MediaKind.IMAGE),
             MediaGenerationModel(modelId = "openai/gpt-image-2.5-flare", kind = MediaKind.IMAGE),
@@ -198,7 +240,7 @@ sealed class MediaGenerationProviderSetting {
             val target = url.toHttpUrlOrNull() ?: return emptyMap()
             val base = baseUrl.toHttpUrlOrNull() ?: return emptyMap()
             if (target.scheme != base.scheme || target.host != base.host || target.port != base.port) return emptyMap()
-            return mapOf("Authorization" to "Bearer $apiKey")
+            return mapOf("Authorization" to "Bearer ${firstMediaApiKey()}")
         }
 
         override fun copyProvider(
@@ -206,6 +248,8 @@ sealed class MediaGenerationProviderSetting {
             name: String,
             apiKey: String,
             baseUrl: String,
+            proxy: ProviderProxy,
+            apiKeys: List<String>,
             models: List<MediaGenerationModel>,
         ): MediaGenerationProviderSetting {
             return this.copy(
@@ -213,6 +257,8 @@ sealed class MediaGenerationProviderSetting {
                 name = name,
                 apiKey = apiKey,
                 baseUrl = baseUrl,
+                proxy = proxy,
+                apiKeys = apiKeys,
                 models = models,
             )
         }
@@ -229,6 +275,8 @@ sealed class MediaGenerationProviderSetting {
         override val name: String = "SiliconFlow",
         override val apiKey: String = "",
         override val baseUrl: String = "https://api.siliconflow.cn/v1",
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val apiKeys: List<String> = emptyList(),
         override val models: List<MediaGenerationModel> = listOf(
             MediaGenerationModel(modelId = "Wan-AI/Wan2.2-T2V-A14B", kind = MediaKind.VIDEO),
             MediaGenerationModel(modelId = "Wan-AI/Wan2.2-I2V-14B-720P", kind = MediaKind.VIDEO),
@@ -242,6 +290,8 @@ sealed class MediaGenerationProviderSetting {
             name: String,
             apiKey: String,
             baseUrl: String,
+            proxy: ProviderProxy,
+            apiKeys: List<String>,
             models: List<MediaGenerationModel>,
         ): MediaGenerationProviderSetting {
             return this.copy(
@@ -249,6 +299,8 @@ sealed class MediaGenerationProviderSetting {
                 name = name,
                 apiKey = apiKey,
                 baseUrl = baseUrl,
+                proxy = proxy,
+                apiKeys = apiKeys,
                 models = models,
             )
         }
@@ -267,3 +319,18 @@ sealed class MediaGenerationProviderSetting {
         }
     }
 }
+
+/**
+ * 多 key 统一读取（M3a-1 parity，对齐旧链路 `ProviderSetting.effectiveApiKeys`）：
+ * [MediaGenerationProviderSetting.apiKeys] 非空时按行合并（[app.androidrik.common.http.KeyRoulette.next]
+ * 的切分口径），空列表回退旧单 key 字段——单 key 用户零迁移。
+ */
+val MediaGenerationProviderSetting.effectiveMediaApiKeys: String
+    get() {
+        val keys = apiKeys.filter { it.isNotBlank() }.distinct()
+        return if (keys.isNotEmpty()) keys.joinToString("\n") else apiKey
+    }
+
+/** [effectiveMediaApiKeys] 的首个 key（顺序模式语义：列表顺序即优先级）。 */
+fun MediaGenerationProviderSetting.firstMediaApiKey(): String =
+    effectiveMediaApiKeys.split("[\\s,]+".toRegex()).firstOrNull { it.isNotBlank() } ?: apiKey

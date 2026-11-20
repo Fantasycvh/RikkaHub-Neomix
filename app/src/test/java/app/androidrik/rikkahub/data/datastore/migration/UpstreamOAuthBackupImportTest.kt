@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.data.datastore.migration
 
 import app.androidrik.ai.provider.OAuthCredential
-import app.androidrik.ai.provider.ProviderProxy
+import app.androidrik.common.http.ProviderProxy
 import app.androidrik.rikkahub.data.ai.account.CredentialCipher
 import app.androidrik.rikkahub.data.ai.account.decrypted
 import app.androidrik.ai.provider.ProviderSetting

@@ -1,4 +1,5 @@
 package app.androidrik.ai.util
+import app.androidrik.common.http.KeyRoulette
 
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting

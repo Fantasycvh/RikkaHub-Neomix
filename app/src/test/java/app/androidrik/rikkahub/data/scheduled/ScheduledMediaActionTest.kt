@@ -1,6 +1,6 @@
 package app.androidrik.rikkahub.data.scheduled
 
-import app.androidrik.ai.provider.CustomBody
+import app.androidrik.common.http.CustomBody
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.Modality

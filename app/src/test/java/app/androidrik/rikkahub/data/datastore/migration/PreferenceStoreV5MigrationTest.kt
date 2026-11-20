@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.data.datastore.migration
 
 import androidx.datastore.preferences.core.mutablePreferencesOf
-import app.androidrik.ai.provider.ProviderProxy
+import app.androidrik.common.http.ProviderProxy
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.utils.JsonInstant

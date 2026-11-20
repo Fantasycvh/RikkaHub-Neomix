@@ -1,11 +1,11 @@
 package app.androidrik.ai.provider.providers.openai
 
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer

@@ -51,7 +51,7 @@ import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
 import app.androidrik.ai.util.applyCustomHeaders
 import app.androidrik.ai.util.checkAttachmentLimit
-import app.androidrik.ai.util.configureClientWithProxy
+import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64
 import app.androidrik.ai.util.ensureArrayItems

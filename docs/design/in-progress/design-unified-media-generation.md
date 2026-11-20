@@ -153,7 +153,20 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 - 入口：编辑器「凭据」区（引用/更换引用/解除引用，解除后回退本地快照）+ 原有的「从聊天供应商导入」现在默认生成活引用；列表项显示引用标记。
 - 已知边界：被引用供应商的代理（proxy）设置不随引用生效（媒体适配器本来也不走代理）；多 key 轮询取第一个有效 key。
 
-**M3 重复适配收敛评估**（评估完毕：暂不收敛，列前置条件）
+**M3 重复适配收敛评估**（2026-11-20 立项：三项 parity + Google 适配器移植按批次实施）
+
+> 立项拍板（2026-11-20）：共享类型（ProviderProxy/CustomHeader/CustomBody/KeyRoulette/configureClientWithProxy）**下沉 common** 由 ai+mediagen 复用；媒体供应商编辑器补**完整 UI**（代理四档/多 key/模型级头 body），独立配置形态不降级。另盘点出设计稿未覆盖的增量项：`98ea41fc8` 的 Google 生图执行层在 M3b 退役旧路径时会被一并废掉，须先移植为 mediagen 适配器（M3a-4）。
+
+| 批次 | 内容 |
+| --- | --- |
+| M3a-1 | 类型下沉 common；`MediaGenerationProviderSetting` 加 `proxy`/`apiKeys`（base 层默认值，序列化向后兼容）；OpenAI/SiliconFlow adapter 接 keyRoulette + per-setting 代理 client；credentialRef 引用时 proxy/apiKeys 随被引用者生效（M2 边界「proxy 不随引用」作废）；编辑器补代理四档 + 多 key 列表 |
+| M3a-2 | `MediaGenerationModel` 加 `customHeaders`/`customBodies`；adapter 应用（JSON 顶层合并 + multipart 字段合并，同旧链路语义）；`permitsBoundedCount` 改读新字段；模型编辑器补自定义头/body |
+| M3a-3 | OpenRouter 图片编辑适配器（`/images/generations` + `input_references` data-URL，移植旧链路 `editImageWithInputReferences`）+ Manager 注册 |
+| M3a-4 | Google 生图适配器移植进 mediagen（generateContent + IMAGE 输出模态，平移 `98ea41fc8` 实现）+ `MediaGenerationProviderSetting.Google` |
+| M3b-1 | 目录切换：legacy IMAGE 模型（OpenAI/Google）运行期映射为 Media target（零数据迁移，`MediaModelRef`/定时授权 id 不变）；**指纹必须与旧分支逐字节一致，否则存量定时批准作废**；聊天 `generate_image`/生图页全走统一执行器 |
+| M3b-2 | 退役：删 ai 模块 `generateImage`/`editImage` 与 `MediaGenerationTarget.Image`、`legacyImageExecutable`、旧测试清理 |
+
+
 
 对比两条链路（旧 `ai/OpenAIProvider.generateImage/editImage` vs mediagen `OpenAIMediaGenerationProvider`）：
 
@@ -169,9 +182,9 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 
 流式预览不是收敛障碍：两条链路都是响应完成后一次性 emit，`ImageGenerationItem.partial` 在 OpenAI 路径从未使用。
 
-结论：**收敛的前置条件是三项 parity——代理、多 key 轮询、模型级自定义头/body（含 `permitsBoundedCount` 语义移植）**，缺一即为功能降级（存量用户里多 key 与代理配置真实存在）；OpenRouter 图片编辑还需先移植 mediagen 的 OpenRouter 适配器。工作量估计 M3a（三项 parity）≈ 3 批提交、M3b（目录切换 + 退役旧路径 + 聊天 `generate_image` 改走统一执行器）≈ 2 批，另需完整回归与真机验收——属中等偏大特性工程，非删代码。
+结论：**收敛的前置条件是三项 parity——代理、多 key 轮询、模型级自定义头/body（含 `permitsBoundedCount` 语义移植）**，缺一即为功能降级（存量用户里多 key 与代理配置真实存在）；OpenRouter 图片编辑还需先移植 mediagen 的 OpenRouter 适配器。原估 M3a（三项 parity）≈ 3 批提交、M3b（目录切换 + 退役旧路径 + 聊天 `generate_image` 改走统一执行器）≈ 2 批；2026-11-20 立项后按上方批次表执行，Google 适配器移植（M3a-4）为增量批次。
 
-处置：M2 已让**数据层面**的凭据重复可通过活引用消除（新配置推荐走引用）；适配器收敛挂起，触发条件 = 上述三项 parity 立项。在此之前两条链路并存，各自服务各自的供应商配置形态。
+处置：M2 已让**数据层面**的凭据重复可通过活引用消除（新配置推荐走引用）；三项 parity 已于 2026-11-20 立项实施（批次见上），M3b 完成前两条链路并存。
 
 ### 待决范围
 

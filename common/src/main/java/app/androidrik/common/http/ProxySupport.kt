@@ -1,7 +1,6 @@
-package app.androidrik.ai.util
+package app.androidrik.common.http
 
 import android.util.Log
-import app.androidrik.ai.provider.ProviderProxy
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -13,6 +12,7 @@ private const val TAG = "ProxyUtils"
 
 /**
  * 按 [ProviderProxy] 语义给 client 配置代理（两层代理设计，见 `docs/design/design-proxy-two-layer.md` §二）。
+ * 原定义在 ai 模块 `util/ProxyUtils.kt`（M3 收敛时下沉 common，mediagen 同样消费）。
  *
  * | 配置 | 行为 |
  * |---|---|

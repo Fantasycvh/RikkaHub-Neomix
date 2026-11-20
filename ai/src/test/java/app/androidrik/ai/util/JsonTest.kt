@@ -4,7 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import app.androidrik.ai.provider.CustomBody
+import app.androidrik.common.http.CustomBody
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

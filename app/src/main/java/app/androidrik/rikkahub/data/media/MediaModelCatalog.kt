@@ -127,8 +127,12 @@ private fun legacyImageExecutable(provider: ProviderSetting, model: Model): Bool
 
 /**
  * 媒体供应商的生效配置：引用了旧 AI 供应商凭据（[MediaGenerationProviderSetting.OpenAI.credentialRef]）
- * 时，baseUrl/apiKey 取自被引用者，两处配置共用一份凭据。被引用者被删、或引用对象不是凭据型的
- * OpenAI 兼容供应商时返回 null——这套配置的模型从目录消失，运行期按既有「模型不可用」路径报错。
+ * 时，baseUrl/apiKey/proxy/apiKeys 取自被引用者，两处配置共用一份凭据。被引用者被删、或引用对象
+ * 不是凭据型的 OpenAI 兼容供应商时返回 null——这套配置的模型从目录消失，运行期按既有「模型不可用」
+ * 路径报错。
+ *
+ * M3a-1 起代理与多 key 随引用生效（原 M2 边界「proxy 不随引用生效」因媒体侧补齐代理 parity 而作废）；
+ * apiKeys 传入多 key 列表后由适配器的 keyRoulette 统一裁决（旧链路 effectiveApiKeys 同款顺序语义）。
  *
  * 供应商自身 id 不变（[MediaModelRef] 与定时授权里的引用不受影响）；`authorizationFingerprint`
  * 只看解析后的 baseUrl，凭据值变化不影响指纹，端点变化才会要求重新批准。
@@ -140,6 +144,8 @@ internal fun Settings.effectiveMediaProvider(stored: MediaGenerationProviderSett
     return stored.copyProvider(
         baseUrl = source.baseUrl,
         apiKey = source.effectiveApiKeys.split(Regex("[\\s,]+")).firstOrNull { it.isNotBlank() }.orEmpty(),
+        proxy = source.proxy,
+        apiKeys = source.apiKeys.map { it.key }.filter { it.isNotBlank() },
     )
 }
 

@@ -2,7 +2,7 @@ package app.androidrik.ai.provider.providers.openai
 
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.effectiveApiKeys
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import okhttp3.Request
 
 /**

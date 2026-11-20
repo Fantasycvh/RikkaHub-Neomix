@@ -59,7 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
-import app.androidrik.ai.provider.ProviderProxy
+import app.androidrik.common.http.ProviderProxy
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.account.preserveCredential

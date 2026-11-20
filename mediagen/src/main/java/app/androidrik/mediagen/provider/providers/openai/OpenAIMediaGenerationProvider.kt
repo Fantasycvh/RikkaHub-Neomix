@@ -10,6 +10,7 @@ import app.androidrik.mediagen.model.MediaGenerationUsage
 import app.androidrik.mediagen.provider.MediaGenerationProvider
 import app.androidrik.mediagen.provider.MediaModelLister
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import app.androidrik.mediagen.provider.effectiveMediaApiKeys
 import app.androidrik.mediagen.provider.providers.bearerRequest
 import app.androidrik.mediagen.provider.providers.executeJson
 import app.androidrik.mediagen.provider.providers.openAiImageModels
@@ -25,6 +26,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import app.androidrik.common.http.KeyRoulette
+import app.androidrik.common.http.configureClientWithProxy
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -44,12 +47,22 @@ class OpenAIMediaGenerationProvider(
     MediaModelLister<MediaGenerationProviderSetting.OpenAI> {
     override val id: String = PROVIDER_ID
 
+    // 顺序模式（列表顺序即优先级），与旧链路 provider 的 keyRoulette 口径一致
+    private val keyRoulette = KeyRoulette.default()
+
+    /** 请求 client：按 setting 的 per-provider 代理配置派生（Inherit 返回原 client）。 */
+    private fun OkHttpClient.withProxy(setting: MediaGenerationProviderSetting.OpenAI): OkHttpClient =
+        configureClientWithProxy(setting.proxy)
+
+    private fun apiKey(setting: MediaGenerationProviderSetting.OpenAI): String =
+        keyRoulette.next(setting.effectiveMediaApiKeys, setting.id.toString())
+
     /** `GET {baseUrl}/models`：官方接口会列出 `dall-e-*` / `gpt-image-*`，兼容端点会列全部。 */
     override suspend fun listModels(
         setting: MediaGenerationProviderSetting.OpenAI,
     ): Result<List<MediaGenerationModel>> = runCatching {
-        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/models", setting.apiKey).get().build()
-        openAiImageModels(client.executeJson(httpRequest, id))
+        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/models", apiKey(setting)).get().build()
+        openAiImageModels(client.withProxy(setting).executeJson(httpRequest, id))
     }
 
     override suspend fun create(
@@ -58,13 +71,13 @@ class OpenAIMediaGenerationProvider(
         request: MediaGenerationRequest,
     ): Result<MediaGenerationTask> = runCatching {
         val baseUrl = setting.baseUrl.trimEnd('/')
-        val builder = Request.Builder().addHeader("Authorization", "Bearer ${setting.apiKey}")
+        val builder = Request.Builder().addHeader("Authorization", "Bearer ${apiKey(setting)}")
         val httpRequest = if (request.inputs.isEmpty()) {
             builder.url("$baseUrl/images/generations").postJson(buildGenerationBody(setting, model, request))
         } else {
             builder.url("$baseUrl/images/edits").post(buildEditBody(setting, model, request))
         }.build()
-        parseTask(client.executeJson(httpRequest, id), model.modelId)
+        parseTask(client.withProxy(setting).executeJson(httpRequest, model.modelId), model.modelId)
     }
 
     internal fun buildGenerationBody(

@@ -1,6 +1,6 @@
 package app.androidrik.ai.provider.providers
 
-import app.androidrik.ai.provider.CustomBody
+import app.androidrik.common.http.CustomBody
 import app.androidrik.ai.provider.ImageEditParams
 import app.androidrik.ai.provider.ImageGenerationParams
 import app.androidrik.ai.provider.Model

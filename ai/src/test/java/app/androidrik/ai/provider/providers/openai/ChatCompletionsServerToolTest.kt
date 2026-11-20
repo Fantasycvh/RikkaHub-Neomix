@@ -6,7 +6,7 @@ import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import app.androidrik.ai.core.accumulateRound
 import app.androidrik.ai.core.merge
 import app.androidrik.ai.core.InputSchema

@@ -8,7 +8,7 @@ import app.androidrik.ai.provider.providers.openai.ResponseAPI
 import app.androidrik.ai.provider.providers.openai.ResponseApiStreamDecoder
 import app.androidrik.ai.provider.stream.SseEvent
 import app.androidrik.ai.ui.StreamChunk
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import app.androidrik.ai.util.json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject

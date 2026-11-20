@@ -2,7 +2,7 @@ package app.androidrik.rikkahub.data.ai
 
 import android.content.Context
 import app.androidrik.ai.core.ReasoningLevel
-import app.androidrik.ai.provider.CustomBody
+import app.androidrik.common.http.CustomBody
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.TextGenerationParams

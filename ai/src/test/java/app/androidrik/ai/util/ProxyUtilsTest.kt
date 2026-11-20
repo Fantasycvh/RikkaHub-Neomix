@@ -1,6 +1,7 @@
 package app.androidrik.ai.util
 
-import app.androidrik.ai.provider.ProviderProxy
+import app.androidrik.common.http.ProviderProxy
+import app.androidrik.common.http.configureClientWithProxy
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals

@@ -10,7 +10,7 @@ import app.androidrik.ai.provider.providers.openai.StreamingEventSourceTracker
 import app.androidrik.ai.provider.providers.openai.resetLearnedReasoningTextValidatorsForTest
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin

@@ -5,8 +5,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import app.androidrik.common.settings.Enableable
 import app.androidrik.ai.core.MessageRole
-import app.androidrik.ai.provider.CustomBody
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomBody
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.rikkahub.data.ai.tools.local.LocalToolOption

@@ -26,8 +26,8 @@ import androidx.compose.ui.unit.dp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
-import app.androidrik.ai.provider.CustomBody
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomBody
+import app.androidrik.common.http.CustomHeader
 import me.rerere.bettertext.highlight.LocalCodeHighlighter
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.ui.components.ui.CardGroup

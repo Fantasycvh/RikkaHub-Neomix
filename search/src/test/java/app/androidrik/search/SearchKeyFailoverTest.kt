@@ -1,4 +1,5 @@
 package app.androidrik.search
+import app.androidrik.common.http.KeyRoulette
 
 import app.androidrik.ai.provider.ApiKeyEntry
 import kotlinx.serialization.json.Json

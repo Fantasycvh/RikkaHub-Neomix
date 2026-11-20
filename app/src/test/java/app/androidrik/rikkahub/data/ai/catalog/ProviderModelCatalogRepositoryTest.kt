@@ -1,4 +1,5 @@
 package app.androidrik.rikkahub.data.ai.catalog
+import app.androidrik.common.http.CustomHeader
 
 import app.androidrik.ai.provider.*
 import app.androidrik.rikkahub.data.datastore.Settings

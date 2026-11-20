@@ -54,8 +54,8 @@ import app.androidrik.ai.ui.ClaudeReasoningMetadata
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
-import app.androidrik.ai.util.KeyRoulette
-import app.androidrik.ai.util.configureClientWithProxy
+import app.androidrik.common.http.KeyRoulette
+import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64

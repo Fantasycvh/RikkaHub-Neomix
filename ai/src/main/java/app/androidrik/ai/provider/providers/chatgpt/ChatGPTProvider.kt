@@ -2,11 +2,11 @@ package app.androidrik.ai.provider.providers.chatgpt
 
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.AccountCredentialProvider
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.*
 import app.androidrik.ai.util.mergeCustomHeaders
-import app.androidrik.ai.util.configureClientWithProxy
+import app.androidrik.common.http.configureClientWithProxy
 import kotlinx.serialization.json.*
 import app.androidrik.ai.provider.OPENAI_CODEX_BASE_URL
 import app.androidrik.ai.provider.Provider

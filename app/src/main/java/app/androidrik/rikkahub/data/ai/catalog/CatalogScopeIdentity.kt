@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.ai.catalog
 
 import app.androidrik.ai.provider.*
+import app.androidrik.common.http.ProviderProxy
 import app.androidrik.rikkahub.data.datastore.GlobalProxySetting
 import app.androidrik.rikkahub.data.ai.account.withLegacyCatalogSession
 import kotlinx.serialization.encodeToString

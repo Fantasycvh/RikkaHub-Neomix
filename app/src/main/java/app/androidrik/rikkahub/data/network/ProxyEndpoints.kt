@@ -1,6 +1,6 @@
 package app.androidrik.rikkahub.data.network
 
-import app.androidrik.ai.provider.ProviderProxy
+import app.androidrik.common.http.ProviderProxy
 import app.androidrik.rikkahub.data.datastore.GlobalProxySetting
 import app.androidrik.rikkahub.data.datastore.ProxyType
 

@@ -40,8 +40,8 @@ import app.androidrik.ai.provider.providers.openai.toResponsesEndpoint
 import app.androidrik.ai.ui.ImageGenerationItem
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
-import app.androidrik.ai.util.KeyRoulette
-import app.androidrik.ai.util.configureClientWithProxy
+import app.androidrik.common.http.KeyRoulette
+import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.json
 import app.androidrik.ai.util.mergeCustomBody

@@ -1,4 +1,6 @@
 package app.androidrik.rikkahub.data.ai.catalog
+import app.androidrik.common.http.CustomBody
+import app.androidrik.common.http.CustomHeader
 
 import app.androidrik.ai.provider.*
 import org.junit.Assert.*

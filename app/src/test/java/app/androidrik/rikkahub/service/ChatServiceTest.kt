@@ -2,8 +2,8 @@ package app.androidrik.rikkahub.service
 
 import kotlinx.serialization.json.JsonPrimitive
 import app.androidrik.ai.core.ReasoningLevel
-import app.androidrik.ai.provider.CustomBody
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomBody
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.rikkahub.data.model.Conversation

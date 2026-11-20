@@ -40,6 +40,16 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Refresh03
+import me.rerere.hugeicons.stroke.View
+import me.rerere.hugeicons.stroke.ViewOff
+import app.androidrik.common.http.ProviderProxy
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
@@ -178,7 +188,7 @@ fun MediaGenerationProviderConfigure(
                     CredentialReferenceField(setting = setting, onValueChange = onValueChange)
                 }
 
-                // 引用旧 AI 供应商凭据时 Key/URL 跟着对方走，本地显式配置不再展示
+                // 引用旧 AI 供应商凭据时 Key/URL/代理/多 Key 都跟着对方走，本地显式配置不再展示
                 if (!(setting is MediaGenerationProviderSetting.OpenAI && setting.credentialRef != null)) {
                     FormItem(label = { Text("API Key") }) {
                         OutlinedTextField(
@@ -189,6 +199,12 @@ fun MediaGenerationProviderConfigure(
                         )
                     }
 
+                    // 多 key（M3a-1 parity）：非空时优先于上方单 Key，列表顺序即优先级
+                    MediaApiKeysEditor(
+                        keys = setting.apiKeys,
+                        onChange = { onValueChange(setting.copyProvider(apiKeys = it)) },
+                    )
+
                     FormItem(label = { Text("Base URL") }) {
                         OutlinedTextField(
                             value = setting.baseUrl,
@@ -197,6 +213,12 @@ fun MediaGenerationProviderConfigure(
                             singleLine = true,
                         )
                     }
+
+                    // 代理（M3a-1 parity）：四档与旧供应商编辑器同一语义
+                    MediaProxyEditor(
+                        proxy = setting.proxy,
+                        onChange = { onValueChange(setting.copyProvider(proxy = it)) },
+                    )
                 }
 
                 if (setting is MediaGenerationProviderSetting.Aliyun) {
@@ -473,6 +495,196 @@ private fun CredentialReferenceField(
             confirmButton = {
                 TextButton(onClick = { picking = false }) { Text(stringResource(R.string.cancel)) }
             },
+        )
+    }
+}
+/**
+ * 多 Key 编辑器（M3a-1 parity）：列表非空时优先于单 Key 字段，顺序即优先级。
+ * 用 Column+forEach 而非 LazyColumn——行数少，常驻节点无 item 销毁/焦点丢失风险
+ * （AGENTS.md TextField 宿主规则；旧供应商编辑器的 Lazy 版是历史豁免形态，不新增）。
+ */
+@Composable
+private fun MediaApiKeysEditor(
+    keys: List<String>,
+    onChange: (List<String>) -> Unit,
+) {
+    var keyVisible by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "多 Key（可选，优先于上方 API Key）",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = { keyVisible = !keyVisible }) {
+                Icon(
+                    if (keyVisible) HugeIcons.ViewOff else HugeIcons.View,
+                    contentDescription = if (keyVisible) "隐藏" else "显示",
+                )
+            }
+        }
+        keys.forEachIndexed { index, key ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = key,
+                    onValueChange = { value ->
+                        onChange(keys.toMutableList().also { it[index] = value })
+                    },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    visualTransformation = if (keyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                )
+                IconButton(
+                    onClick = { onChange(keys.filterIndexed { i, _ -> i != index }) },
+                ) {
+                    Icon(HugeIcons.Delete01, contentDescription = "删除")
+                }
+            }
+        }
+        TextButton(
+            onClick = { onChange(keys + "") },
+        ) {
+            Icon(HugeIcons.Add01, contentDescription = null)
+            Text("添加 Key", modifier = Modifier.padding(start = 4.dp))
+        }
+    }
+}
+
+/**
+ * 代理编辑器（M3a-1 parity）：四档与旧供应商编辑器同一语义（跟随全局/显式直连/HTTP/SOCKS5）。
+ * 即改即存（与页面其它字段一致），不做单独保存按钮。
+ */
+@Composable
+private fun MediaProxyEditor(
+    proxy: ProviderProxy,
+    onChange: (ProviderProxy) -> Unit,
+) {
+    val options = listOf(
+        ProxyOption.Inherit,
+        ProxyOption.None,
+        ProxyOption.Http,
+        ProxyOption.Socks5,
+    )
+    val selected = when (proxy) {
+        is ProviderProxy.Inherit -> ProxyOption.Inherit
+        is ProviderProxy.None -> ProxyOption.None
+        is ProviderProxy.Http -> ProxyOption.Http
+        is ProviderProxy.Socks5 -> ProxyOption.Socks5
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = "网络代理",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, option ->
+                SegmentedButton(
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                    label = { Text(option.label) },
+                    selected = selected == option,
+                    onClick = { onChange(option.toDefaultProxy()) },
+                )
+            }
+        }
+        when (val current = proxy) {
+            is ProviderProxy.Http -> MediaProxyFields(
+                address = current.address,
+                port = current.port,
+                username = current.username.orEmpty(),
+                password = current.password.orEmpty(),
+                isSocks = false,
+                onChange = onChange,
+            )
+            is ProviderProxy.Socks5 -> MediaProxyFields(
+                address = current.address,
+                port = current.port,
+                username = current.username.orEmpty(),
+                password = current.password.orEmpty(),
+                isSocks = true,
+                onChange = onChange,
+            )
+            else -> {}
+        }
+    }
+}
+
+private enum class ProxyOption(val label: String) {
+    Inherit("跟随全局"),
+    None("直连"),
+    Http("HTTP"),
+    Socks5("SOCKS5");
+
+    fun toDefaultProxy(): ProviderProxy = when (this) {
+        Inherit -> ProviderProxy.Inherit
+        None -> ProviderProxy.None
+        Http -> ProviderProxy.Http(address = "", port = 8080)
+        Socks5 -> ProviderProxy.Socks5(address = "", port = 1080)
+    }
+}
+
+/** HTTP / SOCKS5 共用的地址·端口·认证输入（与旧供应商编辑器 [ProxyFields] 同款语义）。 */
+@Composable
+private fun MediaProxyFields(
+    address: String,
+    port: Int,
+    username: String,
+    password: String,
+    isSocks: Boolean,
+    onChange: (ProviderProxy) -> Unit,
+) {
+    fun build(addr: String = address, p: Int = port, user: String = username, pass: String = password) =
+        if (isSocks) ProviderProxy.Socks5(addr, p, user.ifBlank { null }, pass.ifBlank { null })
+        else ProviderProxy.Http(addr, p, user.ifBlank { null }, pass.ifBlank { null })
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = address,
+            onValueChange = { onChange(build(addr = it.trim())) },
+            label = { Text("地址") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        var portStr by remember(port) { mutableStateOf(port.toString()) }
+        OutlinedTextField(
+            value = portStr,
+            onValueChange = {
+                portStr = it
+                it.toIntOrNull()?.let { p -> onChange(build(p = p)) }
+            },
+            label = { Text("端口") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+        OutlinedTextField(
+            value = username,
+            onValueChange = { onChange(build(user = it)) },
+            label = { Text("用户名（可选）") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { onChange(build(pass = it)) },
+            label = { Text("密码（可选）") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
         )
     }
 }

@@ -41,7 +41,7 @@ import app.androidrik.ai.provider.isDeepSeekWebTool
 import app.androidrik.ai.provider.supportsDeepSeekWebTools
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
-import app.androidrik.ai.provider.ProviderProxy
+import app.androidrik.common.http.ProviderProxy
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
@@ -60,9 +60,9 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import app.androidrik.ai.util.apiEndpoint
-import app.androidrik.ai.util.configureClientWithProxy
+import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64

@@ -6,7 +6,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import app.androidrik.ai.provider.ApiKeyEntry
 import app.androidrik.ai.provider.BuiltInTools
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting

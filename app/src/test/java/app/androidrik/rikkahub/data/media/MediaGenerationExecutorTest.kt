@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.data.media
 
-import app.androidrik.ai.provider.CustomBody
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomBody
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.ImageEditParams
 import app.androidrik.ai.provider.ImageGenerationParams
 import app.androidrik.ai.provider.Model

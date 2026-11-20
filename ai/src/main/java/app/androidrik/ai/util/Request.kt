@@ -5,8 +5,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import app.androidrik.ai.provider.CustomBody
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomBody
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.common.http.await
 import okhttp3.Headers

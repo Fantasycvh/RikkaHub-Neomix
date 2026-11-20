@@ -57,4 +57,48 @@ class MediaGenerationProviderSettingTest {
         assertEquals("ws-1", (copy as MediaGenerationProviderSetting.Aliyun).workspaceId)
         assertEquals(setting.models, copy.models)
     }
+
+    @Test
+    fun proxyAndMultiKeysSurviveSerializationAndOldPayloadsFallBackToDefaults() {
+        // 新字段（M3a-1 parity）：序列化往返
+        val setting: MediaGenerationProviderSetting = MediaGenerationProviderSetting.OpenAI(
+            apiKey = "sk-legacy",
+            apiKeys = listOf("sk-a", "sk-b"),
+            proxy = app.androidrik.common.http.ProviderProxy.Http("127.0.0.1", 7890),
+        )
+        val encoded = Json.encodeToString(MediaGenerationProviderSetting.serializer(), setting)
+        val decoded = Json.decodeFromString(MediaGenerationProviderSetting.serializer(), encoded)
+        assertEquals(setting, decoded)
+
+        // 旧备份没有 proxy/apiKeys 字段：反序列化落默认值（Inherit + 空列表），行为与升级前一致
+        val legacy = Json.decodeFromString(
+            MediaGenerationProviderSetting.serializer(),
+            """{"type":"openai","id":"${setting.id}","apiKey":"sk-legacy"}""",
+        ) as MediaGenerationProviderSetting.OpenAI
+        assertEquals(app.androidrik.common.http.ProviderProxy.Inherit, legacy.proxy)
+        assertTrue(legacy.apiKeys.isEmpty())
+    }
+
+    @Test
+    fun effectiveMediaApiKeysPrefersListAndFallsBackToLegacySingleKey() {
+        val multi = MediaGenerationProviderSetting.OpenAI(apiKey = "sk-legacy", apiKeys = listOf("sk-a", " ", "sk-a", "sk-b"))
+        assertEquals("sk-a\nsk-b", multi.effectiveMediaApiKeys)
+
+        val single = MediaGenerationProviderSetting.OpenAI(apiKey = "sk-legacy")
+        assertEquals("sk-legacy", single.effectiveMediaApiKeys)
+        assertEquals("sk-legacy", single.firstMediaApiKey())
+        assertEquals("sk-a", multi.firstMediaApiKey())
+    }
+
+    @Test
+    fun copyProviderPassesProxyAndMultiKeys() {
+        val setting = MediaGenerationProviderSetting.SiliconFlow(apiKey = "sk")
+        val proxy = app.androidrik.common.http.ProviderProxy.Http("10.0.0.1", 8080)
+
+        val copy = setting.copyProvider(proxy = proxy, apiKeys = listOf("k1", "k2"))
+
+        assertEquals(proxy, copy.proxy)
+        assertEquals(listOf("k1", "k2"), copy.apiKeys)
+        assertEquals("k1", copy.firstMediaApiKey())
+    }
 }

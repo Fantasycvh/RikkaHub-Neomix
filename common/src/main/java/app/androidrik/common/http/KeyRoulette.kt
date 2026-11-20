@@ -1,4 +1,4 @@
-package app.androidrik.ai.util
+package app.androidrik.common.http
 
 import android.content.Context
 import kotlinx.serialization.encodeToString

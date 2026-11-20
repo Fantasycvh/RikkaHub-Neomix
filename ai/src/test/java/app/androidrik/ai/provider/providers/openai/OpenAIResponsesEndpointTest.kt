@@ -1,12 +1,12 @@
 package app.androidrik.ai.provider.providers.openai
 
 import app.androidrik.ai.core.ReasoningOverride
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.OPENAI_CODEX_BASE_URL
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.TextGenerationParams
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import kotlinx.coroutines.runBlocking
 import okhttp3.Request
 import org.junit.Assert.assertEquals

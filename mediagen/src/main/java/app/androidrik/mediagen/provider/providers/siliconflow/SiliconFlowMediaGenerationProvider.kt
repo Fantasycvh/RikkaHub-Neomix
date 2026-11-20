@@ -12,7 +12,10 @@ import app.androidrik.mediagen.model.ImageRole
 import app.androidrik.mediagen.provider.MediaGenerationProvider
 import app.androidrik.mediagen.provider.MediaModelLister
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import app.androidrik.mediagen.provider.effectiveMediaApiKeys
 import app.androidrik.mediagen.provider.modelCapabilities
+import app.androidrik.common.http.KeyRoulette
+import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.mediagen.provider.providers.bearerRequest
 import app.androidrik.mediagen.provider.providers.executeJson
 import app.androidrik.mediagen.provider.providers.siliconFlowVideoModels
@@ -40,6 +43,15 @@ class SiliconFlowMediaGenerationProvider(
     MediaModelLister<MediaGenerationProviderSetting.SiliconFlow> {
     override val id: String = PROVIDER_ID
 
+    // 顺序模式（列表顺序即优先级），与 OpenAI 适配器及旧链路口径一致
+    private val keyRoulette = KeyRoulette.default()
+
+    private fun apiKey(setting: MediaGenerationProviderSetting.SiliconFlow): String =
+        keyRoulette.next(setting.effectiveMediaApiKeys, setting.id.toString())
+
+    private fun OkHttpClient.withProxy(setting: MediaGenerationProviderSetting.SiliconFlow): OkHttpClient =
+        configureClientWithProxy(setting.proxy)
+
     /**
      * `GET {baseUrl}/models?type=video`：文档里的 `type` 参数只返回视频模型。
      * 自建/中转地址可能忽略该参数而返回全部模型，所以解析时仍按 id 特征兜底过滤一次。
@@ -49,9 +61,9 @@ class SiliconFlowMediaGenerationProvider(
     ): Result<List<MediaGenerationModel>> = runCatching {
         val httpRequest = bearerRequest(
             "${setting.baseUrl.trimEnd('/')}/models?type=video",
-            setting.apiKey,
+            apiKey(setting),
         ).get().build()
-        siliconFlowVideoModels(client.executeJson(httpRequest, id))
+        siliconFlowVideoModels(client.withProxy(setting).executeJson(httpRequest, id))
     }
 
     override suspend fun create(
@@ -61,10 +73,10 @@ class SiliconFlowMediaGenerationProvider(
     ): Result<MediaGenerationTask> = runCatching {
         // 本地首帧要读出来编码成 data URI
         val body = withContext(Dispatchers.IO) { buildSubmitBody(setting, model, request) }
-        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/video/submit", setting.apiKey)
+        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/video/submit", apiKey(setting))
             .postJson(body)
             .build()
-        val root = client.executeJson(httpRequest, id)
+        val root = client.withProxy(setting).executeJson(httpRequest, id)
         val requestId = root.string("requestId")
             ?: error("SiliconFlow response does not contain requestId")
         MediaGenerationTask(
@@ -82,10 +94,10 @@ class SiliconFlowMediaGenerationProvider(
         taskId: String,
     ): Result<MediaGenerationTask> = runCatching {
         val body = buildJsonObject { put("requestId", taskId) }
-        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/video/status", setting.apiKey)
+        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/video/status", apiKey(setting))
             .postJson(body)
             .build()
-        parseTask(client.executeJson(httpRequest, id), taskId, model.modelId)
+        parseTask(client.withProxy(setting).executeJson(httpRequest, id), taskId, model.modelId)
     }
 
     override fun supportsQuery(

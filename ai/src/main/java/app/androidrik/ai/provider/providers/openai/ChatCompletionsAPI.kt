@@ -56,9 +56,9 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.ServerToolStatus
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import app.androidrik.ai.util.apiEndpoint
-import app.androidrik.ai.util.configureClientWithProxy
+import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64

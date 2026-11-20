@@ -2,12 +2,12 @@ package app.androidrik.ai.provider.providers.grok
 
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.provider.AccountCredentialProvider
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.*
 import app.androidrik.ai.util.mergeCustomHeaders
-import app.androidrik.ai.util.configureClientWithProxy
+import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderQuota

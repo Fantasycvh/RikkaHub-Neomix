@@ -1,6 +1,6 @@
 package app.androidrik.ai.util
 
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.ProviderSetting
 import okhttp3.Request
 import org.junit.Assert.assertEquals

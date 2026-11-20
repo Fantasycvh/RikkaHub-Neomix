@@ -142,6 +142,37 @@ class OpenAIMediaGenerationProviderTest {
     }
 
     @Test
+    fun multiKeyListWinsOverLegacySingleKeyInAuthorizationHeader() = runBlocking {
+        // M3a-1 parity：apiKeys 非空时以列表为准（顺序模式取首个），旧单 key 字段仅兜底
+        val requests = mutableListOf<Request>()
+        val multiKeySetting = setting.copy(apiKey = "sk-legacy", apiKeys = listOf("sk-a", "sk-b"))
+        val manager = MediaGenerationManager(fakeClient(requests) {
+            jsonResponse(request = it, body = """{"data":[{"b64_json":"aGVsbG8="}]}""")
+        })
+
+        manager.generate(multiKeySetting, model, MediaGenerationRequest(prompt = "cat")).toList()
+
+        assertEquals("Bearer sk-a", requests.single().header("Authorization"))
+    }
+
+    @Test
+    fun explicitProxyStillReachesTheFakeEndpoint() = runBlocking {
+        // M3a-1 parity：per-provider 代理派生 client 后拦截器仍生效（Inherit 返回原 client 的对偶场景）
+        val requests = mutableListOf<Request>()
+        val proxied = setting.copy(
+            proxy = app.androidrik.common.http.ProviderProxy.Http("127.0.0.1", 7890),
+        )
+        val manager = MediaGenerationManager(fakeClient(requests) {
+            jsonResponse(request = it, body = """{"data":[{"b64_json":"aGVsbG8="}]}""")
+        })
+
+        manager.generate(proxied, model, MediaGenerationRequest(prompt = "cat")).toList()
+
+        assertEquals("Bearer sk-test", requests.single().header("Authorization"))
+        assertEquals("https://example.com/v1/images/generations", requests.single().url.toString())
+    }
+
+    @Test
     fun urlOnlyImagesAreReturnedAsUrlOutputs() {
         val root = mediaGenerationJson.parseToJsonElement(
             """{"data":[{"url":"https://cdn.example.com/out.png"}]}"""

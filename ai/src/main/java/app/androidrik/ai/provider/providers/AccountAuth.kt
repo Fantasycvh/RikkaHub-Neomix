@@ -1,7 +1,7 @@
 package app.androidrik.ai.provider.providers
 
 import app.androidrik.ai.provider.AccountCredentialProvider
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.OAuthCredential
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.util.mergeCustomHeaders

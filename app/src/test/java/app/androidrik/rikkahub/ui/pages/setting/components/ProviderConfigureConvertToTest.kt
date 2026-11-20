@@ -1,7 +1,7 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
 import app.androidrik.ai.provider.QuotaQuery
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull

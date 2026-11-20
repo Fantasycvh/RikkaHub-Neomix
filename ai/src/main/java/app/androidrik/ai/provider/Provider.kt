@@ -2,8 +2,9 @@ package app.androidrik.ai.provider
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 import app.androidrik.ai.core.ReasoningLevel
+import app.androidrik.common.http.CustomBody
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.ImageGenSize
@@ -132,16 +133,4 @@ data class EmbeddingGenerationParams(
 data class EmbeddingGenerationResult(
     val model: String,
     val embeddings: List<List<Float>>,
-)
-
-@Serializable
-data class CustomHeader(
-    val name: String,
-    val value: String
-)
-
-@Serializable
-data class CustomBody(
-    val key: String,
-    val value: JsonElement
 )

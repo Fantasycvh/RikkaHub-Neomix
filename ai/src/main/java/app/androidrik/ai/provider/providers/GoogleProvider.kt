@@ -39,6 +39,7 @@ import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.*
 import app.androidrik.ai.provider.ModelAbility
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderQuota
@@ -67,8 +68,8 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.mergeMetadata
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
-import app.androidrik.ai.util.KeyRoulette
-import app.androidrik.ai.util.configureClientWithProxy
+import app.androidrik.common.http.KeyRoulette
+import app.androidrik.common.http.configureClientWithProxy
 import app.androidrik.ai.util.configureReferHeaders
 import app.androidrik.ai.util.configureSessionHeaders
 import app.androidrik.ai.util.encodeBase64

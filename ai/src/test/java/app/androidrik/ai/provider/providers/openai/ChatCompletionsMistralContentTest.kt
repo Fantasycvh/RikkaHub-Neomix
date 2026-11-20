@@ -6,7 +6,7 @@ import app.androidrik.ai.provider.stream.SseEvent
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import app.androidrik.ai.util.json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonArray

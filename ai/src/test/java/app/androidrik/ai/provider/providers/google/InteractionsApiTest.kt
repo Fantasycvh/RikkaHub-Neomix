@@ -2,8 +2,8 @@ package app.androidrik.ai.provider.providers.google
 
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.Tool
-import app.androidrik.ai.provider.CustomBody
-import app.androidrik.ai.provider.CustomHeader
+import app.androidrik.common.http.CustomBody
+import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting

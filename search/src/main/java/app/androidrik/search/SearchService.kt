@@ -11,7 +11,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.provider.ApiKeyEntry
-import app.androidrik.ai.util.KeyRoulette
+import app.androidrik.common.http.KeyRoulette
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
