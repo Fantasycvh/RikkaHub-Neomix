@@ -3,6 +3,7 @@ package app.androidrik.mediagen.provider
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationRequest
 import app.androidrik.mediagen.model.MediaGenerationTask
+import app.androidrik.mediagen.provider.providers.google.GoogleMediaGenerationProvider
 import app.androidrik.mediagen.provider.providers.openai.OpenAIMediaGenerationProvider
 import app.androidrik.mediagen.provider.providers.openrouter.OpenRouterMediaGenerationProvider
 import app.androidrik.mediagen.provider.providers.siliconflow.SiliconFlowMediaGenerationProvider
@@ -21,6 +22,7 @@ class MediaGenerationManager(
 ) {
     private val openAI = OpenAIMediaGenerationProvider(client)
     private val openRouter = OpenRouterMediaGenerationProvider(client)
+    private val google = GoogleMediaGenerationProvider(client)
     private val siliconFlow = SiliconFlowMediaGenerationProvider(client)
 
     suspend fun create(
@@ -109,6 +111,7 @@ class MediaGenerationManager(
     private fun provider(setting: MediaGenerationProviderSetting): MediaGenerationProvider<*>? =
         when (setting) {
             is MediaGenerationProviderSetting.OpenAI -> openAI
+            is MediaGenerationProviderSetting.Google -> google
             is MediaGenerationProviderSetting.OpenRouter -> openRouter
             is MediaGenerationProviderSetting.SiliconFlow -> siliconFlow
             else -> null

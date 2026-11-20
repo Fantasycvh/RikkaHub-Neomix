@@ -212,6 +212,15 @@ internal fun MediaGenerationProviderSetting.presets(kind: MediaKind): MediaCreat
             resolutions = listOf("1280x720", "720x1280", "960x960"),
         )
     }
+
+    // Gemini 图片模型走 aspectRatio（适配器把像素 size 映射成最接近的比例，见 GoogleMediaGenerationProvider）
+    is MediaGenerationProviderSetting.Google -> when (kind) {
+        MediaKind.IMAGE -> MediaCreationPresets(
+            resolutions = listOf("1024x1024", "1536x1024", "1024x1536"),
+            counts = IMAGE_COUNTS,
+        )
+        MediaKind.VIDEO -> MediaCreationPresets()
+    }
 }
 
 private val IMAGE_COUNTS = listOf(1, 2, 3, 4)

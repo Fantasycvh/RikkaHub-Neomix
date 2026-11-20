@@ -82,6 +82,11 @@ fun MediaGenerationProviderSetting.capabilities(kind: MediaKind): MediaGeneratio
             MediaKind.VIDEO -> OPENROUTER_VIDEO
         }
 
+        is MediaGenerationProviderSetting.Google -> when (kind) {
+            MediaKind.IMAGE -> GOOGLE_IMAGE
+            MediaKind.VIDEO -> null
+        }
+
         is MediaGenerationProviderSetting.SiliconFlow -> when (kind) {
             MediaKind.IMAGE -> null
             MediaKind.VIDEO -> SILICONFLOW_VIDEO
@@ -91,6 +96,13 @@ fun MediaGenerationProviderSetting.capabilities(kind: MediaKind): MediaGeneratio
 // 图像接口不区分图片角色，统一当作参考图
 private val REFERENCE_ONLY = setOf(ImageRole.REFERENCE)
 private val ALL_IMAGE_ROLES = ImageRole.entries.toSet()
+
+// Gemini 图片模型：分辨率走 aspectRatio 映射（见 GoogleMediaGenerationProvider），无 seed/watermark
+private val GOOGLE_IMAGE = MediaGenerationCapabilities(
+    parameters = setOf(MediaGenerationParameter.COUNT, MediaGenerationParameter.RESOLUTION),
+    imageRoles = REFERENCE_ONLY,
+    requiresPrompt = true,
+)
 
 private val OPENAI_IMAGE = MediaGenerationCapabilities(
     parameters = setOf(MediaGenerationParameter.COUNT, MediaGenerationParameter.RESOLUTION),

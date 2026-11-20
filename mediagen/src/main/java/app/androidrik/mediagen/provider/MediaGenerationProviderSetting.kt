@@ -266,6 +266,56 @@ sealed class MediaGenerationProviderSetting {
     }
 
     /**
+     * Google (Gemini) 生图：AI Studio API key 与 Vertex AI（服务账号）两种形态共用一套
+     * generateContent IMAGE 输出模态协议（M3a-4 平移旧链路 `GoogleProvider.generateImage`）。
+     * Vertex 字段与旧链路 `ProviderSetting.Google` 同名同义；credentialRef 语义未来若复用，
+     * 由 app 层解析后借字段。旧备份没有 proxy/apiKeys 字段，反序列化落默认值。
+     */
+    @Serializable
+    @SerialName("google")
+    data class Google(
+        override val id: Uuid = Uuid.random(),
+        override val name: String = "Google",
+        override val apiKey: String = "",
+        override val baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
+        override val proxy: ProviderProxy = ProviderProxy.Inherit,
+        override val apiKeys: List<String> = emptyList(),
+        var vertexAI: Boolean = false,
+        var useServiceAccount: Boolean = false,
+        var privateKey: String = "",
+        var serviceAccountEmail: String = "",
+        var location: String = "us-central1",
+        var projectId: String = "",
+        override val models: List<MediaGenerationModel> = listOf(
+            MediaGenerationModel(modelId = "gemini-2.5-flash-image", kind = MediaKind.IMAGE),
+        ),
+    ) : MediaGenerationProviderSetting() {
+        // 仅图片已接入；generateContent 同步返回结果
+        override val supportedKinds: Set<MediaKind>
+            get() = setOf(MediaKind.IMAGE)
+
+        override fun copyProvider(
+            id: Uuid,
+            name: String,
+            apiKey: String,
+            baseUrl: String,
+            proxy: ProviderProxy,
+            apiKeys: List<String>,
+            models: List<MediaGenerationModel>,
+        ): MediaGenerationProviderSetting {
+            return this.copy(
+                id = id,
+                name = name,
+                apiKey = apiKey,
+                baseUrl = baseUrl,
+                proxy = proxy,
+                apiKeys = apiKeys,
+                models = models,
+            )
+        }
+    }
+
+    /**
      * 硅基流动的视频接口：提交后返回 requestId，再轮询 /video/status 取结果。
      * 结果地址是公网 CDN 地址，下载不需要额外的请求头。
      */
@@ -311,6 +361,7 @@ sealed class MediaGenerationProviderSetting {
         val Types by lazy {
             listOf(
                 OpenAI::class,
+                Google::class,
                 Aliyun::class,
                 Volcengine::class,
                 MiniMax::class,

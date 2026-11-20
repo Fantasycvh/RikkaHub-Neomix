@@ -77,6 +77,7 @@ import org.koin.compose.koinInject
 val MediaGenerationProviderSetting.typeName: String
     @Composable get() = when (this) {
         is MediaGenerationProviderSetting.OpenAI -> "OpenAI"
+        is MediaGenerationProviderSetting.Google -> "Google"
         is MediaGenerationProviderSetting.Aliyun -> stringResource(R.string.media_provider_type_aliyun)
         is MediaGenerationProviderSetting.Volcengine -> stringResource(R.string.media_provider_type_volcengine)
         is MediaGenerationProviderSetting.MiniMax -> "MiniMax"
