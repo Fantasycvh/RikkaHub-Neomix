@@ -2255,18 +2255,18 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="guard_sensitivity_standard">Standard</string>
   <string name="guard_sensitivity_loose">Loose</string>
   <string name="setting_page_guardrails_turn_budget_chars">Workspace per-turn output budget</string>
-  <string name="setting_page_guardrails_turn_budget_chars_desc">Total output characters workspace tools may add to the context in one turn</string>
+  <string name="setting_page_guardrails_turn_budget_chars_desc">Total output characters workspace tools may add to the context in one turn; 0 = unlimited</string>
   <string name="setting_page_guardrails_unit_kchars">K chars</string>
   <string name="setting_page_guardrails_turn_budget_steps">Workspace per-turn max steps</string>
-  <string name="setting_page_guardrails_turn_budget_steps_desc">Max workspace tool calls in one turn</string>
+  <string name="setting_page_guardrails_turn_budget_steps_desc">Max workspace tool calls in one turn; 0 = unlimited</string>
   <string name="setting_page_guardrails_phone_use_steps">Phone Use per-turn max steps</string>
-  <string name="setting_page_guardrails_phone_use_steps_desc">Max phone actions (screen reads, taps, typing) in one turn; 5–200</string>
+  <string name="setting_page_guardrails_phone_use_steps_desc">Max phone actions (screen reads, taps, typing) in one turn; 0 = unlimited, otherwise 5–200</string>
   <string name="setting_page_guardrails_unit_steps">steps</string>
   <string name="setting_page_guardrails_subagent_concurrency">Subagent concurrency</string>
   <string name="setting_page_guardrails_subagent_concurrency_desc">Max simultaneously running subagent tasks</string>
   <string name="setting_page_guardrails_unit_runs">runs</string>
   <string name="setting_page_guardrails_task_duration">Background task time limit</string>
-  <string name="setting_page_guardrails_task_duration_desc">Background tasks are stopped after this many minutes</string>
+  <string name="setting_page_guardrails_task_duration_desc">Background tasks are stopped after this many minutes; 0 = unlimited</string>
   <string name="setting_page_task_center_enabled">Task center</string>
   <string name="setting_page_task_center_enabled_desc">Show the unified task center. Off = use the legacy agent runs list only</string>
   <string name="setting_page_namespaced_notifications">Namespaced approvals</string>

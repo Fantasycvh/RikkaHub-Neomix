@@ -277,7 +277,7 @@ class PhoneUseToolTest {
     }
 
     @Test
-    fun `restricted app with empty element tree gets a targeted explanation`() = runTest {
+    fun `blocked WeChat on screen stops reading even with an empty element tree`() = runTest {
         manager.attach(controller)
         controller.screen = controller.screen.copy(
             packageName = "com.tencent.mm",
@@ -285,10 +285,11 @@ class PhoneUseToolTest {
             packages = setOf("com.tencent.mm"),
             elements = emptyList(),
         )
-        val output = call { put("action", "observe") }
-        assertTrue(output.contains("restricts screen reading"))
-        assertTrue(output.contains("WeChat (com.tencent.mm)"))
-        assertFalse(output.contains("No elements found"))
+        // 黑名单优先于「空元素树 = 还在加载」的兜底：不给任何界面内容
+        val error = runCatching { call { put("action", "observe") } }.exceptionOrNull()
+        assertTrue(error!!.message!!.contains("com.tencent.mm"))
+        assertTrue(error.message!!.contains("blocked"))
+        assertFalse(error.message!!.contains("No elements found"))
     }
 
     @Test
@@ -298,21 +299,21 @@ class PhoneUseToolTest {
         val output = call { put("action", "observe") }
         assertTrue(output.contains("No elements found"))
         assertFalse(output.contains("restricts"))
+        assertFalse(output.contains("blocked"))
     }
 
     @Test
-    fun `restricted app screenshot failure is explained instead of retried`() = runTest {
+    fun `WeChat is built-in blocked - cannot be listed or opened`() = runTest {
         manager.attach(controller)
-        controller.screen = controller.screen.copy(
-            packageName = "com.tencent.mm",
-            appLabel = "WeChat",
-            packages = setOf("com.tencent.mm"),
-        )
-        controller.screenshotException = IllegalStateException("Screenshot blocked by a secure window (FLAG_SECURE).")
-        val error = runCatching { call { put("action", "screenshot") } }.exceptionOrNull()
-        assertTrue(error!!.message!!.contains("restricts screenshots"))
-        assertTrue(error.message!!.contains("Do not retry"))
-        assertTrue(savedScreenshots.isEmpty())
+        assertFalse(call { put("action", "list_apps") }.contains("WeChat"))
+        val error = runCatching {
+            call {
+                put("action", "open_app")
+                put("app", "WeChat")
+            }
+        }.exceptionOrNull()
+        assertTrue(error!!.message!!.contains("blocked"))
+        assertEquals(emptyList<String>(), controller.opened)
     }
 
     @Test
@@ -400,6 +401,7 @@ class PhoneUseToolTest {
             PhoneApp("com.demo", "Demo"),
             PhoneApp("com.other", "Other"),
             PhoneApp("com.eg.android.AlipayGphone", "Alipay"),
+            PhoneApp("com.tencent.mm", "WeChat"),
             PhoneApp("com.coloros.note", "Notes"),
             PhoneApp("com.yocto.wenote", "WeNote"),
             PhoneApp("cn.wps.moffice_eng", "WPS Office"),

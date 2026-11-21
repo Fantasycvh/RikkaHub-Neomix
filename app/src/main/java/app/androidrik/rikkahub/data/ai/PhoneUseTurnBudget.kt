@@ -18,6 +18,7 @@ package app.androidrik.rikkahub.data.ai
  * 本类无副作用、无 Android 依赖，可直接上 JVM 单测。
  */
 class PhoneUseTurnBudget(
+    /** 单轮步数上限；`<= 0` 表示不受限（设置项 0 = 不受限） */
     private val maxSteps: Int = DEFAULT_MAX_STEPS,
 ) {
     private var steps: Int = 0
@@ -25,10 +26,10 @@ class PhoneUseTurnBudget(
     /** 本轮已使用的 Phone Use 步数（诊断/提示用）。 */
     val usedSteps: Int get() = steps
 
-    /** 记一次 `phone_use` 调用并给出判定（含失败调用：它们同样消耗时间与上下文）。 */
+    /** 记一次 `phone_use` 调用并给出判定（含失败调用：它们同样消耗时间与上下文）。`maxSteps <= 0` 时不受限。 */
     fun record(): Verdict {
         steps += 1
-        return if (steps > maxSteps) Verdict.Exceeded(steps = steps, limit = maxSteps) else Verdict.Continue
+        return if (maxSteps > 0 && steps > maxSteps) Verdict.Exceeded(steps = steps, limit = maxSteps) else Verdict.Continue
     }
 
     /** 清零（新一轮开始时调用）。 */

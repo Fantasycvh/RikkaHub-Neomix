@@ -43,4 +43,14 @@ class PhoneUseTurnBudgetTest {
         assertEquals(0, budget.usedSteps)
         assertEquals(PhoneUseTurnBudget.Verdict.Continue, budget.record())
     }
+
+    @Test
+    fun `non-positive max steps means unlimited`() {
+        val budget = PhoneUseTurnBudget(maxSteps = 0)
+        // 远超历史默认上限的步数也不判超限；步数仍照常累计（诊断用）
+        repeat(500) {
+            assertEquals(PhoneUseTurnBudget.Verdict.Continue, budget.record())
+        }
+        assertEquals(500, budget.usedSteps)
+    }
 }

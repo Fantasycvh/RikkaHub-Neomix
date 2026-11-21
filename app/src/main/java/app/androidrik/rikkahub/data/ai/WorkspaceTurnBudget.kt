@@ -26,7 +26,9 @@ package app.androidrik.rikkahub.data.ai
  * 本类**无副作用、无 Android 依赖**（诊断日志由调用点打），可直接上 JVM 单测。
  */
 class WorkspaceTurnBudget(
+    /** 单轮输出预算（字符）；`<= 0` 表示字符维度不受限（设置项 0 = 不受限） */
     private val outputBudgetChars: Int = DEFAULT_OUTPUT_BUDGET_CHARS,
+    /** 单轮步数上限；`<= 0` 表示步数维度不受限（设置项 0 = 不受限） */
     private val maxSteps: Int = DEFAULT_MAX_STEPS,
 ) {
     private var usedChars: Long = 0
@@ -48,13 +50,13 @@ class WorkspaceTurnBudget(
         usedChars += outputChars.toLong().coerceAtLeast(0)
         steps += 1
         return when {
-            usedChars > outputBudgetChars -> Verdict.Exceeded(
+            outputBudgetChars > 0 && usedChars > outputBudgetChars -> Verdict.Exceeded(
                 usedChars = usedChars,
                 budgetChars = outputBudgetChars.toLong(),
                 steps = steps,
                 by = ExceedReason.OUTPUT,
             )
-            steps > maxSteps -> Verdict.Exceeded(
+            maxSteps > 0 && steps > maxSteps -> Verdict.Exceeded(
                 usedChars = usedChars,
                 budgetChars = outputBudgetChars.toLong(),
                 steps = steps,
@@ -70,11 +72,12 @@ class WorkspaceTurnBudget(
      * 给「规则提醒」的 `budget_near_limit` 用：现状是**撞上限才优雅停止**，模型没有收尾的机会；
      * 有了这个比例就能在撞线之前提醒它收敛。上限口径仍留在本类里 —— 调用方只能拿到比例，
      * 改不了预算本身（与 `usageRatio` 只读、`record` 才计费的分工一致）。
+     * 不受限的维度不参与比例（0）；两个维度都不受限时恒为 0。
      */
-    fun usageRatio(): Double = maxOf(
-        usedChars.toDouble() / outputBudgetChars.coerceAtLeast(1),
-        steps.toDouble() / maxSteps.coerceAtLeast(1),
-    )
+    fun usageRatio(): Double = listOfNotNull(
+        if (outputBudgetChars > 0) usedChars.toDouble() / outputBudgetChars else null,
+        if (maxSteps > 0) steps.toDouble() / maxSteps else null,
+    ).maxOrNull() ?: 0.0
 
     /** 清零（新一轮开始时调用）。 */
     fun reset() {

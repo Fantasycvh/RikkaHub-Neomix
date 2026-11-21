@@ -53,8 +53,10 @@ class ImportFormatTest {
     fun `only the whole-database restore confirms before picking a file`() {
         // 覆盖不可逆 → 先确认;其余格式无需事前确认（conversation 的确认在解析后，含重复警告）
         assertTrue(specOf(ImportFormat.LOCAL_BACKUP).needsPrePickConfirm)
+        // UPSTREAM（原版整库导入）同为整库覆盖，确认语义与 LOCAL_BACKUP 对齐
+        assertTrue(specOf(ImportFormat.UPSTREAM).needsPrePickConfirm)
         ImportFormat.entries
-            .filter { it != ImportFormat.LOCAL_BACKUP }
+            .filter { it != ImportFormat.LOCAL_BACKUP && it != ImportFormat.UPSTREAM }
             .forEach { assertFalse("${it} 不应在选文件前确认", specOf(it).needsPrePickConfirm) }
     }
 

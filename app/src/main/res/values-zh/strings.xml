@@ -2304,18 +2304,18 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="guard_sensitivity_standard">标准</string>
   <string name="guard_sensitivity_loose">宽松</string>
   <string name="setting_page_guardrails_turn_budget_chars">工作区单轮输出预算</string>
-  <string name="setting_page_guardrails_turn_budget_chars_desc">一轮对话内工作区工具累计可写入上下文的字符数</string>
+  <string name="setting_page_guardrails_turn_budget_chars_desc">一轮对话内工作区工具累计可写入上下文的字符数，0 = 不受限</string>
   <string name="setting_page_guardrails_unit_kchars">千字符</string>
   <string name="setting_page_guardrails_turn_budget_steps">工作区单轮步数上限</string>
-  <string name="setting_page_guardrails_turn_budget_steps_desc">一轮对话内工作区工具调用次数上限</string>
+  <string name="setting_page_guardrails_turn_budget_steps_desc">一轮对话内工作区工具调用次数上限，0 = 不受限</string>
   <string name="setting_page_guardrails_phone_use_steps">Phone Use 单轮步数上限</string>
-  <string name="setting_page_guardrails_phone_use_steps_desc">一轮对话内手机操作次数上限（读屏/点击/输入等），5–200</string>
+  <string name="setting_page_guardrails_phone_use_steps_desc">一轮对话内手机操作次数上限（读屏/点击/输入等），0 = 不受限，其余 5–200</string>
   <string name="setting_page_guardrails_unit_steps">步</string>
   <string name="setting_page_guardrails_subagent_concurrency">子代理并行上限</string>
   <string name="setting_page_guardrails_subagent_concurrency_desc">同时运行的子代理任务数上限</string>
   <string name="setting_page_guardrails_unit_runs">个</string>
   <string name="setting_page_guardrails_task_duration">后台任务时长上限</string>
-  <string name="setting_page_guardrails_task_duration_desc">后台任务超过该时长后会被自动终止</string>
+  <string name="setting_page_guardrails_task_duration_desc">后台任务超过该时长后会被自动终止，0 = 不受限</string>
   <string name="setting_page_task_center_enabled">任务中心</string>
   <string name="setting_page_task_center_enabled_desc">显示统一任务中心。关闭 = 只保留旧的 Agent 运行列表</string>
   <string name="setting_page_namespaced_notifications">审批通知按 run 隔离</string>

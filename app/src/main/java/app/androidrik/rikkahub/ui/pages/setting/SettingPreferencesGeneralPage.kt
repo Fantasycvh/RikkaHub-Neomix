@@ -799,7 +799,10 @@ private fun GuardrailsSettingGroup(vm: SettingVM = koinViewModel()) {
                     value = settings.workspaceTurnBudgetChars / 1024,
                     onValueChange = {
                         vm.updateSettings(
-                            settings.copy(workspaceTurnBudgetChars = (it * 1024).coerceAtLeast(32_768))
+                            // 0 = 不受限；非 0 保持原有下限
+                            settings.copy(
+                                workspaceTurnBudgetChars = if (it == 0) 0 else (it * 1024).coerceAtLeast(32_768)
+                            )
                         )
                     },
                     label = stringResource(R.string.setting_page_guardrails_unit_kchars),

@@ -46,19 +46,19 @@ private const val MAX_LISTED_APPS = 120
  * 已知会阻止读屏/截图的**受限应用**（应用自身的保护配置，不是系统权限）。
  *
  * 失败时按应用名给出针对性说明（停止重试、让用户手动完成），而不是通用错误；新增应用
- * 只需把包名加进这个注册表。微信的防截图/防读屏配置是当前已知实例（2026-11-11）。
+ * 只需把包名加进这个注册表。当前无已知实例（微信已按 2026-11-21 决议升级为整应用黑名单，
+ * 见 [PHONE_USE_BLOCKED_APPS]），机制保留给后续同类应用。
  */
-internal val PHONE_USE_RESTRICTED_APPS = setOf(
-    "com.tencent.mm", // 微信
-)
+internal val PHONE_USE_RESTRICTED_APPS = setOf<String>()
 
 private enum class RestrictionKind { READING, SCREENSHOT }
 
 /**
- * 不允许 AI 操作的应用：支付和银行类。
+ * 不允许 AI 操作的应用：支付、银行和强保护类。
  * 不能打开，从别的应用跳转进去后也不能读屏和操作，只能返回或回到桌面。
  */
 internal val PHONE_USE_BLOCKED_APPS = setOf(
+    "com.tencent.mm", // 微信（防截图/防读屏，且属强保护社交应用，2026-11-21 整应用禁操作）
     "com.eg.android.AlipayGphone", // 支付宝
     "com.unionpay", // 云闪付
     "com.paypal.android.p2pmobile", // PayPal

@@ -146,4 +146,47 @@ class WorkspaceTurnBudgetTest {
 
         assertTrue("不能抛也不能 NaN", budget.usageRatio().isFinite())
     }
+
+    // ── 0 = 不受限（2026-11-21 设置项口径）──
+
+    @Test
+    fun `zero limits mean unlimited`() {
+        val budget = WorkspaceTurnBudget(outputBudgetChars = 0, maxSteps = 0)
+        // 远超历史默认上限的用量也不判超限
+        repeat(1000) {
+            assertEquals(WorkspaceTurnBudget.Verdict.Continue, budget.record(32 * 1024))
+        }
+    }
+
+    @Test
+    fun `zero output budget only unlimits characters - steps still enforced`() {
+        val budget = WorkspaceTurnBudget(outputBudgetChars = 0, maxSteps = 2)
+        assertEquals(WorkspaceTurnBudget.Verdict.Continue, budget.record(8_000_000))
+        assertEquals(WorkspaceTurnBudget.Verdict.Continue, budget.record(8_000_000))
+        val verdict = budget.record(0)
+        assertTrue(verdict is WorkspaceTurnBudget.Verdict.Exceeded)
+        assertEquals(WorkspaceTurnBudget.ExceedReason.STEPS, (verdict as WorkspaceTurnBudget.Verdict.Exceeded).by)
+    }
+
+    @Test
+    fun `zero step limit only unlimits steps - output budget still enforced`() {
+        val budget = WorkspaceTurnBudget(outputBudgetChars = 1024, maxSteps = 0)
+        assertEquals(WorkspaceTurnBudget.Verdict.Continue, budget.record(512))
+        // 步数不受限但字符仍计费：512 + 1024 = 1536 > 1024 ⇒ 超限
+        repeat(20) {
+            budget.record(0)
+        }
+        assertTrue(budget.record(1024) is WorkspaceTurnBudget.Verdict.Exceeded)
+    }
+
+    @Test
+    fun `usage ratio ignores unlimited dimensions`() {
+        val budget = WorkspaceTurnBudget(outputBudgetChars = 0, maxSteps = 0)
+        budget.record(10_000)
+        assertEquals("两个维度都不受限时恒为 0，不能触发 near-limit 提醒", 0.0, budget.usageRatio(), 0.0001)
+
+        val stepsOnly = WorkspaceTurnBudget(outputBudgetChars = 0, maxSteps = 10)
+        repeat(5) { stepsOnly.record(0) }
+        assertEquals(0.5, stepsOnly.usageRatio(), 0.0001)
+    }
 }

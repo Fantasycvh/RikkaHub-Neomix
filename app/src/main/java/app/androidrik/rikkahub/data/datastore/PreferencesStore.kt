@@ -695,15 +695,15 @@ class SettingsStore(
                     ruleReminderSensitivity = preferences[RULE_REMINDER_SENSITIVITY]
                         ?: app.androidrik.rikkahub.data.ai.RuleReminderSensitivity.STANDARD.name,
                     workspaceTurnBudgetChars = (preferences[WORKSPACE_TURN_BUDGET_CHARS]
-                        ?: DEFAULT_WORKSPACE_TURN_BUDGET_CHARS).coerceIn(32_000, 2_000_000),
+                        ?: DEFAULT_WORKSPACE_TURN_BUDGET_CHARS).unlimitedOrCoerce(32_000, 2_000_000),
                     workspaceTurnMaxSteps = (preferences[WORKSPACE_TURN_MAX_STEPS]
-                        ?: DEFAULT_WORKSPACE_TURN_MAX_STEPS).coerceIn(8, 512),
+                        ?: DEFAULT_WORKSPACE_TURN_MAX_STEPS).unlimitedOrCoerce(8, 512),
                     phoneUseTurnMaxSteps = (preferences[PHONE_USE_TURN_MAX_STEPS]
-                        ?: DEFAULT_PHONE_USE_TURN_MAX_STEPS).coerceIn(5, 200),
+                        ?: DEFAULT_PHONE_USE_TURN_MAX_STEPS).unlimitedOrCoerce(5, 200),
                     subagentMaxConcurrentRuns = (preferences[SUBAGENT_MAX_CONCURRENT_RUNS]
                         ?: DEFAULT_SUBAGENT_MAX_CONCURRENT_RUNS).coerceIn(1, 8),
                     workspaceTaskMaxDurationMinutes = (preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES]
-                        ?: DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES).coerceIn(5, 1440),
+                        ?: DEFAULT_WORKSPACE_TASK_MAX_DURATION_MINUTES).unlimitedOrCoerce(5, 1440),
                     logToFileEnabled = preferences[LOG_TO_FILE_ENABLED] ?: false,
                     globalProxy = preferences[GLOBAL_PROXY]?.let {
                         JsonInstant.decodeFromString<GlobalProxySetting>(it)
@@ -1298,3 +1298,6 @@ private fun Preferences.readRemovedIds(key: Preferences.Key<String>): Set<Uuid> 
 private fun MutablePreferences.writeRemovedIds(key: Preferences.Key<String>, ids: Set<Uuid>) {
     this[key] = JsonInstant.encodeToString(ids.map { it.toString() })
 }
+
+/** 护栏类设置项的通用口径：`0` = 不受限（原样保留），其余值夹进 [min]..[max]。 */
+private fun Int.unlimitedOrCoerce(min: Int, max: Int): Int = if (this == 0) 0 else coerceIn(min, max)
