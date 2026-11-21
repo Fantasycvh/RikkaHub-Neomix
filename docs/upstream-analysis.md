@@ -2003,6 +2003,22 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - 测试 +3：handler 冷启动 mime / 不降级 ImageStart mime / decoder 透传（ResponseApiStreamDecoderTest 11 项、StreamChunkHandlerTest 12 项全绿）。
 - 未动：`Message.kt` 非流式合并路径的 png 前缀（raw base64 场景 mime 本质未知，fork 亦未动）。
 
+## 2026-11-21 issue 排查：#2349（KaTeX `\fcolorbox` 文本模式报错——**非回归，不跟**）
+
+> 上游 [#2349](https://github.com/rikkahub/rikkahub/issues/2349)（closed as answered）：用户 2.5.6 → 3.3.0 后，用 LaTeX `\fcolorbox` 包 `array` 做的「群聊头部」模板显示红色源码，2.5.6 正常出框，疑为回归。
+
+### 根因（re-ovo 定性：非回归，渲染引擎更换的语法差异）
+
+- 2.5.6 用 **JLatexMath** 渲染，语法宽松；3.x 换成 **KaTeX 兼容渲染器**（bettertext-latex），按 KaTeX 规则解析。
+- KaTeX 规则：`\fcolorbox`（及 `\colorbox`）第三个参数是**文本模式**，不能直接放 `\begin{array}` 这类数学环境 → `Can't use function '\begin' in text mode` → 渲染失败显示源码。同段代码放 KaTeX 官网或其他 KaTeX/MathJax 网页一样报错。
+- 解法（用户侧/模板侧）：在第三参数里用 `$...$` 把 array 包回数学模式——`\fcolorbox{…}{…}{$\begin{array}{l}…\end{array}$}`。若模板来自预设/提示词，改模板即可。
+
+### 对本仓判定：**无需行动**
+
+- 本仓同用 bettertext-latex，行为与上游 3.x 一致——这是引擎语义差异而非缺陷，**无 diff 可借**（上游未改渲染器，answered 关闭）。
+- 时间线相关性：本仓 2026-11-21 刚 bump bettertext `v0.1.6`（多重积分/度数符号宽度修复），与本题同属 bettertext-latex 但无交集；未来若上游用户再报「旧版能渲染新版不能」的 LaTeX 问题，先查 JLatexMath→KaTeX 语义差异再看 bettertext 更新。
+- 附带认知：re-ovo 明确建议 LaTeX 只用于数学公式、别拿来模拟 UI——本仓提示词类文档如出现 `fcolorbox+array` 组合模板，按 KaTeX 语义书写。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md
