@@ -1973,6 +1973,37 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 | `ce0e3607a` | 允许删除内置默认助手（原删除按钮禁用 + 设置规整按 id 补回）；空列表才恢复默认；删除走 AppScope + 按最新列表检查数量后再清理；assistantId 失效时改选剩余第一个 | **不移植（本仓已等价）** | 本仓 `AssistantVM.removeAssistant` 早已同构且更强：全部内置助手可删（`removedAssistantIds` 墓碑）、防删光（`size <= 1` 守卫）、AppScope 清理（注释明确同款理由）、指针显式重置 |
 | `2cd6acac2` | 开 VPN 时应用内更新包下载失败：去掉 `setAllowedNetworkTypes` 限制 | **不适用** | 本仓无 `UpdateChecker`/应用内更新线 |
 
+## 2026-11-21 同步（`ce0e3607a..a2479770a`，4 新提交；含借鉴克隆与上游 issues 扫描）
+
+> fetch 全部走 SSH 重写（本机 7890 代理未运行，HTTPS 直连不稳）。上游 4 新提交 **移植 1 / 已同版 1 / 不适用 2**。
+
+### 上游提交
+
+| 提交 | 实质 | 判定 | 理由 |
+|---|---|---|---|
+| `1ed0a77cc2` | 新增商汤日日新（SenseNova）图标（Closes #2357）；NVIDIA 匹配扩展 `nemotron|英伟达` | **已移植（2026-11-21）** | 本仓 [AIIconMatcher.kt](../app/src/main/java/app/androidrik/rikkahub/utils/AIIconMatcher.kt) 同构；落点 matcher 两处 + `assets/icons/sensenova-color.svg` |
+| `358e2931bf` | bettertext 升级 v0.1.6 | **已同版，无动作** | 本仓 libs.versions.toml 已是 v0.1.6 |
+| `a2479770a3` | ci: 打 tag 自动构建发布工作流 | **不适用** | 本仓发布线独立（无 tag 发布工作流需求） |
+| `a9e9e53a9a` | ci: 移除自动关闭模板 Issue 的工作流 | **不适用** | 纯上游 CI 治理 |
+
+### 借鉴克隆状态
+
+- `rikkahub-pro` / `rikkahub-agent-src` / `rikka2-my_feature_open` / `rikka2yui`：无更新。
+- `rikkahub-resources`：仅新 tag `v1`，无内容增量。
+- `rikkahub-sillytavern-android`（huadeng 分支 8 新提交）：`f1fb96913` Gemini thoughtSignature 兼容——本仓 GoogleProvider 已处理（读 part 内 `thoughtSignature`）；`d4238d3db` Mistral 块列表解析统一——本仓无独立 MistralProvider（走 OpenAI 兼容 `ChatCompletionsContent`），不适用；`c988e47d7`/`15fda5f24`/`6d3301554` 为该 fork 特有的世界书/随机宏/会话绑定域，本仓无对应域。
+- `BiliPai`（19 提交，v0.9.1→0.9.2）：播放器缓冲指示器/评论区长按菜单/设置搜索等，多为播放器领域特化；`5eb28b669` 列表触感与页面转场可留台账观察，本轮无必移项。
+
+### 上游 open issues 扫描（14 个，按本仓域相关度）
+
+与本仓近期工作域直接相关的候选：
+
+1. **#2362 记忆注入按助手关闭/精简**（RP 场景；Learning Mode 不应强制覆盖）——与本仓记忆域（文件记忆历史/回收站）匹配，产品决策类。
+2. **#2361 安全模式页增加导出数据**——与本仓刚落地的安全模式清超大设置（`8a5d2f241`）配套，值得排。
+3. **#2365 发送图片 OOM 导致会话永久卡死**——bug 风险类（base64 编码进内存），需排查本仓图片发送路径是否同款。
+4. **#2348 工作区提示词自定义**——与 workspace 域（挂载共享存储提示词）匹配。
+
+其余：#2371 流式回复锚定滚动模式、#2370 生图路径自定义与提示词优化、#2369 横屏全屏聊天、#2368 导出时间戳选项、#2363 电池优化白名单、#2358 公式左滑进对话地图冲突、#2356 测试功能不支持供应商重写、#2355 ModelScope 媒体生成、#2353 无障碍服务失效、#2344 ASR 录音常亮、#2343 模型确认点击/滑动位置。
+
 ## 2026-11-19 issue 复核（#2311 关闭 + fork 分支评估 + mimeType 吸收）
 
 > 起因：复核 11-11 节 issue 扫描时发现「上游无 diff 可借」是**漏判**——#2311 唯一评论是报告者指到自己 fork 分支 `FYNIXqwq/rikkahub@fix/responses-image-generation`（5 笔提交，2026-11-10/11），扫描时只看了 upstream/master 没跟外链。今日全量拉取复核。issue 本体：上游仍 OPEN、无上游修复提交；崩溃机制 = Responses API `image_generation` 服务端工具把 data URL 图片写进 Image part 后，**ChatPage Paging collect 驱动的随流式写库**撞上 `conversationToConversationEntity` 的 `require(no base64 part)`（上游源码 :392）。
