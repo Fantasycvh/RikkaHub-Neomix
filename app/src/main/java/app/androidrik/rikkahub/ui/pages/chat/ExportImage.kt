@@ -70,6 +70,7 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.export.effectiveExportDisplayConfig
 import app.androidrik.rikkahub.data.export.messageExportDisplayConfig
+import app.androidrik.rikkahub.data.export.resolveExportMessageTimestamp
 import app.androidrik.rikkahub.data.export.resolveExportModelLabel
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.message.ChatMessageNarrationStep
@@ -388,6 +389,10 @@ private fun ExportedChatMessage(
             assistantName = assistantName,
         )
     }
+    // 消息时间戳（#2368）：全角色生效，同一份三级决议的 config（Markdown / HTML / PNG 统一）
+    val messageTimestamp = remember(message, messageDisplayConfig) {
+        resolveExportMessageTimestamp(message, messageDisplayConfig)
+    }
     val showModelLabel = message.role == MessageRole.ASSISTANT &&
         prevMessage?.role == MessageRole.USER &&
         exportLabel.label.isNotBlank()
@@ -500,29 +505,39 @@ private fun ExportedChatMessage(
             isUser = message.semanticRole == MessageRole.USER,
             exporting = true,
             header = {
-    if (showModelLabel) {
+    if (showModelLabel || messageTimestamp.isNotBlank()) {
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(top = 8.dp)
         ) {
-            AutoAIIcon(
-                // 图标只认模型身份；显示文案可能被用户改成任意文字
-                name = exportLabel.iconSeed ?: exportLabel.label,
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .size(36.dp)
-            )
+            if (showModelLabel) {
+                AutoAIIcon(
+                    // 图标只认模型身份；显示文案可能被用户改成任意文字
+                    name = exportLabel.iconSeed ?: exportLabel.label,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .size(36.dp)
+                )
 
-            Text(
-                text = exportLabel.label,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .weight(1f, fill = false)
-            )
+                Text(
+                    text = exportLabel.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .weight(1f, fill = false)
+                )
+            }
+            if (messageTimestamp.isNotBlank()) {
+                Text(
+                    text = messageTimestamp,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+            }
         }
     }
             },

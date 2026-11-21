@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.export.effectiveExportDisplayConfig
 import app.androidrik.rikkahub.data.export.messageExportDisplayConfig
+import app.androidrik.rikkahub.data.export.resolveExportMessageTimestamp
 import app.androidrik.rikkahub.data.export.resolveExportModelLabel
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.richtext.generateMarkdownHtml
@@ -87,6 +88,7 @@ internal suspend fun exportToHtml(
         .message.assistant { background: #ffffff; border-left: 4px solid #b0b0b0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
         .role { font-weight: 700; margin-bottom: 6px; font-size: 0.9em; }
         .model-label { font-weight: 400; color: #888; margin-left: 8px; font-size: 0.85em; }
+        .message-time { font-weight: 400; color: #888; margin-left: 8px; font-size: 0.85em; }
         .message.user .role { color: #1a5dc7; }
         .message.assistant .role { color: #555; }
         .tool { background: #fafafa; border: 1px solid #e5e5e5; border-radius: 6px; padding: 8px 12px; margin: 8px 0; }
@@ -121,18 +123,24 @@ internal suspend fun exportToHtml(
         val roleLabel = if (message.semanticRole == MessageRole.SYSTEM) "System" else if (isUser) "User" else "Assistant"
         sb.append("<div class=\"message ").append(roleClass).append("\">\n")
         // 提供商 / 模型标签：与 PNG / Markdown 同一套三级优先级；用户可自定义文案，必须转义
+        val resolvedConfig = messageExportDisplayConfig(
+            base = baseDisplayConfig,
+            messageOverride = conversation.exportDisplayOverrides[message.id.toString()],
+        )
         val label = resolveExportModelLabel(
             message = message,
             providers = settings.providers,
-            config = messageExportDisplayConfig(
-                base = baseDisplayConfig,
-                messageOverride = conversation.exportDisplayOverrides[message.id.toString()],
-            ),
+            config = resolvedConfig,
             assistantName = assistantName,
         ).label
+        // 消息时间戳（#2368）：全角色生效，同一份三级决议的 config
+        val timestamp = resolveExportMessageTimestamp(message, resolvedConfig)
         sb.append("<div class=\"role\">").append(roleLabel)
         if (label.isNotBlank()) {
             sb.append("<span class=\"model-label\">").append(label.escapeHtml()).append("</span>")
+        }
+        if (timestamp.isNotBlank()) {
+            sb.append("<span class=\"message-time\">").append(timestamp.escapeHtml()).append("</span>")
         }
         sb.append("</div>\n")
         message.parts.forEach { part ->

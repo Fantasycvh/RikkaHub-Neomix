@@ -11,6 +11,7 @@ import app.androidrik.ai.util.encodeBase64
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.export.effectiveExportDisplayConfig
 import app.androidrik.rikkahub.data.export.messageExportDisplayConfig
+import app.androidrik.rikkahub.data.export.resolveExportMessageTimestamp
 import app.androidrik.rikkahub.data.export.resolveExportModelLabel
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.utils.JsonInstantPretty
@@ -43,20 +44,26 @@ internal suspend fun exportToMarkdown(
             val role = when (message.semanticRole) { MessageRole.USER -> "**User**"; MessageRole.SYSTEM -> "**System**"; else -> "**Assistant**" }
             // 提供商 / 模型标签：与 PNG / HTML 同一套三级优先级（消息 > 会话 > 全局）。
             // 空串 = 不显示（含「不显示」档、非 assistant）
+            val resolvedConfig = messageExportDisplayConfig(
+                base = baseDisplayConfig,
+                messageOverride = conversation.exportDisplayOverrides[message.id.toString()],
+            )
             val label = resolveExportModelLabel(
                 message = message,
                 providers = settings.providers,
-                config = messageExportDisplayConfig(
-                    base = baseDisplayConfig,
-                    messageOverride = conversation.exportDisplayOverrides[message.id.toString()],
-                ),
+                config = resolvedConfig,
                 assistantName = assistantName,
             ).label
+            // 消息时间戳（#2368）：全角色生效，同一份三级决议的 config
+            val timestamp = resolveExportMessageTimestamp(message, resolvedConfig)
+            val roleLine = StringBuilder(role)
             if (label.isNotBlank()) {
-                append("$role ($label):\n\n")
-            } else {
-                append("$role:\n\n")
+                roleLine.append(" (").append(label).append(")")
             }
+            if (timestamp.isNotBlank()) {
+                roleLine.append(" · *").append(timestamp).append("*")
+            }
+            append(roleLine.append(":\n\n").toString())
             message.parts.forEach { part ->
                 when (part) {
                     is UIMessagePart.Text -> {

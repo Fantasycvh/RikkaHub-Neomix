@@ -351,4 +351,48 @@ class ExportDisplayLabelTest {
         )
         assertEquals(overrides, decoded)
     }
+
+    // ---- 消息时间戳（#2368，上游 e4646a772）----
+
+    private fun timestamp(
+        message: UIMessage,
+        config: ExportDisplayConfig,
+    ) = resolveExportMessageTimestamp(message, config)
+
+    @Test
+    fun `timestamp hidden by default`() {
+        val message = UIMessage(
+            role = MessageRole.USER,
+            parts = emptyList(),
+            createdAt = LocalDateTime(2026, 1, 31, 9, 41),
+        )
+        assertEquals("", timestamp(message, ExportDisplayConfig()))
+    }
+
+    @Test
+    fun `timestamp show formats yyyy-MM-dd HH-mm for user messages`() {
+        // issue 主诉求是「用户发送的时间」：模型标签盖不到的角色这里必须生效
+        val message = UIMessage(
+            role = MessageRole.USER,
+            parts = emptyList(),
+            createdAt = LocalDateTime(2026, 1, 31, 9, 41),
+        )
+        assertEquals(
+            "2026-01-31 09:41",
+            timestamp(message, ExportDisplayConfig(timestamp = ExportTimestampMode.SHOW)),
+        )
+    }
+
+    @Test
+    fun `timestamp show zero-pads hour and minute`() {
+        val message = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = emptyList(),
+            createdAt = LocalDateTime(2026, 11, 21, 7, 5),
+        )
+        assertEquals(
+            "2026-11-21 07:05",
+            timestamp(message, ExportDisplayConfig(timestamp = ExportTimestampMode.SHOW)),
+        )
+    }
 }

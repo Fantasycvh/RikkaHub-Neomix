@@ -2060,6 +2060,24 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 > 上游 [#2294](https://github.com/rikkahub/rikkahub/issues/2294)（报告者 Caellux）：① 压缩执行前预览并确认本次被压缩的消息范围（起止边界片段）；② 压缩摘要显示序号/条数/时间；③ 压缩历史显示当前未压缩数与总数。上游以 `63a5192d8`（消息概览标压缩点，11-18 已列候选未移植）关闭，**未覆盖报告者主需求，报告者反驳成立**——本仓自研。用户拍板立项，方案已定稿：[design-compression-confirm.md](design/drafts/design-compression-confirm.md)（手动压缩两阶段对话框预览确认；DB 78→79 加 `seq`/`batch_count`；折叠行「现 N 条（总 M 条）」；自动/中途压缩不加确认）。待实现。
 
+## 2026-11-21 issue 立项落地：#2368（导出标注消息时间戳——贴本仓体系）
+
+> 上游 [#2368](https://github.com/rikkahub/rikkahub/issues/2368)（报告者 FENICEV，enhancement）：希望在导出的 md 文件里增加用户发送的时间戳，便于回顾。上游当天由 re-ovo 以 [`e4646a772`](https://github.com/rikkahub/rikkahub/commit/e4646a772e3e8313cebc94bce01e0cedc4d774b9) 关闭（completed，`a2479770a3` 之后的 1 新提交）。
+
+### 上游修法（+2/-1，仅 Markdown 导出）
+
+`buildMarkdownExport` 角色行 `$role:\n\n` → `$role · *${message.createdAt.toJavaLocalDateTime().toLocalString()}*:\n\n`——**无条件、无开关**，所有消息（含 User）角色后附本地化时间（到秒）。
+
+### 本仓吸收落地（用户拍板「立项，贴本仓体系」）
+
+- **数据层**（[ExportDisplayLabel.kt](../app/src/main/java/app/androidrik/rikkahub/data/export/ExportDisplayLabel.kt)）：`ExportDisplayConfig` 加 `timestamp: ExportTimestampMode`（`HIDDEN` 默认 / `SHOW`），serde 缺字段回默认值、旧 JSON 兼容；新增 `resolveExportMessageTimestamp`（`yyyy-MM-dd HH:mm`，与 `{date}`/`{time}` 占位符同口径，无秒）。**与上游最大差异：走本仓三级覆盖体系（消息 > 会话 > 全局）+ 默认关**——默认关闭贴本仓「隐私显式打开」哲学（时间戳属个人作息信息），存量导出产物不变。
+- **三导出器统一接线**：Markdown 角色行 `**User** · *2026-11-21 14:30*:`（模型标签括号后接时间，[ExportMarkdown.kt](../app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ExportMarkdown.kt#L42-L65)）；HTML 角色行 `.message-time` span（[ExportHtml.kt](../app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ExportHtml.kt#L134-L142)）；PNG 消息头 bodySmall 时间 Text（[ExportImage.kt](../app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ExportImage.kt#L501-L545)）。上游只动了 Markdown，本仓按自家「三处共用同一决策点」惯例全覆盖。
+- **全角色生效**：本仓 `resolveExportModelLabel` 对非 assistant 返回空，issue 主诉求（用户消息时间）上游修法恰好覆盖了这一点——本仓时间戳 resolver 不分角色，User/System 都标注。
+- **UI**：`ExportDisplaySchemeSheet` 加「消息时间戳」档位 chips + 预览样例行（[PersonalizationEditors.kt](../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/components/PersonalizationEditors.kt#L621-L637)）；设置页摘要行加状态（设置页 [SettingPreferencesUIPage.kt](../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/SettingPreferencesUIPage.kt#L843-L855)）；会话/消息级覆盖复用同一面板自动继承。
+- **strings 三语**（en/zh/zh-rTW）+ 单测 3 条（默认关 / User 消息 SHOW 格式 / 时分补零），`ExportDisplayLabelTest` 全绿。
+
+
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md

@@ -47,6 +47,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.AvatarFrameParams
 import app.androidrik.rikkahub.data.datastore.ChainOfThoughtCustomStyle
 import app.androidrik.rikkahub.data.export.BUILT_IN_EXPORT_DISPLAY_PRESETS
+import app.androidrik.rikkahub.data.export.EXPORT_LABEL_SAMPLE_DATETIME
 import app.androidrik.rikkahub.data.export.EXPORT_PRESET_ASSISTANT_MODEL
 import app.androidrik.rikkahub.data.export.EXPORT_PRESET_HIDDEN
 import app.androidrik.rikkahub.data.export.EXPORT_PRESET_MODEL
@@ -55,6 +56,7 @@ import app.androidrik.rikkahub.data.export.EXPORT_PRESET_MODEL_PROVIDER
 import app.androidrik.rikkahub.data.export.EXPORT_PRESET_PROVIDER_MODEL
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.export.ExportModelLabelMode
+import app.androidrik.rikkahub.data.export.ExportTimestampMode
 import app.androidrik.rikkahub.data.export.previewExportModelLabel
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.components.ui.drawAvatarFrameParams
@@ -522,11 +524,13 @@ fun ExportDisplaySchemeSheet(
     )
     var mode by remember { mutableStateOf(config.mode) }
     var template by remember { mutableStateOf(config.customTemplate) }
+    var timestamp by remember { mutableStateOf(config.timestamp) }
     var showSchemeNameDialog by remember { mutableStateOf(false) }
 
     fun snapshot(): ExportDisplayConfig = ExportDisplayConfig(
         mode = mode,
         customTemplate = template.trim(),
+        timestamp = timestamp,
     )
 
     // 自定义档文案为空 = 什么都不显示（与「不显示」档视觉等价），挡住保存避免静默失效
@@ -614,6 +618,24 @@ fun ExportDisplaySchemeSheet(
                 )
             }
 
+            // 消息时间戳档位（#2368）：全角色生效（含 User），独立于模型标签
+            Text(
+                text = stringResource(R.string.setting_display_page_export_timestamp_title),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ExportTimestampMode.entries.forEach { candidate ->
+                    FilterChip(
+                        selected = timestamp == candidate,
+                        onClick = { timestamp = candidate },
+                        label = { Text(candidate.label()) },
+                    )
+                }
+            }
+
             Text(
                 text = stringResource(R.string.setting_display_page_export_model_preview_title),
                 style = MaterialTheme.typography.titleSmall,
@@ -630,6 +652,20 @@ fun ExportDisplaySchemeSheet(
                     MaterialTheme.colorScheme.primary
                 },
             )
+            // 时间戳预览：SHOW 档用示例值示意（真实导出里是每条消息自己的 createdAt）
+            Text(
+                text = if (timestamp == ExportTimestampMode.SHOW) {
+                    EXPORT_LABEL_SAMPLE_DATETIME
+                } else {
+                    stringResource(R.string.setting_display_page_export_model_preview_hidden)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (timestamp == ExportTimestampMode.SHOW) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
 
             JsonImportExportButtons(
                 exportJson = { JsonInstant.encodeToString(snapshot()) },
@@ -639,6 +675,7 @@ fun ExportDisplaySchemeSheet(
                     val imported = JsonInstant.decodeFromString<ExportDisplayConfig>(text)
                     mode = imported.mode
                     template = imported.customTemplate
+                    timestamp = imported.timestamp
                 },
             )
 
@@ -696,6 +733,15 @@ internal fun ExportModelLabelMode.label(): String = stringResource(
         ExportModelLabelMode.PROVIDER_MODEL ->
             R.string.setting_display_page_export_model_mode_provider_model
         ExportModelLabelMode.CUSTOM -> R.string.setting_display_page_export_model_mode_custom
+    }
+)
+
+/** 时间戳档位标签（编辑面板 chips 用）。 */
+@Composable
+internal fun ExportTimestampMode.label(): String = stringResource(
+    when (this) {
+        ExportTimestampMode.HIDDEN -> R.string.setting_display_page_export_timestamp_hidden
+        ExportTimestampMode.SHOW -> R.string.setting_display_page_export_timestamp_show
     }
 )
 

@@ -1231,6 +1231,11 @@
   <string name="setting_display_page_export_model_preset_assistant_model">Assistant · model</string>
   <string name="setting_display_page_export_model_preset_model_date">Model · date</string>
   <string name="setting_display_page_export_model_preview_title">Preview</string>
+  <string name="setting_display_page_export_timestamp_title">Message timestamps</string>
+  <string name="setting_display_page_export_timestamp_hidden">Hide</string>
+  <string name="setting_display_page_export_timestamp_show">Date · time</string>
+  <string name="setting_display_page_export_timestamp_summary_on">Message timestamps: on (e.g. %1$s)</string>
+  <string name="setting_display_page_export_timestamp_summary_off">Message timestamps: off</string>
   <string name="setting_display_page_export_model_schemes_title">Saved export display schemes</string>
   <string name="setting_display_page_show_model_name_title">Show Model Name</string>
   <string name="setting_display_page_show_thinking_content_desc">Whether to expand and show the thinking process by default during generation</string>

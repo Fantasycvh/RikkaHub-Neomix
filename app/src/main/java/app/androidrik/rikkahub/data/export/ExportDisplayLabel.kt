@@ -32,6 +32,22 @@ enum class ExportModelLabelMode {
 }
 
 /**
+ * 消息时间戳档位（#2368 导出标注消息发送时间）。**全角色生效**（含 User——
+ * 模型标签只作用于 assistant，覆盖不了「回顾自己什么时候发的」这一主诉求）。
+ *
+ * 默认 [ExportTimestampMode.HIDDEN]：与模型标签同一条隐私哲学——导出图常用于公开
+ * 分享，时间戳属于个人作息信息，想要由用户显式打开；默认关闭也保证存量导出产物不变。
+ */
+@Serializable
+enum class ExportTimestampMode {
+    /** 不显示。 */
+    HIDDEN,
+
+    /** 角色行附「yyyy-MM-dd HH:mm」（与 {date}/{time} 占位符口径一致）。 */
+    SHOW,
+}
+
+/**
  * 标签配置（全局当前值，也是「已保存方案」的内容）。
  *
  * 默认 [ExportModelLabelMode.MODEL] 而不是显示提供商：导出图常用于公开分享，
@@ -41,6 +57,7 @@ enum class ExportModelLabelMode {
 data class ExportDisplayConfig(
     val mode: ExportModelLabelMode = ExportModelLabelMode.MODEL,
     val customTemplate: String = DEFAULT_EXPORT_LABEL_TEMPLATE,
+    val timestamp: ExportTimestampMode = ExportTimestampMode.HIDDEN,
 )
 
 /**
@@ -113,6 +130,7 @@ const val EXPORT_LABEL_SAMPLE_MODEL_ID: String = "gpt-4o"
 const val EXPORT_LABEL_SAMPLE_ASSISTANT: String = "Rikka"
 const val EXPORT_LABEL_SAMPLE_DATE: String = "2026-01-31"
 const val EXPORT_LABEL_SAMPLE_TIME: String = "09:41"
+const val EXPORT_LABEL_SAMPLE_DATETIME: String = "2026-01-31 09:41"
 const val EXPORT_LABEL_SAMPLE_TOKENS: String = "1234"
 
 /**
@@ -177,6 +195,25 @@ fun resolveExportModelLabel(
     }
     return ResolvedExportModelLabel(iconSeed = iconSeed, label = label.trim())
 }
+
+/**
+ * 解析一条消息的角色行时间戳（#2368）。
+ *
+ * 与 [resolveExportModelLabel] 不同：**不分角色**（User / System / Assistant 都返回时间），
+ * config 走同一套三级覆盖决议（消息 > 会话 > 全局），由调用方传「已决议」的 config。
+ * 返回空串 = 不显示；非空 = `yyyy-MM-dd HH:mm`（与 {date}/{time} 占位符同口径）。
+ */
+fun resolveExportMessageTimestamp(
+    message: UIMessage,
+    config: ExportDisplayConfig,
+): String = when (config.timestamp) {
+    ExportTimestampMode.HIDDEN -> ""
+    ExportTimestampMode.SHOW -> message.createdAt.formatExportTimestamp()
+}
+
+/** `yyyy-MM-dd HH:mm`（时/分补零；无秒——回顾场景够用，秒在导出里是噪音）。 */
+private fun kotlinx.datetime.LocalDateTime.formatExportTimestamp(): String =
+    "${date.toString()} ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
 
 /**
  * **会话级覆盖优先，否则跟随全局**（会话导出显示的唯一决策点）。

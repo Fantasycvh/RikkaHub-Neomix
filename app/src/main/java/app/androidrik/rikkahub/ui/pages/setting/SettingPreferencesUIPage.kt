@@ -99,6 +99,7 @@ import app.androidrik.rikkahub.ui.pages.setting.components.ChainOfThoughtCustomS
 import app.androidrik.rikkahub.ui.pages.setting.components.ExportDisplaySchemeSheet
 import app.androidrik.rikkahub.ui.pages.setting.components.label
 import app.androidrik.rikkahub.data.export.ExportDisplayScheme
+import app.androidrik.rikkahub.data.export.ExportTimestampMode
 import app.androidrik.rikkahub.data.export.previewExportModelLabel
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
@@ -837,6 +838,19 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                                         .ifBlank {
                                             stringResource(R.string.setting_display_page_export_model_preview_hidden)
                                         },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    // 时间戳档位状态（#2368）：SHOW 时附样例值示意
+                                    text = if (settings.exportDisplayConfig.timestamp == ExportTimestampMode.SHOW) {
+                                        stringResource(
+                                            R.string.setting_display_page_export_timestamp_summary_on,
+                                            app.androidrik.rikkahub.data.export.EXPORT_LABEL_SAMPLE_DATETIME,
+                                        )
+                                    } else {
+                                        stringResource(R.string.setting_display_page_export_timestamp_summary_off)
+                                    },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
