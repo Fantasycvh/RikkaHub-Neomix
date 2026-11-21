@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -50,6 +51,7 @@ import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.InterruptReason
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
+import app.androidrik.rikkahub.data.ai.compression.CompressionSavings
 import app.androidrik.rikkahub.ui.pages.promptinspect.buildPromptInspectionLabels
 import app.androidrik.rikkahub.service.MessageQueueState
 import app.androidrik.rikkahub.service.QueuedMessage
@@ -347,6 +349,10 @@ class ChatVM(
         }
     }
 
+    /** 手动压缩完成报告（#4 轻量版）：前后窗口估算，页面据此 toast（OpenHands #4 轻量版） */
+    private val _compressionSavings = MutableSharedFlow<CompressionSavings>(extraBufferCapacity = 1)
+    val compressionSavings: SharedFlow<CompressionSavings> = _compressionSavings.asSharedFlow()
+
     /** 「压缩后在新会话继续」的目标会话 id（消费后置空，避免重组重复导航）。 */
     private val _continueInNewWindowConversation = MutableStateFlow<Uuid?>(null)
     val continueInNewWindowConversation: StateFlow<Uuid?> =
@@ -384,6 +390,7 @@ class ChatVM(
                 // 「跟随对话模型」时使用当前对话模型
                 followModel = model,
                 onProgress = { _compressProgress.value = it },
+                onSavings = { _compressionSavings.tryEmit(it) },
             )
             result
                 .onSuccess { checkpoint ->

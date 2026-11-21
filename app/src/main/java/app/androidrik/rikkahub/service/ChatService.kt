@@ -140,6 +140,7 @@ import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_SINGLE_STEP_MAX_CHARS
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgressStage
+import app.androidrik.rikkahub.data.ai.compression.CompressionSavings
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.CompressionTier
 import app.androidrik.rikkahub.data.ai.compression.attachTraceSection
@@ -2641,6 +2642,12 @@ class ChatService(
         compressAll: Boolean = true,
         /** 压缩阶段进度（手动压缩对话框展示；自动/中途压缩用默认空实现） */
         onProgress: (CompressionProgress) -> Unit = {},
+        /**
+         * 压缩完成报告（OpenHands #4 轻量版）：检查点落盘后回调发送窗口的前后估算
+         * （[CompressionSavings]，同口径估算）。所有路径共用：手动压缩转 toast、
+         * 自动/中途/恢复路径仅 Log（§3.3）。估算失败不阻断压缩结果（回调不触发）。
+         */
+        onSavings: ((CompressionSavings) -> Unit)? = null,
     ): Result<CompressionSummary?> = compressionMutexes
         .getOrPut(conversationId) { Mutex() }
         .withLock {
@@ -2672,6 +2679,7 @@ class ChatService(
         }
         // 当前会话快照（含内存态最新）。窗口切分与计划估算是纯 CPU 段，大对话（数千节点）
         // 在主线程逐节点扫会卡帧（AppScope 是 Main）→ 搬 IO（上游 0cd90ef12 残件）
+        var windowTokensBefore = 0
         val (conversation, plan) = withContext(Dispatchers.IO) {
             val conversation = getConversationFlow(conversationId).value
             // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
@@ -2693,6 +2701,8 @@ class ChatService(
             }
             conversation to plan
         }
+        // 完成报告的「前」值：压缩前的发送窗口占用（与 maybeAutoCompress 触发判断同估算器）
+        windowTokensBefore = conversation.estimateWindowTokens(model)
         if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
 
         val messagesToCompress = plan.toCompress.map { it.currentMessage }.messagesForAuxGeneration()
@@ -2884,6 +2894,19 @@ class ChatService(
         // 毫秒级提交包进 NonCancellable，摘要的网络请求保持可取消（用户点停止要能立刻停）。
         val saved = if (midTurn) withContext(NonCancellable) { commit() } else commit()
         noticeRequests.trySend(Unit)
+        // 完成报告（#4 轻量版）：前后同口径估算（estimateWindowTokens，usage 优先 + 本地兜底）；
+        // 估算失败不阻断压缩结果。savedTokens 为 0 时如实报（§3.2：窗口减少与检查点写入是独立信号）
+        runCatching {
+            val afterTokens = getConversationFlow(conversationId).value.estimateWindowTokens(model)
+            CompressionSavings(beforeTokens = windowTokensBefore, afterTokens = afterTokens)
+        }.onSuccess { savings ->
+            Log.i(
+                TAG,
+                "compression saved ~${savings.savedTokens} tokens " +
+                    "(${savings.beforeTokens} → ${savings.afterTokens}, conv=$conversationId)",
+            )
+            onSavings?.invoke(savings)
+        }
         saved
             }.onFailure {
                 Log.e(TAG, "compressToCheckpoint failed for $conversationId", it)
@@ -2918,9 +2941,15 @@ class ChatService(
             targetTokens = settings.autoCompressTargetTokens,
             retainRatio = settings.autoCompressRetainPercent / 100.0,
             followModel = model,
-        ).onFailure {
-            // 失败静默：不打断发送（limitContext 兜底），仅记录
-            Log.w(TAG, "auto compress failed for $conversationId", it)
+        ).onFailure { error ->
+            // 失败可见（#4 轻量版）：轮前压缩失败意味着 limitContext 将静默截断历史——
+            // 用户应该知道为什么长对话突然「变短」。不打断发送（limitContext 仍兜底）。
+            Log.w(TAG, "auto compress failed for $conversationId", error)
+            addError(
+                error,
+                conversationId = conversationId,
+                title = context.getString(R.string.error_title_compress_conversation),
+            )
         }
     }
 

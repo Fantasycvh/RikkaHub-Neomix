@@ -182,6 +182,13 @@ class CompressionPlannerTest {
     }
 
     @Test
+    fun `savings never report negative`() {
+        // 完成报告（#4 轻量版）：压缩后占用反而更高（ rare：系统提示词/保护区挤占）时如实 coerce 到 0
+        assertEquals(0, CompressionSavings(beforeTokens = 100, afterTokens = 150).savedTokens)
+        assertEquals(40, CompressionSavings(beforeTokens = 100, afterTokens = 60).savedTokens)
+    }
+
+    @Test
     fun `default threshold matches harness ratio`() {
         assertEquals(80, DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT)
         assertEquals(40, DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT)

@@ -222,6 +222,15 @@ fun ChatPage(
                 type = ToastType.Error,
             )
         }
+        // 压缩完成报告（OpenHands #4 轻量版）：手动压缩完成后报前后估算（同口径估算器，
+        // 一律标「估算」）。文案暂硬编码中文——与脱敏开关同批补 i18n。
+        vm.compressionSavings.collect { savings ->
+            compressFailureToaster.show(
+                message = "已压缩：估算节省 ${savings.savedTokens} token" +
+                    "（${savings.beforeTokens} → ${savings.afterTokens}）",
+                type = ToastType.Success,
+            )
+        }
     }
 
     // 上下文占用**只算一份**：标题旁读数、输入栏指示器、容量面板共用同一个来源（2026-10-02 决定）。

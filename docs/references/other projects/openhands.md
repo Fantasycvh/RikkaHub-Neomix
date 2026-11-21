@@ -90,7 +90,7 @@ USER_CONTEXT / TASK_TRACKING（**强约束保留任务 ID 与状态**）/ COMPLE
 | 1 | **压缩边界原子单元守卫（守卫六）**：删除区间不得切开 tool call↔result 配对、推理签名块、多段拆分单元；实施前对边界做「原子区间」校验，任一切开则边界 snap 或放弃 | **P2** | ✅ 已实施（`470253ee4` 阶段一）：`ContextCutSafety.alignCutIndex` + planner/limitContext/中途压缩/守卫六四接入点 |
 | 2 | **上下文溢出反应式兜底**：provider 报 context window exceeded / 长度类错误时自动触发一次压缩再重试（限一次，失败透传原错误） | **P2** | ✅ 已实施（`e8b9a1fed` 阶段二）：`isInputContextOverflowError` + runLoop 恢复编排 + ChatService 立即落盘闭包 |
 | 3 | **结构化压缩摘要模板**：摘要 prompt 改 USER_CONTEXT / TASK_TRACKING / COMPLETED / PENDING / CURRENT_STATE 分段，强约束保留任务/收藏等 ID | P3 | ✅ 已搭车（`e8b9a1fed`）：默认模板已八段结构化，收窄为 Rules 补任务状态迁移强约束 |
-| 4 | **压缩完成报告协议**：前置 token 快照 + 压缩后对比 + 三态结果（成功/无变化/失败），toast 报节省量 | P3 | 待做（轻量版已议：手动压缩完成报节省量 + 轮前自动压缩失败可见；timeout 判失败判已有等价不抄） |
+| 4 | **压缩完成报告协议**：前置 token 快照 + 压缩后对比 + 三态结果（成功/无变化/失败），toast 报节省量 | P3 | ✅ 已实施轻量版（同日第四笔提交）：`CompressionSavings`（前后同口径估算）+ `onSavings` 回调——手动压缩转 toast「估算节省 X token（Y→Z）」、轮前自动压缩失败可见（addError）、全路径 Log；timeout 判失败判已有等价不抄；自动压缩成功态保持安静（折叠行+容量条即反馈） |
 | 5 | **输入区上下文计量环**：per-conversation context fill 指示（usage 数据链已有）+ 双阈值变色 + 满载跳压缩入口 | P3 | 大半已有等价（用量条 + 80% 警告 + 容量面板 + 压缩入口）；残余仅 danger 第二阈值色，待拍板关闭或搭车 |
 | 6 | **净化兜底层**：压缩 prompt 侧与渲染侧各一层密钥再脱敏（截断容忍正则） | P3 | ✅ 已实施（`design-redaction-pipeline.md`，in-progress；拍板五项收齐：混合判定/仅压缩+导出侧/与 NMoi 待办④ 合并/仅导出+默认开/trace 计数进入；压缩侧+导出+Web API 全接线，NMoi ④ 一并收官） |
 
@@ -121,4 +121,5 @@ USER_CONTEXT / TASK_TRACKING（**强约束保留任务 ID 与状态**）/ COMPLE
 - #1/#2/#3 已随两笔本地提交落地（`470253ee4` 阶段一安全切点+守卫六、`e8b9a1fed` 阶段二溢出恢复+#3 搭车），单测全量绿、未推送、真机验证挂账（带遗留配对的旧数据 + 真实供应商超窗实弹）。实施记录与语义定案见设计稿 [`design-context-boundaries-and-overflow-recovery.md`](../../design/in-progress/design-context-boundaries-and-overflow-recovery.md) §7/§8。
 - #6 已立项 [`design-redaction-pipeline.md`](../../design/drafts/design-redaction-pipeline.md)（与 NMoi 待办④ 合并），拍板：标记块约定+高置信正则白名单混合、仅压缩 prompt 侧、合并立项。
 - 溢出判据落地时对照过 SDK `classifier.py`（`LONG_PROMPT_PATTERNS` 8 条全量移植）；`MALFORMED_HISTORY_PATTERNS` 存档于 `GenerationErrorPolicy.kt` 注释不进 v1。
+- #4 轻量版已实施（同日第四笔提交）：完成报告 = 手动压缩 toast + 轮前失败可见 + 全路径节省量 Log；三态中的「timeout 判失败」判已有等价（手动压缩是直接 suspend 调用，失败本来就抛）。
 - #6 已实施（同日第三笔提交）：`Redactor` 判定层 + 压缩侧双落点 + 导出三出口 + Web API 三端点；NMoi 待办④（内容级脱敏，仅导出/备份）随之收官——两线合并结算。
