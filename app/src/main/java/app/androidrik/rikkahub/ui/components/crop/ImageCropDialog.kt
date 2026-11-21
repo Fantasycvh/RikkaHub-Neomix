@@ -56,6 +56,8 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.RotateCcw
 import com.composables.icons.lucide.RotateCw
 import com.composables.icons.lucide.X
+import me.rerere.hugeicons.HugeIcons
+import me.rerere.hugeicons.stroke.PaintBoard
 import app.androidrik.rikkahub.R
 
 /**
@@ -63,6 +65,8 @@ import app.androidrik.rikkahub.R
  *
  * @param image 要裁剪的图片
  * @param onConfirm 裁好的图片，长边不超过 [maxResultSize]，由调用方负责存下来
+ * @param onDraw 非空时顶栏多一个画板动作：点它先按当前裁剪框出图，再把结果交给画板标注
+ *   （先裁剪后绘制）；确认按钮的行为不变，只想裁剪的用户不受打扰
  * @param aspectRatio 固定的宽高比（宽 / 高），比如头像传 1f；为空时可以自由裁剪，也可以在底部选比例
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -73,6 +77,7 @@ fun ImageCropDialog(
     onConfirm: (Bitmap) -> Unit,
     aspectRatio: Float? = null,
     maxResultSize: Int = 4096,
+    onDraw: ((Bitmap) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -93,13 +98,13 @@ fun ImageCropDialog(
         }
     }
 
-    fun confirm(state: ImageCropState) {
+    fun confirm(state: ImageCropState, done: (Bitmap) -> Unit) {
         if (cropping) return
         cropping = true
         scope.launch {
             runCatching {
                 withContext(Dispatchers.Default) { state.crop(maxResultSize) }
-            }.onSuccess(onConfirm).onFailure {
+            }.onSuccess(done).onFailure {
                 Toast.makeText(context, cropFailed, Toast.LENGTH_SHORT).show()
             }
             cropping = false
@@ -141,7 +146,8 @@ fun ImageCropDialog(
                     state = current,
                     cropping = cropping,
                     onClose = onDismiss,
-                    onConfirm = { current?.let(::confirm) },
+                    onDraw = onDraw?.let { draw -> { current?.let { confirm(it, draw) } } },
+                    onConfirm = { current?.let { confirm(it, onConfirm) } },
                 )
                 Box(
                     modifier = Modifier
@@ -167,12 +173,13 @@ fun ImageCropDialog(
     }
 }
 
-// 关闭、旋转、重置和确认
+// 关闭、旋转、重置、进画板和确认
 @Composable
 private fun CropTopBar(
     state: ImageCropState?,
     cropping: Boolean,
     onClose: () -> Unit,
+    onDraw: (() -> Unit)?,
     onConfirm: () -> Unit,
 ) {
     Row(
@@ -192,6 +199,17 @@ private fun CropTopBar(
             Icon(Lucide.RotateCcw, contentDescription = stringResource(R.string.image_crop_reset))
         }
         Spacer(Modifier.weight(1f))
+        if (onDraw != null) {
+            IconButton(
+                onClick = onDraw,
+                enabled = state != null && !cropping,
+            ) {
+                Icon(
+                    HugeIcons.PaintBoard,
+                    contentDescription = stringResource(R.string.sketch_draw_on_image),
+                )
+            }
+        }
         FilledIconButton(onClick = onConfirm, enabled = state != null && !cropping) {
             Icon(Lucide.Check, contentDescription = stringResource(android.R.string.ok))
         }

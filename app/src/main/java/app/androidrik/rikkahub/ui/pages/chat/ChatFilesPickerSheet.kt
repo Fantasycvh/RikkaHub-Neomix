@@ -13,9 +13,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.FileProvider
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.R
@@ -24,8 +26,10 @@ import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.ai.FilesPicker
+import app.androidrik.rikkahub.ui.components.ai.createChatFileBySketch
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
 import app.androidrik.rikkahub.ui.components.ai.useMultiCropLauncher
+import app.androidrik.rikkahub.ui.components.sketch.SketchDialog
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionCamera
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberPermissionState
@@ -33,9 +37,21 @@ import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.hooks.ChatInputState
 import app.androidrik.rikkahub.ui.navigation.isAllowedFileType
 import com.dokar.sonner.ToastType
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import java.io.File
 import kotlin.uuid.Uuid
+
+/**
+ * 画板叠加请求：[uri] 是垫底图（裁剪结果的临时文件，或跳过裁剪时选中的原图）；
+ * [afterResolve] 在画板流程结束后执行善后（删临时文件、推进裁剪队列）；
+ * [closeSheet] 见 ChatFilesPickerSheet 里 sketchOver 的注释。
+ */
+private class SketchOverImage(
+    val uri: Uri,
+    val afterResolve: () -> Unit = {},
+    val closeSheet: Boolean = true,
+)
 
 @Composable
 internal fun ChatFilesPickerSheet(
@@ -63,6 +79,15 @@ internal fun ChatFilesPickerSheet(
         onDismiss()
     }
 
+    // 「先裁剪后绘制」的画板叠加请求：uri 是垫底图（裁剪结果的临时文件，或跳过裁剪时选中的
+    // 原图）。afterResolve 在画板流程结束后调用——裁剪路径用它删临时文件并推进裁剪队列；
+    // closeSheet 控制画板收尾后要不要关掉整个 sheet：单张路径收尾即终局，关掉无妨；多图队列
+    // 还要继续裁下一张，提前关 sheet 会卸载队列所在的组合，队列就断了
+    var sketchOver by remember { mutableStateOf<SketchOverImage?>(null) }
+    fun openSketchOverImage(uri: Uri, afterResolve: () -> Unit = {}, closeSheet: Boolean = true) {
+        sketchOver = SketchOverImage(uri, afterResolve, closeSheet)
+    }
+
     val cameraPermission = rememberPermissionState(PermissionCamera)
     PermissionManager(permissionState = cameraPermission)
 
@@ -73,6 +98,7 @@ internal fun ChatFilesPickerSheet(
             inputState.addImages(importAttachments(listOf(croppedUri)))
             dismissAll()
         },
+        onDrawReady = ::openSketchOverImage,
         onCleanup = {
             cameraOutputFile?.delete()
             cameraOutputFile = null
@@ -113,6 +139,7 @@ internal fun ChatFilesPickerSheet(
             inputState.addImages(importAttachments(listOf(croppedUri)))
             dismissAll()
         },
+        onDrawReady = ::openSketchOverImage,
     )
     // 多图逐张裁剪（#2306）。单图仍走上面的 useCropLauncher（行为保持不变），多图才用队列：
     // 每裁好一张立刻加入输入框；中途取消时把「当前这张 + 还没裁剪的」原样加入，不丢用户已选，
@@ -130,6 +157,8 @@ internal fun ChatFilesPickerSheet(
             }
             dismissAll()
         },
+        // 队列期间不能关 sheet：提前卸载组合会把队列状态一起带走
+        onDrawReady = { uri, resume -> openSketchOverImage(uri, resume, closeSheet = false) },
     )
     // GetMultipleContents 而非 PickMultipleVisualMedia：保留文件浏览入口
     // （系统 Photo Picker 只给相册视图、无目录浏览，照片多时翻找慢；上游 4b36640a 亦已 revert 回此形态）。
@@ -140,13 +169,16 @@ internal fun ChatFilesPickerSheet(
                 Log.d("ImagePickButton", "Selected URIs: $selectedUris")
                 // 裁剪改成本进程 Compose 对话框（上游 2a0a831e6）：解码在应用进程内完成，
                 // HEIF 与 EXIF 方向都原生支持，不再需要先拷到临时文件或把 HEIF 转 JPEG。
-                // 单图语义不变：取消裁剪 = 放弃这张，不加入、sheet 保持打开（与旧行为一致）；
-                // 多图才进入逐张裁剪队列。
-                if (setting.displaySetting.skipCropImage) {
-                    inputState.addImages(importAttachments(selectedUris))
-                    dismissAll()
-                } else if (selectedUris.size > 1) {
-                    launchImagesCrop(selectedUris)
+                // 单图语义不变：取消裁剪 = 放弃这张，不加入、sheet 保持打开（与旧行为一致）。
+                // 单张一律先裁剪：画板入口在裁剪页顶栏（先裁剪后绘制），不想画的直接确认即可，
+                // 不再受 skipCropImage 影响直进画板；多张仍按 skipCropImage 决定是否逐张裁剪
+                if (selectedUris.size > 1) {
+                    if (setting.displaySetting.skipCropImage) {
+                        inputState.addImages(importAttachments(selectedUris))
+                        dismissAll()
+                    } else {
+                        launchImagesCrop(selectedUris)
+                    }
                 } else {
                     launchImageCrop(selectedUris.first())
                 }
@@ -206,6 +238,37 @@ internal fun ChatFilesPickerSheet(
         initialValue = SheetValue.Hidden,
         enabledValues = setOf(SheetValue.Hidden, SheetValue.Expanded)
     )
+
+    // 画板叠加（先裁剪后绘制 / 跳过裁剪直进画板）：确认=标注图走 sketch 的持久化路径入库；
+    // 关闭（含画了又丢弃）=不标注，垫底图直接按普通附件入库。afterResolve 负责裁剪路径的
+    // 临时文件删除与队列推进，必须在入库读文件之后执行
+    val sketchSaveFailed = stringResource(R.string.sketch_save_failed)
+    val scope = rememberCoroutineScope()
+    sketchOver?.let { over ->
+        SketchDialog(
+            image = over.uri,
+            onDismiss = {
+                sketchOver = null
+                inputState.addImages(importAttachments(listOf(over.uri)))
+                over.afterResolve()
+                if (over.closeSheet) dismissAll()
+            },
+            onConfirm = { result ->
+                sketchOver = null
+                scope.launch {
+                    val uri = filesManager.createChatFileBySketch(result)
+                    if (uri != null) {
+                        inputState.addImages(listOf(uri))
+                    } else {
+                        toaster.show(message = sketchSaveFailed, type = ToastType.Error)
+                    }
+                    over.afterResolve()
+                    if (over.closeSheet) dismissAll()
+                }
+            },
+        )
+    }
+
     ModalBottomSheet(
         sheetState = filesSheetState,
         onDismissRequest = { dismissAll() },

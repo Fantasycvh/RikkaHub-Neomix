@@ -71,6 +71,9 @@ internal object CropOutput {
  *
  * @param aspectRatio 固定的宽高比（宽 / 高），为空时可以自由裁剪
  * @param maxResultSize 裁剪结果的长边上限（像素），透传给 [ImageCropDialog]
+ * @param onDrawReady 非空时裁剪页提供「裁剪后进画板」动作：第一参数是裁剪结果的临时文件 URI，
+ *   第二参数是「继续」回调——画板流程结束（确认用标注图 / 关闭只用裁剪结果）后调用，临时文件
+ *   随之删除、对话框关闭。临时文件在「继续」回调调用前一直保留。
  */
 @Composable
 internal fun useCropLauncher(
@@ -78,6 +81,7 @@ internal fun useCropLauncher(
     onCleanup: (() -> Unit)? = null,
     aspectRatio: Float? = null,
     maxResultSize: Int = 4096,
+    onDrawReady: ((Uri, () -> Unit) -> Unit)? = null,
 ): (Uri) -> Unit {
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -106,6 +110,25 @@ internal fun useCropLauncher(
                     finish()
                 }
             },
+            onDraw = onDrawReady?.let { ready ->
+                { bitmap ->
+                    if (saving) return@let
+                    saving = true
+                    scope.launch {
+                        // 画板路径：临时文件先留着——画板垫底和「取消则用裁剪结果」的导入都要读它
+                        val file = persistCroppedImage(context, toaster, bitmap, {}, keepFile = true)
+                        saving = false
+                        if (file == null) {
+                            finish()
+                        } else {
+                            ready(file.toUri()) {
+                                file.delete()
+                                finish()
+                            }
+                        }
+                    }
+                }
+            },
         )
     }
 
@@ -119,24 +142,32 @@ internal fun useCropLauncher(
  * 目录、失败怎么提示」只有一处真相，避免两条路径日后各改各的而漂移（历史上就有「扩展名说
  * JPEG、内容说 PNG」的 bug，见 [CropOutput]）。[onReady] 返回后临时文件立即删除，需要持久化
  * 的调用方必须在回调内当场拷走。
+ *
+ * @param keepFile true 时（画板路径）成功后保留临时文件不删，返回路径由调用方在画板流程
+ *   结束后删除——画板垫底要读它，「画板取消则只用裁剪结果」的导入也要读它。失败时仍然删除
+ *   并返回 null。
  */
 private suspend fun persistCroppedImage(
     context: Context,
     toaster: ToasterState,
     bitmap: Bitmap,
     onReady: (Uri) -> Unit,
-) {
+    keepFile: Boolean = false,
+): File? {
     val outputFile = File(
         context.appTempFolder,
         CropOutput.fileName(System.currentTimeMillis()),
     )
-    runCatching {
+    val saved = runCatching {
         withContext(Dispatchers.IO) {
             outputFile.outputStream().use {
                 bitmap.compress(CropOutput.FORMAT, CropOutput.QUALITY, it)
             }
         }
+    }
+    saved.onSuccess {
         onReady(outputFile.toUri())
+        if (!keepFile) outputFile.delete()
     }.onFailure { error ->
         Logging.log("CropLauncher", "crop failed: ${error.message} | ${error.stackTraceToString()}")
         toaster.show(
@@ -144,7 +175,10 @@ private suspend fun persistCroppedImage(
             type = ToastType.Error
         )
     }
-    outputFile.delete()
+    return when {
+        saved.isSuccess && keepFile -> outputFile
+        else -> null.also { outputFile.delete() }
+    }
 }
 
 /**
@@ -165,6 +199,9 @@ private suspend fun persistCroppedImage(
  *
  * @param onImageReady 每张裁剪成功后的回调；临时文件在回调返回后即删除
  * @param onDone 队列结束（全部完成或中途取消）时调用，参数是未裁剪的剩余 URI（全部完成时为空）
+ * @param onDrawReady 非空时每张的裁剪页都提供「裁剪后进画板」动作（语义同 [useCropLauncher]）：
+ *   画板流程期间队列暂停，画板流程结束后调「继续」回调，队列才推进到下一张；画板确认时该张
+ *   以标注图加入（走调用方自己的保存路径），关闭时调用方按裁剪结果加入
  * @param aspectRatio 固定的宽高比（宽 / 高），为空时可以自由裁剪
  * @param maxResultSize 裁剪结果的长边上限（像素），透传给 [ImageCropDialog]
  */
@@ -174,6 +211,7 @@ internal fun useMultiCropLauncher(
     onDone: (List<Uri>) -> Unit,
     aspectRatio: Float? = null,
     maxResultSize: Int = 4096,
+    onDrawReady: ((Uri, () -> Unit) -> Unit)? = null,
 ): (List<Uri>) -> Unit {
     val context = LocalContext.current
     val toaster = LocalToaster.current
@@ -182,6 +220,7 @@ internal fun useMultiCropLauncher(
     // 启动那一刻的旧 lambda（sheet 状态一变回调就重建），故用 rememberUpdatedState 兜底。
     val currentOnImageReady by rememberUpdatedState(onImageReady)
     val currentOnDone by rememberUpdatedState(onDone)
+    val currentOnDrawReady by rememberUpdatedState(onDrawReady)
     // 待裁剪队列（不含当前正在显示的那张）。用 SnapshotStateList 而不是普通 List/ArrayDeque：
     // 它既能在多次重组之间常驻，又能在协程里改完后驱动下一帧渲染新的 source。
     val queue = remember { mutableStateListOf<Uri>() }
@@ -223,9 +262,31 @@ internal fun useMultiCropLauncher(
                 if (saving) return@ImageCropDialog
                 saving = true
                 scope.launch {
-                    persistCroppedImage(context, toaster, bitmap) { currentOnImageReady(it) }
+                    persistCroppedImage(
+                        context, toaster, bitmap,
+                        onReady = { currentOnImageReady(it) },
+                    )
                     saving = false
                     advance()
+                }
+            },
+            onDraw = currentOnDrawReady?.let { ready ->
+                { bitmap ->
+                    if (saving) return@let
+                    saving = true
+                    scope.launch {
+                        // 画板路径：临时文件先留着（同单张路径），队列在「继续」回调里才推进
+                        val file = persistCroppedImage(context, toaster, bitmap, {}, keepFile = true)
+                        saving = false
+                        if (file == null) {
+                            advance()
+                        } else {
+                            ready(file.toUri()) {
+                                file.delete()
+                                advance()
+                            }
+                        }
+                    }
                 }
             },
         )
