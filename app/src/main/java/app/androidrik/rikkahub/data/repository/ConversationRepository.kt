@@ -19,6 +19,7 @@ import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
 import app.androidrik.rikkahub.data.favorite.NodeFavoriteAdapter
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
+import app.androidrik.rikkahub.data.db.entity.ConversationEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.files.FilesManager
@@ -349,11 +350,21 @@ class ConversationRepository(
         }
 
     suspend fun getConversationById(uuid: Uuid): Conversation? {
-        val entity = conversationDAO.getConversationById(uuid.toString())
-        return if (entity != null) {
-            val nodes = loadMessageNodes(entity.id)
-            conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
-        } else null
+        val entity = conversationDAO.getConversationById(uuid.toString()) ?: return null
+        return loadConversation(entity)
+    }
+
+    suspend fun getConversationForAssistant(uuid: Uuid, assistantId: Uuid): Conversation? =
+        database.withTransaction {
+            // Check ownership and load the messages from the same snapshot if the conversation is moved.
+            val entity = conversationDAO.getConversationById(uuid.toString()) ?: return@withTransaction null
+            if (entity.assistantId != assistantId.toString()) return@withTransaction null
+            loadConversation(entity)
+        }
+
+    private suspend fun loadConversation(entity: ConversationEntity): Conversation {
+        val nodes = loadMessageNodes(entity.id)
+        return conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
     }
 
     /**
@@ -788,6 +799,9 @@ class ConversationRepository(
         keyword: String,
         sort: MessageSearchSort = MessageSearchSort.RELEVANCE,
     ) = messageFtsManager.search(keyword, sort)
+
+    suspend fun searchMessagesForAssistant(assistantId: Uuid, keyword: String) =
+        messageFtsManager.search(keyword, MessageSearchSort.RELEVANCE, assistantIds = listOf(assistantId.toString()))
 
     suspend fun rebuildAllIndexes(onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }) {
         // 整段包在**一个** Room 事务里：indexConversation/deleteAll 内部再 withTransaction 会加入

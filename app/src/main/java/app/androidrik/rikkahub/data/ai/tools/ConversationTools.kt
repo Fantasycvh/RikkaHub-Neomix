@@ -12,7 +12,6 @@ import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.rikkahub.data.db.fts.MessageSearchSort
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.utils.JsonInstantPretty
 import app.androidrik.rikkahub.utils.toLocalDate
@@ -26,7 +25,7 @@ fun createConversationTools(
     conversationRepo: ConversationRepository,
     assistantId: Uuid,
 ): List<Tool> = listOf(
-    createReadConversationTool(conversationRepo),
+    createReadConversationTool(conversationRepo, assistantId),
     Tool(
         name = "recent_chats",
         description = """
@@ -70,7 +69,7 @@ fun createConversationTools(
     Tool(
         name = "conversation_search",
         description = """
-            Full-text search across the user's past conversations to recall specific information they mentioned before.
+            Full-text search across the user's past conversations with you to recall specific information they mentioned before.
             Use focused keywords. Run multiple searches with different keywords if needed.
             Each result includes the conversation title, a snippet with matched keywords wrapped in [brackets], and the date.
         """.trimIndent(),
@@ -98,7 +97,7 @@ fun createConversationTools(
                 ?: error("query is required")
             val limit = (it.jsonObject["limit"]?.jsonPrimitive?.intOrNull ?: 15).coerceIn(1, 50)
             val results = conversationRepo
-                .searchMessages(query, MessageSearchSort.RELEVANCE)
+                .searchMessagesForAssistant(assistantId, query)
                 .take(limit)
             val payload = buildJsonArray {
                 results.forEach { result ->
@@ -126,12 +125,13 @@ fun createConversationTools(
  * 成本从一次性全量改为分层按需（与 peer⑤③ schema 三档的元工具模式同构，见
  * handoff §三 同名条目；本工具是该模式的**零纠缠练手场**）。
  */
-fun createReadConversationTool(
+private fun createReadConversationTool(
     conversationRepo: ConversationRepository,
+    assistantId: Uuid,
 ): Tool = Tool(
     name = "read_conversation",
     description = """
-        Read the full messages around a specific point in one of the user's past conversations.
+        Read the full messages around a specific point in one of the user's past conversations with you.
         Use it when a `conversation_search` snippet is not enough and you need the surrounding dialogue
         (e.g. the question that led to an answer, or details cut off by the snippet).
         Pass conversation_id and message_id exactly as returned by `conversation_search`.
@@ -167,10 +167,11 @@ fun createReadConversationTool(
         val anchorMessageId = it.jsonObject["message_id"]?.jsonPrimitive?.contentOrNull
         val context = (it.jsonObject["context"]?.jsonPrimitive?.intOrNull ?: 6).coerceIn(1, 20)
 
-        val conversation = conversationRepo.getConversationById(
+        val conversation = conversationRepo.getConversationForAssistant(
             runCatching { Uuid.parse(conversationId) }.getOrElse {
                 error("conversation_id is not a valid UUID: $conversationId")
-            }
+            },
+            assistantId,
         ) ?: error("Conversation not found: $conversationId")
 
         listOf(

@@ -4,16 +4,31 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.AppScope
+import app.androidrik.rikkahub.data.ai.tools.createConversationTools
+import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.entity.ConversationEntity
+import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.repository.ConversationRepository
+import app.androidrik.rikkahub.data.repository.FilesRepository
 import io.requery.android.database.sqlite.RequerySQLiteOpenHelperFactory
 import io.requery.android.database.sqlite.SQLiteCustomExtension
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,6 +143,54 @@ class MessageFtsManagerTest {
         assertRowidTableMatches()
         fts.deleteConversation(first.id.toString())
         assertEquals(listOf(second.id.toString()), fts.search("legacy").map { it.conversationId })
+    }
+
+    @Test
+    fun chatHistoryToolsOnlyReturnTheCurrentAssistantsConversations() = runBlocking {
+        val scope = AppScope().apply { cancel() }
+        val files = FilesManager(
+            context,
+            FilesRepository(database.managedFileDao()),
+            scope,
+            SettingsStore(context, scope, File(directory, "test.preferences_pb")),
+        )
+        val repository = ConversationRepository(
+            database.conversationDao(),
+            database.messageNodeDao(),
+            database.favoriteDao(),
+            database,
+            files,
+            fts,
+            database.compressionCheckpointDao(),
+        )
+        val own = conversation("own", UIMessage.user("shared apple"))
+        val other = conversation("other", UIMessage.user("shared banana")).copy(assistantId = Uuid.random())
+        repository.insertConversation(own)
+        repository.insertConversation(other)
+
+        val tools = createConversationTools(repository, assistantId)
+        val search = tools.single { it.name == "conversation_search" }
+        val searchResult = search.execute(buildJsonObject { put("query", "shared") }).single() as UIMessagePart.Text
+        val hit = Json.parseToJsonElement(searchResult.text).jsonArray.single().jsonObject
+        assertEquals(own.id.toString(), hit.getValue("conversation_id").jsonPrimitive.content)
+        assertEquals(
+            setOf(own.id.toString(), other.id.toString()),
+            repository.searchMessages("shared").map { it.conversationId }.toSet(),
+        )
+
+        val read = tools.single { it.name == "read_conversation" }
+        val ownResult = read.execute(buildJsonObject {
+            put("conversation_id", hit.getValue("conversation_id"))
+            put("message_id", hit.getValue("message_id"))
+        }).single() as UIMessagePart.Text
+        val message = Json.parseToJsonElement(ownResult.text).jsonObject.getValue("messages").jsonArray.single()
+        assertEquals("shared apple", message.jsonObject.getValue("content").jsonPrimitive.content)
+
+        val denied = runCatching {
+            read.execute(buildJsonObject { put("conversation_id", other.id.toString()) })
+        }.exceptionOrNull()
+        assertTrue(denied is IllegalStateException)
+        assertEquals("Conversation not found: ${other.id}", denied?.message)
     }
 
     private fun conversation(title: String, vararg messages: UIMessage) = Conversation(
