@@ -1,6 +1,6 @@
 # 统一媒体生成接口、模型目录与定时任务
 
-> 2026-11-18/19。统一执行入口已在本地提交 `55efb216b`；统一模型目录、按任务授权和定时模板直跑连同本设计稿在本地提交落地，并随 Debug 包装机。提交结果待确认与恢复语义（阶段 2 主体）、定时模板的生成操作与素材引用（阶段 3 主体）、能力下沉与凭据引用共享（阶段 4 M1+M2）均已实现；M3 适配器收敛与真机验收待做。真机业务验收和后续阶段见下文。
+> 2026-11-18/19。统一执行入口已在本地提交 `55efb216b`；统一模型目录、按任务授权和定时模板直跑连同本设计稿在本地提交落地，并随 Debug 包装机。提交结果待确认与恢复语义（阶段 2 主体）、定时模板的生成操作与素材引用（阶段 3 主体）、能力下沉与凭据引用共享（阶段 4 M1+M2）均已实现；M3 适配器收敛已全部完成（2026-11-21），按请求 ID 对账的客户端侧已实现（等厂商接口实弹，见下文 §2）；真机验收已跑（11-20），Google 真 Key 实弹挂账。真机业务验收和后续阶段见下文。
 
 ## 目标与范围
 
@@ -53,7 +53,7 @@
 
 Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task_runs` 分别追加可空的 `catalog_model_id`、`media_action` 和 `media_session_id`。旧记录可以沿用原供应商与模型标识。旧任务继续按原计划执行，后台生图需要在任务设置里授权。
 
-[模板创建入口](../../../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/scheduled/ScheduledTaskCreatePage.kt) · [模板运行与对账](../../../app/src/main/java/app/androidrik/rikkahub/service/ScheduledMediaRunner.kt) · [运行历史](../../../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/scheduled/ScheduledTaskRunsPage.kt) · [Room 76 schema](../../../app/schemas/app.androidrik.rikkahub.data.db.AppDatabase/76.json) · [原定时任务设计](../completed/design-scheduled-ai-tasks.md)
+[模板创建入口](../../../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/scheduled/ScheduledTaskCreatePage.kt) · [模板运行与对账](../../../app/src/main/java/app/androidrik/rikkahub/service/ScheduledMediaRunner.kt) · [运行历史](../../../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/scheduled/ScheduledTaskRunsPage.kt) · [Room 77 schema](../../../app/schemas/app.androidrik.rikkahub.data.db.AppDatabase/77.json) · [原定时任务设计](../completed/design-scheduled-ai-tasks.md)
 
 ### 提交结果待确认与恢复语义
 
@@ -67,7 +67,7 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 
 待确认的记录在时间线上有独立状态文案和说明，重试动作带确认弹窗（重新提交会重新发送请求，可能重复计费）；也可以直接删除。定时模板直跑的死轮在对账时按 FAILED 入运行账本，媒体记录保留待确认状态。
 
-供应商能力新增 `MediaGenerationProvider.supportsQuery`（同步返回结果的接口返回 false，当前只有 SiliconFlow 视频为 true），为将来接入幂等键或按请求 ID 查询、把待确认状态自动对账成可续查状态预留。聊天工具的流式生图维持会话内生命周期：同步接口没有任务可恢复，聊天消息本身就是这一轮请求的账本。
+供应商能力新增 `MediaGenerationProvider.supportsQuery`（同步返回结果的接口返回 false，当前只有 SiliconFlow 视频为 true）；按请求 ID 自动对账已在此之上实现，见下文「接入按请求 ID 对账」。聊天工具的流式生图维持会话内生命周期：同步接口没有任务可恢复，聊天消息本身就是这一轮请求的账本。
 
 [中断判定](../../../app/src/main/java/app/androidrik/rikkahub/service/MediaInterruption.kt) · [状态模型](../../../app/src/main/java/app/androidrik/rikkahub/data/model/MediaCreation.kt) · [能力声明](../../../mediagen/src/main/java/app/androidrik/mediagen/provider/MediaGenerationProvider.kt)
 
@@ -130,9 +130,16 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 | 模板素材路径 | 图片编辑与首帧视频模板各跑一轮，产物可从运行历史打开。锁定的素材被删除后到点运行明确报错而不是静默失败；素材上传目的地变化后授权失效并提示重新保存 |
 | 升级与回退准备 | 在隔离配置中以含媒体记录和旧定时任务的 v75 数据升级，核对 v76 开库、旧任务行为与产物链接。保留升级前备份作为回退依据 |
 
-### 2. 接入按请求 ID 对账
+### 2. 接入按请求 ID 对账（2026-11-21 客户端侧已实现，等厂商接口实弹）
 
-状态语义与恢复判定已落地（见「提交结果待确认与恢复语义」）。剩余部分：给支持幂等键或按请求 ID 查询的供应商把提交请求 ID 带上下发，`SUBMIT_UNKNOWN` 记录在下次启动时自动对账——查到任务就转回可续查状态，查不到再交由用户处置。需要先有厂商接口支持（当前已接入的适配器均无此端点）。
+状态语义与恢复判定已落地（见「提交结果待确认与恢复语义」）。客户端侧完整链路已实现：
+
+- **对账键随提交下发**：`MediaGenerationRequest.requestId` 由调用方生成，`MediaCreationService` 在**提交前**随记录落库（insert/retry 即写入，提交窗口内无需额外补写），提交时随载荷下发。重试的再提交分支换新键（旧键对应的提交结果已有结论），接着查询的分支保持原键。对账键在 custom body 之后追加——它是协议字段，不允许被模型级 customBodies 覆盖。
+- **能力位**：`MediaGenerationProvider.supportsReconciliation` + `queryByRequestId`（默认不支持/失败），`MediaGenerationManager` 按 supportedKinds 校验后路由。当前只有 SiliconFlow 视频声明支持：提交体带 `requestId`，按 `POST /video/reconcile` 查回（响应形态与 status 相同，查无 404）。
+- **启动对账器**：`resumePending` 的 `SUBMIT_UNKNOWN` 分支先按对账键查一次服务端（`classifyReconciliation` 分类，只读、任何分支都不重新提交）：查到 → 写回任务 ID 转回可续查并注册接着跑；404 → 维持待确认（此时重试安全）；其余失败 → 保持 RUNNING 下次启动再对账，不升级成失败。不可对账时（不支持能力位 / 无对账键 / 目录解析不到）维持原有口径直接标记待确认。
+- **DB 76→77**：`media_creation_record.request_id`（可空纯列，AutoMigration 免 spec；null = 提交前中断或旧版本记录）。
+- **测试**：`MediaInterruptionTest` 覆盖对账处置矩阵（Resume / ConfirmAbsent / RetryLater）；`MediaGenerationManagerTest` + `SiliconFlowMediaGenerationProviderTest` 覆盖能力位、载荷下发（防 custom body 覆盖）与 404 语义；fixture 新增 `/v1/video/reconcile` 假想厂商端点 + `/control/submit-visibility` 受理可见性开关（`accepted_lost`=实际受理但响应丢失 / `never_received`=根本没收到），回环 smoke 全场景通过（`.tmp/reconcile_fixture_smoke.py`）。
+- **挂账**：真厂商接口出现前，实弹验证用 fixture 走真机场景（提交窗口杀进程 → 重启 → 对账续查 / 查无待确认），mock 的 record 日志作为「无第二次提交」的真值；厂商侧要求 = 接受提交体里的请求 ID 并提供按 ID 查询端点。
 
 ### 3. 收尾模板素材验收
 

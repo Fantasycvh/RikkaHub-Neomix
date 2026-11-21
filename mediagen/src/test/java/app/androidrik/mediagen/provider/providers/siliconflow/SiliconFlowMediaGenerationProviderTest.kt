@@ -1,5 +1,6 @@
 package app.androidrik.mediagen.provider.providers.siliconflow
 
+import app.androidrik.common.http.CustomBody
 import app.androidrik.mediagen.model.ImageRole
 import app.androidrik.mediagen.model.MediaGenerationInput
 import app.androidrik.mediagen.model.MediaGenerationModel
@@ -281,6 +282,89 @@ class SiliconFlowMediaGenerationProviderTest {
 
         assertTrue(error is IllegalStateException)
         assertEquals("SiliconFlow response does not contain requestId", error?.message)
+    }
+
+    @Test
+    fun submitCarriesReconciliationKeyAndCustomBodyCannotOverrideIt() = runBlocking {
+        val bodies = mutableListOf<String>()
+        val manager = MediaGenerationManager(fakeClient {
+            bodies += it.bodyAsString()
+            jsonResponse(it, """{"requestId":"req-key"}""")
+        })
+
+        val customized = textToVideoModel.copy(customBodies = listOf(
+            CustomBody("requestId", JsonPrimitive("spoofed")),
+            CustomBody("negative_prompt", JsonPrimitive("blurry")),
+        ))
+        val task = manager.create(
+            setting = setting.copy(models = listOf(customized)),
+            model = customized,
+            request = MediaGenerationRequest(
+                prompt = "cat",
+                resolution = "1280x720",
+                requestId = "req-key",
+            ),
+        ).getOrThrow()
+
+        assertEquals("req-key", task.id)
+        val body = parse(bodies.single())
+        // 对账键在 custom body 之后追加：自定义载荷覆盖不了协议字段
+        assertEquals(JsonPrimitive("req-key"), body["requestId"])
+        // 其余 custom body 照常生效
+        assertEquals(JsonPrimitive("blurry"), body["negative_prompt"])
+    }
+
+    @Test
+    fun submitWithoutReconciliationKeyOmitsTheField() = runBlocking {
+        val bodies = mutableListOf<String>()
+        val manager = MediaGenerationManager(fakeClient {
+            bodies += it.bodyAsString()
+            jsonResponse(it, """{"requestId":"req-1"}""")
+        })
+
+        manager.create(
+            setting = setting,
+            model = textToVideoModel,
+            request = MediaGenerationRequest(prompt = "cat", resolution = "1280x720"),
+        ).getOrThrow()
+
+        assertNull(parse(bodies.single())["requestId"])
+    }
+
+    @Test
+    fun queryByRequestIdPostsToReconcileAndParsesTheTask() = runBlocking {
+        val requests = mutableListOf<Request>()
+        val bodies = mutableListOf<String>()
+        val manager = MediaGenerationManager(fakeClient(requests) {
+            bodies += it.bodyAsString()
+            jsonResponse(it, """{"requestId":"req-42","status":"InProgress"}""")
+        })
+
+        val task = manager.queryByRequestId(setting, textToVideoModel, "req-42").getOrThrow()
+
+        val request = requests.single()
+        assertEquals("POST", request.method)
+        assertEquals("https://example.com/v1/video/reconcile", request.url.toString())
+        assertEquals("Bearer sk-test", request.header("Authorization"))
+        assertEquals(JsonPrimitive("req-42"), parse(bodies.single())["requestId"])
+        assertEquals(MediaGenerationStatus.RUNNING, task.status)
+        assertEquals("req-42", task.id)
+    }
+
+    @Test
+    fun queryByRequestIdSurfacesNotFoundAsApiException() = runBlocking {
+        val manager = MediaGenerationManager(fakeClient {
+            jsonResponse(
+                request = it,
+                body = """{"code":20012,"message":"Task not found","data":null}""",
+                code = 404,
+            )
+        })
+
+        val error = manager.queryByRequestId(setting, textToVideoModel, "req-missing").exceptionOrNull()
+            as MediaGenerationApiException
+
+        assertEquals(404, error.statusCode)
     }
 
     @Test

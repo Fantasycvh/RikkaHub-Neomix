@@ -124,6 +124,10 @@ enum class MediaCreationStatus {
  *
  * [taskId] 只在服务端还有任务可以查询时非空：同步接口没有任务，任务在服务端失败后也会清空。
  * 因此被中断的记录（应用被杀、取消等待、轮询或下载出错）只要还带着 [taskId]，就可以接着查询而不必重新提交。
+ *
+ * [requestId] 是本次提交的对账键，在提交前就落库（随记录写入/重试改写），并随提交请求下发。
+ * 提交窗口中断后（[MediaCreationStatus.SUBMIT_UNKNOWN]），支持按请求 ID 对账的供应商用它找回
+ * 服务端任务；重新提交时（retry 的再提交分支）会换新键——旧键对应的提交结果已有结论。
  */
 data class MediaCreationRecord(
     val id: Uuid = Uuid.random(),
@@ -140,6 +144,7 @@ data class MediaCreationRecord(
     val inputs: List<MediaCreationAsset> = emptyList(),
     val status: MediaCreationStatus = MediaCreationStatus.PREPARING,
     val taskId: String? = null,
+    val requestId: String? = null,
     val error: String? = null,
     val outputs: List<MediaCreationOutput> = emptyList(),
     val createAt: Instant = Instant.now(),

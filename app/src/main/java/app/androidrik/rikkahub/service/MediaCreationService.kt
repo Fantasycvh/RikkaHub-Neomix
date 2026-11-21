@@ -123,6 +123,8 @@ class MediaCreationService(
             prompt = submission.prompt.trim(),
             params = submission.params.supportedBy(capabilities),
             inputs = copyInputs(submission.sessionId, recordId, assets),
+            // 对账键随记录落库，先于任何提交动作：之后死在提交窗口里也能按它对账
+            requestId = Uuid.random().toString(),
         )
         // 先登记任务再写入记录：恢复逻辑把「进行中但没有任务」的记录当作被中断，不能让它看到这个空档
         val job = register(record.id, record.sessionId, option)
@@ -159,6 +161,9 @@ class MediaCreationService(
                 } else {
                     record.copy(
                         status = if (record.taskId != null) MediaCreationStatus.RUNNING else MediaCreationStatus.PREPARING,
+                        // 重新提交是一次新的请求：换新对账键（旧键对应的提交结果已有结论）；
+                        // 接着查询（taskId != null）时保持原键不动
+                        requestId = if (record.taskId != null) record.requestId else Uuid.random().toString(),
                         error = null,
                         outputs = emptyList(),
                     )
@@ -208,7 +213,8 @@ class MediaCreationService(
 
     /**
      * 进程启动后接管上次没跑完的记录：有任务 ID 的接着查询；死在提交窗口的（RUNNING 且无任务 ID）
-     * 标记为提交结果待确认，不自动重试；其余在提交前就被中断了，标记为失败。
+     * 先按对账键问一次服务端（见 [reconcileSubmitUnknown]），对不了账的标记为提交结果待确认，
+     * 不自动重试；其余在提交前就被中断了，标记为失败。
      */
     fun resumePending() {
         appScope.launch {
@@ -217,14 +223,7 @@ class MediaCreationService(
                     if (jobs.containsKey(record.id)) return@forEach
                     when (resolveMediaInterruption(record.taskId, record.status)) {
                         MediaInterruptionOutcome.RESUME_QUERY -> register(record.id, record.sessionId)?.start()
-                        MediaInterruptionOutcome.SUBMIT_UNKNOWN -> repository.updateRecord(record.id) {
-                            // 条件守卫避免盖掉并发进来的 retry：它已经把状态改成 PREPARING 了
-                            if (it.status == MediaCreationStatus.RUNNING) {
-                                it.copy(status = MediaCreationStatus.SUBMIT_UNKNOWN)
-                            } else {
-                                it
-                            }
-                        }
+                        MediaInterruptionOutcome.SUBMIT_UNKNOWN -> reconcileSubmitUnknown(record)
 
                         MediaInterruptionOutcome.MARK_FAILED -> repository.updateRecord(record.id) {
                             it.copy(
@@ -236,6 +235,52 @@ class MediaCreationService(
                 }
             }.onFailure {
                 Log.e(TAG, "resumePending failed", it)
+            }
+        }
+    }
+
+    /**
+     * 提交窗口中断的自动对账。供应商支持按请求 ID 查询且记录带有对账键时，启动期先问一次服务端：
+     * 查到任务就转回可续查状态接着跑（用户无需处置）；确认查无时维持待确认状态——此时重试是安全的；
+     * 查询本身失败（网络等临时原因）保持 RUNNING，下次启动再对账，不升级成失败。
+     * 不支持对账的供应商维持原有口径：直接标记待确认。
+     */
+    private suspend fun reconcileSubmitUnknown(record: MediaCreationRecord) {
+        val requestId = record.requestId
+        val option = requestId?.let { settingsStore.awaitLoaded().resolveMediaRecord(record) }
+        val provider = option?.mediaProvider
+        if (provider == null || !executor.supportsReconciliation(provider, option.model)) {
+            markSubmitUnknown(record.id)
+            return
+        }
+        when (val disposition = classifyReconciliation(executor.queryByRequestId(
+            provider, option.model, requestId,
+        ))) {
+            is MediaReconciliationDisposition.Resume -> {
+                // 把任务 ID 落库转回可续查，再注册接着跑。写库在前：注册前再死一次的话，
+                // 下轮启动 taskId 已在，按 RESUME_QUERY 接着查，不会重复对账
+                val resumed = repository.updateRecord(record.id) {
+                    if (it.status == MediaCreationStatus.RUNNING) {
+                        it.copy(taskId = disposition.taskId, error = null)
+                    } else {
+                        it
+                    }
+                }
+                if (resumed != null) register(record.id, record.sessionId)?.start()
+            }
+
+            MediaReconciliationDisposition.ConfirmAbsent -> markSubmitUnknown(record.id)
+            MediaReconciliationDisposition.RetryLater -> Unit
+        }
+    }
+
+    private suspend fun markSubmitUnknown(recordId: Uuid) {
+        repository.updateRecord(recordId) {
+            // 条件守卫避免盖掉并发进来的 retry：它已经把状态改成 PREPARING 了
+            if (it.status == MediaCreationStatus.RUNNING) {
+                it.copy(status = MediaCreationStatus.SUBMIT_UNKNOWN)
+            } else {
+                it
             }
         }
     }
@@ -343,6 +388,8 @@ class MediaCreationService(
         }
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.RUNNING) }
         val request = buildMediaGenerationRequest(record.prompt, record.params, record.inputs, inputUrls, capabilities)
+            // 对账键随提交载荷下发（支持对账的适配器写进请求体），键本身已在提交前落库
+            .copy(requestId = record.requestId)
         // M3b-1 目录切换后只有 mediagen 任务链路（legacy 生图模型已在目录层映射成 Media target）
         return executor.submit(option.target, request)
     }

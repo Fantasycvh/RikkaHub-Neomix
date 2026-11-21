@@ -80,14 +80,35 @@ class Fixture(BaseHTTPRequestHandler):
             image = body.get("image", "")
             header, _, content = image.partition(",")
             self.record(path=self.path, prompt=prompt, model=body["model"], size=body.get("image_size"),
+                        requestId=body.get("requestId"),
                         hasImage=header in ("data:image/png;base64", "data:image/jpeg;base64")
                         and image_bytes(base64.b64decode(content)))
-            if prompt.endswith("-unknown"):
+            # 受理可见性开关（/control/submit-visibility）：模拟「实际受理但响应丢失」与
+            # 「根本没收到」两种提交窗口。只有 normal / accepted_lost 会真正落任务，
+            # never_received 挂住连接但不落任务——之后对账查无（404）。
+            accepted = self.server.submit_visibility != "never_received"
+            if accepted and body.get("requestId"):
+                with self.server.lock:
+                    self.server.tasks[body["requestId"]] = {
+                        "requestId": body["requestId"], "prompt": prompt, "model": body["model"],
+                    }
+            if prompt.endswith("-unknown") or self.server.submit_visibility != "normal":
                 self.server.unknown_release.wait(60)
             try:
                 self.send_json({"requestId": prompt})
             except (BrokenPipeError, ConnectionResetError):
                 pass
+        elif self.path == "/v1/video/reconcile":
+            # 假想厂商接口：按提交时下发的对账键查回任务。查无时 404——客户端据此
+            # 区分「服务端确认没收到（重试安全）」与「暂时查不了（下次启动再对账）」。
+            key = body["requestId"]
+            with self.server.lock:
+                known = key in self.server.tasks
+            self.record(path=self.path, requestId=key, found=known)
+            if not known:
+                self.send_error(404)
+                return
+            self.send_json({"requestId": key, "status": "InProgress"})
         elif self.path == "/v1/video/status":
             identifier = body["requestId"]
             self.record(path=self.path, prompt=identifier)
@@ -99,6 +120,11 @@ class Fixture(BaseHTTPRequestHandler):
                     "videos": [{"url": f"http://127.0.0.1:{self.server.server_port}/fixture.mp4"}],
                 },
             })
+        elif self.path == "/control/submit-visibility":
+            mode = body.get("mode", "normal")
+            self.server.submit_visibility = mode
+            self.record(path=self.path, mode=mode)
+            self.send_json({"mode": mode})
         elif self.path == "/control/release":
             with self.server.lock:
                 self.server.released.add(body["requestId"])
@@ -142,6 +168,8 @@ if __name__ == "__main__":
         server.video = args.video.read_bytes()
         server.trace = []
         server.released = set()
+        server.tasks = {}
+        server.submit_visibility = "normal"
         server.lock = threading.Lock()
         server.unknown_release = threading.Event()
         print(f"media fixture listening on {server.server_port}", flush=True)

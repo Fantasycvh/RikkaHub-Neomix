@@ -92,6 +92,25 @@ class MediaGenerationManager(
         return typed.supportsQuery(setting, model.kind)
     }
 
+    /** 该供应商的这个模型是否支持按对账键对账（上层据此决定中断记录能否自动找回）。 */
+    fun supportsReconciliation(setting: MediaGenerationProviderSetting, model: MediaGenerationModel): Boolean {
+        val adapter = provider(setting) ?: return false
+        if (model.kind !in setting.supportedKinds) return false
+        @Suppress("UNCHECKED_CAST")
+        val typed = adapter as MediaGenerationProvider<MediaGenerationProviderSetting>
+        return typed.supportsReconciliation(setting, model.kind)
+    }
+
+    suspend fun queryByRequestId(
+        setting: MediaGenerationProviderSetting,
+        model: MediaGenerationModel,
+        requestId: String,
+    ): Result<MediaGenerationTask> = withContext(Dispatchers.Default) {
+        val adapter = provider(setting) ?: return@withContext unsupportedProvider(setting)
+        unsupportedKind(adapter, setting, model)
+            ?: adapter.queryByRequestIdUnsafe(setting, model, requestId)
+    }
+
     /**
      * 拉取厂商可用的媒体模型。未接入或没有列表接口的供应商返回 [UnsupportedOperationException]，
      * 与 [create] / [query] 的「Provider not ported yet」保持同一口径。
@@ -150,4 +169,13 @@ class MediaGenerationManager(
         taskId: String,
     ): Result<MediaGenerationTask> =
         (this as MediaGenerationProvider<MediaGenerationProviderSetting>).query(setting, model, taskId)
+
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun MediaGenerationProvider<*>.queryByRequestIdUnsafe(
+        setting: MediaGenerationProviderSetting,
+        model: MediaGenerationModel,
+        requestId: String,
+    ): Result<MediaGenerationTask> =
+        (this as MediaGenerationProvider<MediaGenerationProviderSetting>)
+            .queryByRequestId(setting, model, requestId)
 }

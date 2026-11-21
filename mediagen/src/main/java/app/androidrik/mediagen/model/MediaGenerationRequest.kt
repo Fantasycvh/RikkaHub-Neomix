@@ -11,10 +11,15 @@ import kotlinx.serialization.json.JsonObject
  *
  * [extraParameters] 用于尚未进入公共抽象的供应商参数。适配器会先写入这些参数，再用公共字段
  * 覆盖同名项，避免调用方绕过公共字段的统一语义。
+ *
+ * [requestId] 是对账键：调用方在提交前生成并落库，随提交请求一起下发。支持按请求 ID 对账的
+ * 供应商（[app.androidrik.mediagen.provider.MediaGenerationProvider.supportsReconciliation]）
+ * 会把它写进提交载荷，进程在提交窗口中断后按它找回服务端任务；不支持的供应商忽略此字段。
  */
 @Serializable
 data class MediaGenerationRequest(
     val prompt: String? = null,
+    val requestId: String? = null,
     val inputs: List<MediaGenerationInput> = emptyList(),
     val count: Int? = null,
     val resolution: String? = null,

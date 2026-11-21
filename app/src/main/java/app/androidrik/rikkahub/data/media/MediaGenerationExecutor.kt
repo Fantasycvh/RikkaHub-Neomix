@@ -69,4 +69,17 @@ class MediaGenerationExecutor(
         target: MediaGenerationTarget.Media,
         taskId: String,
     ): Result<MediaGenerationTask> = mediaGenerationManager.query(target.provider, target.model, taskId)
+
+    /** 该供应商的这个模型是否支持按对账键对账（启动期据此决定 SUBMIT_UNKNOWN 记录能否自动找回）。 */
+    internal fun supportsReconciliation(
+        provider: MediaGenerationProviderSetting,
+        model: MediaGenerationModel,
+    ): Boolean = mediaGenerationManager.supportsReconciliation(provider, model)
+
+    /** 按提交时下发的对账键查询服务端任务（只读，任何结果都不会重新提交）。 */
+    internal suspend fun queryByRequestId(
+        provider: MediaGenerationProviderSetting,
+        model: MediaGenerationModel,
+        requestId: String,
+    ): Result<MediaGenerationTask> = mediaGenerationManager.queryByRequestId(provider, model, requestId)
 }

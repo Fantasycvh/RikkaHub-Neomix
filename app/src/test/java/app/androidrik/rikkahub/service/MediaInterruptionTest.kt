@@ -1,12 +1,19 @@
 package app.androidrik.rikkahub.service
 
+import app.androidrik.mediagen.model.MediaGenerationTask
+import app.androidrik.mediagen.model.MediaGenerationStatus
+import app.androidrik.mediagen.provider.providers.MediaGenerationApiException
 import app.androidrik.rikkahub.data.model.MediaCreationStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.io.IOException
 
 /**
  * 进程中断处置的窗口分析：设计稿「统一运行记录与恢复语义」的验收点——
  * 进程在远端响应、本地写入和结果下载之间退出时，各自落到正确的处置。
+ *
+ * 请求 ID 对账（classifyReconciliation）的口径也在这个文件：对账是只读查询，
+ * 三种结果各自落到「转回可续查 / 维持待确认 / 下次启动再对账」，任何分支都不重新提交。
  */
 class MediaInterruptionTest {
     private fun outcome(taskId: String?, status: MediaCreationStatus) =
@@ -39,5 +46,50 @@ class MediaInterruptionTest {
         assertEquals(MediaInterruptionOutcome.MARK_FAILED, outcome(null, MediaCreationStatus.SUCCEEDED))
         assertEquals(MediaInterruptionOutcome.MARK_FAILED, outcome(null, MediaCreationStatus.FAILED))
         assertEquals(MediaInterruptionOutcome.MARK_FAILED, outcome(null, MediaCreationStatus.CANCELLED))
+    }
+
+    private fun apiError(statusCode: Int) = MediaGenerationApiException(
+        provider = "siliconflow",
+        statusCode = statusCode,
+        code = "20012",
+        message = "Task not found",
+    )
+
+    private fun task(id: String = "req-1") =
+        MediaGenerationTask(id = id, provider = "siliconflow", status = MediaGenerationStatus.RUNNING)
+
+    @Test
+    fun `reconciliation finding the task resumes the query`() {
+        listOf(
+            Result.success(task("req-9")),
+            // 查到终态任务也一样：写回任务 ID 后走正常查询路径收尾（下载或落失败）
+            Result.success(task("req-9").copy(status = MediaGenerationStatus.SUCCEEDED)),
+        ).forEach { result ->
+            assertEquals(
+                MediaReconciliationDisposition.Resume("req-9"),
+                classifyReconciliation(result),
+            )
+        }
+    }
+
+    @Test
+    fun `reconciliation 404 confirms the request never landed`() {
+        assertEquals(
+            MediaReconciliationDisposition.ConfirmAbsent,
+            classifyReconciliation(Result.failure(apiError(404))),
+        )
+    }
+
+    @Test
+    fun `transient reconciliation failures defer to the next startup`() {
+        // 网络、限流、服务端异常都不升级成「确认没收到」：保持原状下次再对账
+        listOf(
+            Result.failure<MediaGenerationTask>(apiError(429)),
+            Result.failure<MediaGenerationTask>(apiError(500)),
+            Result.failure<MediaGenerationTask>(apiError(400)),
+            Result.failure<MediaGenerationTask>(IOException("network dropped")),
+        ).forEach { result ->
+            assertEquals(MediaReconciliationDisposition.RetryLater, classifyReconciliation(result))
+        }
     }
 }

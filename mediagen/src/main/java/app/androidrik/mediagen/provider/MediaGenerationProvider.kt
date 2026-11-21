@@ -38,4 +38,25 @@ interface MediaGenerationProvider<S : MediaGenerationProviderSetting> {
      * 提交窗口内进程中断时，这类接口既无法续查也无法对账，只能重新提交。
      */
     fun supportsQuery(setting: S, kind: MediaKind): Boolean = false
+
+    /**
+     * 提交时是否随载荷下发对账键（[MediaGenerationRequest.requestId]），并支持提交窗口中断后
+     * 按 [queryByRequestId] 找回服务端任务。返回 false 的供应商，中断记录只能交由用户处置。
+     */
+    fun supportsReconciliation(setting: S, kind: MediaKind): Boolean = false
+
+    /**
+     * 按提交时下发的对账键查询服务端任务，响应形态与 [query] 相同。查无此任务时抛
+     * 404 类 [app.androidrik.mediagen.provider.providers.MediaGenerationApiException]，
+     * 上层据此区分「服务端确认没收到」与「暂时查不了」。
+     */
+    suspend fun queryByRequestId(
+        setting: S,
+        model: MediaGenerationModel,
+        requestId: String,
+    ): Result<MediaGenerationTask> = Result.failure(
+        UnsupportedOperationException(
+            "$id ${model.kind} generation does not support reconciliation by request id"
+        )
+    )
 }

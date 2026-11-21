@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
@@ -104,12 +105,34 @@ class SiliconFlowMediaGenerationProvider(
         parseTask(client.withProxy(setting).executeJson(httpRequest, id), taskId, model.modelId)
     }
 
+    /**
+     * 按提交时下发的对账键查回任务。响应形态与 status 相同；查无时接口以 404 拒绝，
+     * [MediaGenerationApiException] 原样透出，上层据此判定「服务端确认没收到」。
+     */
+    override suspend fun queryByRequestId(
+        setting: MediaGenerationProviderSetting.SiliconFlow,
+        model: MediaGenerationModel,
+        requestId: String,
+    ): Result<MediaGenerationTask> = runCatching {
+        val body = buildJsonObject { put("requestId", requestId) }
+        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/video/reconcile", apiKey(setting))
+            .modelHeaders(model)
+            .postJson(body)
+            .build()
+        parseTask(client.withProxy(setting).executeJson(httpRequest, id), requestId, model.modelId)
+    }
+
     /** 模型级自定义请求头（M3a-2 parity，与 OpenAI 适配器同语义）。 */
     private fun Request.Builder.modelHeaders(model: MediaGenerationModel): Request.Builder = apply {
         model.customHeaders.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
     }
 
     override fun supportsQuery(
+        setting: MediaGenerationProviderSetting.SiliconFlow,
+        kind: MediaKind,
+    ): Boolean = kind == MediaKind.VIDEO
+
+    override fun supportsReconciliation(
         setting: MediaGenerationProviderSetting.SiliconFlow,
         kind: MediaKind,
     ): Boolean = kind == MediaKind.VIDEO
@@ -144,6 +167,11 @@ class SiliconFlowMediaGenerationProvider(
     }
         // 模型级 customBodies 最后合并：custom 值可覆盖公共字段（与 OpenAI 适配器同语义）
         .mergeCustomBody(model.customBodies)
+        // 对账键在 custom body 之后追加：它是协议字段，不允许被自定义载荷覆盖
+        .let { body ->
+            request.requestId?.let { requestId -> JsonObject(body + ("requestId" to JsonPrimitive(requestId))) }
+                ?: body
+        }
 
     internal fun parseTask(
         root: JsonObject,

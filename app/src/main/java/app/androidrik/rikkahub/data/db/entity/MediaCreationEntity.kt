@@ -99,6 +99,8 @@ data class MediaCreationRecordEntity(
     val status: String,
     @ColumnInfo("task_id")
     val taskId: String?,
+    @ColumnInfo("request_id")
+    val requestId: String? = null,
     @ColumnInfo("error")
     val error: String?,
     @ColumnInfo("outputs")
