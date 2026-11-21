@@ -873,6 +873,7 @@
   <string name="more_options">更多選項</string>
   <string name="no_text_content_to_copy">暫無可複製的文字內容</string>
   <string name="notification_channel_chat_completed">聊天完成</string>
+  <string name="notification_channel_scheduled_run">定時任務</string>
   <string name="notification_channel_chat_live_update">聊天生成進度</string>
   <string name="notification_channel_web_server">網頁伺服器</string>
   <string name="notification_live_update_chip_thinking">思考中</string>
@@ -3359,6 +3360,10 @@
   <string name="stats_page_tool_billing_search">搜尋</string>
   <string name="stats_page_tool_billing_fetch">抓取</string>
   <string name="stats_page_tool_billing_image">圖片</string>
+  <string name="stats_page_source_media">媒體生成</string>
+  <string name="stats_page_media_generated">媒體生成</string>
+  <string name="stats_page_media_image_count">%1$d 張圖像</string>
+  <string name="stats_page_media_video_seconds">%1$s 秒影片</string>
   <string name="stats_page_ocr_pages">OCR 頁數（估算）</string>
   <string name="setting_provider_page_deepseek_safety_check">內容安全審核（DeepSeek）</string>
   <string name="setting_provider_page_deepseek_safety_check_desc">開啟 safety_check（對外提供服務時官方要求）；會引入拒答行為與額外審核 token 計費</string>

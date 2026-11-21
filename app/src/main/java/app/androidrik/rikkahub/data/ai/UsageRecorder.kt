@@ -13,6 +13,7 @@ import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.rikkahub.data.db.dao.UsageRecordDAO
 import app.androidrik.rikkahub.data.db.entity.UsageRecordEntity
 import kotlin.uuid.Uuid
@@ -49,6 +50,9 @@ enum class UsageSource {
 
     /** 图片 OCR 转文字 */
     OCR,
+
+    /** 媒体生成（生图/生视频；手动创作、聊天工具与定时模板三分支共用一个来源标签） */
+    MEDIA,
 }
 
 /**
@@ -112,6 +116,54 @@ class UsageRecorder(
         scope.launch {
             runCatching { dao.insert(record) }
                 .onFailure { Log.w(TAG, "Failed to record OCR pages", it) }
+        }
+    }
+
+    /**
+     * 记一行**媒体生成**流水（统一媒体线三分支共用：手动创作、聊天工具、定时模板）。
+     *
+     * 与 [recordOcrPages] 同款形态：媒体接口多数不给 TokenUsage（OpenAI 图像按张、
+     * SiliconFlow 视频按秒计费），**绕开零 token 行丢弃闸门**——张数/秒数才是这里的计费单位。
+     * `totalTokens` 有值时映射到 `completion_tokens`（让合计列能对上；媒体接口不拆 prompt/completion）。
+     *
+     * 只在 SUCCEEDED 终态调用（失败任务各已接入供应商均不计费）；调用方见
+     * `MediaGenerationExecutor.recordMediaTask` 的两个落点。媒体会话 id 存
+     * `conversation_id` 列仅作排查（与 [UsageTag] 对该列的口径一致，统计不按它分组）。
+     * 金额估算挂账：媒体刊例价因供应商×模型差异大，先只落数量/时长。
+     */
+    fun recordMediaGeneration(
+        providerId: Uuid,
+        providerName: String,
+        modelId: Uuid,
+        modelName: String,
+        kind: MediaKind,
+        imageCount: Int,
+        videoSeconds: Double?,
+        totalTokens: Long?,
+        mediaSessionId: Uuid?,
+    ) {
+        if (imageCount <= 0 &&
+            (videoSeconds == null || videoSeconds <= 0.0) &&
+            (totalTokens == null || totalTokens <= 0)
+        ) return
+        val record = UsageRecordEntity(
+            createdAt = System.currentTimeMillis(),
+            source = UsageSource.MEDIA.name,
+            providerId = providerId.toString(),
+            providerName = providerName.takeIf { it.isNotBlank() },
+            modelId = modelId.toString(),
+            modelName = modelName.takeIf { it.isNotBlank() },
+            assistantId = null,
+            conversationId = mediaSessionId?.toString(),
+            promptTokens = 0,
+            completionTokens = totalTokens?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: 0,
+            cachedTokens = 0,
+            imageCount = imageCount,
+            videoSeconds = videoSeconds ?: 0.0,
+        )
+        scope.launch {
+            runCatching { dao.insert(record) }
+                .onFailure { Log.w(TAG, "Failed to record media generation", it) }
         }
     }
 

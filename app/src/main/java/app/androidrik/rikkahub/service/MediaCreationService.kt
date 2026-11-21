@@ -4,8 +4,6 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.ProcessLifecycleOwner
 import app.androidrik.common.android.sanitizeSensitiveText
 import app.androidrik.common.http.await
 import app.androidrik.mediagen.model.MediaGenerationOutput
@@ -19,9 +17,11 @@ import app.androidrik.rikkahub.MEDIA_CREATION_NOTIFICATION_CHANNEL_ID
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.awaitLoaded
+import app.androidrik.rikkahub.data.ai.UsageRecorder
 import app.androidrik.rikkahub.data.files.MediaCreationFiles
 import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.data.media.MediaGenerationExecutor
+import app.androidrik.rikkahub.data.media.recordMediaTask
 import app.androidrik.rikkahub.data.media.MediaGenerationTarget
 import app.androidrik.rikkahub.data.media.MediaModelOption
 import app.androidrik.rikkahub.data.media.resolveMediaRecord
@@ -33,7 +33,6 @@ import app.androidrik.rikkahub.data.model.MediaCreationStatus
 import app.androidrik.rikkahub.data.model.buildMediaGenerationRequest
 import app.androidrik.rikkahub.data.model.supportedBy
 import app.androidrik.rikkahub.data.repository.MediaCreationRepository
-import app.androidrik.rikkahub.utils.sendNotification
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -97,6 +96,7 @@ class MediaCreationService(
     private val executor: MediaGenerationExecutor,
     private val remoteFileStore: RemoteFileStore,
     private val okHttpClient: OkHttpClient,
+    private val usageRecorder: UsageRecorder,
 ) {
     private val jobs = ConcurrentHashMap<Uuid, Job>()
 
@@ -356,6 +356,11 @@ class MediaCreationService(
             return
         }
 
+        // 用量流水：SUCCEEDED 终态按张/秒入账（手动创作与定时模板共用此分支；聊天工具在 executor 侧记）
+        usageRecorder.recordMediaTask(
+            requireNotNull(option.mediaProvider), option.model, task, mediaSessionId = record.sessionId,
+        )
+
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.DOWNLOADING) }
         val outputs = downloadOutputs(option.mediaProvider, record, task.outputs)
         repository.updateRecord(record.id) {
@@ -564,8 +569,8 @@ class MediaCreationService(
 
     private fun notifyFinished(record: MediaCreationRecord) {
         if (record.status != MediaCreationStatus.SUCCEEDED && record.status != MediaCreationStatus.FAILED) return
-        // 应用在前台时时间线上已经能看到结果
-        if (ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
+        // 应用在前台时时间线上已经能看到结果（媒体域的抑制策略：前台静默）
+        if (CompletionNotifications.isAppForeground()) return
         val isVideo = record.kind == MediaKind.VIDEO
         val succeeded = record.status == MediaCreationStatus.SUCCEEDED
         val titleRes = when {
@@ -574,9 +579,9 @@ class MediaCreationService(
             succeeded -> R.string.media_creation_notification_image_succeeded
             else -> R.string.media_creation_notification_image_failed
         }
-        context.sendNotification(
+        context.notifyCompletion(
             channelId = MEDIA_CREATION_NOTIFICATION_CHANNEL_ID,
-            notificationId = record.id.hashCode(),
+            notificationId = NotificationIds.mediaFinished(record.id.toString()),
         ) {
             title = context.getString(titleRes)
             content = record.error?.takeIf { record.status == MediaCreationStatus.FAILED }

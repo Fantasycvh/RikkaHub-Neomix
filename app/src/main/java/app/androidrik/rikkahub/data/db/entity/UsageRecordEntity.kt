@@ -70,4 +70,16 @@ data class UsageRecordEntity(
     val toolFetchCount: Int = 0,
     @ColumnInfo(name = "tool_image_search_count", defaultValue = "0")
     val toolImageSearchCount: Int = 0,
+    /**
+     * 媒体生成的**产出张数**（usage 缺省时按任务 outputs 计，见
+     * [app.androidrik.rikkahub.data.ai.UsageRecorder.recordMediaGeneration]）。
+     * 非媒体行恒 0；金额估算挂账——媒体刊例价因供应商×模型差异大，先只落数量。
+     */
+    @ColumnInfo(name = "image_count", defaultValue = "0")
+    val imageCount: Int = 0,
+    /**
+     * 媒体生成的视频秒数（SiliconFlow 返回 results.timings.inference）。非视频行恒 0。
+     */
+    @ColumnInfo(name = "video_seconds", defaultValue = "0")
+    val videoSeconds: Double = 0.0,
 )

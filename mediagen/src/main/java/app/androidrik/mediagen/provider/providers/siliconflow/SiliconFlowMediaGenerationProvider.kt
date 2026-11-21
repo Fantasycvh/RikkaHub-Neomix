@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import app.androidrik.mediagen.model.MediaGenerationUsage
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -188,12 +189,22 @@ class SiliconFlowMediaGenerationProvider(
         } else {
             emptyList()
         }
+        // 推理耗时（秒）是 SiliconFlow 的计费单位：结果里带上，用量流水按秒入账
+        val usage = if (status == MediaGenerationStatus.SUCCEEDED) {
+            root.obj("results")?.obj("timings")?.let { timings ->
+                (timings["inference"] as? JsonPrimitive)?.content?.toDoubleOrNull()
+                    ?.let { MediaGenerationUsage(totalSeconds = it) }
+            }
+        } else {
+            null
+        }
         return MediaGenerationTask(
             id = root.string("requestId") ?: taskId,
             provider = id,
             model = root.string("model") ?: fallbackModel,
             status = status,
             outputs = outputs,
+            usage = usage,
             error = root.string("reason")?.let { MediaGenerationError(message = it) },
             metadata = root,
         )

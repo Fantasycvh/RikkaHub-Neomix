@@ -7,6 +7,7 @@ import app.androidrik.mediagen.model.MediaGenerationStatus
 import app.androidrik.mediagen.model.MediaGenerationTask
 import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import app.androidrik.rikkahub.data.ai.UsageRecorder
 import app.androidrik.common.http.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -36,6 +37,7 @@ internal sealed interface MediaGenerationTarget {
 class MediaGenerationExecutor(
     private val mediaGenerationManager: MediaGenerationManager,
     private val downloadClient: OkHttpClient = OkHttpClient(),
+    private val usageRecorder: UsageRecorder? = null,
 ) {
     internal fun images(target: MediaGenerationTarget.Media, request: MediaGenerationRequest): Flow<ImageGenerationItem> =
         flow {
@@ -43,6 +45,8 @@ class MediaGenerationExecutor(
             check(task.status == MediaGenerationStatus.SUCCEEDED) {
                 task.error?.message ?: "Image generation did not complete"
             }
+            // 聊天工具分支的用量入账（手动创作/定时模板在 MediaCreationService 侧记）
+            usageRecorder?.recordMediaTask(target.provider, target.model, task, mediaSessionId = null)
             for (output in task.outputs) {
                 val data = output.data ?: downloadClient.newCall(
                     Request.Builder().url(requireNotNull(output.url)).build(),

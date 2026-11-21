@@ -96,9 +96,10 @@ class ChatNotificationManager(
         senderName: String,
         contentPreview: String
     ) {
-        context.sendNotification(
+        context.notifyCompletion(
             channelId = CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
-            notificationId = 1
+            // 固定 id=1 的覆盖语义保留（并发多个会话完成时只显示最后一条），已登记 NotificationIds
+            notificationId = NotificationIds.chatGenerationDone()
         ) {
             title = senderName
             content = contentPreview

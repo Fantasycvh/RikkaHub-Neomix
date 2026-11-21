@@ -28,7 +28,9 @@ interface UsageRecordDAO {
             "COALESCE(SUM(page_count), 0) AS pageCount, " +
             "COALESCE(SUM(tool_search_count), 0) AS toolSearch, " +
             "COALESCE(SUM(tool_fetch_count), 0) AS toolFetch, " +
-            "COALESCE(SUM(tool_image_search_count), 0) AS toolImageSearch " +
+            "COALESCE(SUM(tool_image_search_count), 0) AS toolImageSearch, " +
+            "COALESCE(SUM(image_count), 0) AS imageCount, " +
+            "COALESCE(SUM(video_seconds), 0) AS videoSeconds " +
             "FROM usage_record WHERE created_at >= :since AND (:until IS NULL OR created_at < :until) " +
             "AND (:providerKey IS NULL OR COALESCE(provider_id, provider_name) = :providerKey) " +
             "AND (:modelKey IS NULL OR COALESCE(model_id, model_name) = :modelKey)"
@@ -149,6 +151,10 @@ data class UsageTotals(
     val toolSearch: Long = 0,
     val toolFetch: Long = 0,
     val toolImageSearch: Long = 0,
+    /** 媒体生成产出张数（image_count 列合计；usage 缺省按任务产出计） */
+    val imageCount: Long = 0,
+    /** 媒体生成视频秒数合计（video_seconds 列合计；usage 缺省的供应商不记秒） */
+    val videoSeconds: Double = 0.0,
 ) {
     val totalTokens: Long get() = promptTokens + completionTokens
 }

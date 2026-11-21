@@ -9,7 +9,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.rikkahub.CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID
+import app.androidrik.rikkahub.SCHEDULED_RUN_NOTIFICATION_CHANNEL_ID
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.conversationIntent
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -564,9 +564,9 @@ class ScheduledTaskRunner(
                 append('\n').append(forcePassNote(loopGate.missingAtForcePass))
             }
         }
-        context.sendNotification(
-            channelId = CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID,
-            notificationId = task.id.hashCode() + NOTIFICATION_ID_OFFSET,
+        context.notifyCompletion(
+            channelId = SCHEDULED_RUN_NOTIFICATION_CHANNEL_ID,
+            notificationId = NotificationIds.scheduledTaskFinished(task.id),
         ) {
             title = context.getString(titleRes)
             content = contentText
@@ -604,9 +604,6 @@ class ScheduledTaskRunner(
          * 的 Job 反查（见 `runInjected`）。
          */
         val JOB_ATTACH_TIMEOUT = 5.seconds
-
-        /** 与 ChatNotificationManager 的会话通知 id（+10000）错开 */
-        const val NOTIFICATION_ID_OFFSET = 30000
     }
 }
 

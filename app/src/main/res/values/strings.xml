@@ -839,6 +839,7 @@
   <string name="more_options">More options</string>
   <string name="no_text_content_to_copy">No text content available to copy</string>
   <string name="notification_channel_chat_completed">Chat Completed</string>
+  <string name="notification_channel_scheduled_run">Scheduled Tasks</string>
   <string name="notification_channel_chat_live_update">Chat Generation Progress</string>
   <string name="notification_channel_web_server">Web Server</string>
   <string name="notification_live_update_chip_thinking">Thinking</string>
@@ -3367,6 +3368,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="stats_page_tool_billing_search">Search</string>
   <string name="stats_page_tool_billing_fetch">Fetch</string>
   <string name="stats_page_tool_billing_image">Image</string>
+  <string name="stats_page_source_media">Media</string>
+  <string name="stats_page_media_generated">Media generated</string>
+  <string name="stats_page_media_image_count">%1$d images</string>
+  <string name="stats_page_media_video_seconds">%1$s s video</string>
   <string name="stats_page_ocr_pages">OCR Pages</string>
   <string name="setting_provider_page_deepseek_safety_check">Content Safety (DeepSeek)</string>
   <string name="setting_provider_page_deepseek_safety_check_desc">Enable safety_check for public-facing services; adds refusal behavior and extra moderation token billing</string>

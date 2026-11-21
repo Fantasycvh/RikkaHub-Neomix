@@ -6,10 +6,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.document.DocxParser
-import app.androidrik.document.EpubParser
-import app.androidrik.document.PdfParser
-import app.androidrik.document.PptxParser
+import app.androidrik.document.DocumentFormat
+import app.androidrik.document.DocumentReader
 import java.io.File
 
 object DocumentAsPromptTransformer : InputMessageTransformer {
@@ -46,22 +44,6 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
         }
     }
 
-    private fun parsePdfAsText(file: File): String {
-        return PdfParser.parserPdf(file)
-    }
-
-    private fun parseDocxAsText(file: File): String {
-        return DocxParser.parse(file)
-    }
-
-    private fun parsePptxAsText(file: File): String {
-        return PptxParser.parse(file)
-    }
-
-    private fun parseEpubAsText(file: File): String {
-        return EpubParser.parse(file)
-    }
-
     // 上传文件保存在 filesDir/upload 下, 该目录通过 proot 挂载到 workspace 的 /upload
     // 返回文件在 workspace 内的绝对路径, 便于 AI 用 workspace 工具直接读取原始文件
     private fun resolveWorkspacePath(document: UIMessagePart.Document): String? {
@@ -79,12 +61,12 @@ object DocumentAsPromptTransformer : InputMessageTransformer {
             return "[ERROR, file not found: ${document.fileName}]"
         }
         return runCatching {
-            when (document.mime) {
-                "application/pdf" -> parsePdfAsText(file)
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> parseDocxAsText(file)
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> parsePptxAsText(file)
-                "application/epub+zip" -> parseEpubAsText(file)
-                else -> file.readText()
+            // MIME 是比文件名更权威的格式来源（DocumentFormat.fromMime）；识别不了的类型按文本读
+            val format = DocumentFormat.fromMime(document.mime)
+            if (format == null) {
+                file.readText()
+            } else {
+                DocumentReader.readAllText(format, file)
             }.take(MAX_DOCUMENT_PROMPT_CHARS)
         }.getOrElse {
             "[ERROR, failed to read file: ${document.fileName}]"

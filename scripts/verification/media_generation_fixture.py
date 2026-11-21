@@ -115,11 +115,14 @@ class Fixture(BaseHTTPRequestHandler):
             with self.server.lock:
                 released = identifier in self.server.released
             waiting = identifier.endswith(("-resume", "-cancel")) and not released
-            self.send_json({"status": "InProgress"} if waiting else {
-                "status": "Succeed", "results": {
+            if waiting:
+                self.send_json({"status": "InProgress"})
+            else:
+                # timings.inference（秒）是 SiliconFlow 的计费单位：用量流水按它入账
+                self.send_json({"status": "Succeed", "results": {
                     "videos": [{"url": f"http://127.0.0.1:{self.server.server_port}/fixture.mp4"}],
-                },
-            })
+                    "timings": {"inference": 42.5},
+                }})
         elif self.path == "/control/submit-visibility":
             mode = body.get("mode", "normal")
             self.server.submit_visibility = mode

@@ -83,6 +83,7 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.GlobalSearch
 import me.rerere.hugeicons.stroke.File01
+import me.rerere.hugeicons.stroke.Image02
 import me.rerere.hugeicons.stroke.ChartColumn
 import me.rerere.hugeicons.stroke.Download04
 import me.rerere.hugeicons.stroke.Message01
@@ -773,6 +774,23 @@ private fun UsageTotalsGrid(usage: UsageStats, modifier: Modifier = Modifier) {
                 )
             }
         }
+        // 媒体生成行（张/秒）：只落数量不估金额——媒体刊例价因供应商×模型而异（评估稿 ①）
+        if (totals.imageCount > 0 || totals.videoSeconds > 0.0) {
+            val mediaParts = buildList {
+                if (totals.imageCount > 0) {
+                    add(stringResource(R.string.stats_page_media_image_count, totals.imageCount.toInt()))
+                }
+                if (totals.videoSeconds > 0.0) {
+                    add(stringResource(R.string.stats_page_media_video_seconds, "%.0f".format(totals.videoSeconds)))
+                }
+            }
+            StatCard(
+                modifier = Modifier.fillMaxWidth(),
+                icon = HugeIcons.Image02,
+                label = stringResource(R.string.stats_page_media_generated),
+                value = mediaParts.joinToString(" · "),
+            )
+        }
     }
 }
 
@@ -1108,6 +1126,7 @@ private fun sourceLabel(source: SourceUsage): String {
             UsageSource.TRANSLATION -> R.string.stats_page_source_translation
             UsageSource.MEMORY -> R.string.stats_page_source_memory
             UsageSource.OCR -> R.string.stats_page_source_ocr
+            UsageSource.MEDIA -> R.string.stats_page_source_media
         }
     )
 }

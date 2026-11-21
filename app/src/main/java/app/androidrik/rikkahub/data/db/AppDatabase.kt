@@ -96,7 +96,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 77,
+    version = 78,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -231,6 +231,11 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 无需回填：null = 提交前生成前中断或旧版本记录，对账时按不可对账的口径交由用户处置）。
         // 见 docs/design/in-progress/design-unified-media-generation.md「按请求 ID 对账」
         AutoMigration(from = 76, to = 77),
+        // 77→78：用量流水加媒体计费单位（usage_record.image_count / video_seconds，
+        // NOT NULL + DEFAULT 0 ⇒ 免 spec）。媒体生成按张/秒计费、多无 TokenUsage，
+        // 与 OCR 按页行同款绕开零 token 闸门；金额估算挂账（刊例价因供应商×模型而异）。
+        // 见 docs/design/drafts/design-interface-convergence-round2.md ①
+        AutoMigration(from = 77, to = 78),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -291,7 +296,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 77
+        const val SCHEMA_VERSION = 78
     }
 }
 

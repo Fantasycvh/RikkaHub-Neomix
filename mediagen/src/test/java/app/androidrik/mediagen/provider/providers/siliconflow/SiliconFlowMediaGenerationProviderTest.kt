@@ -209,6 +209,33 @@ class SiliconFlowMediaGenerationProviderTest {
         assertTrue(task.isTerminal)
         assertEquals("内容审核未通过", task.error?.message)
         assertTrue(task.outputs.isEmpty())
+        // 失败任务不带 usage：用量流水只记 SUCCEEDED 终态
+        assertNull(task.usage)
+    }
+
+    @Test
+    fun succeededTaskCarriesInferenceSecondsAsUsage() = runBlocking {
+        val manager = MediaGenerationManager(fakeClient {
+            jsonResponse(
+                it,
+                """
+                    {
+                      "status": "Succeed",
+                      "results": {
+                        "videos": [{"url": "https://cdn.example.com/out.mp4"}],
+                        "timings": {"inference": 12.3}
+                      }
+                    }
+                """.trimIndent(),
+            )
+        })
+
+        val task = manager.query(setting, textToVideoModel, "req-4").getOrThrow()
+
+        assertEquals(MediaGenerationStatus.SUCCEEDED, task.status)
+        // 推理耗时（秒）是 SiliconFlow 的计费单位：进 usage 供用量流水按秒入账
+        assertEquals(12.3, task.usage?.totalSeconds!!, 1e-9)
+        assertNull(task.usage?.inputImageCount)
     }
 
     @Test

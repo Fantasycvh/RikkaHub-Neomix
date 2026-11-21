@@ -98,6 +98,13 @@ const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 const val KEEP_ALIVE_NOTIFICATION_CHANNEL_ID = "keep_alive"
 const val MEDIA_CREATION_NOTIFICATION_CHANNEL_ID = "media_creation"
 
+/**
+ * 定时任务终态通知渠道（评估稿 ③ 渠道拆分）：从复用的 chat_completed 独立出来——
+ * 用户对聊天完成通知做的设置（静音/降级）不应连带吞掉定时任务的到点提醒。
+ * 注意：已存在的用户通知偏好不会迁移，定时通知将以本渠道默认值出现（一次性变化）。
+ */
+const val SCHEDULED_RUN_NOTIFICATION_CHANNEL_ID = "scheduled_run"
+
 /** 备份/恢复长任务的通知渠道：进度常驻、静默（前台服务需要可见通知）。 */
 const val BACKUP_NOTIFICATION_CHANNEL_ID = "backup"
 
@@ -938,6 +945,12 @@ class RikkaHubApp : Application() {
             .setName(getString(R.string.media_creation_title))
             .build()
         notificationManager.createNotificationChannel(mediaCreationChannel)
+
+        val scheduledRunChannel = NotificationChannelCompat
+            .Builder(SCHEDULED_RUN_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
+            .setName(getString(R.string.notification_channel_scheduled_run))
+            .build()
+        notificationManager.createNotificationChannel(scheduledRunChannel)
 
         val backupChannel = NotificationChannelCompat
             .Builder(BACKUP_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)

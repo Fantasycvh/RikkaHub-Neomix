@@ -12,7 +12,8 @@ import app.androidrik.ai.tools.ocr.DeepSeekOcrClient
 import app.androidrik.ai.tools.ocr.toPromptText
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
-import app.androidrik.document.PdfParser
+import app.androidrik.document.DocumentFormat
+import app.androidrik.document.DocumentReader
 import app.androidrik.rikkahub.data.ai.UsageRecorder
 import app.androidrik.rikkahub.data.datastore.OcrBackend
 import app.androidrik.rikkahub.data.datastore.OCR_DEEPSEEK_MAX_PAGES_LIMIT
@@ -117,9 +118,12 @@ object DeepSeekDocumentOcrTransformer : InputMessageTransformer, KoinComponent {
                 throw IllegalArgumentException("file exceeds 100 MiB limit (${file.length()} bytes)")
             }
             if (document.mime == "application/pdf" && settings.ocrDeepSeekMaxPages < OCR_DEEPSEEK_MAX_PAGES_LIMIT) {
-                // PDF 页数本地预检（MuPDF 本地计数，不花钱）：防白发请求
-                val pages = PdfParser.pageCount(file)
-                check(pages <= settings.ocrDeepSeekMaxPages) {
+                // PDF 页数本地预检（MuPDF 本地计数，不花钱）：防白发请求。
+                // 格式由 mime 显式定向（fromMime），不依赖附件文件名是否带扩展名
+                val pages = DocumentReader.totalUnits(
+                    checkNotNull(DocumentFormat.fromMime(document.mime)), file,
+                )
+                check(pages >= 0 && pages <= settings.ocrDeepSeekMaxPages) {
                     "PDF has $pages pages, exceeding the configured limit (${settings.ocrDeepSeekMaxPages})"
                 }
             }

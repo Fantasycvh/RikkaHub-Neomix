@@ -64,6 +64,41 @@ class NotificationIdsTest {
     }
 
     @Test
+    fun `completion notification namespaces are stable distinct and positive`() {
+        // 完成类通知（评估稿 ③）收编进同一套命名空间：各域互异、同 id 稳定、避开保留值
+        val taskId = "11111111-1111-1111-1111-111111111111"
+        val recordId = "22222222-2222-2222-2222-222222222222"
+
+        assertEquals(
+            "同任务重复投递必须命中同一条通知",
+            NotificationIds.scheduledTaskFinished(taskId),
+            NotificationIds.scheduledTaskFinished(taskId),
+        )
+        assertEquals(
+            NotificationIds.mediaFinished(recordId),
+            NotificationIds.mediaFinished(recordId),
+        )
+        assertTrue(
+            "定时与媒体两个命名空间不得重合",
+            NotificationIds.scheduledTaskFinished(taskId) != NotificationIds.mediaFinished(recordId),
+        )
+        listOf(
+            NotificationIds.scheduledTaskFinished(taskId),
+            NotificationIds.mediaFinished(recordId),
+            NotificationIds.runCompleted(taskId),
+        ).forEach { id ->
+            assertTrue("通知 id 必须是正整数，实际 $id", id > 0)
+            assertNotEquals("聊天完成通知的固定 id 1 不得被 stableId 命中", 1, id)
+        }
+    }
+
+    @Test
+    fun `chat generation done keeps its fixed override id`() {
+        // 固定 id=1 的覆盖语义保留（并发多个会话完成时只显示最后一条），登记在册防碰撞
+        assertEquals(1, NotificationIds.chatGenerationDone())
+    }
+
+    @Test
     fun `actions get distinct request codes for the same run`() {
         val approve = NotificationIds.subagentApprovalRequestCode(
             runIds.first(),

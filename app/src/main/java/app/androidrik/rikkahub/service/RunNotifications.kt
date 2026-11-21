@@ -19,7 +19,6 @@ import app.androidrik.rikkahub.data.task.TaskStateMappings
 import app.androidrik.rikkahub.data.task.TaskVisibility
 import app.androidrik.rikkahub.utils.NotificationUtil
 import app.androidrik.rikkahub.utils.cancelNotification
-import app.androidrik.rikkahub.utils.sendNotification
 
 const val AGENT_RUN_COMPLETED_CHANNEL_ID = "agent_run_completed"
 
@@ -50,14 +49,13 @@ class RunNotifications(private val context: Context) {
     fun approvalRouteAvailable() = notificationRouteAvailable(context, SUBAGENT_APPROVAL_NOTIFICATION_CHANNEL_ID)
 
     fun completed(run: AgentRunEntity) {
-        val visible = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) &&
+        val visible = CompletionNotifications.isAppForeground() &&
             TaskVisibility.isVisible(run.id, run.parentConversationId)
         if (!shouldNotifyRunCompletion(run, visible)) return
         val manager = NotificationManagerCompat.from(context)
         manager.createNotificationChannel(NotificationChannelCompat.Builder(
             AGENT_RUN_COMPLETED_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
             .setName(context.getString(R.string.agent_run_completed_channel)).build())
-        if (!notificationRouteAvailable(context, AGENT_RUN_COMPLETED_CHANNEL_ID)) return
         val state = TaskStateMappings.fromAgentRun(run.status, run.error)
         val label = context.getString(when (state) {
             TaskState.COMPLETED -> R.string.agent_run_status_completed
@@ -68,7 +66,7 @@ class RunNotifications(private val context: Context) {
         })
         val intent = Intent(context, RouteActivity::class.java).putExtra("runId", run.id)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        context.sendNotification(AGENT_RUN_COMPLETED_CHANNEL_ID, NotificationIds.runCompleted(run.id)) {
+        context.notifyCompletion(AGENT_RUN_COMPLETED_CHANNEL_ID, NotificationIds.runCompleted(run.id)) {
             title = "${run.profileName.ifBlank { "Agent" }} · $label"
             content = (run.resultSummary ?: run.error ?: run.cancelReason ?: run.goal).take(240)
             autoCancel = true

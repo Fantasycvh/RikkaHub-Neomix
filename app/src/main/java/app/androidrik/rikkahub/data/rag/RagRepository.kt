@@ -12,10 +12,7 @@ import app.androidrik.rikkahub.data.db.dao.KnowledgeBaseDAO
 import app.androidrik.rikkahub.data.db.entity.KnowledgeBaseDocumentEntity
 import app.androidrik.rikkahub.data.db.entity.KnowledgeBaseEntity
 import app.androidrik.rikkahub.data.db.entity.KnowledgeEmbeddingEntity
-import app.androidrik.document.DocxParser
-import app.androidrik.document.EpubParser
-import app.androidrik.document.PdfParser
-import app.androidrik.document.PptxParser
+import app.androidrik.document.DocumentReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -299,13 +296,10 @@ class RagRepository(
             context.contentResolver.openInputStream(uri)?.use { input ->
                 tmp.outputStream().use { input.copyTo(it) }
             } ?: return null
-            return when (ext) {
-                "pdf" -> PdfParser.parserPdf(tmp)
-                "docx" -> DocxParser.parse(tmp)
-                "pptx" -> PptxParser.parse(tmp)
-                "epub" -> EpubParser.parse(tmp)
-                else -> null
-            }?.takeIf { it.isNotBlank() }
+            // readAllText 失败抛异常：损坏文件显式落到文档状态行（此前旧 API 把错误串当正文切块嵌入）
+            return runCatching { DocumentReader.readAllText(tmp, tmp.name) }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
         } finally {
             tmp.delete()
         }

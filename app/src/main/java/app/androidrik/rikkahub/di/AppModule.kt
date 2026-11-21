@@ -223,6 +223,7 @@ val appModule = module {
         MediaGenerationExecutor(
             mediaGenerationManager = get(),
             downloadClient = get(),
+            usageRecorder = get(),
         )
     }
 
@@ -370,6 +371,7 @@ val appModule = module {
             executor = get(),
             remoteFileStore = get(),
             okHttpClient = get(),
+            usageRecorder = get(),
         )
     }
 

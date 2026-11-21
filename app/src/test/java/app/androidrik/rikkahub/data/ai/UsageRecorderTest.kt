@@ -9,6 +9,7 @@ import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
+import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.rikkahub.data.db.dao.DayCount
 import app.androidrik.rikkahub.data.db.dao.ModelUsageRow
 import app.androidrik.rikkahub.data.db.dao.SourceUsage
@@ -27,6 +28,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.ExperimentalUuidApi
@@ -224,6 +226,77 @@ class UsageRecorderTest {
         val provider = FakeProvider(result = textResult(null))
         val wrapped = recorder().wrap(provider, tag)
         assertTrue(wrapped.listModels(setting).isEmpty())
+    }
+
+    // ---- 媒体生成行（评估稿 ①：与 OCR 按页行同款，绕开零 token 闸门） ----
+
+    @Test
+    fun `media image row records count tokens and session attribution`() = runTest {
+        val sessionId = Uuid.random()
+        recorder().recordMediaGeneration(
+            providerId = Uuid.random(),
+            providerName = "Fixture",
+            modelId = Uuid.random(),
+            modelName = "gpt-image-2",
+            kind = MediaKind.IMAGE,
+            imageCount = 2,
+            videoSeconds = null,
+            totalTokens = 1500,
+            mediaSessionId = sessionId,
+        )
+        testScheduler.advanceUntilIdle()
+
+        val record = dao.records.single()
+        assertEquals(UsageSource.MEDIA.name, record.source)
+        assertEquals("Fixture", record.providerName)
+        assertEquals(2, record.imageCount)
+        assertEquals(0.0, record.videoSeconds, 0.0)
+        // totalTokens 映射到 completion_tokens：合计列能对上（媒体接口不拆 prompt/completion）
+        assertEquals(1500, record.completionTokens)
+        assertEquals(0, record.promptTokens)
+        assertEquals(sessionId.toString(), record.conversationId)
+    }
+
+    @Test
+    fun `media video row records seconds without zero-token gate`() = runTest {
+        recorder().recordMediaGeneration(
+            providerId = Uuid.random(),
+            providerName = "SiliconFlow",
+            modelId = Uuid.random(),
+            modelName = "Wan2.2-T2V",
+            kind = MediaKind.VIDEO,
+            imageCount = 0,
+            videoSeconds = 12.3,
+            totalTokens = null,
+            mediaSessionId = null,
+        )
+        testScheduler.advanceUntilIdle()
+
+        val record = dao.records.single()
+        assertEquals(UsageSource.MEDIA.name, record.source)
+        assertEquals(12.3, record.videoSeconds, 1e-9)
+        assertEquals(0, record.imageCount)
+        assertEquals(0, record.completionTokens)
+        assertNull(record.conversationId)
+    }
+
+    @Test
+    fun `media row without any billing unit is dropped`() = runTest {
+        // 与 OCR 行同款守卫：张/秒/token 全缺的行不入账，免得流水里全是 0 行
+        recorder().recordMediaGeneration(
+            providerId = Uuid.random(),
+            providerName = "Fixture",
+            modelId = Uuid.random(),
+            modelName = "gpt-image-2",
+            kind = MediaKind.IMAGE,
+            imageCount = 0,
+            videoSeconds = null,
+            totalTokens = null,
+            mediaSessionId = null,
+        )
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(dao.records.isEmpty())
     }
 
     private class FakeProvider(

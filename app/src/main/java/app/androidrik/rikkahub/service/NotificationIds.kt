@@ -25,6 +25,19 @@ object NotificationIds {
     fun runCompleted(runId: String): Int = stableId("agent-run-completed", runId)
     fun runCompletedDetail(runId: String): Int = stableId("agent-run-completed-detail", runId)
 
+    /**
+     * 聊天生成完成通知（评估稿 ③ 收编进命名空间）。**固定 1 是行为口径**：并发多个会话
+     * 完成时后通知覆盖前通知（不叠加）——保留语义，只把值登记在册防碰撞。
+     */
+    const val CHAT_GENERATION_DONE = 1
+    fun chatGenerationDone(): Int = CHAT_GENERATION_DONE
+
+    /** 定时任务终态通知（原 `task.id.hashCode() + 30000`；FNV 稳定 id，跨版本不漂移）。 */
+    fun scheduledTaskFinished(taskId: String): Int = stableId("scheduled-task-finished", taskId)
+
+    /** 媒体创作终态通知（原 `record.id.hashCode()`；Uuid.hashCode 跨版本无保证）。 */
+    fun mediaFinished(recordId: String): Int = stableId("media-finished", recordId)
+
     /** 子代理审批通知的命名空间（一个 run 一条聚合通知）。 */
     private const val NAMESPACE_SUBAGENT_APPROVAL = "subagent-approval"
 
@@ -42,7 +55,7 @@ object NotificationIds {
      * 派生、取值域太大，无法枚举，这里不为它让位。
      */
     private val RESERVED_NOTIFICATION_IDS = setOf(
-        1, // ChatNotificationManager 生成完成通知（固定 1）
+        CHAT_GENERATION_DONE, // ChatNotificationManager 生成完成通知（固定 1）
         40000, // ScheduledTaskRunService 前台服务通知
         40010, // ScheduledTaskSweeper 前台服务通知（P0.5 与 40000 错开）
     )

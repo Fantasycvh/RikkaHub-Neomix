@@ -46,6 +46,62 @@ class DocumentReaderTest {
         assertTrue(error.message!!.contains("unsupported document format"))
     }
 
+    // ---------- 全文 facade（readAllText / fromMime / totalUnits 显式格式） ----------
+
+    @Test
+    fun `mime detection covers the four formats and tolerates parameters`() {
+        assertEquals(DocumentFormat.PDF, DocumentFormat.fromMime("application/pdf"))
+        assertEquals(
+            DocumentFormat.DOCX,
+            DocumentFormat.fromMime("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        )
+        assertEquals(
+            DocumentFormat.PPTX,
+            DocumentFormat.fromMime("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+        )
+        assertEquals(DocumentFormat.EPUB, DocumentFormat.fromMime("application/epub+zip"))
+        // 参数段（charset 等）与大小写归一化：附件 mime 经常带 "; charset=..."
+        assertEquals(
+            DocumentFormat.DOCX,
+            DocumentFormat.fromMime(
+                "APPLICATION/VND.OPENXMLFORMATS-OFFICEDOCUMENT.WORDPROCESSINGML.DOCUMENT; charset=utf-8",
+            ),
+        )
+        assertEquals("纯文本/未注册的 mime 不是文档格式", null, DocumentFormat.fromMime("text/plain"))
+        assertEquals(null, DocumentFormat.fromMime(""))
+    }
+
+    @Test
+    fun `readAllText reads the whole document by path extension`() {
+        val file = epub(listOf("chapter one", "chapter two"))
+
+        val text = DocumentReader.readAllText(file, file.name)
+
+        assertTrue(text.contains("chapter one"))
+        assertTrue(text.contains("chapter two"))
+    }
+
+    @Test
+    fun `readAllText honors an explicit format without relying on the file name`() {
+        // 调用方手里有比文件名更权威的格式信息（附件 mime）时用显式重载
+        val file = docx(listOf("only paragraph"))
+
+        val text = DocumentReader.readAllText(DocumentFormat.DOCX, file)
+
+        assertTrue(text.contains("only paragraph"))
+        assertEquals("DOCX 无真实分页 ⇒ 总数未知", -1, DocumentReader.totalUnits(DocumentFormat.DOCX, file))
+    }
+
+    @Test
+    fun `readAllText rejects unsupported formats like read does`() {
+        val file = tempFolder.newFile("legacy.doc")
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            DocumentReader.readAllText(file, file.name)
+        }
+        assertTrue(error.message!!.contains("unsupported document format"))
+    }
+
     // ---------- DOCX ----------
 
     @Test

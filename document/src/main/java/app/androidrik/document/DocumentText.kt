@@ -10,11 +10,17 @@ import java.io.File
  * 工具层把 `offset` / `limit` 解释成这些单元——这样"读第 20–40 页"与文本文件的"读第 20–40 行"
  * 是同一个参数、同一套心智。
  */
-enum class DocumentFormat(val extensions: Set<String>, val unitLabel: String) {
-    PDF(setOf("pdf"), "page"),
-    DOCX(setOf("docx"), "block"),
-    PPTX(setOf("pptx"), "slide"),
-    EPUB(setOf("epub"), "chapter"),
+enum class DocumentFormat(val extensions: Set<String>, val unitLabel: String, val mimes: Set<String> = emptySet()) {
+    PDF(setOf("pdf"), "page", setOf("application/pdf")),
+    DOCX(
+        setOf("docx"), "block",
+        setOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ),
+    PPTX(
+        setOf("pptx"), "slide",
+        setOf("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    ),
+    EPUB(setOf("epub"), "chapter", setOf("application/epub+zip")),
     ;
 
     companion object {
@@ -22,6 +28,13 @@ enum class DocumentFormat(val extensions: Set<String>, val unitLabel: String) {
             val extension = path.substringAfterLast('.', "").lowercase()
             if (extension.isEmpty()) return null
             return entries.firstOrNull { extension in it.extensions }
+        }
+
+        /** 按 MIME 识别；调用方手里有比文件名更权威的格式信息（附件 mime）时用它。 */
+        fun fromMime(mime: String): DocumentFormat? {
+            val normalized = mime.substringBefore(';').trim().lowercase()
+            if (normalized.isEmpty()) return null
+            return entries.firstOrNull { normalized in it.mimes }
         }
     }
 }
@@ -72,12 +85,36 @@ object DocumentReader {
     }
 
     /** 总单元数；未知时 -1（见 [DocumentSlice.totalUnits]） */
-    fun totalUnits(file: File, path: String): Int = when (DocumentFormat.of(path)) {
+    fun totalUnits(file: File, path: String): Int =
+        DocumentFormat.of(path)?.let { totalUnits(it, file) } ?: -1
+
+    /** 总单元数（[DocumentFormat.fromMime] 等显式指定格式时用）；未知时 -1 */
+    fun totalUnits(format: DocumentFormat, file: File): Int = when (format) {
         DocumentFormat.PDF -> PdfParser.pageCount(file)
         DocumentFormat.DOCX -> -1
         DocumentFormat.PPTX -> PptxParser.slideCount(file)
         DocumentFormat.EPUB -> EpubParser.sectionCount(file)
-        null -> -1
+    }
+
+    /**
+     * 全文抽取（聊天附件转提示词、知识库索引用）。失败**抛异常**——上层据此区分
+     * 「空文档」与「解析失败」，不再像旧全文 API 那样把错误当正文返回（错误串会被
+     * 当成内容切块嵌入，检索时召回垃圾）。
+     *
+     * @param path 仅用于扩展名识别；调用方已有显式 [DocumentFormat] 时走重载。
+     */
+    fun readAllText(file: File, path: String): String =
+        readAllText(
+            DocumentFormat.of(path)
+                ?: throw IllegalArgumentException("unsupported document format: $path"),
+            file,
+        )
+
+    fun readAllText(format: DocumentFormat, file: File): String = when (format) {
+        DocumentFormat.PDF -> PdfParser.parserPdf(file)
+        DocumentFormat.DOCX -> DocxParser.parse(file)
+        DocumentFormat.PPTX -> PptxParser.parse(file)
+        DocumentFormat.EPUB -> EpubParser.parse(file)
     }
 }
 
