@@ -55,6 +55,7 @@ import app.androidrik.rikkahub.data.ai.tools.local.latestTodoPlan
 import app.androidrik.ai.ui.isOutputLimitTruncation
 import app.androidrik.ai.ui.isContentFilterTruncation
 import app.androidrik.ai.ui.isEmptyUIMessage
+import app.androidrik.ai.ui.semanticRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.ToolApprovalState
@@ -82,6 +83,7 @@ import app.androidrik.rikkahub.data.model.AssistantMemory
 import app.androidrik.ai.util.ToolSchemaSize
 import app.androidrik.rikkahub.utils.estimateTokenCount
 import app.androidrik.rikkahub.utils.estimateTokens
+import app.androidrik.rikkahub.utils.effectiveContextLength
 import java.util.Locale
 import kotlin.time.Clock
 import kotlin.uuid.Uuid
@@ -119,6 +121,37 @@ enum class MidTurnCompressionOutcome {
     /** 压缩失败：本轮照常继续写**当前**回复（同一条回复不重试，判据在调用方）。 */
     Failed,
 }
+
+/**
+ * 输入超窗恢复的请求快照（见 [GenerationHandler.generateText] 的 `contextOverflowRecover` 参数）。
+ *
+ * 与 [MidTurnCompressionRequest] 同款理由：`messages` 是生成器手里的权威快照——流式 catch 已把
+ * 内层副本回滚到请求前状态并经回调同步回外层，本类手里的列表即「失败那一步的请求基线」
+ * （含当前用户输入、已执行工具结果与待审批批，正是恢复压缩要保护的现场）。
+ */
+data class ContextOverflowRecoveryRequest(
+    /** 失败那一步的请求基线消息（零增量失败 ⇒ 与请求前逐字节一致） */
+    val messages: List<UIMessage>,
+    /** 本次生成调用内已完成的模型请求数（仅用于日志与诊断） */
+    val stepsExecuted: Int,
+    /** 失败请求所用模型（压缩的 followModel 与日志诊断用） */
+    val modelId: Uuid,
+    /** 失败请求所用模型的有效窗口（含全局覆盖口径，与上下文闸对齐——§3.2 预算口径统一） */
+    val windowTokens: Int,
+    /** 原始错误消息（诊断；已截断风险由调用方处理） */
+    val errorMessage: String?,
+)
+
+/**
+ * 输入超窗恢复的保护区起点：最后一个真实 USER 轮起点的下标——恢复压缩把该起点起的全部
+ * 消息留在原文侧（当前用户输入、已执行工具结果与待审批批都不进摘要，设计稿 §3.1）。
+ * 外部通知由 [UIMessage.semanticRole] 归为 SYSTEM 自动排除；无 USER ⇒ null（无从保护区，
+ * 调用方直接放弃恢复）。
+ */
+internal fun contextOverflowProtectedStart(messages: List<UIMessage>): Int? =
+    messages.indexOfLast {
+        it.semanticRole == MessageRole.USER && !it.isContextCheckpoint
+    }.takeIf { it >= 0 }
 
 /**
  * 请求面：裁掉末尾那条「刚为续跑新开、还没有任何 part」的 assistant 消息。
@@ -357,6 +390,20 @@ class GenerationHandler(
          * 返回 null 时保留旧窗口（宁可多发一段原文，也不要拿错边界把检查点之后的内容再丢掉）。
          */
         refreshCompressionWindow: (() -> Conversation.CompressionWindow?)? = null,
+        /**
+         * **输入超窗反应式兜底**（design-context-boundaries-and-overflow-recovery §3.1，
+         * OpenHands agent.py 溢出分支同源）：provider 报「上下文长度超限」类错误且本步**零增量**
+         * （请求被拒在生成之前）时，压缩一次历史再重发**同一步**（同模型同窗口）。
+         *
+         * 契约：返回 true = 检查点已落盘，本类刷新压缩窗口后 `continue` 重试当前步
+         * （`stepsExecuted++` 只在成功后执行，失败步不进步数徽标）；返回 false / 抛异常 ⇒
+         * 原错误照常重抛（重试 → 整轮 fallback → 最终报错，行为与未启用时逐位一致）。
+         * 一次生成内最多恢复一次（runLoop 内一次性旗标，镜像 `visibleAnswerRecovered` 模式）；
+         * 做不做压缩（开关 / 保护区 / 预算核对 / 立即落盘）全在回调，本类只管分类、时机与重试。
+         *
+         * 默认 null：无头 run 与「重新生成」路径不启用（语义同 `midTurnCompress`）。
+         */
+        contextOverflowRecover: (suspend (ContextOverflowRecoveryRequest) -> Boolean)? = null,
         inputTransformers: List<InputMessageTransformer> = emptyList(),
         outputTransformers: List<OutputMessageTransformer> = emptyList(),
         assistant: Assistant,
@@ -552,6 +599,9 @@ class GenerationHandler(
             var visibleAnswerRecovered = false
             var pendingRecoveryHint: String? = initialRecoveryHint
             var autoContinuations = 0
+            // 输入超窗恢复（§3.1）：一次生成内最多试一次——恢复后再撞窗说明保护区自身
+            // 就装不下，再压也是白烧摘要 token，交给 fallback / 最终报错。
+            var overflowRecoveryTried = false
 
             // 计划提醒（`plan_missing`）的两个输入，**每轮只算一次**：
             // ①本轮开始时分支里是否已有「仍在进行」的计划 —— 全完成的旧清单不算，否则同一会话里
@@ -610,6 +660,11 @@ class GenerationHandler(
                         planToolAvailable = planToolAvailable,
                     ),
                 )
+                // 零增量判据（§3.1 恢复前置条件）：本步请求是否产生过文本/推理/工具调用增量。
+                // 回调的 coalescible 恰好只在增量类 chunk 时为真（Usage 也标 true，但超窗 400
+                // 是「无任何 chunk 直接抛错」的形态，实际不可达）；流中途失败时增量已到达 ⇒
+                // 有过部分输出（回滚后重试再失败也不恢复，宁可保守）。每步重置。
+                var sawRequestDelta = false
                 try {
                     generateInternal(
                         assistant = assistant,
@@ -625,6 +680,7 @@ class GenerationHandler(
                         debugKey = debugKey,
                         sessionId = sessionId,
                         onUpdateMessages = { updated, coalescible ->
+                            if (coalescible) sawRequestDelta = true
                             val last = updated.lastOrNull()
                             val tagged = if (last?.role == MessageRole.ASSISTANT) {
                                 val previous = messages.lastOrNull()?.takeIf { it.id == last.id }
@@ -698,6 +754,49 @@ class GenerationHandler(
                         )
                     )
                     return
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: GenerationPartialFailureException) {
+                    // 半截输出已走 #1812 草稿通路：恢复重发会把已计费内容再生成一遍 ⇒ 不恢复
+                    throw e
+                } catch (e: Throwable) {
+                    // 输入超窗反应式兜底（§3.1）：分类命中 + 本步零增量 + 本轮未试过 + 回调在位
+                    // ⇒ 压缩一次历史后重发同一步。触发点镜像上面的 ContextGateHardStop catch——
+                    // 它管装配期硬限，这里管 provider 拒收（请求已发出、被 400 挡回）。
+                    // 恢复失败/无收益 ⇒ 原错误重抛（重试 → 整轮 fallback → 最终报错），
+                    // 异常不出 runLoop ⇒ 对整轮 fallback 层不可见，恢复成功的一步不会二次重跑。
+                    if (!isInputContextOverflowError(e) || overflowRecoveryTried ||
+                        contextOverflowRecover == null || sawRequestDelta
+                    ) {
+                        throw e
+                    }
+                    overflowRecoveryTried = true
+                    Log.w(
+                        TAG,
+                        "generateText: input context overflow (zero-increment), " +
+                            "attempting compression recovery: ${e.message?.take(200)}"
+                    )
+                    val recovered = try {
+                        contextOverflowRecover(
+                            ContextOverflowRecoveryRequest(
+                                messages = messages,
+                                stepsExecuted = stepsExecuted,
+                                modelId = targetModel.id,
+                                windowTokens = targetModel.effectiveContextLength(settings.contextLengthOverride),
+                                errorMessage = e.message,
+                            )
+                        )
+                    } catch (recoveryError: CancellationException) {
+                        throw recoveryError
+                    } catch (recoveryError: Throwable) {
+                        Log.w(TAG, "generateText: overflow recovery failed", recoveryError)
+                        false
+                    }
+                    if (!recovered) throw e
+                    // 检查点已落盘：刷新压缩窗口后重试同一步（同模型；失败步不计入步数徽标）
+                    window = refreshCompressionWindow?.invoke() ?: window
+                    Log.i(TAG, "generateText: overflow recovery committed a checkpoint, retrying step #$stepIndex")
+                    continue
                 }
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,

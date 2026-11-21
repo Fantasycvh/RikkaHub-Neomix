@@ -208,4 +208,12 @@ class CompressPromptTest {
         val quoted = "Here is a quote: " + COMPACTION_CHECKPOINT_PREAMBLE
         assertFalse(quoted.isCompactionCheckpointPreamble())
     }
+
+    @Test
+    fun `default prompt carries the task tracking rule`() {
+        // #3（OpenHands 结构化摘要模板借鉴，讨论稿 §4）：任务状态迁移强约束——任务 ID /
+        // 最后确认状态 / 验证结果 / 下一步必须逐字带过边界。模板无识别标记依赖，改措辞免版本化。
+        assertTrue(DEFAULT_COMPRESS_PROMPT.contains("Task tracking: carry explicit task lists"))
+        assertTrue(DEFAULT_COMPRESS_PROMPT.contains("Never mark an unfinished task as done"))
+    }
 }

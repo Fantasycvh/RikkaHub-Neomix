@@ -101,3 +101,19 @@
 - **进度闸发现**：`estimateTokenCount` 只数 Text/Tool 输出——纯 `ToolResult` 节点计 0 token、token 驱动循环永不把它们切出保留区；测试 fixture 需给 result 节点配文本段撑 token 量。
 
 **验证**：`:ai` 全量 + `:app` 全量单测绿（唯一失败 `ImportFormatTest` 为干净树上的既有失败，与本线无关——stash 对照确认）。未做真机验证；未提交。
+
+## 8. 阶段二实施记录（2026-11-21，本地未提交）
+
+**落地件**：
+- **溢出分类** `GenerationErrorPolicy.kt`：`isInputContextOverflowError` + `CONTEXT_OVERFLOW_MARKERS`（SDK `LONG_PROMPT_PATTERNS` 8 条全量移植，小写子串、不限状态码）；工具配对类 400 判据存档注释不进 v1（守卫六已从源头堵）。
+- **恢复编排** `GenerationHandler.kt`：`generateText` 新增 `contextOverflowRecover` 回调 + `ContextOverflowRecoveryRequest`（messages/stepsExecuted/modelId/windowTokens/errorMessage）+ `contextOverflowProtectedStart` 纯函数（保护区起点）；runLoop 内 `ContextGateHardStop` catch 之后镜像加三个 catch（Cancellation / GenerationPartialFailure / 分类命中编排，其余透传），一次性旗标 `overflowRecoveryTried`（镜像 `visibleAnswerRecovered`）；零增量判据 = 步级 `sawRequestDelta`（取自 onUpdateMessages 的 coalescible 旗标）。恢复成功 → 刷新压缩窗口 → `continue` 重试同一步（`stepsExecuted++` 在成功后执行，失败步不进步数徽标；异常不出 runLoop ⇒ 整轮 fallback 对恢复成功的一步不可见）。
+- **ChatService 回调**：`recoverContextOverflow` 闭包——闸门 `autoCompressEnabled`；保护区 = 最后真实 USER 轮起点起全部消息；`compressToCheckpoint(midTurn = true, compressAll = false, keepRecentMessages = protectedCount)` **立即落盘**（拍板 2026-11-21）；`followModel` 按 request.modelId 解析；窗口口径 = `effectiveContextLength(settings.contextLengthOverride)`（§3.2 口径统一）。重新生成路径 null（与 midTurnCompress 同款理由）。
+- **compressToCheckpoint** 新增 `compressAll: Boolean = true`：false 时走 `estimateCompressionPlan`（`keepRecentMessages` 为保护区下限）而非压全窗——midTurn 的「快照回写 + NonCancellable + MID_TURN 摘要指令」语义保留，仅计划形状切换。
+- **#3 搭车**：`DEFAULT_COMPRESS_PROMPT` Rules 补任务状态迁移强约束（任务 ID/最后确认状态/验证结果/下一步逐字带过边界）。
+
+**实施中定案的语义细节**：
+- **零增量判据实现**：不比消息实例（回调会重assign 外层列表），用回调 `coalescible` 旗标——它只在增量类 chunk（Text/Reasoning/ToolCall/ServerTool 增量 + Usage）为真；超窗 400 是「无任何 chunk 直接抛错」形态，Usage 误标实际不可达。增量后失败（即便被回滚）保守不恢复。
+- **#1812 半截通路显式豁免**：`GenerationPartialFailureException` 在恢复 catch 之前单独重抛——恢复重发会把已计费内容再生成一遍。
+- **测试基建**：`ContextOverflowRecoveryTest` 的 `ScriptedProvider` 脚本为 `suspend (callIndex, messages, emit)` 三参签名（部分增量场景要「emit 后再抛」，emit 必须在 flow 作用域内）；七用例覆盖恢复/二次超窗/无收益/非溢出 400/部分增量豁免/null 回调/保护区起点。
+
+**验证**：`:ai` + `:app` 全量单测绿（3672 项，唯一失败仍是既有 `ImportFormatTest`）。未做真机验证（挂账：真实供应商超窗实弹 + 旧数据遗留配对压缩/清理）。未提交。

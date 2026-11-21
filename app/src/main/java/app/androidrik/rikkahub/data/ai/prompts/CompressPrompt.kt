@@ -208,6 +208,7 @@ internal val DEFAULT_COMPRESS_PROMPT = """
     - Write in first person from the assistant's perspective ("I said", "I decided", "the user asked me to...") — this checkpoint is the assistant's own memory of the conversation, NOT a third-person report about "the user and the assistant".
     - Preserve exact file paths, commands, error strings, identifiers, numeric values, function signatures.
     - Capture user feedback and explicit instructions faithfully, especially corrections.
+    - Task tracking: carry explicit task lists across the boundary verbatim — keep every task ID with its last confirmed status, verification results, and the immediate next action. Never mark an unfinished task as done, and never re-run a completed one.
     - Do NOT mention this summarization request or that the context was compacted.
     - Output only the checkpoint text: do not call any tool or take any other action.
     - A PRIOR CHECKPOINT may be provided in the additional context above: if so, do not copy it verbatim; keep still-true facts, drop stale ones, and merge newer information into a single consolidated checkpoint under the same structure.

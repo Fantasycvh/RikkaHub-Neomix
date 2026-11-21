@@ -308,4 +308,46 @@ class GenerationRetryTest {
         // 防止「停止生成」被误判为可重试错误后吞掉取消语义。
         assertFalse(isRetryableGenerationError(CancellationException("stopped by user")))
     }
+
+    // ---------- 输入超窗分类（design-context-boundaries §3.1，SDK LONG_PROMPT_PATTERNS 移植）----------
+
+    @Test
+    fun `real provider overflow errors are classified as context overflow`() {
+        // OpenAI 官方 400（maximum context length ... Please reduce the length of ...）
+        assertTrue(
+            isInputContextOverflowError(
+                Exception(
+                    "Failed to get response: 400 This model's maximum context length is 128000 tokens. " +
+                        "However, your messages resulted in 130000 tokens. " +
+                        "Please reduce the length of the messages or completion."
+                )
+            )
+        )
+        // Anthropic 官方 400（prompt is too long）
+        assertTrue(
+            isInputContextOverflowError(
+                Exception(
+                    "Failed to get response: 400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\"," +
+                        "\"message\":\"prompt is too long: 210000 tokens > 200000 maximum\"}}"
+                )
+            )
+        )
+        // Gemini / 兼容层措辞
+        assertTrue(isInputContextOverflowError(Exception("context length exceeded")))
+        assertTrue(isInputContextOverflowError(Exception("input exceeds the context window")))
+        // litellm 异常类名透传形态（SDK 判据是类名字面量，无空格）
+        assertTrue(isInputContextOverflowError(Exception("ContextWindowExceededError: session too long")))
+        // 网关用 5xx 携带超窗文案（SDK 对 InternalServerError 也查文本；Minimax 措辞）
+        assertTrue(isInputContextOverflowError(Exception("Failed to get response: 500 context window exceeds limit")))
+    }
+
+    @Test
+    fun `unrelated errors are not classified as context overflow`() {
+        assertFalse(isInputContextOverflowError(Exception("Failed to get response: 400 invalid_request_error")))
+        assertFalse(isInputContextOverflowError(Exception("Failed to get response: 429 rate limited")))
+        // 输出截断是 finish_reason 语义（isOutputLimitTruncation），异常文本不在此列
+        assertFalse(isInputContextOverflowError(Exception("empty response")))
+        assertFalse(isInputContextOverflowError(IOException("connection reset")))
+        assertFalse(isInputContextOverflowError(CancellationException("stopped by user")))
+    }
 }

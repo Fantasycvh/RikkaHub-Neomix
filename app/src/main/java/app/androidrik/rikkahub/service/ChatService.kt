@@ -78,7 +78,9 @@ import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
+import app.androidrik.rikkahub.data.ai.ContextOverflowRecoveryRequest
 import app.androidrik.rikkahub.data.ai.coalesceMessageUpdates
+import app.androidrik.rikkahub.data.ai.contextOverflowProtectedStart
 import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.ai.MidTurnCompressionOutcome
 import app.androidrik.rikkahub.data.ai.MidTurnCompressionRequest
@@ -1896,6 +1898,58 @@ class ChatService(
             // （轮前自动压缩同样已跳过，见上面的 maybeAutoCompress 调用处）。
             val midTurnCompress: (suspend (MidTurnCompressionRequest) -> MidTurnCompressionOutcome)? =
                 if (messageRange != null) null else compressMidTurn
+            // ---- 输入超窗反应式兜底（design-context-boundaries-and-overflow-recovery §3.1）----
+            // 判定/执行闭包：由 GenerationHandler 在 provider 报「上下文超限」且零增量时调用。
+            // 检查点**立即落盘**（2026-11-21 拍板）：复用 midTurn 提交机制（快照回写 + NonCancellable），
+            // 重试再失败时历史已压缩是净收益，原错误照常透传——不做「请求期投影」。
+            // 闸门沿用 autoCompressEnabled（预应式自动压缩是主路径，本兜底只是最后防线）；
+            // 重新生成不启用（与 midTurnCompress 同款理由）。
+            val recoverContextOverflow: suspend (ContextOverflowRecoveryRequest) -> Boolean = recover@{ request ->
+                if (!settings.autoCompressEnabled) return@recover false
+                // 保护区：最后一个真实 USER 轮起点起的全部消息（当前输入 + 已执行工具结果 +
+                // 待审批批）留在原文侧，压的是较早历史。无 USER 轮 ⇒ 无从保护区，放弃恢复。
+                val protectedStart = contextOverflowProtectedStart(request.messages) ?: return@recover false
+                val protectedCount = request.messages.size - protectedStart
+                Log.w(
+                    TAG,
+                    "context overflow recovery: compressing history, protecting last " +
+                        "$protectedCount messages (conv=$conversationId, step=${request.stepsExecuted})"
+                )
+                // 状态栏文案：与中途压缩同款——恢复要发一次独立摘要请求，不给提示会像卡死
+                val previousStatus = session.processingStatus.value
+                session.processingStatus.value = context.getString(R.string.chat_page_compressing)
+                val result = try {
+                    compressToCheckpoint(
+                        conversationId = conversationId,
+                        windowTokens = request.windowTokens,
+                        targetTokens = settings.autoCompressTargetTokens,
+                        retainRatio = settings.autoCompressRetainPercent / 100.0,
+                        keepRecentMessages = protectedCount,
+                        followModel = settings.findModelById(request.modelId),
+                        midTurn = true,
+                        compressAll = false,
+                        midTurnMessages = request.messages,
+                    )
+                } finally {
+                    session.processingStatus.value = previousStatus
+                }
+                when {
+                    result.isFailure -> {
+                        val error = result.exceptionOrNull()
+                        // 用户点停止：取消必须继续传播（吞掉会被当成「恢复失败」还多跑一步）
+                        if (error is CancellationException) throw error
+                        // 恢复失败不崩回合：原超窗错误由生成器透传，这里只记日志
+                        Log.w(TAG, "context overflow recovery compress failed for $conversationId", error)
+                        false
+                    }
+                    result.getOrNull() == null -> {
+                        // 无可压缩（保护区自身占满窗口 / 进度闸拦下）⇒ 无收益，透传原错误
+                        Log.w(TAG, "context overflow recovery: no beneficial compression (conv=$conversationId)")
+                        false
+                    }
+                    else -> true
+                }
+            }
             generationHandler.generateText(
                 settings = settings,
                 model = model,
@@ -1940,6 +1994,8 @@ class ChatService(
                 },
                 // 中途自动压缩（上游 bcc649abc）：普通发送路径才启用，重生成一律 null（见闭包定义）。
                 midTurnCompress = midTurnCompress,
+                // 输入超窗反应式兜底（§3.1）：普通发送路径才启用，重生成一律 null（同款理由）
+                contextOverflowRecover = if (messageRange != null) null else recoverContextOverflow,
                 // 压缩成功后检查点边界变了：窗口按会话内存态重算（压缩的提交段是同步写：
                 // updateConversationState 已生效，故这里一定拿得到新检查点）。null 时框架保留旧窗口。
                 refreshCompressionWindow = if (messageRange != null) {
@@ -2571,6 +2627,16 @@ class ChatService(
          * 调用方不必自己同步（也不会出现「同步后又被迟到旧快照覆盖」的窗口）。
          */
         midTurnMessages: List<UIMessage>? = null,
+        /**
+         * 中途/恢复压缩的切分计划（仅 [midTurn] 时有意义）：
+         * - `true`（默认）= [midTurnCompressionPlan]：压到窗口末尾为止（含当前回复）——
+         *   中途压缩的触发原因就是这批输出撑爆了窗口，必须连它一起压；
+         * - `false` = [estimateCompressionPlan]：token 驱动保留计划（[keepRecentMessages] 是
+         *   保留尾部**下限**）——输入超窗恢复用：保护区尾（当前用户轮起的消息）留在原文侧，
+         *   压的是较早历史（design-context-boundaries-and-overflow-recovery §3.1）。
+         *   保护区自身占满窗口时进度闸判「无可压缩」⇒ 返回 null。
+         */
+        compressAll: Boolean = true,
         /** 压缩阶段进度（手动压缩对话框展示；自动/中途压缩用默认空实现） */
         onProgress: (CompressionProgress) -> Unit = {},
     ): Result<CompressionSummary?> = compressionMutexes
@@ -2606,10 +2672,12 @@ class ChatService(
             val window = effectiveWindow?.let { conversation.pathNodes().drop(it.boundaryIndex + 1) }
                 ?: conversation.pathNodes()
             val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
-            val plan = if (midTurn) {
+            val plan = if (midTurn && compressAll) {
                 // 中途压缩：不保留尾部（判据见参数注释）。窗口为空时 shouldCompress=false ⇒ 返回 null。
                 midTurnCompressionPlan(window)
             } else {
+                // 恢复压缩（midTurn + compressAll=false）与常规压缩同走 token 驱动计划：
+                // keepRecentMessages 作为保护区尾下限（守卫六同源的切点安全判定在 planner 内）
                 estimateCompressionPlan(
                     nodes = window,
                     budgetTokens = budget,

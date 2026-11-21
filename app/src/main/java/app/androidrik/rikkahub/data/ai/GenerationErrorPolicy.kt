@@ -78,6 +78,34 @@ private val RATE_LIMITED_MARKERS = listOf(
     "请求过于频繁", "触发限流",
 )
 
+/**
+ * 「输入上下文超窗」特征（design-context-boundaries-and-overflow-recovery §3.1，OpenHands
+ * SDK `classifier.py` 的 `LONG_PROMPT_PATTERNS` 全量移植，小写子串匹配、不限状态码——
+ * SDK 对 InternalServerError 也查文本，部分网关用 5xx 携带超窗文案）。
+ *
+ * 命中且**零增量**（请求被拒在生成之前，见 [GenerationHandler] 的恢复编排）时触发一次
+ * 压缩恢复重发同一步。`finish_reason=length` 一族是**输出**截断（走续写），异常文本不在此列。
+ *
+ * 存档（SDK `MALFORMED_HISTORY_PATTERNS`，工具配对类 400）：`tool_use ids were found without
+ * tool_result blocks` / `each tool_use must have a single result` / `must be followed by tool
+ * messages` 等——**不进 v1 恢复**（设计稿 §3.1：按历史结构问题处理，走现行错误路径）；
+ * 阶段一的守卫六 + `alignCutIndex` 已从源头堵这类请求形态，确有样本再扩类。
+ */
+private val CONTEXT_OVERFLOW_MARKERS = listOf(
+    "contextwindowexceedederror",                          // litellm 异常类名透传
+    "prompt is too long",                                  // Anthropic 官方措辞
+    "input length and `max_tokens` exceed context limit",  // Anthropic v1
+    "please reduce the length of",                         // OpenAI 官方措辞（maximum context length ...）
+    "exceeds the available context size",                  // Azure / 旧版措辞
+    "context length exceeded",                             // OpenAI 兼容层常见
+    "input exceeds the context window",                    // 通用措辞
+    "context window exceeds limit",                        // Minimax
+)
+
+/** provider 报「输入上下文超窗」类错误（判据见 [CONTEXT_OVERFLOW_MARKERS]）。 */
+internal fun isInputContextOverflowError(t: Throwable): Boolean =
+    t.matchesAnyMarker(CONTEXT_OVERFLOW_MARKERS)
+
 private fun Throwable.matchesAnyMarker(markers: List<String>): Boolean {
     val message = this.message?.lowercase() ?: return false
     return markers.any { it in message }
