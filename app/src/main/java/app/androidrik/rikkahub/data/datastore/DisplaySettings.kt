@@ -189,6 +189,11 @@ data class DisplaySetting(
     val providerCardScale: Float = 1.0f,
     val fontSizeRatio: Float = 1.0f,
     val enableMessageGenerationHapticEffect: Boolean = false,
+    /**
+     * 相册选图跳过裁剪。**局限**：只对「多张选图」和「拍照」生效——聊天输入的单张选图
+     * 一律先进裁剪页（先裁剪后绘制，画板入口在裁剪页顶栏），不受本项控制，见
+     * ChatFilesPickerSheet 的 imagePickerLauncher。
+     */
     val skipCropImage: Boolean = true,
     val enableNotificationOnMessageGeneration: Boolean = false,
     val enableLiveUpdateNotification: Boolean = false,

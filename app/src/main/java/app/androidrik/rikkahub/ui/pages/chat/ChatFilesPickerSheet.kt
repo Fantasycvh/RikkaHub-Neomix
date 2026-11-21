@@ -170,8 +170,8 @@ internal fun ChatFilesPickerSheet(
                 // 裁剪改成本进程 Compose 对话框（上游 2a0a831e6）：解码在应用进程内完成，
                 // HEIF 与 EXIF 方向都原生支持，不再需要先拷到临时文件或把 HEIF 转 JPEG。
                 // 单图语义不变：取消裁剪 = 放弃这张，不加入、sheet 保持打开（与旧行为一致）。
-                // 单张一律先裁剪：画板入口在裁剪页顶栏（先裁剪后绘制），不想画的直接确认即可，
-                // 不再受 skipCropImage 影响直进画板；多张仍按 skipCropImage 决定是否逐张裁剪
+                // 单张一律先裁剪：画板入口在裁剪页顶栏（先裁剪后绘制），不想画的直接确认即可。
+                // skipCropImage 的已知局限：对单张选图不生效（开了也进裁剪页），只对多张和拍照生效
                 if (selectedUris.size > 1) {
                     if (setting.displaySetting.skipCropImage) {
                         inputState.addImages(importAttachments(selectedUris))
