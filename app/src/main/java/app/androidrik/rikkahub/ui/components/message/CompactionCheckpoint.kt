@@ -72,6 +72,12 @@ fun CompactionCheckpointRow(
     expanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * 「现 N 条（总 M 条）」计数行（#2294 R3）：现 = 边界后未压缩的普通消息（AI 当前看到的原文），
+     * 总 = 累计已压缩 + 现。null = 调用处算不出（导入检查点行），不显示。
+     */
+    currentCount: Int? = null,
+    totalCount: Int? = null,
     onEditClick: (() -> Unit)? = null,
 ) {
     Row(
@@ -96,6 +102,13 @@ fun CompactionCheckpointRow(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (currentCount != null && totalCount != null) {
+                Text(
+                    text = stringResource(R.string.compaction_row_count, currentCount, totalCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+            }
             if (summaryPreview.isNotBlank()) {
                 Text(
                     text = summaryPreview,
@@ -131,6 +144,23 @@ fun CompactionCheckpointRow(
 }
 
 private val checkpointTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+/**
+ * sheet 元信息行（#2294 R2）：「#N · 已压缩 X 条（本次 M 条）· 时间 · 修改后下次对话生效」。
+ * seq/batchCount 为 0（旧数据 / 导入检查点）时逐级回退不带头文案——旧行没有序号语义，硬凑会显示「#0」。
+ */
+@Composable
+private fun summaryMetaText(summary: CompressionSummary): String {
+    val time = checkpointTimeFormatter.format(summary.createdAt.atZone(ZoneId.systemDefault()))
+    return when {
+        summary.seq > 0 && summary.batchCount > 0 ->
+            stringResource(R.string.compression_summary_meta_seq, summary.seq, summary.messageCount, summary.batchCount, time)
+        summary.batchCount > 0 ->
+            stringResource(R.string.compression_summary_meta_batch, summary.messageCount, summary.batchCount, time)
+        else ->
+            stringResource(R.string.compression_summary_meta_legacy, summary.messageCount, time)
+    }
+}
 
 /**
  * 压缩摘要查看/编辑 sheet（「使压缩摘要对用户可见并允许编辑」）。
@@ -232,9 +262,7 @@ private fun ViewSummaryContent(
         )
 
         Text(
-            text = "已压缩 ${summary.messageCount} 条 · " +
-                checkpointTimeFormatter.format(summary.createdAt.atZone(ZoneId.systemDefault())) +
-                " · 修改后下次对话生效",
+            text = summaryMetaText(summary),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

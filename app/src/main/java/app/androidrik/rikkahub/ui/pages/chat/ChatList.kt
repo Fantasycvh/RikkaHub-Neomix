@@ -408,6 +408,14 @@ private fun ChatListNormal(
     // P1：渲染 = **激活路径**（树形分支后 messageNodes 是全量节点集，含 off-path 兄弟子树）
     val activeCheckpoint = conversation.displayCompression()
     var showCompressedHistory by remember(conversation.id) { mutableStateOf(false) }
+    // #2294 R3：折叠行「现 N 条（总 M 条）」——现 = 边界后未压缩的普通消息（AI 当前看到的原文），
+    // 总 = 累计已压缩 + 现。稀疏会话按已载入部分计（与「加载更早」口径一致，展开后如实补齐）。
+    val liveMessageCount = run {
+        val live = conversation.compressionWindow()
+            ?.let { conversation.pathNodes().drop(it.boundaryIndex + 1) }
+            ?: conversation.pathNodes()
+        live.count { !it.currentMessage.isContextCheckpoint }
+    }
     // 压缩摘要查看/编辑 sheet（native 检查点；入口在折叠行上的编辑图标）
     var showSummarySheet by remember(conversation.id) { mutableStateOf(false) }
     val visibleNodes = if (activeCheckpoint != null && !showCompressedHistory) {
@@ -664,6 +672,8 @@ private fun ChatListNormal(
                     // 是树节点消息，走行内展开，且其编辑会动指纹覆盖区域（语义不同，不开放）
                     CompactionCheckpointRow(
                         messageCount = activeCheckpoint.messageCount,
+                        currentCount = liveMessageCount,
+                        totalCount = activeCheckpoint.messageCount + liveMessageCount,
                         summaryPreview = activeCheckpoint.content.lineSequence().firstOrNull().orEmpty(),
                         expanded = showCompressedHistory,
                         onToggle = { showCompressedHistory = !showCompressedHistory },

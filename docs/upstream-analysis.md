@@ -2056,6 +2056,10 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - 时间线相关性：本仓 2026-11-21 刚 bump bettertext `v0.1.6`（多重积分/度数符号宽度修复），与本题同属 bettertext-latex 但无交集；未来若上游用户再报「旧版能渲染新版不能」的 LaTeX 问题，先查 JLatexMath→KaTeX 语义差异再看 bettertext 更新。
 - 附带认知：re-ovo 明确建议 LaTeX 只用于数学公式、别拿来模拟 UI——本仓提示词类文档如出现 `fcolorbox+array` 组合模板，按 KaTeX 语义书写。
 
+## 2026-11-21 issue 立项：#2294（压缩范围预览与压缩记录展示——自研方案）
+
+> 上游 [#2294](https://github.com/rikkahub/rikkahub/issues/2294)（报告者 Caellux）：① 压缩执行前预览并确认本次被压缩的消息范围（起止边界片段）；② 压缩摘要显示序号/条数/时间；③ 压缩历史显示当前未压缩数与总数。上游以 `63a5192d8`（消息概览标压缩点，11-18 已列候选未移植）关闭，**未覆盖报告者主需求，报告者反驳成立**——本仓自研。用户拍板立项，方案已定稿：[design-compression-confirm.md](design/drafts/design-compression-confirm.md)（手动压缩两阶段对话框预览确认；DB 78→79 加 `seq`/`batch_count`；折叠行「现 N 条（总 M 条）」；自动/中途压缩不加确认）。待实现。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md

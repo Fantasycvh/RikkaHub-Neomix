@@ -727,6 +727,17 @@
   <string name="compaction_row_title">已壓縮早前 %1$d 則訊息</string>
   <string name="compaction_row_expand">展開被壓縮的歷史</string>
   <string name="compaction_row_collapse">收起被壓縮的歷史</string>
+  <!-- #2294 壓縮範圍預覽確認 + 壓縮記錄計數展示 -->
+  <string name="compaction_row_count">現 %1$d 則（總 %2$d 則）</string>
+  <string name="chat_page_compress_preview_action">預覽範圍</string>
+  <string name="chat_page_compress_execute_action">執行壓縮</string>
+  <string name="chat_page_compress_back_action">返回調整</string>
+  <string name="chat_page_compress_preview_loading">正在計算切分範圍…</string>
+  <string name="chat_page_compress_preview_summary">本次將壓縮 %1$d 則訊息（約 %2$d token，估算），保留 %3$d 則原文</string>
+  <string name="chat_page_compress_preview_notice">預覽為當前會話快照，實際切分以執行時為準</string>
+  <string name="compression_summary_meta_seq">#%1$d · 已壓縮 %2$d 則（本次 %3$d 則）· %4$s · 修改後下次對話生效</string>
+  <string name="compression_summary_meta_batch">已壓縮 %1$d 則（本次 %2$d 則）· %3$s · 修改後下次對話生效</string>
+  <string name="compression_summary_meta_legacy">已壓縮 %1$d 則 · %2$s · 修改後下次對話生效</string>
   <string name="compaction_preview_user">使用者</string>
   <string name="compaction_preview_assistant">助手</string>
   <string name="compaction_preview_system">系統</string>

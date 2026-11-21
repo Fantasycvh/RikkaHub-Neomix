@@ -1021,6 +1021,13 @@ private fun ChatPageContent(
                         continueInNewWindow = continueInNewWindow,
                     )
                 },
+                // 阶段 2 范围预览（#2294 R1）：只读切分，与执行同一段代码同窗口口径
+                onPreview = { retainRatio, keepRecentMessages ->
+                    vm.previewCompression(
+                        retainRatio = retainRatio,
+                        keepRecentMessages = keepRecentMessages,
+                    )
+                },
                 // 初值取当前设置（与 + 菜单里的入口同一约定）
                 initialRetainPercent = setting.autoCompressRetainPercent,
                 initialTargetTokens = setting.autoCompressTargetTokens,

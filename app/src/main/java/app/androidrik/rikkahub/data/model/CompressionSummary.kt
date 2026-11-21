@@ -39,6 +39,13 @@ data class CompressionSummary(
      * null = 旧数据或未记录，退化为仅做边界存在性校验。
      */
     val areaFingerprint: String? = null,
+    /**
+     * 会话内压缩序号（1 起，每压缩一次 +1；0 = 旧数据 / 导入检查点，无序号语义）。
+     * 「#N · 本次 M 条」展示用（#2294）。
+     */
+    val seq: Int = 0,
+    /** 本次压缩的消息条数（不含 prior 累计；[messageCount] 是累计口径） */
+    val batchCount: Int = 0,
 ) {
     /** boundaryNodeId 为空时永远生效（无失效条件）；非空时由调用方校验节点存在性 */
     val canExpire: Boolean get() = boundaryNodeId != null

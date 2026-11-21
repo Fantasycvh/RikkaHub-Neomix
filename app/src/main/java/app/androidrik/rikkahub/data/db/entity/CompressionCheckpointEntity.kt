@@ -53,4 +53,13 @@ data class CompressionCheckpointEntity(
      */
     @ColumnInfo("area_fingerprint")
     val areaFingerprint: String? = null,
+    /**
+     * 会话内压缩序号（1 起，每压缩一次 +1）。表只留最新一行，最新行的 seq 就是接力起点。
+     * 0 = 旧数据 / 导入的检查点（无序号语义），UI 显示时回退不带头文案。
+     */
+    @ColumnInfo(name = "seq", defaultValue = "0")
+    val seq: Int = 0,
+    /** 本次压缩的消息条数（不含 prior 检查点累计；[messageCount] 才是累计口径） */
+    @ColumnInfo(name = "batch_count", defaultValue = "0")
+    val batchCount: Int = 0,
 )

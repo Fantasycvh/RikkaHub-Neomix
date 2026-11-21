@@ -38,3 +38,23 @@ data class CompressionSavings(
 ) {
     val savedTokens: Int get() = (beforeTokens - afterTokens).coerceAtLeast(0)
 }
+
+/**
+ * 手动压缩的范围预览（#2294 主需求）：执行前给用户确认「这次会压掉什么」。
+ *
+ * 由 ChatService.previewCompressionPlan 用与执行**同一段**切分代码（planCompressionWindow）
+ * 产出——预览与执行的切分一致性由同一确定性函数保证。estimatedTokens 为本地估算
+ * （与压缩路径同源 estimateTokenCount），对外标「估算」；片段 summaryAsText 截断 120 字。
+ */
+data class CompressionPreview(
+    /** 本次将压缩的条数 */
+    val toCompressCount: Int,
+    /** 保留原文的条数 */
+    val keptCount: Int,
+    /** 被压缩前缀的 token 估算（非精确计量） */
+    val estimatedTokens: Int,
+    /** 起始边界消息片段（被压缩区域的最早一条，含 role 前缀） */
+    val firstSnippet: String,
+    /** 结束边界消息片段（被压缩区域的最晚一条，含 role 前缀） */
+    val lastSnippet: String,
+)

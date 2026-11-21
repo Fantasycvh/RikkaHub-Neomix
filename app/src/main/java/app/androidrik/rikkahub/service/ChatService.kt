@@ -135,6 +135,7 @@ import app.androidrik.rikkahub.utils.conversationTokenTexts
 import app.androidrik.rikkahub.utils.countTokensInParallel
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.utils.estimateWindowTokens
+import app.androidrik.rikkahub.utils.estimateTokenCount
 import app.androidrik.rikkahub.data.ai.compression.shouldAutoCompress
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_SINGLE_STEP_MAX_CHARS
@@ -153,6 +154,8 @@ import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.runCompressionLadder
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
 import app.androidrik.rikkahub.data.ai.compression.stripTraceSection
+import app.androidrik.rikkahub.data.ai.compression.CompressionPlan
+import app.androidrik.rikkahub.data.ai.compression.CompressionPreview
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.model.markGeneratingNodeIncompleteById
 import app.androidrik.rikkahub.data.model.mergeGenerationMessages
@@ -2580,6 +2583,86 @@ class ChatService(
     }
 
     /**
+     * 压缩切分公共段（#2294）：[previewCompressionPlan]（预览）与 [compressToCheckpoint]（执行）
+     * 共用同一段代码——预览与执行的切分一致性由「同一确定性函数」保证（estimateCompressionPlan
+     * 纯函数：相同路径/内容/预算得到相同切点），抽出来防复制漂移。
+     *
+     * 稀疏窗口先全量补齐：压缩要算完整区域的边界与指纹，预览同样需要完整窗口（尾巴加载
+     * 会让预览条数偏少、与执行不一致）。
+     *
+     * 窗口切分与计划估算是纯 CPU 段，大对话（数千节点）在主线程逐节点扫会卡帧
+     * （AppScope 是 Main）→ 搬 IO（上游 0cd90ef12 残件）。
+     */
+    private suspend fun planCompressionWindow(
+        conversationId: Uuid,
+        windowTokens: Int,
+        retainRatio: Double,
+        keepRecentMessages: Int,
+        /** 执行路径透传（中途压缩/恢复压缩走不同计划）；预览路径恒 false */
+        midTurn: Boolean = false,
+        compressAll: Boolean = true,
+    ): Pair<Conversation, CompressionPlan> {
+        if (sessions[conversationId]?.state?.value?.isSparse == true) hydrateAll(conversationId)
+        return withContext(Dispatchers.IO) {
+            val conversation = getConversationFlow(conversationId).value
+            // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
+            val effectiveWindow = conversation.compressionWindow()
+            val window = effectiveWindow?.let { conversation.pathNodes().drop(it.boundaryIndex + 1) }
+                ?: conversation.pathNodes()
+            val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
+            val plan = if (midTurn && compressAll) {
+                // 中途压缩：不保留尾部（判据见 compressToCheckpoint 参数注释）
+                midTurnCompressionPlan(window)
+            } else {
+                // 恢复压缩（midTurn + compressAll=false）与常规压缩同走 token 驱动计划：
+                // keepRecentMessages 作为保护区尾下限（守卫六同源的切点安全判定在 planner 内）
+                estimateCompressionPlan(
+                    nodes = window,
+                    budgetTokens = budget,
+                    minKeep = effectiveMinKeep(keepRecentMessages),
+                )
+            }
+            conversation to plan
+        }
+    }
+
+    /**
+     * 手动压缩的范围预览（#2294 主需求）：执行前给用户确认「这次会压掉什么」——
+     * 条数 / token 估算 / 起止边界消息片段。
+     *
+     * 与 [compressToCheckpoint] 共用 [planCompressionWindow] 同一段切分代码；只读
+     * （不写库、不调模型）。片段用 [UIMessage.summaryAsText]（与真实摘要输入同源，
+     * 含 role 前缀）截断到 120 字。**预览是快照**：确认后执行仍按最新会话态重切；
+     * 预览与执行输入相同 ⇒ 切分一致，仅预览后消息变动才可能偏差（UI 注明「以执行时为准」）。
+     *
+     * @return null = 无可压缩内容（非错误，进度闸/全保留/空窗口）
+     */
+    suspend fun previewCompressionPlan(
+        conversationId: Uuid,
+        windowTokens: Int,
+        retainRatio: Double = COMPRESS_RETAIN_RATIO,
+        keepRecentMessages: Int = 0,
+    ): CompressionPreview? = compressionMutexes
+        .getOrPut(conversationId) { Mutex() }
+        .withLock {
+            val (_, plan) = planCompressionWindow(
+                conversationId = conversationId,
+                windowTokens = windowTokens,
+                retainRatio = retainRatio,
+                keepRecentMessages = keepRecentMessages,
+            )
+            if (!plan.shouldCompress) return@withLock null
+            val messages = plan.toCompress.map { it.currentMessage }
+            CompressionPreview(
+                toCompressCount = messages.size,
+                keptCount = plan.toKeep.size,
+                estimatedTokens = estimateTokenCount(messages),
+                firstSnippet = messages.first().summaryAsText(maxLength = 120),
+                lastSnippet = messages.last().summaryAsText(maxLength = 120),
+            )
+        }
+
+    /**
      * 检查点式压缩（design-auto-compaction §4.1 三边界对齐 + §4.4 独立表）：
      *
      * 1. 保留策略 token 驱动：从尾部往前累计，预算 = 模型窗口 × [COMPRESS_RETAIN_RATIO]（至少 2 条）；
@@ -2652,8 +2735,6 @@ class ChatService(
         .getOrPut(conversationId) { Mutex() }
         .withLock {
             runCatching {
-        // 稀疏窗口只载入边界之后的尾巴：压缩要算完整区域的边界与指纹，先全量补齐再继续。
-        if (sessions[conversationId]?.state?.value?.isSparse == true) hydrateAll(conversationId)
         val settings = settingsStore.settingsFlow.first()
         // L1 已知密钥登记（Redactor §3.1）：供应商 keys + 两级 customHeaders 值。全量收集——
         // 历史里的密钥来源不限于当前助手（用户可能切换过助手/供应商后再压缩）。
@@ -2677,30 +2758,16 @@ class ChatService(
                 latest.mergeGenerationMessages(midTurnMessages.map { it.finishReasoning() })
             }
         }
-        // 当前会话快照（含内存态最新）。窗口切分与计划估算是纯 CPU 段，大对话（数千节点）
-        // 在主线程逐节点扫会卡帧（AppScope 是 Main）→ 搬 IO（上游 0cd90ef12 残件）
+        // 切分段与预览（#2294）共用同一段代码（planCompressionWindow，稀疏补全也在其中）
         var windowTokensBefore = 0
-        val (conversation, plan) = withContext(Dispatchers.IO) {
-            val conversation = getConversationFlow(conversationId).value
-            // 只看发送窗口内的历史：边界前的旧内容已由 prior 检查点覆盖
-            val effectiveWindow = conversation.compressionWindow()
-            val window = effectiveWindow?.let { conversation.pathNodes().drop(it.boundaryIndex + 1) }
-                ?: conversation.pathNodes()
-            val budget = (windowTokens * retainRatio.coerceIn(0.05, 0.9)).toInt()
-            val plan = if (midTurn && compressAll) {
-                // 中途压缩：不保留尾部（判据见参数注释）。窗口为空时 shouldCompress=false ⇒ 返回 null。
-                midTurnCompressionPlan(window)
-            } else {
-                // 恢复压缩（midTurn + compressAll=false）与常规压缩同走 token 驱动计划：
-                // keepRecentMessages 作为保护区尾下限（守卫六同源的切点安全判定在 planner 内）
-                estimateCompressionPlan(
-                    nodes = window,
-                    budgetTokens = budget,
-                    minKeep = effectiveMinKeep(keepRecentMessages),
-                )
-            }
-            conversation to plan
-        }
+        val (conversation, plan) = planCompressionWindow(
+            conversationId = conversationId,
+            windowTokens = windowTokens,
+            retainRatio = retainRatio,
+            keepRecentMessages = keepRecentMessages,
+            midTurn = midTurn,
+            compressAll = compressAll,
+        )
         // 完成报告的「前」值：压缩前的发送窗口占用（与 maybeAutoCompress 触发判断同估算器）
         windowTokensBefore = conversation.estimateWindowTokens(model)
         if (!plan.shouldCompress) return@runCatching null  // 无可压缩内容（非错误）
@@ -2849,6 +2916,9 @@ class ChatService(
         // 被压缩条数按「有效窗口内普通消息」计：此前若是导入的原版检查点（其正文也是被摘要区），
         // 该计入累计数；仅取 compressionSummaries 会漏掉它，导致「已压缩 N 条」显示偏少。
         val priorCount = conversation.displayCompression()?.messageCount ?: 0
+        // 会话内压缩序号接力（#2294）：表经 trim 只留最新行，最新行的 seq 就是起点；
+        // 0（旧数据/导入检查点）也自然从 1 起。batchCount 只记本次（messageCount 才是累计口径）。
+        val nextSeq = (conversation.displayCompression()?.seq ?: 0) + 1
         val checkpoint = CompressionSummary(
             conversationId = conversationId,
             content = checkpointBody,
@@ -2856,6 +2926,8 @@ class ChatService(
             boundaryNodeId = boundaryNodeId,
             createdAt = Instant.now(),
             areaFingerprint = areaFingerprint,
+            seq = nextSeq,
+            batchCount = messagesToCompress.size,
         )
 
         // 轨迹只追加：落库新检查点（含自增 id），清理更早的检查点行（摘要已合并）

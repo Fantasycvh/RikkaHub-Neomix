@@ -51,6 +51,7 @@ import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.InterruptReason
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
+import app.androidrik.rikkahub.data.ai.compression.CompressionPreview
 import app.androidrik.rikkahub.data.ai.compression.CompressionSavings
 import app.androidrik.rikkahub.ui.pages.promptinspect.buildPromptInspectionLabels
 import app.androidrik.rikkahub.service.MessageQueueState
@@ -365,6 +366,29 @@ class ChatVM(
     /** 手动压缩的阶段进度（对话框展示）；未压缩时为 null */
     private val _compressProgress = MutableStateFlow<CompressionProgress?>(null)
     val compressProgress: StateFlow<CompressionProgress?> = _compressProgress.asStateFlow()
+
+    /**
+     * 手动压缩的范围预览（#2294 R1）：对话框阶段 2 调用，只读、不执行。
+     * 与 [handleCompressContext] 同一窗口口径（currentChatModel / contextLengthOverride），
+     * 保证预览与执行对同一份输入算出同一切分。
+     *
+     * @return null = 无可压缩内容（非错误）
+     */
+    suspend fun previewCompression(
+        retainRatio: Double,
+        keepRecentMessages: Int = 0,
+    ): CompressionPreview? {
+        val currentSettings = settings.value
+        val model = currentChatModel.value
+        val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
+            ?: DEFAULT_CONTEXT_LENGTH
+        return chatService.previewCompressionPlan(
+            conversationId = _conversationId,
+            windowTokens = windowTokens,
+            retainRatio = retainRatio,
+            keepRecentMessages = keepRecentMessages,
+        )
+    }
 
     fun handleCompressContext(
         additionalPrompt: String,

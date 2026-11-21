@@ -33,6 +33,8 @@ internal class CompressionCheckpointStore(
                 boundaryNodeId = summary.boundaryNodeId,
                 createdAt = summary.createdAt.toEpochMilli(),
                 areaFingerprint = summary.areaFingerprint,
+                seq = summary.seq,
+                batchCount = summary.batchCount,
             )
         )
         return summary.copy(id = id)
@@ -69,5 +71,7 @@ internal class CompressionCheckpointStore(
         boundaryNodeId = boundaryNodeId,
         createdAt = Instant.ofEpochMilli(createdAt),
         areaFingerprint = areaFingerprint,
+        seq = seq,
+        batchCount = batchCount,
     )
 }

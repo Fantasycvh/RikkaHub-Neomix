@@ -1,11 +1,13 @@
 package app.androidrik.rikkahub.ui.components.ai
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -26,12 +28,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
@@ -39,6 +45,7 @@ import app.androidrik.rikkahub.data.ai.compression.COMPRESS_KEEP_RECENT_MESSAGES
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
 import app.androidrik.rikkahub.data.ai.compression.CompressPreset
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.compression.CompressionPreview
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgressStage
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
@@ -55,6 +62,11 @@ fun CompressContextDialog(
         keepRecentMessages: Int,
         continueInNewWindow: Boolean,
     ) -> Job,
+    /**
+     * 阶段 2 的范围预览（#2294 主需求）：执行前先看「这次会压掉什么」。
+     * 与执行共用同一段切分代码（ChatService.planCompressionWindow）；返回 null = 无可压缩内容。
+     */
+    onPreview: suspend (retainRatio: Double, keepRecentMessages: Int) -> CompressionPreview?,
     /**
      * 初值：来自当前压缩设置（而不是每次重置为固定值）。
      *
@@ -76,6 +88,30 @@ fun CompressContextDialog(
     var continueInNewWindow by remember { mutableStateOf(false) }
     var currentJob by remember { mutableStateOf<Job?>(null) }
     val isLoading = currentJob?.isActive == true
+
+    // 两阶段（#2294 R1）：阶段 1 配置 → 「预览范围」拉切分预览 → 阶段 2 确认执行。
+    // 预览是快照，执行时 ChatService 按最新会话重切（同一段代码 + 同输入 ⇒ 常态一致）。
+    var previewStage by remember { mutableStateOf(false) }
+    var previewLoading by remember { mutableStateOf(false) }
+    var preview by remember { mutableStateOf<CompressionPreview?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun fetchPreview() {
+        previewStage = true
+        previewLoading = true
+        scope.launch {
+            preview = runCatching {
+                onPreview(selectedRetainPercent / 100.0, keepRecentMessages)
+            }.getOrElse { null }
+            previewLoading = false
+        }
+    }
+
+    fun backToConfig() {
+        previewStage = false
+        previewLoading = false
+        preview = null
+    }
 
     // Monitor job completion
     LaunchedEffect(currentJob) {
@@ -128,6 +164,13 @@ fun CompressContextDialog(
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         }
                     }
+                } else if (previewStage) {
+                    // 阶段 2：范围预览确认（#2294 R1 主需求）
+                    CompressionPreviewContent(
+                        loading = previewLoading,
+                        preview = preview,
+                        keepRecentMessages = keepRecentMessages,
+                    )
                 } else {
                     Text(stringResource(R.string.chat_page_compress_context_desc))
 
@@ -220,24 +263,39 @@ fun CompressContextDialog(
                 }) {
                     Text(stringResource(R.string.cancel))
                 }
+            } else if (previewStage) {
+                // 无可压缩（preview == null）时禁用执行——预览层已说明原因
+                TextButton(
+                    enabled = preview != null,
+                    onClick = {
+                        currentJob = onConfirm(
+                            additionalPrompt,
+                            selectedTokens,
+                            selectedRetainPercent / 100.0,
+                            keepRecentMessages,
+                            continueInNewWindow,
+                        )
+                    },
+                ) {
+                    Text(stringResource(R.string.chat_page_compress_execute_action))
+                }
             } else {
-                TextButton(onClick = {
-                    currentJob = onConfirm(
-                        additionalPrompt,
-                        selectedTokens,
-                        selectedRetainPercent / 100.0,
-                        keepRecentMessages,
-                        continueInNewWindow,
-                    )
-                }) {
-                    Text(stringResource(R.string.confirm))
+                // 阶段 1 → 阶段 2：先拉切分预览，确认后才真正执行（#2294 主需求）
+                TextButton(onClick = { fetchPreview() }) {
+                    Text(stringResource(R.string.chat_page_compress_preview_action))
                 }
             }
         },
         dismissButton = {
             if (!isLoading) {
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.cancel))
+                if (previewStage) {
+                    TextButton(onClick = { backToConfig() }) {
+                        Text(stringResource(R.string.chat_page_compress_back_action))
+                    }
+                } else {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel))
+                    }
                 }
             }
         }
@@ -255,6 +313,79 @@ private fun compressStageText(progress: CompressionProgress?): String = when (pr
     CompressionProgressStage.SINGLE_PASS -> stringResource(R.string.chat_page_compress_stage_single_pass)
     CompressionProgressStage.FALLBACK -> stringResource(R.string.chat_page_compress_stage_fallback)
     CompressionProgressStage.PREPARING, null -> stringResource(R.string.chat_page_compress_stage_preparing)
+}
+
+/**
+ * 阶段 2 内容（#2294 R1）：条数/token 摘要 + 起止边界消息片段 + 快照提示。
+ *
+ * 片段用 `maxLines` 截断，**不嵌套滚动**——宿主 Column 已 `verticalScroll + imePadding`
+ * （AGENTS TextField 宿主规则 #3：AlertDialog 不与 IME insets 协调）；展开查看原文
+ * 交给现有「展开压缩历史」折叠行，这里只做范围确认。
+ */
+@Composable
+private fun CompressionPreviewContent(
+    loading: Boolean,
+    preview: CompressionPreview?,
+    keepRecentMessages: Int,
+) {
+    if (loading) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            RabbitLoadingIndicator(modifier = Modifier.size(24.dp))
+            Text(stringResource(R.string.chat_page_compress_preview_loading))
+        }
+        return
+    }
+    val shown = preview
+    if (shown == null) {
+        // 无可压缩（非错误）：口径与执行路径 addError 的提示一致
+        Text(
+            text = stringResource(
+                if (keepRecentMessages > 0) {
+                    R.string.chat_page_compress_not_enough_messages_keep_recent
+                } else {
+                    R.string.chat_page_compress_not_enough_messages
+                }
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        return
+    }
+    Text(
+        text = stringResource(
+            R.string.chat_page_compress_preview_summary,
+            shown.toCompressCount,
+            shown.estimatedTokens,
+            shown.keptCount,
+        ),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    PreviewSnippetCard(shown.firstSnippet)
+    PreviewSnippetCard(shown.lastSnippet)
+    Text(
+        text = stringResource(R.string.chat_page_compress_preview_notice),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun PreviewSnippetCard(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
 }
 
 /**

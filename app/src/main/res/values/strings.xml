@@ -693,6 +693,17 @@
   <string name="compaction_row_title">Compressed %1$d earlier messages</string>
   <string name="compaction_row_expand">Show compressed history</string>
   <string name="compaction_row_collapse">Hide compressed history</string>
+  <!-- #2294 压缩范围预览确认 + 压缩记录计数展示 -->
+  <string name="compaction_row_count">Current %1$d (of %2$d total)</string>
+  <string name="chat_page_compress_preview_action">Preview range</string>
+  <string name="chat_page_compress_execute_action">Compress now</string>
+  <string name="chat_page_compress_back_action">Back to settings</string>
+  <string name="chat_page_compress_preview_loading">Computing the compression range…</string>
+  <string name="chat_page_compress_preview_summary">Compress %1$d messages (≈%2$d tokens, estimated), keeping %3$d as-is</string>
+  <string name="chat_page_compress_preview_notice">Preview is a snapshot of the current conversation; the actual split is computed again at execution.</string>
+  <string name="compression_summary_meta_seq">#%1$d · %2$d messages compressed (%3$d in this run) · %4$s · applies on next turn after editing</string>
+  <string name="compression_summary_meta_batch">%1$d messages compressed (%2$d in this run) · %3$s · applies on next turn after editing</string>
+  <string name="compression_summary_meta_legacy">%1$d messages compressed · %2$s · applies on next turn after editing</string>
   <string name="compaction_preview_user">User</string>
   <string name="compaction_preview_assistant">Assistant</string>
   <string name="compaction_preview_system">System</string>

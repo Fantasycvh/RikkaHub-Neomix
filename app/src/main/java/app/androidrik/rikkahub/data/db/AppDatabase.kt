@@ -96,7 +96,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
     ],
-    version = 78,
+    version = 79,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -236,6 +236,10 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 与 OCR 按页行同款绕开零 token 闸门；金额估算挂账（刊例价因供应商×模型而异）。
         // 见 docs/design/drafts/design-interface-convergence-round2.md ①
         AutoMigration(from = 77, to = 78),
+        // 78→79：compression_checkpoint 加 seq / batch_count（#2294 压缩摘要「#N · 本次 M 条」展示）。
+        // 两列 NOT NULL + DEFAULT 0 ⇒ 免 spec；旧行全 0 = 无序号语义，UI 回退不带头文案。
+        // seq 接力只看最新行（表经 trim 只留一行），无需回填。
+        AutoMigration(from = 78, to = 79),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -296,7 +300,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 78
+        const val SCHEMA_VERSION = 79
     }
 }
 
