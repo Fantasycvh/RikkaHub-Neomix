@@ -83,16 +83,16 @@ USER_CONTEXT / TASK_TRACKING（**强约束保留任务 ID 与状态**）/ COMPLE
 **4. 压缩配置挂 agent profile**：`enable_default_condenser` + `condenser_max_size`，前端
 `condenser-settings.tsx` schema 驱动渲染——与本仓「压缩设置偏全局」对照。
 
-## 落地清单（2026-11-18 评估；**只评未施**）
+## 落地清单（2026-11-18 评估；2026-11-21 起分批实施）
 
 | # | 项 | 优先级 | 备注 |
 |---|---|---|---|
-| 1 | **压缩边界原子单元守卫（守卫六）**：删除区间不得切开 tool call↔result 配对、推理签名块、多段拆分单元；实施前对边界做「原子区间」校验，任一切开则边界 snap 或放弃 | **P2** | 仿 manipulation_indices 思路但不必搬四性质全量——本仓守卫体系已熟，加一条「原子区间与删除区间不相交」即可；纯逻辑层改动，可单测 |
-| 2 | **上下文溢出反应式兜底**：provider 报 context window exceeded / 长度类错误时自动触发一次压缩再重试（限一次，失败透传原错误） | **P2** | 本仓自动压缩已预应式常开，此为最后防线；注意与本仓「压缩请求固定低推理档」约定衔接 |
-| 3 | **结构化压缩摘要模板**：摘要 prompt 改 USER_CONTEXT / TASK_TRACKING / COMPLETED / PENDING / CURRENT_STATE 分段，强约束保留任务/收藏等 ID | P3 | 改模板字符串级成本；需真机对比摘要续传质量 |
-| 4 | **压缩完成报告协议**：前置 token 快照 + 压缩后对比 + 三态结果（成功/无变化/失败），toast 报节省量 | P3 | 本仓已有分阶段进度反馈，此项是完成态增强；timeout 判失败语义值得抄 |
-| 5 | **输入区上下文计量环**：per-conversation context fill 指示（usage 数据链已有）+ 双阈值变色 + 满载跳压缩入口 | P3 | UX 增强项；与 #4 天然配套 |
-| 6 | **净化兜底层**：压缩 prompt 侧与渲染侧各一层密钥再脱敏（截断容忍正则） | P3 | 仿 `<CUSTOM_SECRETS>` 模式；本仓自定义请求头/key 有泄漏面 |
+| 1 | **压缩边界原子单元守卫（守卫六）**：删除区间不得切开 tool call↔result 配对、推理签名块、多段拆分单元；实施前对边界做「原子区间」校验，任一切开则边界 snap 或放弃 | **P2** | ✅ 已实施（`470253ee4` 阶段一）：`ContextCutSafety.alignCutIndex` + planner/limitContext/中途压缩/守卫六四接入点 |
+| 2 | **上下文溢出反应式兜底**：provider 报 context window exceeded / 长度类错误时自动触发一次压缩再重试（限一次，失败透传原错误） | **P2** | ✅ 已实施（`e8b9a1fed` 阶段二）：`isInputContextOverflowError` + runLoop 恢复编排 + ChatService 立即落盘闭包 |
+| 3 | **结构化压缩摘要模板**：摘要 prompt 改 USER_CONTEXT / TASK_TRACKING / COMPLETED / PENDING / CURRENT_STATE 分段，强约束保留任务/收藏等 ID | P3 | ✅ 已搭车（`e8b9a1fed`）：默认模板已八段结构化，收窄为 Rules 补任务状态迁移强约束 |
+| 4 | **压缩完成报告协议**：前置 token 快照 + 压缩后对比 + 三态结果（成功/无变化/失败），toast 报节省量 | P3 | 待做（轻量版已议：手动压缩完成报节省量 + 轮前自动压缩失败可见；timeout 判失败判已有等价不抄） |
+| 5 | **输入区上下文计量环**：per-conversation context fill 指示（usage 数据链已有）+ 双阈值变色 + 满载跳压缩入口 | P3 | 大半已有等价（用量条 + 80% 警告 + 容量面板 + 压缩入口）；残余仅 danger 第二阈值色，待拍板关闭或搭车 |
+| 6 | **净化兜底层**：压缩 prompt 侧与渲染侧各一层密钥再脱敏（截断容忍正则） | P3 | 📋 已立项 [`design-redaction-pipeline.md`](../../design/drafts/design-redaction-pipeline.md)（2026-11-21 三项拍板：标记块+白名单混合 / 仅压缩 prompt 侧 / 与 NMoi 待办④ 合并；NMoi ④ 边界待拍板） |
 
 **明确不做**：
 - **View/事件重放架构**——本仓消息树 + 检查点模型已等效覆盖，换架构是纯回退；
@@ -115,3 +115,9 @@ USER_CONTEXT / TASK_TRACKING（**强约束保留任务 ID 与状态**）/ COMPLE
 - 基准推进：OpenHands `9590adf0a` → **`6fa7686d3`**（+1：`fix(automations)` webhook 源校验恢复——automations 域外，不适用，无增量待评）；software-agent-sdk 仍 `06f643ca4`，零新增。
 - SDK 仓还有 `test_agent_context_window_condensation.py` 等触发链测试，落地 #2 时可对照其
   分类判定（何时算「长度类错误」）抄判据。
+
+## 2026-11-21 实施备忘
+
+- #1/#2/#3 已随两笔本地提交落地（`470253ee4` 阶段一安全切点+守卫六、`e8b9a1fed` 阶段二溢出恢复+#3 搭车），单测全量绿、未推送、真机验证挂账（带遗留配对的旧数据 + 真实供应商超窗实弹）。实施记录与语义定案见设计稿 [`design-context-boundaries-and-overflow-recovery.md`](../../design/in-progress/design-context-boundaries-and-overflow-recovery.md) §7/§8。
+- #6 已立项 [`design-redaction-pipeline.md`](../../design/drafts/design-redaction-pipeline.md)（与 NMoi 待办④ 合并），拍板：标记块约定+高置信正则白名单混合、仅压缩 prompt 侧、合并立项。
+- 溢出判据落地时对照过 SDK `classifier.py`（`LONG_PROMPT_PATTERNS` 8 条全量移植）；`MALFORMED_HISTORY_PATTERNS` 存档于 `GenerationErrorPolicy.kt` 注释不进 v1。
