@@ -94,6 +94,7 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 | 构建、装机与启动 | `:app:assembleDebug` 成功。2026-11-18 在 PJX110 上用 ARM64 Debug APK 覆盖安装，调试包从 beta.22 更新为 `1.0.28-beta.23`（327），包名 `app.androidrik.rikkahub.debug`。ADB 验证本地与装机包的 SHA-256 一致，冷启动成功 |
 | 真机业务验收 | 2026-11-19 在 PJX110（Android 15）完成本地模拟供应商的核心流程验收，含带数据的 Room 开库、两种定时聊天授权、四种模板生成路径、取消和进程重启后的续查。真实供应商调用与界面手测仍单独记录 |
 | 真机实弹验收 | 2026-11-20 在 PJX110 装入 `98ea41fc8`（Debug 包覆盖安装，冷启动 0 FATAL）完成真实供应商实弹：兜底解析（`imageGenerationModelId` 从未设置时默认模型解析为目录首个可见生图模型）、生图页与媒体创作页选择器同目录贯通、玩转ai生图（OpenAI 兼容）真实出图落盘入画廊、聊天 `generate_image` 工具实弹（deepseek-flash 调用，工具卡展开提示词/尺寸正常，产物落库）。Google (Gemini) 实弹按用户决定跳过（执行层有 9 例单测覆盖）；待确认重试弹窗设备无 `SUBMIT_UNKNOWN` 存量记录，状态机已由 2026-11-19 模拟验收覆盖，真实中断场景留待日常使用中自然出现 |
+| 按请求 ID 对账真机验证 | 2026-11-21 在 PJX110 装入 `3f8c452d5`（Debug 覆盖安装，真数据 Room 76→77 迁移通过、冷启动 0 FATAL、`request_id` 列就位）。用回环 fixture（`/control/submit-visibility` 受理可见性开关）走两个场景：**查到**——accepted_lost 下提交 `reconcile-a`（线上请求带 `requestId=4af54281…`，与落库值逐字节一致），提交窗口杀进程，重启后自动对账（`/v1/video/reconcile` found=true）→ 任务 ID 写回（=对账键回显）→ 状态续查 → 记录 SUCCEEDED 且产物落盘，全程仅一次提交；**查无**——never_received 下提交 `reconcile-b`，杀进程重启后对账 found=false → 记录维持 `SUBMIT_UNKNOWN` 交用户处置，同样无二次提交。对账器全程只读、任何分支不自动重提，mock trace 作为「无第二次提交」的真值（存档 `.tmp/reconcile-verify/fixture-trace-reconcile.json`）。验收载具（`MediaGenerationAcceptanceTest` 的 seedreconcile/recoverreconcile 两场景）已入仓；本次走 debug 包 UI 路线，隔离 instrumentation 路线未跑通（`am instrument` 绑定阶段报 Unable to find instrumentation info，复装多次同因，待查）。设备上留有验证痕迹：Fixture 供应商（127.0.0.1:18979）与 reconcile-a/b 两条记录 |
 
 本次 ARM64 APK 的 SHA-256 为 `1cc4ecc83599baaa3a4a39a1bf3f7bc7763cfccc65ead3b5d307de9dcacfeb90`，构建路径为 `app/build/outputs/apk/debug/app-arm64-v8a-debug.apk`。
 
@@ -139,7 +140,7 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 - **启动对账器**：`resumePending` 的 `SUBMIT_UNKNOWN` 分支先按对账键查一次服务端（`classifyReconciliation` 分类，只读、任何分支都不重新提交）：查到 → 写回任务 ID 转回可续查并注册接着跑；404 → 维持待确认（此时重试安全）；其余失败 → 保持 RUNNING 下次启动再对账，不升级成失败。不可对账时（不支持能力位 / 无对账键 / 目录解析不到）维持原有口径直接标记待确认。
 - **DB 76→77**：`media_creation_record.request_id`（可空纯列，AutoMigration 免 spec；null = 提交前中断或旧版本记录）。
 - **测试**：`MediaInterruptionTest` 覆盖对账处置矩阵（Resume / ConfirmAbsent / RetryLater）；`MediaGenerationManagerTest` + `SiliconFlowMediaGenerationProviderTest` 覆盖能力位、载荷下发（防 custom body 覆盖）与 404 语义；fixture 新增 `/v1/video/reconcile` 假想厂商端点 + `/control/submit-visibility` 受理可见性开关（`accepted_lost`=实际受理但响应丢失 / `never_received`=根本没收到），回环 smoke 全场景通过（`.tmp/reconcile_fixture_smoke.py`）。
-- **挂账**：真厂商接口出现前，实弹验证用 fixture 走真机场景（提交窗口杀进程 → 重启 → 对账续查 / 查无待确认），mock 的 record 日志作为「无第二次提交」的真值；厂商侧要求 = 接受提交体里的请求 ID 并提供按 ID 查询端点。
+- **挂账**：真机验证已完成（2026-11-21，见验收表「按请求 ID 对账真机验证」行）——查到自动续查、查无维持待确认、全程无二次提交均实测通过。剩余：真厂商接口出现后抓包确认请求 ID 下发 + 服务端幂等（厂商侧要求 = 接受提交体里的请求 ID 并提供按 ID 查询端点）。
 
 ### 3. 收尾模板素材验收
 

@@ -79,6 +79,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -126,12 +127,14 @@ class MediaGenerationAcceptanceTest {
         try {
             val fixture = Harness(koin, app, evidence, root.trimEnd('/'), token)
             val scenario = args.getString("mediaFixtureScenario") ?: "templates"
-            if (scenario != "recover") fixture.configure()
+            if (scenario != "recover" && scenario != "recoverreconcile") fixture.configure()
             when (scenario) {
                 "templates" -> fixture.templates()
                 "chat" -> fixture.chat()
                 "seed" -> fixture.seedInterruption()
                 "recover" -> fixture.recoverInterruption()
+                "seedreconcile" -> fixture.seedReconciliation()
+                "recoverreconcile" -> fixture.recoverReconciliation()
                 else -> error("Unknown media fixture scenario: $scenario")
             }
             File(evidence, "$scenario.passed").writeText("Passed")
@@ -374,6 +377,71 @@ class MediaGenerationAcceptanceTest {
             assertTrue(events(unknownPrompt, "/v1/video/status").isEmpty())
         }
 
+        /**
+         * 请求 ID 对账的种子阶段：两条视频模板先后进入提交窗口并被进程中断——
+         * 「实际受理但响应丢失」（accepted_lost，对账应查到并自动续查）与
+         * 「根本没收到」（never_received，对账应查无并维持待确认）。
+         */
+        suspend fun seedReconciliation() {
+            val video = option(t2v)
+            visibility("accepted_lost")
+            val found = startTemplate("reconcile", video, videoParams)
+            val foundRun = runOf(found)
+            await {
+                val record = media.getRecord(Uuid.parse(foundRun.id))
+                (record?.status == MediaCreationStatus.RUNNING && record.taskId == null &&
+                    record.requestId != null &&
+                    events(found.prompt, "/v1/video/submit").size == 1).takeIf { it }
+            }
+            visibility("never_received")
+            val absent = startTemplate("absent", video, videoParams)
+            val absentRun = runOf(absent)
+            await {
+                val record = media.getRecord(Uuid.parse(absentRun.id))
+                (record?.status == MediaCreationStatus.RUNNING && record.taskId == null &&
+                    record.requestId != null &&
+                    events(absent.prompt, "/v1/video/submit").size == 1).takeIf { it }
+            }
+            File(evidence, "reconcile.ids").writeText(
+                listOf(foundRun.id, absentRun.id, found.prompt, absent.prompt).joinToString("\n"),
+            )
+            File(evidence, "reconcile.ready").writeText("Both reconciliation windows are open")
+            awaitCancellation()
+        }
+
+        /** 重启后的对账阶段：查到的自动转回可续查跑完；查无的维持待确认；全程无第二次提交。 */
+        suspend fun recoverReconciliation() {
+            val (foundRun, absentRun, foundPrompt, absentPrompt) = File(evidence, "reconcile.ids").readLines()
+            visibility("normal")
+            service.resumePending()
+            withTimeout(40_000) { koin.get<ScheduledMediaRunner>().reconcile() }
+
+            // 查到：无需用户处置，自动写回任务 ID 转回可续查并跑完
+            val resumed = awaitRecord(Uuid.parse(foundRun))
+            assertOutput(resumed, "video/mp4")
+            assertNotNull(resumed.requestId)
+            // 对账键在提交前落库、且确实随提交载荷下发（submit trace 的 requestId 与记录一致）
+            assertEquals(resumed.requestId, events(foundPrompt, "/v1/video/submit").single().text("requestId"))
+            // 服务端按对账键找回：任务 ID 即对账键（reconcile 响应回显），随后走了状态查询
+            assertEquals(resumed.requestId, resumed.taskId)
+            assertTrue(reconcileEvents(resumed.requestId!!).single().get("found")!!.jsonPrimitive.boolean)
+            assertTrue(events(resumed.taskId!!, "/v1/video/status").isNotEmpty())
+
+            // 查无：服务端确认没收到 → 维持待确认（此时重试安全），不自动重新提交
+            val absent = awaitRecord(Uuid.parse(absentRun))
+            assertEquals(MediaCreationStatus.SUBMIT_UNKNOWN, absent.status)
+            assertNull(absent.taskId)
+            assertNotNull(absent.requestId)
+            assertFalse(reconcileEvents(absent.requestId!!).single().get("found")!!.jsonPrimitive.boolean)
+
+            // 对账是只读的：任何分支都不会产生第二次提交
+            assertEquals(1, events(foundPrompt, "/v1/video/submit").size)
+            assertEquals(1, events(absentPrompt, "/v1/video/submit").size)
+            // 运行账本随记录收尾
+            assertEquals(TaskRunStatus.OK, tasks.runById(foundRun)?.status)
+            assertEquals(TaskRunStatus.FAILED, tasks.runById(absentRun)?.status)
+        }
+
         private suspend fun setUpload(config: S3Config) {
             store.update { it.copy(uploadS3Config = config) }
             withTimeout(15_000) { store.settingsFlow.first { it.uploadS3Config == config } }
@@ -479,5 +547,17 @@ class MediaGenerationAcceptanceTest {
                 check(it.isSuccessful)
             }
         }
+
+        /** 受理可见性开关：accepted_lost=受理但响应丢失；never_received=挂住但不落任务。 */
+        private fun visibility(mode: String) {
+            val body = """{"mode":"$mode"}""".toRequestBody("application/json".toMediaType())
+            http.newCall(Request.Builder().url("$url/control/submit-visibility").post(body).build()).execute().use {
+                check(it.isSuccessful)
+            }
+        }
+
+        private fun reconcileEvents(requestId: String) =
+            JsonInstant.parseToJsonElement(get("/trace").decodeToString()).jsonArray.map { it.jsonObject }
+                .filter { it.text("path") == "/v1/video/reconcile" && it.text("requestId") == requestId }
     }
 }
