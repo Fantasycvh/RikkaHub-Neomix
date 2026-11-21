@@ -23,13 +23,18 @@ import kotlin.uuid.Uuid
 @Serializable
 data class MediaModelRef(val id: Uuid, val providerId: Uuid, val modelId: String, val kind: MediaKind)
 
+/** legacy 生图模型（旧 [ProviderSetting]）映射到 mediagen 链路后，授权指纹沿用旧分支格式 */
+internal enum class LegacyImageFormat { OpenAI, Google }
+
 internal data class MediaModelOption(
-    val target: MediaGenerationTarget,
+    val target: MediaGenerationTarget.Media,
     val model: MediaGenerationModel,
     val providerId: Uuid,
     val providerName: String,
     val capabilities: MediaGenerationCapabilities,
     val visible: Boolean = true,
+    /** 非 null = 由 legacy 生图模型运行期映射而来，指纹按旧分支格式算（存量定时批准不作废）。 */
+    val legacyImageFormat: LegacyImageFormat? = null,
 ) {
     val ref get() = MediaModelRef(model.id, providerId, model.modelId, model.kind)
     val name get() = model.displayName.ifBlank { model.modelId }
@@ -37,49 +42,45 @@ internal data class MediaModelOption(
 
     /**
      * 纯文本模板直跑是否可用：模型没有必填的图片输入（SiliconFlow I2V 必填首帧，
-     * 见 [modelCapabilities] 的模型级约束），其余都行。
+     * 见 [modelCapabilities] 的模型级约束）。
      */
-    val supportsTextTemplate get() = when (target) {
-        is MediaGenerationTarget.Image -> true
-        is MediaGenerationTarget.Media -> capabilities.requiredImageInputs.isEmpty()
-    }
+    val supportsTextTemplate get() = capabilities.requiredImageInputs.isEmpty()
 
     /**
-     * 纯文本模板直跑是否可用：模型没有必填的图片输入（SiliconFlow I2V 必填首帧，
-     * 见 [modelCapabilities] 的模型级约束），且模型级 customBodies 没有覆盖请求骨架键
-     * （M3a-2 parity：旧链路模型可用 customBodies 覆盖 n/prompt/size，定时授权据此做
-     * bounded count 检查——模型自定义了骨架键就拒绝无界的模板直跑）。
+     * 模板直跑按授权的 count 有界执行；模型级 customBodies 覆盖请求骨架键
+     * （M3a-2 parity：模型可用 customBodies 覆盖 n/prompt/size）时就拒绝无界的模板直跑。
      */
-    val permitsBoundedCount: Boolean get() = when (target) {
-        is MediaGenerationTarget.Image -> target.model.customBodies.none {
-            it.key in BOUNDED_COUNT_OVERRIDE_KEYS
-        }
-        is MediaGenerationTarget.Media -> target.model.customBodies.none {
-            it.key in BOUNDED_COUNT_OVERRIDE_KEYS
-        }
+    val permitsBoundedCount: Boolean get() = model.customBodies.none {
+        it.key in BOUNDED_COUNT_OVERRIDE_KEYS
     }
 
     fun authorizationFingerprint(): String {
-        val configuration = when (target) {
-            is MediaGenerationTarget.Image -> when (val provider = target.provider) {
-                // OpenAI 分支的字段顺序是既有定时授权的指纹来源，改动会使存量批准整体失效——保持逐字节不变
-                is ProviderSetting.OpenAI -> listOf(
+        val configuration = when (legacyImageFormat) {
+            // 旧分支格式的字段顺序是既有定时授权的指纹来源，改动会使存量批准整体失效——保持逐字节不变。
+            // M3b-1 后 legacy 模型映射成 Media target，但指纹仍按旧 Image 分支的格式算：
+            // 类型下沉 common 后 MediaGenerationProviderSetting/Model 的 customHeaders/customBodies
+            // 与旧 ai 侧是同一类型，编码结果逐字节一致。
+            LegacyImageFormat.OpenAI -> {
+                val provider = target.provider as MediaGenerationProviderSetting.OpenAI
+                listOf(
                     "image",
                     provider.baseUrl,
                     JsonInstant.encodeToString(provider.customHeaders),
-                    JsonInstant.encodeToString(target.model.customHeaders),
-                    JsonInstant.encodeToString(target.model.customBodies),
+                    JsonInstant.encodeToString(model.customHeaders),
+                    JsonInstant.encodeToString(model.customBodies),
                 )
-                is ProviderSetting.Google -> listOf(
+            }
+            LegacyImageFormat.Google -> {
+                val provider = target.provider as MediaGenerationProviderSetting.Google
+                listOf(
                     "image-google",
                     provider.baseUrl,
                     JsonInstant.encodeToString(provider.customHeaders),
-                    JsonInstant.encodeToString(target.model.customHeaders),
-                    JsonInstant.encodeToString(target.model.customBodies),
+                    JsonInstant.encodeToString(model.customHeaders),
+                    JsonInstant.encodeToString(model.customBodies),
                 )
-                else -> error("Unsupported legacy image provider: ${target.provider::class.simpleName}")
             }
-            is MediaGenerationTarget.Media -> listOf(target.provider.javaClass.name, target.provider.baseUrl)
+            null -> listOf(target.provider.javaClass.name, target.provider.baseUrl)
         }
         val bytes = JsonInstant.encodeToString(configuration).encodeToByteArray()
         return Base64.encode(MessageDigest.getInstance("SHA-256").digest(bytes))
@@ -88,7 +89,10 @@ internal data class MediaModelOption(
 
 internal fun Settings.mediaModelCatalog(): List<MediaModelOption> = buildList {
     for (stored in mediaGenerationProviders) {
+        // 已接入适配器的媒体供应商才进目录（Aliyun/Volcengine/MiniMax 尚未移植，选了必运行失败）
         if (stored !is MediaGenerationProviderSetting.OpenAI &&
+            stored !is MediaGenerationProviderSetting.Google &&
+            stored !is MediaGenerationProviderSetting.OpenRouter &&
             stored !is MediaGenerationProviderSetting.SiliconFlow
         ) continue
         // 凭据引用的生效配置：引用被删或引用对象不是凭据型供应商时，这套配置的模型整体失效
@@ -102,17 +106,75 @@ internal fun Settings.mediaModelCatalog(): List<MediaModelOption> = buildList {
     }
     for (provider in providers) {
         for (model in provider.models) {
-            val effective = model.findProvider(providers) ?: continue
-            // 收录口径 = 执行能力（见 [legacyImageExecutable]），不可执行的一律不进目录：
-            // 收录即「能选但一跑就报错」——工具门控的定式是宁可没有工具。
-            if (!legacyImageExecutable(effective, model)) continue
+            // 收录口径 = 执行能力（见 [legacyImageExecutable]），不可执行的一律不进目录
             if (model.modelId.isBlank()) continue
-            val presentation = MediaGenerationModel(model.modelId, MediaKind.IMAGE, model.displayName, model.id)
-            add(MediaModelOption(MediaGenerationTarget.Image(effective, model), presentation, provider.id,
-                provider.name.ifBlank { "OpenAI" }, legacyImageCapabilities,
-                visible = provider.enabled && model.enabled))
+            legacyMediaOption(provider, model)?.let { add(it) }
         }
     }
+}
+
+/**
+ * legacy 生图模型 → mediagen [MediaGenerationTarget.Media] 的运行期映射（M3b-1 目录切换）：
+ *
+ * 不迁移数据——旧 [ProviderSetting] 的生图模型在目录层包装成 mediagen 快照（借凭据/代理/
+ * 多 key/供应商级自定义头），执行统一走 mediagen 适配器；模型 UUID 与供应商 id 原样保留，
+ * `MediaModelRef`、默认图片模型、历史记录、定时授权引用全部不受影响；授权指纹按旧分支
+ * 格式逐字节复算（见 [MediaModelOption.authorizationFingerprint]）。
+ *
+ * 收录口径 = [legacyImageExecutable]（与真实执行能力对齐）。
+ */
+internal fun Settings.legacyMediaOption(provider: ProviderSetting, model: Model): MediaModelOption? {
+    val effective = model.findProvider(providers) ?: return null
+    if (!legacyImageExecutable(effective, model)) return null
+    val presentation = MediaGenerationModel(
+        modelId = model.modelId,
+        kind = MediaKind.IMAGE,
+        displayName = model.displayName,
+        id = model.id,
+        customHeaders = model.customHeaders,
+        customBodies = model.customBodies,
+    )
+    val (snapshot, format) = when (effective) {
+        is ProviderSetting.OpenAI -> MediaGenerationProviderSetting.OpenAI(
+            id = effective.id,
+            name = effective.name,
+            apiKey = effective.apiKey,
+            baseUrl = effective.baseUrl,
+            proxy = effective.proxy,
+            apiKeys = effective.apiKeys.map { it.key }.filter { it.isNotBlank() },
+            customHeaders = effective.customHeaders,
+            models = listOf(presentation),
+        ) to LegacyImageFormat.OpenAI
+        is ProviderSetting.Google -> MediaGenerationProviderSetting.Google(
+            id = effective.id,
+            name = effective.name,
+            apiKey = effective.apiKey,
+            baseUrl = effective.baseUrl,
+            proxy = effective.proxy,
+            apiKeys = effective.apiKeys.map { it.key }.filter { it.isNotBlank() },
+            customHeaders = effective.customHeaders,
+            vertexAI = effective.vertexAI,
+            useServiceAccount = effective.useServiceAccount,
+            privateKey = effective.privateKey,
+            serviceAccountEmail = effective.serviceAccountEmail,
+            location = effective.location,
+            projectId = effective.projectId,
+            models = listOf(presentation),
+        ) to LegacyImageFormat.Google
+        else -> return null
+    }
+    val capabilities = snapshot.modelCapabilities(presentation)
+        ?: snapshot.capabilities(MediaKind.IMAGE)
+        ?: return null
+    return MediaModelOption(
+        target = MediaGenerationTarget.Media(snapshot, presentation),
+        model = presentation,
+        providerId = provider.id,
+        providerName = provider.name.ifBlank { provider.javaClass.simpleName },
+        capabilities = capabilities,
+        visible = provider.enabled && model.enabled,
+        legacyImageFormat = format,
+    )
 }
 
 /**
@@ -157,9 +219,6 @@ internal fun Settings.effectiveMediaProvider(stored: MediaGenerationProviderSett
     )
 }
 
-private val legacyImageCapabilities =
-    requireNotNull(MediaGenerationProviderSetting.OpenAI().capabilities(MediaKind.IMAGE))
-
 /** 模型级 customBodies 命中这些键 = 可能覆盖请求骨架（n/prompt/size 等），模板直跑需重新批准 */
 private val BOUNDED_COUNT_OVERRIDE_KEYS = setOf("model", "n", "prompt", "size", "input_references")
 
@@ -186,12 +245,21 @@ internal fun Settings.resolveMediaRecord(record: MediaCreationRecord): MediaMode
     record.catalogModelId?.let { id ->
         resolveMediaModel(MediaModelRef(id, record.providerId, record.modelId, record.kind))?.let { return it }
     }
-    val stored = mediaGenerationProviders.firstOrNull { it.id == record.providerId } ?: return null
-    val provider = effectiveMediaProvider(stored) ?: return null
-    val model = provider.models.firstOrNull {
-        it.modelId == record.modelId && it.kind == record.kind &&
+    val stored = mediaGenerationProviders.firstOrNull { it.id == record.providerId }
+    if (stored != null) {
+        val provider = effectiveMediaProvider(stored) ?: return null
+        val model = provider.models.firstOrNull {
+            it.modelId == record.modelId && it.kind == record.kind &&
+                (record.catalogModelId == null || it.id == record.catalogModelId)
+        } ?: MediaGenerationModel(record.modelId, record.kind, id = record.catalogModelId ?: Uuid.random())
+        val capabilities = provider.modelCapabilities(model) ?: return null
+        return MediaModelOption(MediaGenerationTarget.Media(provider, model), model, stored.id, provider.name, capabilities)
+    }
+    // 目录切换前的旧记录：providerId 指向 legacy 供应商，按同款映射解析（模型已被删则如实失败）
+    val legacyProvider = providers.firstOrNull { it.id == record.providerId }
+    val legacyModel = legacyProvider?.models?.firstOrNull {
+        it.modelId == record.modelId && record.kind == MediaKind.IMAGE &&
             (record.catalogModelId == null || it.id == record.catalogModelId)
-    } ?: MediaGenerationModel(record.modelId, record.kind, id = record.catalogModelId ?: Uuid.random())
-    val capabilities = provider.modelCapabilities(model) ?: return null
-    return MediaModelOption(MediaGenerationTarget.Media(provider, model), model, stored.id, provider.name, capabilities)
+    }
+    return legacyProvider?.let { p -> legacyModel?.let { m -> legacyMediaOption(p, m) } }
 }

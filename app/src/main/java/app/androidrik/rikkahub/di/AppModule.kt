@@ -221,7 +221,6 @@ val appModule = module {
 
     single {
         MediaGenerationExecutor(
-            imageProvider = get<ProviderManager>()::getProviderByType,
             mediaGenerationManager = get(),
             downloadClient = get(),
         )

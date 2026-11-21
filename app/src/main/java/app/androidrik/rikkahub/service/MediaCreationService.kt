@@ -22,7 +22,6 @@ import app.androidrik.rikkahub.data.datastore.awaitLoaded
 import app.androidrik.rikkahub.data.files.MediaCreationFiles
 import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.data.media.MediaGenerationExecutor
-import app.androidrik.rikkahub.data.media.MediaGenerationResult
 import app.androidrik.rikkahub.data.media.MediaGenerationTarget
 import app.androidrik.rikkahub.data.media.MediaModelOption
 import app.androidrik.rikkahub.data.media.resolveMediaRecord
@@ -344,22 +343,8 @@ class MediaCreationService(
         }
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.RUNNING) }
         val request = buildMediaGenerationRequest(record.prompt, record.params, record.inputs, inputUrls, capabilities)
-        return when (val result = executor.submit(option.target, request)) {
-            is MediaGenerationResult.Task -> result.task
-            is MediaGenerationResult.ImageStream -> {
-                val outputs = mutableListOf<MediaGenerationOutput>()
-                result.images.collect { image ->
-                    if (!image.partial) {
-                        outputs += MediaGenerationOutput(
-                            data = Base64.decode(image.data.substringAfter(";base64,")),
-                            mimeType = image.mimeType,
-                        )
-                    }
-                }
-                MediaGenerationTask(record.id.toString(), option.providerName, option.model.modelId,
-                    MediaGenerationStatus.SUCCEEDED, outputs)
-            }
-        }
+        // M3b-1 目录切换后只有 mediagen 任务链路（legacy 生图模型已在目录层映射成 Media target）
+        return executor.submit(option.target, request)
     }
 
     /**

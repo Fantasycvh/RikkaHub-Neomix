@@ -60,7 +60,12 @@ class GoogleMediaGenerationProvider(
     private fun OkHttpClient.withProxy(setting: MediaGenerationProviderSetting.Google): OkHttpClient =
         configureClientWithProxy(setting.proxy)
 
-    private fun Request.Builder.modelHeaders(model: MediaGenerationModel): Request.Builder = apply {
+    /** 供应商级 + 模型级自定义请求头（M3b-1 映射载体 + M3a-2 parity，对齐旧链路两级下发）。 */
+    private fun Request.Builder.customHeaders(
+        setting: MediaGenerationProviderSetting.Google,
+        model: MediaGenerationModel,
+    ): Request.Builder = apply {
+        setting.customHeaders.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
         model.customHeaders.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
     }
 
@@ -230,7 +235,7 @@ class GoogleMediaGenerationProvider(
             request = Request.Builder()
                 .url(buildUrl(setting, model.modelId))
                 .postJson(requestBody)
-                .modelHeaders(model)
+                .customHeaders(setting, model)
                 .build()
         )
         parseImageOutputs(client.withProxy(setting).executeJson(request, id))

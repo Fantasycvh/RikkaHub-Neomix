@@ -61,6 +61,11 @@ sealed class MediaGenerationProviderSetting {
         override val proxy: ProviderProxy = ProviderProxy.Inherit,
         override val apiKeys: List<String> = emptyList(),
         /**
+         * 供应商级自定义请求头（M3b-1 目录映射载体：legacy `ProviderSetting.OpenAI.customHeaders`
+         * 运行期映射时借进来逐条下发，指纹也按它算）。旧备份缺字段落空列表。
+         */
+        val customHeaders: List<app.androidrik.common.http.CustomHeader> = emptyList(),
+        /**
          * 引用的旧 AI 供应商凭据 id（`ProviderSetting.ApiKey`）：设置后 baseUrl/apiKey/proxy/apiKeys
          * 在目录解析时取自被引用者，改 key 不用同步两处配置；被引用者被删或换端点后，引用它的模型
          * 相应失效或以新地址生效。null = 本地显式配置（无法共用鉴权时保留这种形态）。
@@ -280,6 +285,8 @@ sealed class MediaGenerationProviderSetting {
         override val baseUrl: String = "https://generativelanguage.googleapis.com/v1beta",
         override val proxy: ProviderProxy = ProviderProxy.Inherit,
         override val apiKeys: List<String> = emptyList(),
+        /** 供应商级自定义请求头（M3b-1 目录映射载体，同 OpenAI）。 */
+        val customHeaders: List<app.androidrik.common.http.CustomHeader> = emptyList(),
         var vertexAI: Boolean = false,
         var useServiceAccount: Boolean = false,
         var privateKey: String = "",

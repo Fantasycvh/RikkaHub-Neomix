@@ -1,136 +1,72 @@
 package app.androidrik.rikkahub.data.media
 
-import app.androidrik.ai.provider.ImageEditParams
-import app.androidrik.ai.provider.ImageGenerationParams
-import app.androidrik.ai.provider.Model
-import app.androidrik.ai.provider.Provider
-import app.androidrik.ai.provider.ProviderSetting
-import app.androidrik.ai.ui.ImageGenSize
 import app.androidrik.ai.ui.ImageGenerationItem
-import app.androidrik.common.http.await
-import app.androidrik.mediagen.model.MediaGenerationInput
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationRequest
-import app.androidrik.mediagen.model.MediaGenerationTask
 import app.androidrik.mediagen.model.MediaGenerationStatus
+import app.androidrik.mediagen.model.MediaGenerationTask
 import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import app.androidrik.common.http.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlin.io.encoding.Base64
 
+/**
+ * 统一媒体目标（M3b-1 目录切换后只剩 mediagen 形态：legacy 生图模型在目录层映射成 Media，
+ * 见 [legacyMediaOption]；旧 `Image` 分支与 ai 适配器执行路径已随本批退役）。
+ */
 internal sealed interface MediaGenerationTarget {
-    data class Image(
-        val provider: ProviderSetting,
-        val model: Model,
-    ) : MediaGenerationTarget
-
     data class Media(
         val provider: MediaGenerationProviderSetting,
         val model: MediaGenerationModel,
     ) : MediaGenerationTarget
 }
 
-internal sealed interface MediaGenerationResult {
-    data class ImageStream(val images: Flow<ImageGenerationItem>) : MediaGenerationResult
-    data class Task(val task: MediaGenerationTask) : MediaGenerationResult
-}
-
 /**
- * Shared provider submission for image tools and creation pages. Callers own the
- * lifetime and persistence of the stream or provider task they receive.
+ * 统一提交/续查入口（M3b-1 后 Media-only）：旧 `ImageStream` 分支随 `MediaGenerationTarget.Image`
+ * 一并退役，legacy 生图模型经 [legacyMediaOption] 映射后同样走 mediagen 任务链路。
  */
 class MediaGenerationExecutor(
-    private val imageProvider: (ProviderSetting) -> Provider<ProviderSetting>,
     private val mediaGenerationManager: MediaGenerationManager,
     private val downloadClient: OkHttpClient = OkHttpClient(),
 ) {
-    internal fun images(target: MediaGenerationTarget, request: MediaGenerationRequest): Flow<ImageGenerationItem> =
+    internal fun images(target: MediaGenerationTarget.Media, request: MediaGenerationRequest): Flow<ImageGenerationItem> =
         flow {
-            when (val result = submit(target, request)) {
-                is MediaGenerationResult.ImageStream -> emitAll(result.images)
-                is MediaGenerationResult.Task -> {
-                    check(result.task.status == MediaGenerationStatus.SUCCEEDED) {
-                        result.task.error?.message ?: "Image generation did not complete"
-                    }
-                    for (output in result.task.outputs) {
-                        val data = output.data ?: downloadClient.newCall(
-                            Request.Builder().url(requireNotNull(output.url)).build(),
-                        ).await().use { response ->
-                            check(response.isSuccessful) { "Image download failed (HTTP ${response.code})" }
-                            withContext(Dispatchers.IO) { response.body.bytes() }
-                        }
-                        emit(ImageGenerationItem(Base64.encode(data), output.mimeType))
-                    }
+            val task = submit(target, request)
+            check(task.status == MediaGenerationStatus.SUCCEEDED) {
+                task.error?.message ?: "Image generation did not complete"
+            }
+            for (output in task.outputs) {
+                val data = output.data ?: downloadClient.newCall(
+                    Request.Builder().url(requireNotNull(output.url)).build(),
+                ).await().use { response ->
+                    check(response.isSuccessful) { "Image download failed (HTTP ${response.code})" }
+                    withContext(Dispatchers.IO) { response.body.bytes() }
                 }
+                emit(ImageGenerationItem(Base64.encode(data), output.mimeType))
             }
         }
 
     internal suspend fun submit(
-        target: MediaGenerationTarget,
+        target: MediaGenerationTarget.Media,
         request: MediaGenerationRequest,
-    ): MediaGenerationResult = when (target) {
-        is MediaGenerationTarget.Image -> MediaGenerationResult.ImageStream(generateImage(target, request))
-        is MediaGenerationTarget.Media -> {
-            val task = mediaGenerationManager.create(target.provider, target.model, request).getOrElse {
-                currentCoroutineContext().ensureActive()
-                throw it
-            }
-            MediaGenerationResult.Task(task)
+    ): MediaGenerationTask {
+        val task = mediaGenerationManager.create(target.provider, target.model, request).getOrElse {
+            currentCoroutineContext().ensureActive()
+            throw it
         }
+        return task
     }
 
     internal suspend fun query(
         target: MediaGenerationTarget.Media,
         taskId: String,
     ): Result<MediaGenerationTask> = mediaGenerationManager.query(target.provider, target.model, taskId)
-
-    private suspend fun generateImage(
-        target: MediaGenerationTarget.Image,
-        request: MediaGenerationRequest,
-    ): Flow<ImageGenerationItem> {
-        val model = target.model
-        val provider = imageProvider(target.provider)
-        val prompt = requireNotNull(request.prompt)
-        val count = request.count ?: 1
-        val size = request.resolution ?: ImageGenSize.AUTO.value
-
-        if (request.inputs.isEmpty()) {
-            return provider.generateImage(
-                target.provider,
-                ImageGenerationParams(
-                    model = model,
-                    prompt = prompt,
-                    numOfImages = count,
-                    size = size,
-                    customHeaders = model.customHeaders,
-                    customBody = model.customBodies,
-                ),
-            )
-        }
-
-        val images = request.inputs.map { input ->
-            require(input is MediaGenerationInput.Image) { "Image editing requires image inputs" }
-            input.url
-        }
-        return provider.editImage(
-            target.provider,
-            ImageEditParams(
-                model = model,
-                prompt = prompt,
-                images = images,
-                numOfImages = count,
-                size = size,
-                customHeaders = model.customHeaders,
-                customBody = model.customBodies,
-            ),
-        )
-    }
 }

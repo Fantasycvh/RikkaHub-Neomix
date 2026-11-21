@@ -58,16 +58,22 @@ class OpenAIMediaGenerationProvider(
     private fun apiKey(setting: MediaGenerationProviderSetting.OpenAI): String =
         keyRoulette.next(setting.effectiveMediaApiKeys, setting.id.toString())
 
-    /** 模型级自定义请求头（M3a-2 parity，对齐旧链路 Model.customHeaders 的下发方式）。 */
-    private fun Request.Builder.modelHeaders(model: MediaGenerationModel): Request.Builder = apply {
-        model.customHeaders.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
+    /** 供应商级 + 模型级自定义请求头（M3b-1 映射载体 + M3a-2 parity，对齐旧链路两级下发）。 */
+    private fun Request.Builder.customHeaders(
+        setting: MediaGenerationProviderSetting.OpenAI,
+        model: MediaGenerationModel?,
+    ): Request.Builder = apply {
+        setting.customHeaders.filter { it.name.isNotBlank() }.forEach { addHeader(it.name, it.value) }
+        model?.customHeaders?.filter { it.name.isNotBlank() }?.forEach { addHeader(it.name, it.value) }
     }
 
     /** `GET {baseUrl}/models`：官方接口会列出 `dall-e-*` / `gpt-image-*`，兼容端点会列全部。 */
     override suspend fun listModels(
         setting: MediaGenerationProviderSetting.OpenAI,
     ): Result<List<MediaGenerationModel>> = runCatching {
-        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/models", apiKey(setting)).get().build()
+        val httpRequest = bearerRequest("${setting.baseUrl.trimEnd('/')}/models", apiKey(setting))
+            .customHeaders(setting, model = null)
+            .get().build()
         openAiImageModels(client.withProxy(setting).executeJson(httpRequest, id))
     }
 
@@ -79,7 +85,7 @@ class OpenAIMediaGenerationProvider(
         val baseUrl = setting.baseUrl.trimEnd('/')
         val builder = Request.Builder()
             .addHeader("Authorization", "Bearer ${apiKey(setting)}")
-            .modelHeaders(model)
+            .customHeaders(setting, model)
         val httpRequest = if (request.inputs.isEmpty()) {
             builder.url("$baseUrl/images/generations").postJson(buildGenerationBody(setting, model, request))
         } else {

@@ -15,12 +15,14 @@ import app.androidrik.rikkahub.data.media.MediaGenerationTarget
 import app.androidrik.rikkahub.data.media.defaultImageModel
 import app.androidrik.rikkahub.data.media.mediaModelCatalog
 import app.androidrik.rikkahub.data.media.resolveMediaModel
+import app.androidrik.rikkahub.data.media.resolveMediaRecord
 import app.androidrik.rikkahub.data.model.MediaCreationParams
 import app.androidrik.rikkahub.data.sync.s3.S3Config
 import app.androidrik.rikkahub.service.ScheduledRunRegistry
 import app.androidrik.rikkahub.service.scheduledRunId
 import app.androidrik.rikkahub.utils.JsonInstant
 import app.androidrik.workspace.ExecutionScope
+import kotlin.uuid.Uuid
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,20 +39,75 @@ class ScheduledMediaActionTest {
     private val legacy = ProviderSetting.OpenAI(models = listOf(legacyImage))
     private val media = MediaGenerationProviderSetting.OpenAI(models = listOf(mediaImage))
     private val video = MediaGenerationProviderSetting.SiliconFlow(models = listOf(firstFrameVideo))
+    private val openRouter = MediaGenerationProviderSetting.OpenRouter()
     private val settings = Settings.dummy().copy(
         providers = listOf(legacy),
-        mediaGenerationProviders = listOf(media, video, MediaGenerationProviderSetting.OpenRouter()),
+        mediaGenerationProviders = listOf(media, video, openRouter),
         imageGenerationModelId = mediaImage.id,
     )
 
     @Test
     fun `catalog combines the two configurations and resolves the configured default`() {
-        assertEquals(setOf(legacyImage.id, mediaImage.id, firstFrameVideo.id),
+        // M3a-3 后 OpenRouter 适配器已接入，其默认模型也进目录
+        val openRouterDefaults = openRouter.models.map { it.id }.toSet()
+        assertEquals(setOf(legacyImage.id, mediaImage.id, firstFrameVideo.id) + openRouterDefaults,
             settings.mediaModelCatalog().map { it.model.id }.toSet())
         val option = requireNotNull(settings.defaultImageModel())
         assertEquals(media.id, option.ref.providerId)
         assertNull(settings.copy(mediaGenerationProviders = listOf(video)).resolveMediaModel(option.ref))
         assertNull(settings.resolveMediaModel(option.ref.copy(modelId = "replacement")))
+    }
+
+    @Test
+    fun `legacy models map to media targets and keep the old fingerprint format`() {
+        // M3b-1 目录切换：legacy IMAGE 模型在目录层映射成 Media target（执行走 mediagen 适配器），
+        // 但 MediaModelRef/供应商 id/模型 id 原样保留，授权指纹按旧 Image 分支格式逐字节复算
+        val option = settings.mediaModelCatalog().single { it.model.id == legacyImage.id }
+        assertTrue(option.target.provider is MediaGenerationProviderSetting.OpenAI)
+        assertEquals(legacyImage.id, option.model.id)
+        assertEquals(legacy.id, option.ref.providerId)
+        // 映射快照借走旧供应商的凭据/头/多 key（执行语义对齐旧链路）
+        val snapshot = option.target.provider as MediaGenerationProviderSetting.OpenAI
+        assertEquals(legacy.baseUrl, snapshot.baseUrl)
+        assertEquals(legacy.customHeaders, snapshot.customHeaders)
+
+        // 指纹逐字节兼容：手工构造旧 Image 分支格式的配置列表，与映射后的指纹比对
+        val legacyFormatConfiguration = listOf(
+            "image",
+            legacy.baseUrl,
+            app.androidrik.rikkahub.utils.JsonInstant.encodeToString(legacy.customHeaders),
+            app.androidrik.rikkahub.utils.JsonInstant.encodeToString(legacyImage.customHeaders),
+            app.androidrik.rikkahub.utils.JsonInstant.encodeToString(legacyImage.customBodies),
+        )
+        val legacyFingerprint = java.util.Base64.getEncoder().encodeToString(
+            java.security.MessageDigest.getInstance("SHA-256")
+                .digest(app.androidrik.rikkahub.utils.JsonInstant.encodeToString(legacyFormatConfiguration).encodeToByteArray()),
+        )
+        assertEquals(legacyFingerprint, option.authorizationFingerprint())
+
+        // 既有授权继续有效：按映射后的 option 授权，旧指纹验证通过
+        val grant = ScheduledMediaAction(option.ref, MediaCreationParams(count = 1), option.authorizationFingerprint())
+        assertTrue(grant.permits(option))
+        // 端点变化仍要求重新批准
+        val moved = settings.copy(providers = listOf(legacy.copy(baseUrl = "https://other.test/v1")))
+        assertFalse(grant.permits(requireNotNull(
+            moved.mediaModelCatalog().single { it.model.id == legacyImage.id }
+        )))
+    }
+
+    @Test
+    fun `resolveMediaRecord falls back to legacy mapping for pre-migration records`() {
+        val option = settings.mediaModelCatalog().single { it.model.id == legacyImage.id }
+        val record = app.androidrik.rikkahub.data.model.MediaCreationRecord(
+            sessionId = Uuid.random(),
+            providerId = legacy.id,
+            providerName = "legacy",
+            modelId = "image-a",
+            kind = MediaKind.IMAGE,
+            prompt = "p",
+        )
+        val resolved = settings.resolveMediaRecord(record)
+        assertEquals(option.ref, requireNotNull(resolved).ref)
     }
 
     @Test
