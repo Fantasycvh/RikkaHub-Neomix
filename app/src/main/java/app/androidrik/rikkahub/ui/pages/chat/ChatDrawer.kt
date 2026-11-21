@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.chat
 import com.composables.icons.lucide.Import
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,7 +68,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.LocateFixed
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -162,25 +168,42 @@ fun ChatDrawerContent(
     }
 
     val editableConversations by drawerVm.editableConversations.collectAsStateWithLifecycle(initialValue = emptyList())
-    val conversationListState = rememberLazyListState(
-        initialFirstVisibleItemIndex = drawerVm.scrollIndex,
-        initialFirstVisibleItemScrollOffset = drawerVm.scrollOffset,
-    )
+    val conversationListState = rememberLazyListState()
+    var locateRequested by remember(current.id) { mutableStateOf(false) }
+    val savedAnchor = remember(settings.assistantId, selectedFolderId) {
+        drawerVm.savedScrollAnchor(settings.assistantId, selectedFolderId)
+    }
+    var viewportRestore by remember(settings.assistantId, selectedFolderId) {
+        mutableStateOf(savedAnchor?.let { ConversationViewportRestore(it, drawerVm.scrollRemovedIds, drawerVm.retainedScrollItems) })
+    }
+    var pendingDeletionCount by remember { mutableStateOf(0) }
+    val deletingConversations = pendingDeletionCount > 0
+    var suppressAutoPosition by remember(settings.assistantId, selectedFolderId) {
+        mutableStateOf(savedAnchor != null)
+    }
 
-    LaunchedEffect(conversationListState) {
-        snapshotFlow {
-            conversationListState.firstVisibleItemIndex to
-                conversationListState.firstVisibleItemScrollOffset
-        }
-            .distinctUntilChanged()
-            .collectLatest { (index, offset) ->
-                drawerVm.saveScrollPosition(index, offset)
-            }
+    fun prepareDeletion(ids: Set<Uuid>) {
+        locateRequested = false
+        suppressAutoPosition = true
+        val removedIds = ids + viewportRestore?.removedIds.orEmpty()
+        val retainedItems = viewportRestore?.retainedItems?.takeIf { it.isNotEmpty() }
+            ?: conversations.itemSnapshotList.items.toList()
+        drawerVm.retainedScrollItems = retainedItems
+        val anchor = captureConversationScrollAnchor(
+            retainedItems, conversationListState.layoutInfo.visibleItemsInfo, removedIds,
+        )
+        if (anchor != null) drawerVm.saveScrollAnchor(anchor, removedIds) else drawerVm.clearScrollAnchor()
+        viewportRestore = ConversationViewportRestore(anchor, removedIds, retainedItems)
+        pendingDeletionCount++
     }
 
     val conversationJobs by vm.conversationJobs.collectAsStateWithLifecycle(
         initialValue = emptyMap(),
     )
+
+    val currentSummary by remember(current.id) {
+        repo.observeConversationSummary(current.id)
+    }.collectAsStateWithLifecycle(initialValue = null)
 
     // 昵称编辑状态
     val nicknameEditState = useEditState<String> { newNickname ->
@@ -247,6 +270,89 @@ fun ChatDrawerContent(
     val windowHeight = LocalWindowInfo.current.containerDpSize.height
     val conversationPanelVisible = !(showFilesPanel && boundWorkspaceId != null)
     val headerInList = windowHeight < 640.dp && conversationPanelVisible && !editOrderMode
+
+    LaunchedEffect(
+        locateRequested, current.id, currentSummary, selectedFolderId,
+        settings.assistantId, headerInList, selectionMode, editOrderMode, showFilesPanel,
+    ) {
+        if (!locateRequested) return@LaunchedEffect
+        val target = currentSummary
+        if (target == null || target.id != current.id || target.assistantId != settings.assistantId ||
+            selectionMode || editOrderMode || showFilesPanel
+        ) {
+            locateRequested = false
+            return@LaunchedEffect
+        }
+        if (selectedFolderId != target.folderId) return@LaunchedEffect
+        try {
+            val found = withTimeoutOrNull(30_000) {
+                locateConversationInPaging(
+                    conversations, conversationListState, target,
+                    headerCount = if (headerInList) 1 else 0,
+                )
+            } ?: false
+            if (!found) toaster.show(resources.getString(R.string.conversation_locate_current_missing))
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            toaster.show(resources.getString(R.string.conversation_locate_current_missing), type = ToastType.Error)
+        }
+        locateRequested = false
+    }
+
+    LaunchedEffect(viewportRestore, deletingConversations, headerInList, selectionMode, editOrderMode, showFilesPanel, locateRequested) {
+        val restore = viewportRestore ?: return@LaunchedEffect
+        if (locateRequested) {
+            drawerVm.retainedScrollItems = emptyList()
+            viewportRestore = null
+            return@LaunchedEffect
+        }
+        if (deletingConversations || editOrderMode || showFilesPanel) return@LaunchedEffect
+        try {
+            val ready = withTimeoutOrNull(30_000) {
+                snapshotFlow { conversations.itemSnapshotList to conversations.loadState.refresh }
+                    .first { (snapshot, refresh) ->
+                        refresh is LoadState.Error || (refresh !is LoadState.Loading && snapshot.items.none {
+                            it is ConversationListItem.Item && it.conversation.id in restore.removedIds
+                        })
+                    }
+                restore.anchor?.let { loadConversationInPaging(conversations, it.conversation) != null } ?: true
+            } ?: false
+            if (ready) return@LaunchedEffect // ConversationList applies the position before measuring.
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            android.util.Log.w("ChatDrawer", "Could not restore conversation viewport", error)
+        }
+        drawerVm.retainedScrollItems = emptyList()
+        viewportRestore = null
+    }
+
+    LaunchedEffect(conversationListState, settings.assistantId, selectedFolderId) {
+        snapshotFlow {
+            if (viewportRestore != null || deletingConversations || editOrderMode || showFilesPanel) null
+            else captureConversationScrollAnchor(
+                conversations.itemSnapshotList.items, conversationListState.layoutInfo.visibleItemsInfo,
+            )?.takeIf {
+                it.conversation.assistantId == settings.assistantId && it.conversation.folderId == selectedFolderId
+            }
+        }.distinctUntilChanged().collectLatest { anchor ->
+            if (anchor != null) drawerVm.saveScrollAnchor(anchor)
+        }
+    }
+
+    val userDragging by conversationListState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(userDragging) {
+        if (userDragging) {
+            locateRequested = false
+            // Complete deletion/navigation first, then let subsequent gestures own the viewport.
+            if (!deletingConversations) {
+                drawerVm.retainedScrollItems = emptyList()
+                viewportRestore = null
+            }
+            suppressAutoPosition = true
+        }
+    }
 
     // 抽屉顶部：备份提醒、用户信息、常用入口（历史 / 媒体创作 / 翻译）、面板切换
     val drawerHeader: @Composable () -> Unit = {
@@ -354,7 +460,10 @@ fun ChatDrawerContent(
                 FolderBar(
                     folders = folders,
                     selectedFolderId = selectedFolderId,
-                    onSelect = { drawerVm.selectFolder(it) },
+                    onSelect = {
+                        locateRequested = false
+                        drawerVm.selectFolder(it)
+                    },
                     onCreate = { showCreateFolderDialog = true },
                     onRename = { folderToRename = it },
                     onDelete = { folderToDelete = it },
@@ -391,6 +500,27 @@ fun ChatDrawerContent(
             verticalArrangement = Arrangement.spacedBy((drawerPanel.gapDp ?: 8f).dp),
         ) {
             if (!headerInList) drawerHeader()
+
+            if (conversationPanelVisible && !selectionMode && !editOrderMode &&
+                currentSummary?.id == current.id && currentSummary?.assistantId == settings.assistantId
+            ) {
+                TextButton(
+                    enabled = !locateRequested && !deletingConversations,
+                    onClick = {
+                        drawerVm.retainedScrollItems = emptyList()
+                        viewportRestore = null
+                        suppressAutoPosition = true
+                        drawerVm.selectFolder(currentSummary?.folderId)
+                        conversations.retry()
+                        locateRequested = true
+                    },
+                    modifier = Modifier.align(Alignment.End),
+                ) {
+                    Icon(Lucide.LocateFixed, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(4.dp))
+                    Text(stringResource(R.string.conversation_locate_current))
+                }
+            }
 
             if (showFilesPanel && boundWorkspaceId != null) {
                 WorkspaceFilesPanel(
@@ -466,6 +596,14 @@ fun ChatDrawerContent(
                     }
                     ConversationList(
                     current = current,
+                    autoScrollToCurrent = !suppressAutoPosition,
+                    viewportRestore = viewportRestore.takeUnless { deletingConversations },
+                    retainedItems = viewportRestore?.retainedItems.orEmpty(),
+                    onViewportRestored = {
+                        drawerVm.retainedScrollItems = emptyList()
+                        viewportRestore = null
+                    },
+                    animateChanges = !deletingConversations && viewportRestore == null,
                     showLastActive = customOrderActive,
                     conversations = conversations,
                     conversationJobs = conversationJobs.keys,
@@ -500,12 +638,14 @@ fun ChatDrawerContent(
                     }
                 },
                 onDelete = {
+                    prepareDeletion(setOf(it.id))
                     scope.launch {
-                        vm.deleteConversation(it).join()
-                        conversations.refresh()
-                        if (it.id == current.id) {
-                            navigateToChatPage(navController)
+                        try {
+                            vm.deleteConversation(it).join()
+                        } finally {
+                            pendingDeletionCount--
                         }
+                        if (it.id == current.id) navigateToChatPage(navController)
                     }
                 },
                 onPin = {
@@ -624,17 +764,20 @@ fun ChatDrawerContent(
             confirmButton = {
                 TextButton(onClick = {
                     showBatchDeleteDialog = false
+                    val ids = selectedIds.toList()
+                    prepareDeletion(ids.map(Uuid::parse).toSet())
                     scope.launch {
-                        val ids = selectedIds.toList()
-                        val containsCurrent = current.id.toString() in ids
-                        ids.forEach { id ->
-                            // 列表项是轻量摘要（messageNodes 为空），删除前取完整会话以正确清理附件文件
-                            val full = repo.getConversationById(Uuid.parse(id)) ?: return@forEach
-                            vm.deleteConversation(full).join()
+                        try {
+                            ids.forEach { id ->
+                                // 列表项是轻量摘要，删除前加载完整会话以清理附件。
+                                val full = repo.getConversationById(Uuid.parse(id)) ?: return@forEach
+                                vm.deleteConversation(full).join()
+                            }
+                        } finally {
+                            pendingDeletionCount--
                         }
                         exitSelectionMode()
-                        conversations.refresh()
-                        if (containsCurrent) navigateToChatPage(navController)
+                        if (current.id.toString() in ids) navigateToChatPage(navController)
                         toaster.show(
                             message = resources.getString(
                                 R.string.conversation_multi_select_deleted_toast, ids.size

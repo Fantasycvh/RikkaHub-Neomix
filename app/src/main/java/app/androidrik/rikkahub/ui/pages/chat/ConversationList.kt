@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.paging.compose.LazyPagingItems
-import androidx.paging.compose.itemKey
+import androidx.paging.LoadState
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.ui.components.ui.ExpressivePopup
@@ -87,7 +88,7 @@ sealed class ConversationListItem {
 }
 
 @Composable
-fun ColumnScope.ConversationList(
+internal fun ColumnScope.ConversationList(
     current: Conversation,
     conversations: LazyPagingItems<ConversationListItem>,
     conversationJobs: Collection<Uuid>,
@@ -124,14 +125,48 @@ fun ColumnScope.ConversationList(
     onToggleSelect: (Conversation) -> Unit = {},
     /** 长按菜单里的「多选」入口：进入多选模式并选中该条 */
     onEnterSelect: (Conversation) -> Unit = {},
+    autoScrollToCurrent: Boolean = true,
+    animateChanges: Boolean = true,
+    viewportRestore: ConversationViewportRestore? = null,
+    retainedItems: List<ConversationListItem> = emptyList(),
+    onViewportRestored: () -> Unit = {},
 ) {
     // 列表顶部若放了 header，会话项在 LazyColumn 中的位置要往后挪一位。
     // 旋转使 header 插入/移出时也重新校验当前位置，避免沿用旧布局的索引。
     val headerCount = if (header != null) 1 else 0
+    val snapshot = conversations.itemSnapshotList.items
+    val restoreIndex = viewportRestore?.anchor?.let { anchor ->
+        snapshot.indexOfFirst { (it as? ConversationListItem.Item)?.conversation?.id == anchor.conversation.id }
+    } ?: 0
+    val restoreReady = viewportRestore != null && restoreIndex >= 0 &&
+        conversations.loadState.refresh is LoadState.NotLoading && snapshot.none {
+            it is ConversationListItem.Item && it.conversation.id in viewportRestore.removedIds
+        }
+    val holdingSnapshot = retainedItems.isNotEmpty() && !restoreReady
+    val displayedItems = if (holdingSnapshot) retainedItems else snapshot
+    if (holdingSnapshot && listState.layoutInfo.totalItemsCount == 0) {
+        viewportRestore?.anchor?.let { anchor ->
+            val retainedIndex = retainedItems.indexOfFirst {
+                (it as? ConversationListItem.Item)?.conversation?.id == anchor.conversation.id
+            }
+            if (retainedIndex >= 0) {
+                SideEffect { listState.requestScrollToItem(retainedIndex + headerCount, anchor.scrollOffset) }
+            }
+        }
+    }
+    if (restoreReady) {
+        SideEffect {
+            // Apply the new window and anchor in one measure, before a shifted frame can be drawn.
+            listState.requestScrollToItem(
+                restoreIndex + headerCount, viewportRestore.anchor?.scrollOffset ?: 0,
+            )
+            onViewportRestored()
+        }
+    }
     var hasScrolledToCurrent by remember(current.id, headerCount) { mutableStateOf(false) }
 
-    LaunchedEffect(current.id, conversations.itemCount, headerCount, hasScrolledToCurrent) {
-        if (hasScrolledToCurrent) return@LaunchedEffect
+    LaunchedEffect(current.id, conversations.itemCount, headerCount, hasScrolledToCurrent, autoScrollToCurrent) {
+        if (hasScrolledToCurrent || !autoScrollToCurrent) return@LaunchedEffect
         val itemIndex = conversations.itemSnapshotList.items.indexOfFirst {
             (it as? ConversationListItem.Item)?.conversation?.id == current.id
         }
@@ -156,7 +191,7 @@ fun ColumnScope.ConversationList(
             }
         }
 
-        if (conversations.itemCount == 0) {
+        if (displayedItems.isEmpty()) {
             item {
                 Surface(
                     modifier = Modifier
@@ -176,8 +211,9 @@ fun ColumnScope.ConversationList(
         }
 
         items(
-            count = conversations.itemCount,
-            key = conversations.itemKey { item ->
+            count = displayedItems.size,
+            key = { index ->
+                val item = displayedItems[index]
                 when (item) {
                     is ConversationListItem.DateHeader -> "date_${item.date}"
                     is ConversationListItem.PinnedHeader -> "pinned_header"
@@ -188,26 +224,26 @@ fun ColumnScope.ConversationList(
             // 列表行不声明 contentType 时，LazyColumn 会把它们当成同一种「槽」复用，
             // 滚动中互相顶掉测量缓存、造成跳动与额外重组）。按类型分池后各自缓存独立。
             contentType = { index ->
-                when (conversations[index]) {
+                when (displayedItems[index]) {
                     is ConversationListItem.DateHeader -> "date_header"
                     is ConversationListItem.PinnedHeader -> "pinned_header"
                     is ConversationListItem.Item -> "conversation"
-                    // Paging 的占位项（尚未加载）不该出现，但类型上是可空的；归到会话行即可
-                    null -> "conversation"
                 }
             }
         ) { index ->
-            when (val item = conversations[index]) {
+            // Keep access hints for normal paging while a retained deletion snapshot stays immutable.
+            if (!holdingSnapshot && index < conversations.itemCount) conversations[index]
+            when (val item = displayedItems[index]) {
                 is ConversationListItem.DateHeader -> {
                     DateHeaderItem(
                         label = item.label,
-                        modifier = Modifier.animateItem()
+                        modifier = if (animateChanges) Modifier.animateItem() else Modifier
                     )
                 }
 
                 is ConversationListItem.PinnedHeader -> {
                     PinnedHeader(
-                        modifier = Modifier.animateItem()
+                        modifier = if (animateChanges) Modifier.animateItem() else Modifier
                     )
                 }
 
@@ -218,6 +254,7 @@ fun ColumnScope.ConversationList(
                         lastActiveAt = (item.conversation.lastMessageAt ?: item.conversation.updateAt)
                             .takeIf { showLastActive },
                         selected = item.conversation.id == current.id,
+                        enabled = !holdingSnapshot,
                         loading = item.conversation.id in conversationJobs,
                         selectionMode = selectionMode,
                         isSelected = item.conversation.id.toString() in selectedIds,
@@ -230,13 +267,10 @@ fun ColumnScope.ConversationList(
                         onMoveToFolder = onMoveToFolder,
                         onShare = onShare,
                         onToggleMemory = onToggleMemory,
-                        modifier = Modifier.animateItem()
+                        modifier = if (animateChanges) Modifier.animateItem() else Modifier
                     )
                 }
 
-                null -> {
-                    // Placeholder for loading state
-                }
             }
         }
     }
@@ -315,6 +349,7 @@ private fun ConversationItem(
     lastActiveAt: Instant?,
     selected: Boolean,
     loading: Boolean,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
     /** 多选模式：行首显示勾选框，长按菜单隐藏 */
     selectionMode: Boolean = false,
@@ -354,6 +389,7 @@ private fun ConversationItem(
         modifier = modifier
             .clip(itemShape)
             .combinedClickable(
+                enabled = enabled,
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,
                 onClick = { onClick(conversation) },

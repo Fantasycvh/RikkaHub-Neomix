@@ -919,6 +919,8 @@
   <string name="pinned_chats">置顶聊天</string>
   <string name="conversation_pin_keeps_order">已置顶（保持原有顺序位置）</string>
   <string name="conversation_order_entry">排序</string>
+  <string name="conversation_locate_current">定位当前聊天</string>
+  <string name="conversation_locate_current_missing">暂时无法定位当前聊天，请重试</string>
   <string name="conversation_order_editing">编辑顺序</string>
   <string name="conversation_order_done">完成</string>
   <string name="conversation_order_reset">恢复默认顺序</string>

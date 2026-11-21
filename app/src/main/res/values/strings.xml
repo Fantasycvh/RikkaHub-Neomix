@@ -886,6 +886,8 @@
   <string name="pinned_chats">Pinned Chats</string>
   <string name="conversation_pin_keeps_order">Pinned — its position in the list is kept</string>
   <string name="conversation_order_entry">Order</string>
+  <string name="conversation_locate_current">Locate current chat</string>
+  <string name="conversation_locate_current_missing">Unable to locate the current chat. Please try again.</string>
   <string name="conversation_order_editing">Editing order</string>
   <string name="conversation_order_done">Done</string>
   <string name="conversation_order_reset">Reset order</string>

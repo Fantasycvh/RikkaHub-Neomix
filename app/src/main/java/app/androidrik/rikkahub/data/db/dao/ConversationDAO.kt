@@ -77,6 +77,10 @@ interface ConversationDAO {
     @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt FROM conversationentity WHERE folder_id = :folderId AND hidden = 0 ORDER BY $CONVERSATION_ORDER_BY")
     fun getConversationsOfFolderPaging(folderId: String): PagingSource<Int, LightConversationEntity>
 
+    // 定位入口只依赖可见会话的元数据，避免读取消息正文。
+    @Query("SELECT id, assistant_id as assistantId, title, is_pinned as isPinned, create_at as createAt, update_at as updateAt, folder_id as folderId, last_message_at as lastMessageAt FROM conversationentity WHERE id = :id AND hidden = 0")
+    fun observeLightConversation(id: String): Flow<LightConversationEntity?>
+
     @Query("SELECT * FROM conversationentity WHERE assistant_id = :assistantId AND hidden = 0 ORDER BY $CONVERSATION_ORDER_BY_TIME LIMIT :limit")
     suspend fun getRecentConversationsOfAssistant(assistantId: String, limit: Int): List<ConversationEntity>
 

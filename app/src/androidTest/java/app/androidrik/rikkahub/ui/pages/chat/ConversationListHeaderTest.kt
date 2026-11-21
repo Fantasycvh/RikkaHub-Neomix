@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
@@ -120,4 +121,56 @@ class ConversationListHeaderTest {
         rule.onNodeWithText("Conversation 15").assertIsDisplayed()
         rule.runOnIdle { assertEquals(15, state.firstVisibleItemIndex) }
     }
+    @Test
+    fun deletingVisibleAnchorNeverDrawsIntermediateRefreshWindow() {
+        val data = List(100) { index ->
+            ConversationListItem.Item(Conversation(assistantId = assistantId, title = "Atomic $index", messageNodes = emptyList()))
+        }
+        val flow = MutableStateFlow(PagingData.from<ConversationListItem>(data))
+        val state = LazyListState()
+        val restore = mutableStateOf<ConversationViewportRestore?>(null)
+        val measuredKeys = mutableListOf<Any>()
+        var track = false
+        rule.setContent {
+            MaterialTheme {
+                val paging = flow.collectAsLazyPagingItems()
+                Column(Modifier.height(220.dp)) {
+                    ConversationList(
+                        current = data[0].conversation, conversations = paging, conversationJobs = emptyList(),
+                        listState = state, autoScrollToCurrent = false, animateChanges = false,
+                        viewportRestore = restore.value, retainedItems = restore.value?.retainedItems.orEmpty(),
+                        onViewportRestored = { restore.value = null },
+                        modifier = Modifier.weight(1f).onGloballyPositioned {
+                            if (track) state.layoutInfo.visibleItemsInfo.firstOrNull()?.let { measuredKeys.add(it.key) }
+                        },
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.runOnIdle { state.requestScrollToItem(60, 17) }
+        rule.waitForIdle()
+        rule.runOnIdle {
+            val deleted = setOf(data[60].conversation.id)
+            val anchor = captureConversationScrollAnchor(data, state.layoutInfo.visibleItemsInfo, deleted)!!
+            restore.value = ConversationViewportRestore(anchor, deleted, data)
+            track = true
+        }
+        rule.waitForIdle()
+        // Paging can first present a window that does not contain the saved anchor.
+        rule.runOnIdle { flow.value = PagingData.from(data.subList(10, 30)) }
+        rule.waitForIdle()
+        rule.runOnIdle {
+            assertEquals(data[60].conversation.id.toString(), state.layoutInfo.visibleItemsInfo.first().key)
+            flow.value = PagingData.from(data.subList(40, 90).filter { it.conversation.id != data[60].conversation.id })
+        }
+        rule.waitForIdle()
+        rule.runOnIdle {
+            assertEquals(data[61].conversation.id.toString(), state.layoutInfo.visibleItemsInfo.first().key)
+            assertEquals(17, state.firstVisibleItemScrollOffset)
+            val allowed = setOf(data[60].conversation.id.toString(), data[61].conversation.id.toString())
+            org.junit.Assert.assertTrue("Unexpected drawn window $measuredKeys", measuredKeys.isNotEmpty() && measuredKeys.all { it in allowed })
+        }
+    }
+
 }

@@ -176,6 +176,10 @@ class ConversationRepository(
         }
     }
 
+    fun observeConversationSummary(id: Uuid): Flow<Conversation?> =
+        conversationDAO.observeLightConversation(id.toString())
+            .map { entity -> entity?.let(::conversationSummaryToConversation) }
+
     suspend fun getConversationsOfAssistantPage(
         assistantId: Uuid,
         offset: Int,
