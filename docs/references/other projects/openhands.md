@@ -92,7 +92,7 @@ USER_CONTEXT / TASK_TRACKING（**强约束保留任务 ID 与状态**）/ COMPLE
 | 3 | **结构化压缩摘要模板**：摘要 prompt 改 USER_CONTEXT / TASK_TRACKING / COMPLETED / PENDING / CURRENT_STATE 分段，强约束保留任务/收藏等 ID | P3 | ✅ 已搭车（`e8b9a1fed`）：默认模板已八段结构化，收窄为 Rules 补任务状态迁移强约束 |
 | 4 | **压缩完成报告协议**：前置 token 快照 + 压缩后对比 + 三态结果（成功/无变化/失败），toast 报节省量 | P3 | 待做（轻量版已议：手动压缩完成报节省量 + 轮前自动压缩失败可见；timeout 判失败判已有等价不抄） |
 | 5 | **输入区上下文计量环**：per-conversation context fill 指示（usage 数据链已有）+ 双阈值变色 + 满载跳压缩入口 | P3 | 大半已有等价（用量条 + 80% 警告 + 容量面板 + 压缩入口）；残余仅 danger 第二阈值色，待拍板关闭或搭车 |
-| 6 | **净化兜底层**：压缩 prompt 侧与渲染侧各一层密钥再脱敏（截断容忍正则） | P3 | 📋 已立项 [`design-redaction-pipeline.md`](../../design/drafts/design-redaction-pipeline.md)（2026-11-21 三项拍板：标记块+白名单混合 / 仅压缩 prompt 侧 / 与 NMoi 待办④ 合并；NMoi ④ 边界待拍板） |
+| 6 | **净化兜底层**：压缩 prompt 侧与渲染侧各一层密钥再脱敏（截断容忍正则） | P3 | ✅ 已实施（`design-redaction-pipeline.md`，in-progress；拍板五项收齐：混合判定/仅压缩+导出侧/与 NMoi 待办④ 合并/仅导出+默认开/trace 计数进入；压缩侧+导出+Web API 全接线，NMoi ④ 一并收官） |
 
 **明确不做**：
 - **View/事件重放架构**——本仓消息树 + 检查点模型已等效覆盖，换架构是纯回退；
@@ -121,3 +121,4 @@ USER_CONTEXT / TASK_TRACKING（**强约束保留任务 ID 与状态**）/ COMPLE
 - #1/#2/#3 已随两笔本地提交落地（`470253ee4` 阶段一安全切点+守卫六、`e8b9a1fed` 阶段二溢出恢复+#3 搭车），单测全量绿、未推送、真机验证挂账（带遗留配对的旧数据 + 真实供应商超窗实弹）。实施记录与语义定案见设计稿 [`design-context-boundaries-and-overflow-recovery.md`](../../design/in-progress/design-context-boundaries-and-overflow-recovery.md) §7/§8。
 - #6 已立项 [`design-redaction-pipeline.md`](../../design/drafts/design-redaction-pipeline.md)（与 NMoi 待办④ 合并），拍板：标记块约定+高置信正则白名单混合、仅压缩 prompt 侧、合并立项。
 - 溢出判据落地时对照过 SDK `classifier.py`（`LONG_PROMPT_PATTERNS` 8 条全量移植）；`MALFORMED_HISTORY_PATTERNS` 存档于 `GenerationErrorPolicy.kt` 注释不进 v1。
+- #6 已实施（同日第三笔提交）：`Redactor` 判定层 + 压缩侧双落点 + 导出三出口 + Web API 三端点；NMoi 待办④（内容级脱敏，仅导出/备份）随之收官——两线合并结算。

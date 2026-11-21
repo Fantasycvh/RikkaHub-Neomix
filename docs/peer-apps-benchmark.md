@@ -103,6 +103,7 @@ rikkahub-agent 的终端（`WorkspaceTerminalSession.kt`，336 行）**仍是单
 | 18 | Yuihub 2.5.8+ | **工作区镜像站两件套**（rootfs 下载测速 + 包管理器一键换源）：`HttpProbe` / `AptSources` / `PackageMirrors` / `RootfsCatalog` / `RootfsMirrorSelector` **逐文件移植**（仅包名与标记文件名改名）；DB 57 `package_mirrors` + Repository 锁重试 / SSH 拒绝 + 三语 UI + 提示词注入为本仓接驳。✅ **已落地（2026-10-31，`9ec9ec79`）**，台账见 [`yuihub.md` §四.9](references/other%20projects/yuihub.md) | ~~低~~ 完成 |
 | 19 | OpenHands SDK | **压缩边界原子单元守卫（守卫六）**：删除区间不得切开 tool call↔result 配对、推理签名块、多段拆分单元，边界实施前做「原子区间不相交」校验（仿 SDK `view/properties/manipulation_indices`，不必搬四性质全量） | 低-中，纯逻辑层可单测 |
 | 20 | OpenHands SDK | **上下文溢出反应式兜底**：provider 报 context window exceeded / 长度类错误时自动触发一次压缩再重试（限一次，失败透传原错误；判据对照 SDK `agent.py` 溢出分支与触发链测试） | 低 |
+| 21 | OpenHands #6 + NMoi 待办④ | **脱敏管线**（合并立项）：压缩 prompt 侧密钥脱敏（L1 已知密钥登记 + L2 高置信白名单 + L3 私钥块截断容忍）+ 导出/备份侧内容脱敏（仅导出/备份，默认开，备份 DATABASE 除外）——设计 [`design-redaction-pipeline.md`](design/in-progress/design-redaction-pipeline.md)（2026-11-21 拍板全收，已实施） | 中，判定层纯函数可单测 |
 
 **记忆机制结论（Yuihub，详见 [`yuihub.md`](references/other%20projects/yuihub.md)）**：值得借鉴的是**检索与写入的组织方式**（打分校准 / 提取管道 / 整理器），**不是语义向量**——Yuihub 上线语义检索后第二天整套删除（`a8c33b2d` → `fbd15331`），构成「记忆语义检索不做」的独立二次印证（与 `design-auto-compaction.md` §6.3 成本结论一致）。
 

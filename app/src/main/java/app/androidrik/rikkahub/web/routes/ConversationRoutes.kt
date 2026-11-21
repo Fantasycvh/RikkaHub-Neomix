@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.merge
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FolderRepository
+import app.androidrik.rikkahub.data.ai.collectCredentials
+import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.ai.redactedForExport
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.web.BadRequestException
 import app.androidrik.rikkahub.web.NotFoundException
@@ -148,7 +151,7 @@ fun Route.conversationRoutes(
                 ?: throw NotFoundException("Conversation not found")
 
             val isGenerating = chatService.getGenerationJobStateFlow(uuid).first() != null
-            call.respond(conversation.toDto(isGenerating))
+            call.respond(conversation.redactedForWeb(settingsStore.webRedactionCredentials()).toDto(isGenerating))
         }
 
         // DELETE /api/conversations/{id} - Delete conversation
@@ -235,7 +238,10 @@ fun Route.conversationRoutes(
 
             val updatedConversation = chatService.getConversationFlow(uuid).first()
             val isGenerating = chatService.getGenerationJobStateFlow(uuid).first() != null
-            call.respond(HttpStatusCode.OK, updatedConversation.toDto(isGenerating))
+            call.respond(
+                HttpStatusCode.OK,
+                updatedConversation.redactedForWeb(settingsStore.webRedactionCredentials()).toDto(isGenerating),
+            )
         }
 
         // POST /api/conversations/{id}/move - Move conversation to another assistant
@@ -396,6 +402,8 @@ fun Route.conversationRoutes(
 
                 val knownErrorIds = chatService.errors.value.map { it.id }.toMutableSet()
 
+                // 脱敏凭据在流开始时取一次（流内每事件全量正则不可承受；事件频率随生成节拍走）
+                val streamCredentials = settingsStore.webRedactionCredentials()
                 val conversationEvents = combine(
                     chatService.getConversationFlow(uuid),
                     chatService
@@ -403,7 +411,9 @@ fun Route.conversationRoutes(
                         .map { it != null }
                         .distinctUntilChanged()
                 ) { conversation, isGenerating ->
-                    ConversationStreamPayload.Conversation(conversation.toDto(isGenerating))
+                    ConversationStreamPayload.Conversation(
+                        conversation.redactedForWeb(streamCredentials).toDto(isGenerating)
+                    )
                 }
 
                 val errorEvents = chatService.errors.map { errors ->
@@ -537,4 +547,24 @@ private suspend fun applyInitialConversationInjections(
             lorebookIds = requestedLorebookIds,
         )
     }
+}
+
+/**
+ * 会话的导出语义脱敏（design-redaction-pipeline §4.2，默认开）：Web 会话读取与流推送的
+ * 消息内容与本地导出同域处理（Web 服务是 LAN 暴露面）。全候选消息过 Redactor，命中数
+ * 丢弃（Web 无完成提示面）。凭据为空（开关关/无登记）= 原样返回，零成本。
+ */
+private fun Conversation.redactedForWeb(credentials: Set<String>): Conversation {
+    if (credentials.isEmpty()) return this
+    return copy(messageNodes = messageNodes.map { node ->
+        val (messages, _) = node.messages.redactedForExport(credentials)
+        node.copy(messages = messages)
+    })
+}
+
+/** Web 侧脱敏凭据（开关 + L1 登记值）；开关关时返回空集 = 不脱敏。 */
+private suspend fun SettingsStore.webRedactionCredentials(): Set<String> {
+    val settings = settingsFlow.first()
+    if (!settings.exportRedactEnabled) return emptySet()
+    return collectCredentials(settings.providers, settings.assistants)
 }

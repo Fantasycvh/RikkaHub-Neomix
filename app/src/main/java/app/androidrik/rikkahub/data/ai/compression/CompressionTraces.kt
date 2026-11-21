@@ -288,13 +288,16 @@ internal fun stripTraceSection(summary: String): String {
  * 1. 摘掉新摘要里可能残留的旧附录（防御：模型不该看到它，但正文里若出现就替换成新的）；
  * 2. 旧检查点的附录（[priorSummary]）解析出来**接力**：本段条目在前、旧段条目在后，同句柄合并；
  * 3. 渲染新附录；没有痕迹 → 原样返回（不写「没有」）；
- * 4. token 预算：附录 > `targetTokens × [TRACE_BUDGET_RATIO]` → 整节不接，正文一个字不动。
+ * 4. 脱敏计数行（[redactionCounts]，`Redactor` 审计口径）：非空时**追加到附录末尾**——
+ *    parseTraceBundle 对未识别行直接跳过（含「其余未列出」后的 break），接力不受影响；
+ * 5. token 预算：附录 > `targetTokens × [TRACE_BUDGET_RATIO]` → 整节不接，正文一个字不动。
  */
 internal fun attachTraceSection(
     summary: String,
     priorSummary: String,
     messages: List<UIMessage>,
     targetTokens: Int,
+    redactionCounts: Map<String, Int> = emptyMap(),
 ): String {
     val body = stripTraceSection(summary)
     val merged = mergeTraceBundles(
@@ -303,10 +306,23 @@ internal fun attachTraceSection(
         carried = parseTraceBundle(priorSummary),
         current = collectTraceBundle(messages),
     )
-    val section = renderTraceSection(merged) ?: return body.ifBlank { summary }
+    var section = renderTraceSection(merged)
+    renderRedactionLine(redactionCounts)?.let { line ->
+        section = if (section.isNullOrBlank()) line else section + "\n" + line
+    }
+    if (section == null) return body.ifBlank { summary }
     val budget = (targetTokens.coerceAtLeast(0) * TRACE_BUDGET_RATIO).toInt()
     if (budget <= 0 || estimateTokens(section) > budget) return body.ifBlank { summary }
     return if (body.isBlank()) section else body + "\n\n" + section
+}
+
+/** 脱敏计数行（观察期审计，§3.3）：只记 kind×次数，绝不出现原值或命中片段。 */
+internal fun renderRedactionLine(counts: Map<String, Int>): String? {
+    if (counts.isEmpty()) return null
+    val detail = counts.entries
+        .sortedByDescending { it.value }
+        .joinToString("、") { "${it.key}×${it.value}" }
+    return "脱敏 $detail"
 }
 
 /** 本段优先、旧段接力：同一句柄合并工具列表（本段顺序在前）。 */

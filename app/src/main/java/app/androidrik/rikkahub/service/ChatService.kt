@@ -79,7 +79,9 @@ import app.androidrik.rikkahub.data.ai.GenerationNotice
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.ContextOverflowRecoveryRequest
+import app.androidrik.rikkahub.data.ai.Redactor
 import app.androidrik.rikkahub.data.ai.coalesceMessageUpdates
+import app.androidrik.rikkahub.data.ai.collectCredentials
 import app.androidrik.rikkahub.data.ai.contextOverflowProtectedStart
 import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.ai.MidTurnCompressionOutcome
@@ -2646,6 +2648,11 @@ class ChatService(
         // 稀疏窗口只载入边界之后的尾巴：压缩要算完整区域的边界与指纹，先全量补齐再继续。
         if (sessions[conversationId]?.state?.value?.isSparse == true) hydrateAll(conversationId)
         val settings = settingsStore.settingsFlow.first()
+        // L1 已知密钥登记（Redactor §3.1）：供应商 keys + 两级 customHeaders 值。全量收集——
+        // 历史里的密钥来源不限于当前助手（用户可能切换过助手/供应商后再压缩）。
+        val credentials = collectCredentials(settings.providers, settings.assistants)
+        // 脱敏计数归集（trace 附录审计行，§3.3）：prior 与各 chunk 的命中都并到这里
+        val totalRedactionCounts = mutableMapOf<String, Int>()
         val model = settings.resolveCompressionModel(followModel)
             ?: throw IllegalStateException("No model available for compression")
         val provider = model.findProvider(settings.providers)
@@ -2694,8 +2701,12 @@ class ChatService(
         val priorSummary = conversation.displayCompression()?.content.orEmpty()
         // 旧检查点的**痕迹附录**不进模型视野（D296）：它是机械清单，模型看到只会原样抄进新摘要，
         // 层层压缩后叠成 N 份。摘掉后由 attachTraceSection 在代码侧接力（去重后并成一段）。
+        // prior 进模型前同样过脱敏（§3.2）：历史检查点可能是本功能上线前的产物（含未脱敏密钥），
+        // 已脱敏产物幂等通过；计数并入 trace 附录。
+        val redactedPrior = Redactor.redact(stripTraceSection(priorSummary), credentials)
+        redactedPrior.counts.forEach { (kind, n) -> totalRedactionCounts.merge(kind, n, Int::plus) }
         val priorContext = if (priorSummary.isNotBlank()) {
-            "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n${stripTraceSection(priorSummary)}"
+            "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n${redactedPrior.text}"
         } else {
             ""
         }
@@ -2707,6 +2718,10 @@ class ChatService(
             // 提示词组装是纯 CPU 段（逐条 summaryAsText + 字符串拼接），与网络请求分开搬 IO
             val prompt = withContext(Dispatchers.IO) {
                 val contentToCompress = chunk.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
+                // 脱敏落点在**截断之后**（§3.2）：标记不会被 summaryAsText 切半；
+                // 用户 additionalPrompt 不脱敏（显式输入与 chat 同信任域）
+                val redactedContent = Redactor.redact(contentToCompress, credentials)
+                redactedContent.counts.forEach { (kind, n) -> totalRedactionCounts.merge(kind, n, Int::plus) }
                 val additional = buildString {
                     if (additionalPrompt.isNotBlank()) {
                         appendLine("Additional instructions from user: $additionalPrompt")
@@ -2719,7 +2734,7 @@ class ChatService(
                 buildString {
                     append(
                         settings.compressPrompt.applyPlaceholders(
-                            "content" to contentToCompress,
+                            "content" to redactedContent.text,
                             "target_tokens" to targetTokens.toString(),
                             "additional_context" to additional,
                             "locale" to Locale.getDefault().displayName,
@@ -2799,6 +2814,16 @@ class ChatService(
                 priorSummary = priorSummary,
                 messages = messagesToCompress,
                 targetTokens = targetTokens,
+                redactionCounts = totalRedactionCounts,
+            )
+        }
+        if (totalRedactionCounts.isNotEmpty()) {
+            // 审计日志（§3.3）：只记 kind×次数，不出现原值
+            Log.i(
+                TAG,
+                "compressToCheckpoint: redacted secrets " +
+                    totalRedactionCounts.entries.joinToString(", ") { "${it.key}×${it.value}" } +
+                    " (conv=$conversationId)",
             )
         }
 

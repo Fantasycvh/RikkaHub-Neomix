@@ -1,6 +1,6 @@
 # 脱敏管线：压缩侧密钥再脱敏 + 导出侧内容脱敏
 
-> 状态：设计稿 revision 1（2026-11-21）。三项拍板已录（§2）；NMoi 待办④ 语义边界仍待拍板（§5.1）。
+> 状态：定稿已实施（2026-11-21 拍板五项收齐，见 §9；原设计稿 revision 1）。
 > 来源：[OpenHands 台账 #6](../../references/other%20projects/openhands.md)（`<CUSTOM_SECRETS>` 兜底再脱敏）+
 > [NMoi 台账 §十三 待办④](../../peer-apps-benchmark.md)（内容级脱敏，落库前 vs 导出/备份路径）——两线合并立项（拍板 3）。
 > 对应总表 §三 #21（新增，待登记）。
@@ -96,13 +96,13 @@ plan.toCompress.map { it.currentMessage }.messagesForAuxGeneration()
 - 备份 DATABASE 是整库 SQLite 文件拷贝，**不做内容级脱敏**（设计稿如实声明，不造虚假安全感）；
 - 若将来出现 JSON 会话导出格式，可复用同一 Redactor（文本出口同构）。
 
-## 5. 待拍板清单
+## 5. 待拍板清单（2026-11-21 全部拍板，见括号）
 
-1. **NMoi ④ 语义边界**：落库前 vs 仅导出/备份路径（我倾向后者，理由见 §4.1）——决定 §4 是否立项及形态。
-2. **导出脱敏默认态**（若拍板仅导出）：默认开（安全优先，用户可关）vs 默认关（导出可编辑性优先）。
-3. **白名单初始集**（§3.1 草案）：确认/增删条目。
-4. **L1 登记的密钥源范围**：供应商 apiKey/apiKeys + 两级 customHeaders 值（本稿草案）——账号类 OAuth 凭证**不进登记**（登录态不进对话历史）。
-5. **脱敏计数进 trace 附录**（§3.3）：是否要（观察期手段，建议要）。
+1. **NMoi ④ 语义边界**：落库前 vs 仅导出/备份路径（我倾向后者，理由见 §4.1）——决定 §4 是否立项及形态。**拍板：仅导出/备份。**
+2. **导出脱敏默认态**（若拍板仅导出）：默认开（安全优先，用户可关）vs 默认关（导出可编辑性优先）。**拍板：默认开。**
+3. **白名单初始集**（§3.1 草案）：确认/增删条目。**拍板：确认（六形态 + PEM 块，原样）。**
+4. **L1 登记的密钥源范围**：供应商 apiKey/apiKeys + 两级 customHeaders 值（本稿草案）——账号类 OAuth 凭证**不进登记**（登录态不进对话历史）。**拍板：确认。**
+5. **脱敏计数进 trace 附录**（§3.3）：是否要（观察期手段，建议要）。**拍板：进入。**
 
 ## 6. 验收
 
@@ -116,3 +116,17 @@ plan.toCompress.map { it.currentMessage }.messagesForAuxGeneration()
 | 压缩模型与对话模型同 provider | 行为不变（脱敏照跑，幂等无害） |
 
 交付顺序：判定层 `Redactor`（纯函数 + 单测）→ 压缩侧接线（单落点 + trace 计数）→ 导出侧（待 §5.1/§5.2 拍板）。压缩反馈（OpenHands #4）与本稿无耦合，独立排期。
+
+## 9. 实施记录（2026-11-21，本地未提交）
+
+**落地件**：
+- **判定层** `data/ai/Redactor.kt`（新）：`Redactor.redact(text, credentials)`（L3 私钥块含截断容忍 → L1 已知密钥最长优先精确匹配 → L2 白名单六形态 lookbehind 防误伤）+ `collectCredentials(providers, assistants)` + `List<UIMessage>.redactedForExport`（Text/Reasoning/Notice + Tool.output 内嵌同类 part；无命中共享实例零成本）。旧版 `ToolResult` 的 content 是 JsonElement，**不在 v1 范围**（非文本 part，导出 JSON 里原样——白名单命中样本出现再议）。
+- **压缩侧** `ChatService.compressToCheckpoint`：凭据登记收集一次；`contentToCompress` 截断后脱敏 + `priorContext` 脱敏（历史检查点可能是上线前产物）+ 计数归集；`attachTraceSection` 新增 `redactionCounts` 参数渲染「脱敏 credential×2、api-key×1」审计行（parseTraceBundle 对未识别行跳过，接力不受影响）；审计日志只记 kind×次数。
+- **导出侧**：`Settings.exportRedactEnabled`（默认开，PreferencesStore 三处键同步）+ `ChatExportSheet` 三出口（Markdown/HTML/图片）用脱敏副本 + 完成提示「已脱敏 N 处密钥」+ 设置页开关（SettingPreferencesUIPage 导出区，文案暂硬编码中文——周边条目走 stringResource，此处是后续 i18n 漏网点）。**JSON 归档导出（`exportToConversationArchive`）与长按分享走归档路径不脱敏**——可回读产物属备份语义（§4.3）；抽屉/列表长按分享走同一 sheet（archive 路径）。
+- **Web API**：`ConversationRoutes` 三处 toDto（GET 单会话 / 更新响应 / 流推送）过 `redactedForWeb`——流推送凭据**流开始时取一次**（事件频率随生成节拍，流内全量正则不可承受）；Web 服务是 LAN 暴露面（NSD 注册），与本地导出同域处理。
+
+**语义定案（实施中）**：
+- 私钥块先于 L1/L2（防块内 base64 体被白名单误计）；L1 最长优先交替（防短 key 是长 key 前缀的半截替换）；幂等靠标记零残留设计约束（单测钉住），不靠识别。
+- `redactedForExport` 无命中的消息/part **共享原实例**（快速路径零成本，Web 流高频调用依赖此）。
+
+**验证**：`RedactorTest` 14 用例（三层判据/误伤负例/截断容忍/幂等零残留/消息级/collectCredentials/legacy ToolResult 范围外声明）；两模块全量 3686 项绿（唯一失败仍是既有 `ImportFormatTest`）。未做真机验证（挂账：导出实弹 + Web API 实弹 + trace 观察期计数）。

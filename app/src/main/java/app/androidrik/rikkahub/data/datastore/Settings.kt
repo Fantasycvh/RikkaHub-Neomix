@@ -321,6 +321,13 @@ data class Settings(
     val exportDisplayConfig: ExportDisplayConfig = ExportDisplayConfig(),
     /** 用户命名的导出显示方案（一键套用到 [exportDisplayConfig]；删档不改当前值）。 */
     val exportDisplaySchemes: List<ExportDisplayScheme> = emptyList(),
+    /**
+     * **导出脱敏**（design-redaction-pipeline §4.2，默认**开**）：导出 Markdown/HTML/图片、
+     * 分享与 Web API 会话读取时，把已配置密钥与高置信白名单形态的密钥替换为
+     * `<redacted>` 标记。落库 / UI / 备份 DATABASE（整库文件，无法内容级处理）不受影响；
+     * 可回读的 JSON 归档导出属备份语义，同样不脱敏。
+     */
+    val exportRedactEnabled: Boolean = true,
     /** 摘要目标 token（默认 2000） */
     val autoCompressTargetTokens: Int = DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
     /**

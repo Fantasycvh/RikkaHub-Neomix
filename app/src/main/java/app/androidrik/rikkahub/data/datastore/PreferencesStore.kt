@@ -452,6 +452,8 @@ class SettingsStore(
         // 导出「提供商 / 模型」标签的全局配置与命名方案（设计见 data/export/ExportDisplayLabel.kt）
         val EXPORT_DISPLAY_CONFIG = stringPreferencesKey("export_display_config")
         val EXPORT_DISPLAY_SCHEMES = stringPreferencesKey("export_display_schemes")
+        // 导出脱敏（design-redaction-pipeline §4.2，默认开；备份 DATABASE 与 JSON 归档不脱敏）
+        val EXPORT_REDACT_ENABLED = booleanPreferencesKey("export_redact_enabled")
         val AUTO_COMPRESS_TARGET_TOKENS = intPreferencesKey("auto_compress_target_tokens")
         // 压缩前缀物理清理（默认关；不可回溯，见 Settings.pruneCompressedPrefix）
         val PRUNE_COMPRESSED_PREFIX = booleanPreferencesKey("prune_compressed_prefix")
@@ -722,6 +724,7 @@ class SettingsStore(
                     exportDisplaySchemes = preferences[EXPORT_DISPLAY_SCHEMES]?.let {
                         JsonInstant.decodeFromString<List<ExportDisplayScheme>>(it)
                     } ?: emptyList(),
+                    exportRedactEnabled = preferences[EXPORT_REDACT_ENABLED] ?: true,
                     autoCompressTargetTokens = preferences[AUTO_COMPRESS_TARGET_TOKENS]
                         ?: DEFAULT_AUTO_COMPRESS_TARGET_TOKENS,
                     pruneCompressedPrefix = preferences[PRUNE_COMPRESSED_PREFIX] ?: false,
@@ -1090,6 +1093,7 @@ class SettingsStore(
             preferences[EXPORT_RETENTION_DAYS] = settings.exportRetentionDays
             preferences[EXPORT_DISPLAY_CONFIG] = JsonInstant.encodeToString(settings.exportDisplayConfig)
             preferences[EXPORT_DISPLAY_SCHEMES] = JsonInstant.encodeToString(settings.exportDisplaySchemes)
+            preferences[EXPORT_REDACT_ENABLED] = settings.exportRedactEnabled
             preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
             preferences[PRUNE_COMPRESSED_PREFIX] = settings.pruneCompressedPrefix
             preferences[COMPRESS_PRESETS] = JsonInstant.encodeToString(settings.compressPresets)

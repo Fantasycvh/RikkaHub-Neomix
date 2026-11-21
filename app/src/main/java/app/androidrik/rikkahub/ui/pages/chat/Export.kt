@@ -46,6 +46,8 @@ import kotlinx.coroutines.launch
 import app.androidrik.ai.ui.UIMessage
 import com.dokar.sonner.ToastType
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.collectCredentials
+import app.androidrik.rikkahub.data.ai.redactedForExport
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.export.effectiveExportDisplayConfig
@@ -216,6 +218,26 @@ fun ChatExportSheet(
     val exportMessages = remember(includeAllVersions, conversation, selectedMessages) {
         if (includeAllVersions) conversation.messagesOfAllVersionsInTreeOrder()
         else selectedMessages
+    }
+    // 导出脱敏（design-redaction-pipeline §4.2，默认开）：副本进 Markdown/HTML/图片三种文本
+    // 出口；JSON 归档导出属备份语义（可回读）不脱敏（§4.3）；落库/UI 不感知
+    val exportRedactCredentials = remember(settings) {
+        collectCredentials(settings.providers, settings.assistants)
+    }
+    val (exportMessagesForFiles, exportRedactionCount) =
+        remember(exportMessages, exportRedactCredentials, settings.exportRedactEnabled) {
+            if (!settings.exportRedactEnabled) {
+                exportMessages to 0
+            } else {
+                exportMessages.redactedForExport(exportRedactCredentials)
+            }
+        }
+
+    /** 导出完成时的脱敏提示（命中才弹；不计数细节，kind 明细在日志） */
+    fun notifyRedaction() {
+        if (exportRedactionCount > 0) {
+            toaster.show(message = "已脱敏 $exportRedactionCount 处密钥", type = ToastType.Info)
+        }
     }
 
     // 附件体积软上限确认（确认后置 oversizeConfirmed 并重跑导出）
@@ -419,8 +441,11 @@ fun ChatExportSheet(
                             // 原先无 runCatching 且函数内部吞异常 → 写盘失败也报成功。
                             // 现在失败会冒泡，这里统一报错、不上报成功。
                             runCatching {
-                                exportToMarkdown(context, conversation, exportMessages, settings)
-                            }.onSuccess { deliver(it) }
+                                exportToMarkdown(context, conversation, exportMessagesForFiles, settings)
+                            }.onSuccess {
+                                notifyRedaction()
+                                deliver(it)
+                            }
                                 .onFailure {
                                     toaster.show(
                                         message = it.message ?: "Export failed",
@@ -449,8 +474,11 @@ fun ChatExportSheet(
                         // TikZ 导出走 native 编译（阻塞数秒/图），协程化避免卡 UI
                         scope.launch {
                             runCatching {
-                                exportToHtml(context, conversation, exportMessages, settings)
-                            }.onSuccess { deliver(it) }
+                                exportToHtml(context, conversation, exportMessagesForFiles, settings)
+                            }.onSuccess {
+                                notifyRedaction()
+                                deliver(it)
+                            }
                                 .onFailure {
                                     toaster.show(
                                         message = it.message ?: "Export failed",
@@ -519,11 +547,14 @@ fun ChatExportSheet(
                                                 scope = scope,
                                                 density = density,
                                                 conversation = conversation,
-                                                messages = exportMessages,
+                                                messages = exportMessagesForFiles,
                                                 settings = settings,
                                                 options = imageExportOptions
                                             )
-                                        }.onSuccess { deliverAll(it, "image/png") }
+                                        }.onSuccess {
+                                            notifyRedaction()
+                                            deliverAll(it, "image/png")
+                                        }
                                             .onFailure {
                                                 // 取消必须向上传播，否则关闭 sheet 会被误报为导出失败
                                                 if (it is CancellationException) throw it

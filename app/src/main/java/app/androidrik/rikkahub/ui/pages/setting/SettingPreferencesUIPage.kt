@@ -853,6 +853,25 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                             }
                         },
                     )
+                    // 导出脱敏开关（design-redaction-pipeline §4.2，默认开；文案暂硬编码中文——
+                    // 周边条目走 stringResource，此处是后续 i18n 的漏网点，语言轮次一并补齐）
+                    item(
+                        headlineContent = { Text("导出脱敏") },
+                        supportingContent = {
+                            Text(
+                                "导出文件、分享与 Web API 中把已配置密钥与高置信形态密钥替换为 <redacted> 标记。" +
+                                    "落库与聊天界面不受影响；JSON 归档导出与数据库备份不脱敏。"
+                            )
+                        },
+                        trailingContent = {
+                            Switch(
+                                checked = settings.exportRedactEnabled,
+                                onCheckedChange = { enabled ->
+                                    vm.updateSettings { current -> current.copy(exportRedactEnabled = enabled) }
+                                }
+                            )
+                        },
+                    )
                 }
             }
 
