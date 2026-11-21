@@ -1,5 +1,7 @@
 package app.androidrik.rikkahub.data.ai.compression
 
+import app.androidrik.ai.ui.alignCutIndex
+import app.androidrik.ai.ui.hasUnfinishedToolCalls
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.utils.estimateTokenCount
 
@@ -31,6 +33,13 @@ val AUTO_COMPRESS_RETAIN_PERCENT_RANGE: IntRange = 10..80
 
 /** 单块最大消息数（超长时递归二分并行摘要） */
 const val COMPRESS_MAX_MESSAGES_PER_CHUNK: Int = 256
+
+/**
+ * 最低压缩进度闸（OpenHands `minimum_progress` 同域，设计稿 §2.1）：安全切点回退/轮对齐后，
+ * 可压缩前缀 token 占全窗比例低于此值 ⇒ 判「无可压缩」，省一次注定净亏的摘要调用。
+ * 0 = 关闸。
+ */
+const val COMPRESS_MIN_PROGRESS_RATIO: Double = 0.1
 
 /** 保留窗口最少消息数（低于此值不再切分，避免把整个窗口压掉） */
 const val COMPRESS_MIN_KEEP_MESSAGES: Int = 2
@@ -64,27 +73,50 @@ data class CompressionPlan(
  * 对齐 harness 的 token 驱动保留策略（而非按条数），预算不足时至少留 minKeep 条，
  * 防止把整个窗口都压进摘要。[minKeep] 由调用方按用户「保留最近 N 条」选项换算
  * （见 [effectiveMinKeep]）：它是**下限**，token 预算充足时仍会多留。
- * 不修改入参。
+ *
+ * 候选切点再过**共享安全切点判定**（[alignCutIndex]，设计稿 §2.1）：
+ * - 遗留 `ToolCall`/`ToolResult` 配对骑线 ⇒ 回退到调用所在消息（现代 `Tool` part 自含 call+output，
+ *   不构成骑线）；
+ * - 轮边界对齐（D143）⇒ 切点优先落在真实 USER 轮起点，避免「窗口以助手消息开头」。
+ * 回退只会多保留（minKeep 下限仍满足）；回退到 0 = 无合法切点 ⇒ 空计划。
+ *
+ * 末尾再过**进度闸**（[COMPRESS_MIN_PROGRESS_RATIO]）：可压缩前缀 token 占比不足一成 ≈
+ * 一次摘要调用净亏，判「无可压缩」。节省以 token 估算衡量，条数比例仅作参考。
+ * 不修改入参；相同路径、内容和预算得到相同切点（确定性 + 前缀稳定性）。
  */
 fun estimateCompressionPlan(
     nodes: List<MessageNode>,
     budgetTokens: Int,
     minKeep: Int = COMPRESS_MIN_KEEP_MESSAGES,
+    /** 最低压缩进度（可压缩前缀 token / 全窗 token）；0 = 关闸（测试与特殊场景用） */
+    minProgressRatio: Double = COMPRESS_MIN_PROGRESS_RATIO,
 ): CompressionPlan {
     if (nodes.isEmpty()) return CompressionPlan(emptyList(), emptyList())
+    val nodeTokens = nodes.map { estimateTokenCount(listOf(it.currentMessage)) }
+    val totalTokens = nodeTokens.sum()
     var keepCount = 0
     var keptTokens = 0
-    for (node in nodes.asReversed()) {
-        val nodeTokens = estimateTokenCount(listOf(node.currentMessage))
-        if (keepCount >= minKeep && keptTokens + nodeTokens > budgetTokens) break
-        keptTokens += nodeTokens
+    for (index in nodes.indices.reversed()) {
+        if (keepCount >= minKeep && keptTokens + nodeTokens[index] > budgetTokens) break
+        keptTokens += nodeTokens[index]
         keepCount++
     }
     // 全部保留时无待压缩内容
     if (keepCount >= nodes.size) return CompressionPlan(emptyList(), nodes)
+    // 安全切点：遗留配对骑线回退 + 轮边界对齐（只回退不前进，minKeep 下限仍满足）
+    val candidateStart = nodes.size - keepCount
+    val alignedStart = nodes.map { it.currentMessage }.alignCutIndex(candidateStart)
+    if (alignedStart <= 0) return CompressionPlan(emptyList(), nodes)
+    // 进度闸：对齐后可压缩前缀不足最低进度 ⇒ 无变化（省一次注定净亏的摘要调用）
+    if (minProgressRatio > 0 && totalTokens > 0) {
+        val keptAfterAlign = nodeTokens.subList(alignedStart, nodes.size).sum()
+        if (totalTokens - keptAfterAlign < totalTokens * minProgressRatio) {
+            return CompressionPlan(emptyList(), nodes)
+        }
+    }
     return CompressionPlan(
-        toCompress = nodes.take(nodes.size - keepCount),
-        toKeep = nodes.takeLast(keepCount),
+        toCompress = nodes.take(alignedStart),
+        toKeep = nodes.drop(alignedStart),
     )
 }
 
@@ -118,15 +150,30 @@ fun shouldAutoCompress(
 }
 
 /**
- * 中途压缩的切分点：**压到窗口末尾为止**（含当前这条还没写完的回复）。
+ * 中途压缩的切分点：**压到窗口末尾为止**（含当前这条还没写完的回复），但**进行中的工具批
+ * 整批留在原文侧**（设计稿 §2.1）。
  *
  * 判据：中途压缩的触发原因就是「这一批工具的输出把窗口撑爆了」，而那些输出就在当前回复里。
  * 普通压缩的 token 驱动保留策略（[estimateCompressionPlan]）至少留 [COMPRESS_MIN_KEEP_MESSAGES]
- * 条尾部节点原文——用在中途等于把刚撑爆的那段原样留着，压了也白压。故中途压缩不保留任何尾部
- * 节点：检查点边界 = 窗口最后一条节点，之后由调用方新开一条回复继续。
+ * 条尾部节点原文——用在中途等于把刚撑爆的那段原样留着，压了也白压。故中途压缩不保留任何
+ * **已完成**的尾部节点：检查点边界 = 窗口最后一条节点，之后由调用方新开一条回复继续。
+ *
+ * 例外：首个含**未收束调用**（[hasUnfinishedToolCalls]：待审批 / 执行中 / 结果未写回）的节点起
+ * 整批保留——这类调用进摘要会让下一步模型失去调用现场。正常触发点（整批结果回填后）窗口里
+ * 没有未收束调用 ⇒ 与旧「压全窗」行为一致。窗口起点就带未收束调用 ⇒ 无可压缩（空计划）。
+ *
+ * 遗留 `ToolCall`/`ToolResult` 配对骑线时同样回退（[alignCutIndex]，`preferUserTurn = false`——
+ * 中途压缩保的是任务连续性，kept 尾就是当前轮，不做轮边界对齐）。
  */
-fun midTurnCompressionPlan(nodes: List<MessageNode>): CompressionPlan =
-    CompressionPlan(toCompress = nodes, toKeep = emptyList())
+fun midTurnCompressionPlan(nodes: List<MessageNode>): CompressionPlan {
+    if (nodes.isEmpty()) return CompressionPlan(emptyList(), emptyList())
+    val candidateStart = nodes.indexOfFirst { it.currentMessage.hasUnfinishedToolCalls() }
+        .takeIf { it >= 0 } ?: nodes.size
+    if (candidateStart <= 0) return CompressionPlan(emptyList(), nodes)
+    val alignedStart = nodes.map { it.currentMessage }.alignCutIndex(candidateStart, preferUserTurn = false)
+    if (alignedStart <= 0) return CompressionPlan(emptyList(), nodes)
+    return CompressionPlan(toCompress = nodes.take(alignedStart), toKeep = nodes.drop(alignedStart))
+}
 
 /** 中途压缩的三种决策（[decideMidTurnCompression] 的输出）。 */
 enum class MidTurnCompressionDecision {

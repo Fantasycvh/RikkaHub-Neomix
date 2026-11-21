@@ -3,11 +3,15 @@ package app.androidrik.rikkahub.data.ai.compression
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.ai.transformers.balancedForRequest
 import app.androidrik.rikkahub.data.model.MessageNode
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+
+@Suppress("DEPRECATION")
 
 /**
  * 压缩保留策略与分块（design-auto-compaction §4.1 三边界对齐，token 驱动保留）。
@@ -181,5 +185,168 @@ class CompressionPlannerTest {
     fun `default threshold matches harness ratio`() {
         assertEquals(80, DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT)
         assertEquals(40, DEFAULT_AUTO_COMPRESS_RETAIN_PERCENT)
+    }
+
+    // ===== 安全切点（守卫六同源判据 + D143 轮边界对齐，design-context-boundaries §2.1）=====
+
+    private fun assistantNodeTokens(tokens: Int) = MessageNode(
+        messages = listOf(
+            UIMessage(role = MessageRole.ASSISTANT, parts = listOf(UIMessagePart.Text("x".repeat(tokens * 4))))
+        )
+    )
+
+    /** 旧版 ToolResult 节点：part 本身不计价（estimateTokenCount 只数 Text），配一段文本撑起 token 量 */
+    private fun legacyResultNodeTokens(id: String, tokens: Int) = MessageNode(
+        messages = listOf(
+            UIMessage(
+                role = MessageRole.ASSISTANT,
+                parts = listOf(
+                    UIMessagePart.ToolResult(
+                        toolCallId = id, toolName = "t",
+                        content = JsonPrimitive("ok"), arguments = JsonPrimitive("{}"),
+                    ),
+                    UIMessagePart.Text("x".repeat(tokens * 4)),
+                ),
+            )
+        )
+    )
+
+    @Test
+    fun `cut aligns to the user turn start at or before the candidate`() {
+        // U A A U A：token 预算的候选切点 = 3（恰好落在 U 上）；候选落在助手区时回退到轮起点
+        val nodes = listOf(
+            nodeTokens(100), assistantNodeTokens(100), assistantNodeTokens(100),
+            nodeTokens(100), assistantNodeTokens(100),
+        )
+        // 预算 150：尾部保留 A(4) + U(3)（minKeep 强制）→ 候选 3；轮起点 3 直接合法
+        val plan = estimateCompressionPlan(nodes, budgetTokens = 150)
+        assertTrue(plan.shouldCompress)
+        assertEquals(3, plan.toCompress.size)
+        assertEquals(nodes[3], plan.toKeep.first())
+    }
+
+    @Test
+    fun `cut inside an assistant turn aligns back and may yield no compression`() {
+        // U A A：候选 1（助手区）⇒ 轮对齐回退到起点 0 ⇒ 无可压缩（等下一轮候选越过下一个 USER）
+        val nodes = listOf(nodeTokens(100), assistantNodeTokens(100), assistantNodeTokens(100))
+        val plan = estimateCompressionPlan(nodes, budgetTokens = 50)
+        assertFalse(plan.shouldCompress)
+        assertEquals(nodes, plan.toKeep)
+    }
+
+    @Test
+    fun `legacy tool pair straddling the cut forces the plan to give up`() {
+        // call(0) 与 result(2) 之间的候选 2 骑线 ⇒ 回退到 0 ⇒ 无可压缩（绝不送出孤儿结果）
+        val nodes = listOf(
+            MessageNode(
+                messages = listOf(
+                    UIMessage(
+                        role = MessageRole.ASSISTANT,
+                        parts = listOf(UIMessagePart.ToolCall(toolCallId = "r1", toolName = "t", arguments = "{}")),
+                    )
+                )
+            ),
+            nodeTokens(100),
+            legacyResultNodeTokens("r1", 100),
+            nodeTokens(100), assistantNodeTokens(100),
+        )
+        // 预算 350：尾部保留 result(2)+U(3)+A(4) → 候选 2，骑线回退到 0
+        val plan = estimateCompressionPlan(nodes, budgetTokens = 350)
+        assertFalse(plan.shouldCompress)
+        assertEquals(nodes, plan.toKeep)
+    }
+
+    @Test
+    fun `legacy tool pair fully inside the compressed prefix does not block compression`() {
+        // call(0) 与 result(2) 同在待压缩侧：候选 3 合法（轮起点 3），配对整体进摘要
+        val nodes = listOf(
+            MessageNode(
+                messages = listOf(
+                    UIMessage(
+                        role = MessageRole.ASSISTANT,
+                        parts = listOf(UIMessagePart.ToolCall(toolCallId = "r1", toolName = "t", arguments = "{}")),
+                    )
+                )
+            ),
+            nodeTokens(100),
+            legacyResultNodeTokens("r1", 100),
+            nodeTokens(100), assistantNodeTokens(100),
+        )
+        val plan = estimateCompressionPlan(nodes, budgetTokens = 250)
+        assertTrue(plan.shouldCompress)
+        assertEquals(3, plan.toCompress.size)
+        // 切后保留区无孤儿结果（出口配平零修复，设计稿 §2.2-3 的计数检验）
+        val kept = plan.toKeep.map { it.currentMessage }
+        assertEquals(kept, kept.balancedForRequest())
+    }
+
+    @Test
+    fun `plan below minimum progress yields no compression`() {
+        // 11 条 × 100 token，预算 1050 → 候选留 10 条 ⇒ 可压缩 1/11 ≈ 9% < 10% 闸 ⇒ 无变化
+        val nodes = (1..11).map { nodeTokens(100) }
+        val plan = estimateCompressionPlan(nodes, budgetTokens = 1050)
+        assertFalse(plan.shouldCompress)
+        // 关闸后同一输入正常压缩（闸参数语义）
+        val ungated = estimateCompressionPlan(nodes, budgetTokens = 1050, minProgressRatio = 0.0)
+        assertTrue(ungated.shouldCompress)
+        assertEquals(1, ungated.toCompress.size)
+    }
+
+    @Test
+    fun `plan above minimum progress compresses normally`() {
+        // 10 条 × 100 token，预算 850 → 留 8 条 ⇒ 可压缩 2/10 = 20% ≥ 10% ⇒ 正常压缩
+        val nodes = (1..10).map { nodeTokens(100) }
+        val plan = estimateCompressionPlan(nodes, budgetTokens = 850)
+        assertTrue(plan.shouldCompress)
+        assertEquals(2, plan.toCompress.size)
+        assertEquals(8, plan.toKeep.size)
+    }
+
+    // ===== 中途压缩切分点：进行中的工具批整批留在原文侧 =====
+
+    @Test
+    fun `mid-turn plan keeps the pending tool batch as original text`() {
+        val pendingTool = UIMessagePart.Tool(
+            toolCallId = "call1", toolName = "t", input = "{}", output = emptyList(),
+        )
+        val nodes = listOf(
+            nodeTokens(100),
+            assistantNodeTokens(100),
+            MessageNode(messages = listOf(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(pendingTool)))),
+            assistantNodeTokens(100),
+        )
+        val plan = midTurnCompressionPlan(nodes)
+        assertTrue(plan.shouldCompress)
+        assertEquals(listOf(nodes[0], nodes[1]), plan.toCompress)
+        assertEquals(listOf(nodes[2], nodes[3]), plan.toKeep)
+    }
+
+    @Test
+    fun `mid-turn plan compresses the whole window when no tool is unfinished`() {
+        val executedTool = UIMessagePart.Tool(
+            toolCallId = "call1", toolName = "t", input = "{}",
+            output = listOf(UIMessagePart.Text("result")),
+        )
+        val nodes = listOf(
+            nodeTokens(100),
+            MessageNode(messages = listOf(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(executedTool)))),
+        )
+        val plan = midTurnCompressionPlan(nodes)
+        assertTrue(plan.shouldCompress)
+        assertEquals(nodes, plan.toCompress)
+        assertTrue(plan.toKeep.isEmpty())
+    }
+
+    @Test
+    fun `mid-turn plan gives up when the window starts with a pending batch`() {
+        val pendingTool = UIMessagePart.Tool(
+            toolCallId = "call1", toolName = "t", input = "{}", output = emptyList(),
+        )
+        val nodes = listOf(
+            MessageNode(messages = listOf(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(pendingTool)))),
+            assistantNodeTokens(100),
+        )
+        val plan = midTurnCompressionPlan(nodes)
+        assertFalse(plan.shouldCompress)
     }
 }

@@ -2766,6 +2766,7 @@ class ChatService(
                     conversationId = conversationId,
                     boundaryNodeId = boundaryNode.id,
                     activeLeafNodeId = conversation.activeLeafNodeId,
+                    nodeBodies = conversation.messageNodes,
                 )
             } else null
             if (prune?.fingerprint != null && prune.deletedIds.isNotEmpty()) {

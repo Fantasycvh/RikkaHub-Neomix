@@ -373,7 +373,8 @@ private const val CONTEXT_KEEP_RATIO = 0.5f
  * 在此之后的连续多轮里保持不动, 使请求前缀保持稳定, 从而命中提示词缓存。
  * 截断点仅由消息条数推导, 不需要额外持久化状态, 且对追加消息天然稳定。
  *
- * 保留的条数始终落在 `[limit * CONTEXT_KEEP_RATIO, limit)` 区间内。
+ * 保留的条数落在 `[limit * CONTEXT_KEEP_RATIO, limit)` 区间内；安全切点回退
+ * （[alignCutIndex]：轮边界对齐 + 原子配对）只会多保留，可超出上限——保留下限不受影响。
  *
  * @param limit 触发截断的消息条数上限, 小于等于 0 表示不限制
  */
@@ -395,55 +396,7 @@ fun List<UIMessage>.limitContext(limit: Int): List<UIMessage> {
     // 上界兜底保证至少保留一条消息, 正常路径(limit >= 2)不会触发
     val startIndex = (((this.size - limit) / stride + 1) * stride).coerceAtMost(this.size - 1)
 
-    return this.subList(alignContextStart(startIndex), this.size)
-}
-
-/**
- * 将截断起点回退到安全边界, 避免把 tool call 与其结果拆散, 或让上下文从半截的工具调用开始
- *
- * 只会向前(下标减小)调整, 因此不会破坏 [limitContext] 保留条数的下界。
- * 调整只依赖 `[0, startIndex]` 区间内的消息, 这部分在追加新消息时不会变化, 结果因此保持稳定。
- */
-private fun List<UIMessage>.alignContextStart(startIndex: Int): Int {
-    var adjustedStartIndex = startIndex
-
-    // 循环往前查找, 直到满足所有依赖条件
-    var needsAdjustment = true
-    val visitedIndices = mutableSetOf<Int>()
-
-    while (needsAdjustment && adjustedStartIndex > 0) {
-        needsAdjustment = false
-
-        // 防止无限循环
-        if (adjustedStartIndex in visitedIndices) break
-        visitedIndices.add(adjustedStartIndex)
-
-        val currentMessage = this[adjustedStartIndex]
-
-        // 如果当前消息包含已执行的tool（有output），往前查找对应的tool call
-        if (currentMessage.getTools().any { it.isExecuted }) {
-            for (i in adjustedStartIndex - 1 downTo 0) {
-                if (this[i].getTools().any { !it.isExecuted }) {
-                    adjustedStartIndex = i
-                    needsAdjustment = true
-                    break
-                }
-            }
-        }
-
-        // 如果当前消息包含未执行的tool call，往前查找对应的用户消息
-        if (currentMessage.getTools().any { !it.isExecuted }) {
-            for (i in adjustedStartIndex - 1 downTo 0) {
-                if (this[i].semanticRole == MessageRole.USER) {
-                    adjustedStartIndex = i
-                    needsAdjustment = true
-                    break
-                }
-            }
-        }
-    }
-
-    return adjustedStartIndex
+    return this.subList(alignCutIndex(startIndex), this.size)
 }
 
 /**

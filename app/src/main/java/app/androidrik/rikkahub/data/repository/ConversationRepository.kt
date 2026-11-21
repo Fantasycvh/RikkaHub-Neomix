@@ -35,6 +35,7 @@ import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.buildConversationLoadWindow
 import app.androidrik.rikkahub.data.model.summaryPathIds
 import app.androidrik.rikkahub.data.model.prefixPruneCandidates
+import app.androidrik.rikkahub.data.model.hasLegacyToolPairAcrossPruneBoundary
 import app.androidrik.rikkahub.data.model.summaryAreaFingerprint
 import app.androidrik.rikkahub.data.model.selectedMessageIdOrNull
 import app.androidrik.rikkahub.data.model.NodeSummary
@@ -428,12 +429,18 @@ class ConversationRepository(
      * 安全守卫（任一不满足即整体放弃，绝不部分删除）：
      * - 边界必须在摘要路径上，且激活叶子仍在保留集合内；
      * - 被删区域不能含收藏节点（删除会留下悬空收藏）；
+     * - **守卫六**：删除集与保留集之间不得存在遗留工具配对（[hasLegacyToolPairAcrossPruneBoundary]，
+     *   物理删除不可回溯，配对任何一侧悬空都是永久损伤）；
      * - 重写指纹必须可计算（否则检查点会立刻自我失效，等于静默丢上下文）。
+     *
+     * @param nodeBodies 全量节点正文（调用方 hydrate 后的内存态），守卫六的配对检查数据源；
+     *   候选节点缺正文（DB/内存错位）时宁可整体放弃。
      */
     suspend fun pruneCompressedPrefix(
         conversationId: Uuid,
         boundaryNodeId: Uuid,
         activeLeafNodeId: Uuid?,
+        nodeBodies: List<MessageNode>,
     ): PrefixPruneResult? {
         val summaries = nodeStore.loadNodeSummaries(conversationId.toString())
         if (summaries.isEmpty()) return null
@@ -452,6 +459,15 @@ class ConversationRepository(
         val remainingIds = remaining.mapTo(HashSet()) { it.id }
         if (boundaryNodeId !in remainingIds) return null
         if (activeLeafNodeId != null && activeLeafNodeId !in remainingIds) return null
+        val bodyById = nodeBodies.associateBy { it.id }
+        if (candidates.any { it !in bodyById }) {
+            Log.w(TAG, "pruneCompressedPrefix skipped: candidate node body missing (conv=$conversationId)")
+            return null
+        }
+        if (nodeBodies.hasLegacyToolPairAcrossPruneBoundary(candidates)) {
+            Log.w(TAG, "pruneCompressedPrefix skipped: legacy tool pair across prune boundary (conv=$conversationId)")
+            return null
+        }
         val favoriteIds = favoriteDAO.getFavoriteNodeIdsOfConversation(conversationId.toString())
             .mapNotNull { runCatching { Uuid.parse(it) }.getOrNull() }
         if (favoriteIds.any { it in candidates }) {

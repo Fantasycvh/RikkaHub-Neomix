@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.model
 
+import app.androidrik.ai.ui.UIMessagePart
 import kotlin.uuid.Uuid
 
 /**
@@ -141,4 +142,46 @@ fun prefixPruneCandidates(summaries: List<NodeSummary>, boundaryNodeId: Uuid): S
         children[id]?.forEach { stack.addLast(it.id) }
     }
     return summaries.asSequence().map { it.id }.filter { it !in keep }.toSet()
+}
+
+/**
+ * **守卫六**（`docs/design/drafts/design-context-boundaries-and-overflow-recovery.md` §2.1，
+ * OpenHands `manipulation_indices` 同域）：物理清理的删除集与保留集之间不得存在遗留工具配对。
+ *
+ * 物理删除不可回溯，配对任何一侧被删都是**永久**数据损伤：
+ * - 方向 A：保留的旧版 `ToolResult` 其调用在删除集 ⇒ 发送窗口出现孤儿结果（出口配平会静默
+ *   丢弃它——结果内容既没进摘要也不再发出，模型永久看不到）；
+ * - 方向 B：保留的未收束调用（旧版 `ToolCall` / 未执行 `Tool`）其结果在删除集 ⇒ 同理悬空。
+ *
+ * 配对定义与发送侧切点判定（ai 模块 `alignCutIndex`）同源：现代已执行 `Tool` 自含
+ * call+output 不构成引用，[UIMessagePart.ServerTool] 自含不参与。扫描**全部候选消息**（不只
+ * `currentMessage`）：保留节点的非选中候选在切分支后也会成为发送窗口。
+ */
+@Suppress("DEPRECATION")
+fun List<MessageNode>.hasLegacyToolPairAcrossPruneBoundary(deletedIds: Set<Uuid>): Boolean {
+    if (deletedIds.isEmpty() || isEmpty()) return false
+    val deletedCallIds = HashSet<String>()
+    val deletedResultIds = HashSet<String>()
+    val keptResultIds = HashSet<String>()
+    val keptPendingCallIds = HashSet<String>()
+    for (node in this) {
+        val deleted = node.id in deletedIds
+        for (message in node.messages) {
+            for (part in message.parts) when (part) {
+                is UIMessagePart.Tool ->
+                    if (deleted) deletedCallIds.add(part.toolCallId)
+                    else if (!part.isExecuted) keptPendingCallIds.add(part.toolCallId)
+                is UIMessagePart.ToolCall ->
+                    if (deleted) deletedCallIds.add(part.toolCallId)
+                    else keptPendingCallIds.add(part.toolCallId)
+                is UIMessagePart.ToolResult ->
+                    if (deleted) deletedResultIds.add(part.toolCallId)
+                    else keptResultIds.add(part.toolCallId)
+                else -> Unit
+            }
+        }
+    }
+    if (keptResultIds.any { it in deletedCallIds }) return true
+    if (keptPendingCallIds.any { it in deletedResultIds }) return true
+    return false
 }

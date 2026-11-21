@@ -1,10 +1,16 @@
 package app.androidrik.rikkahub.data.model
 
+import app.androidrik.ai.core.MessageRole
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.ui.UIMessagePart
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.Uuid
+
+@Suppress("DEPRECATION")
 
 class ConversationLoadWindowTest {
 
@@ -118,5 +124,89 @@ class ConversationLoadWindowTest {
         val window = buildConversationLoadWindow(summaries, activeLeafNodeId = b, maxNodes = 1)
         assertEquals(2, window.pathIds.size)
         assertEquals(listOf(b), window.loadedIds)
+    }
+}
+
+// ==================== 守卫六：删除集/保留集间的遗留工具配对 ====================
+
+private fun toolNode(vararg parts: UIMessagePart) = MessageNode(
+    messages = listOf(UIMessage(role = MessageRole.ASSISTANT, parts = parts.toList()))
+)
+
+private fun legacyCall(id: String) = UIMessagePart.ToolCall(toolCallId = id, toolName = "t", arguments = "{}")
+
+private fun legacyResult(id: String) = UIMessagePart.ToolResult(
+    toolCallId = id, toolName = "t", content = JsonPrimitive("ok"), arguments = JsonPrimitive("{}"),
+)
+
+private fun pendingTool(id: String) = UIMessagePart.Tool(
+    toolCallId = id, toolName = "t", input = "{}", output = emptyList(),
+)
+
+private fun executedTool(id: String) = UIMessagePart.Tool(
+    toolCallId = id, toolName = "t", input = "{}", output = listOf(UIMessagePart.Text("result")),
+)
+
+class PruneLegacyPairGuardTest {
+
+    @Test
+    fun `kept legacy result whose call is deleted is a conflict`() {
+        val callNode = toolNode(legacyCall("r1"))
+        val keptResultNode = toolNode(legacyResult("r1"))
+        val deletedIds = setOf(callNode.id)
+        assertTrue(listOf(callNode, keptResultNode).hasLegacyToolPairAcrossPruneBoundary(deletedIds))
+    }
+
+    @Test
+    fun `kept pending call whose result is deleted is a conflict`() {
+        val resultNode = toolNode(legacyResult("r1"))
+        val keptCallNode = toolNode(pendingTool("r1"))
+        val deletedIds = setOf(resultNode.id)
+        assertTrue(listOf(resultNode, keptCallNode).hasLegacyToolPairAcrossPruneBoundary(deletedIds))
+    }
+
+    @Test
+    fun `pair fully inside the deletion set or the kept set is fine`() {
+        val callNode = toolNode(legacyCall("r1"))
+        val resultNode = toolNode(legacyResult("r1"))
+        val keptNode = toolNode(pendingTool("r2"))
+        // 两端同删：配对整体进摘要区域
+        assertFalse(
+            listOf(callNode, resultNode, keptNode)
+                .hasLegacyToolPairAcrossPruneBoundary(setOf(callNode.id, resultNode.id))
+        )
+        // 两端同留
+        assertFalse(
+            listOf(callNode, resultNode, keptNode).hasLegacyToolPairAcrossPruneBoundary(setOf(keptNode.id))
+        )
+    }
+
+    @Test
+    fun `self contained executed tool adds no cross node reference`() {
+        val deletedNode = toolNode(executedTool("r1"))
+        val keptNode = toolNode(executedTool("r2"))
+        assertFalse(
+            listOf(deletedNode, keptNode).hasLegacyToolPairAcrossPruneBoundary(setOf(deletedNode.id))
+        )
+    }
+
+    @Test
+    fun `non selected candidates of kept nodes are also scanned`() {
+        // 保留节点的非选中候选持有 result，其 call 在删除节点 ⇒ 切分支后仍会踩空
+        val callNode = toolNode(legacyCall("r1"))
+        val keptNode = MessageNode(
+            messages = listOf(
+                UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Text("clean"))),
+                UIMessage(role = MessageRole.USER, parts = listOf(legacyResult("r1"))),
+            ),
+        )
+        assertTrue(listOf(callNode, keptNode).hasLegacyToolPairAcrossPruneBoundary(setOf(callNode.id)))
+    }
+
+    @Test
+    fun `empty deletion set or empty nodes never conflict`() {
+        val node = toolNode(legacyCall("r1"))
+        assertFalse(listOf(node).hasLegacyToolPairAcrossPruneBoundary(emptySet()))
+        assertFalse(emptyList<MessageNode>().hasLegacyToolPairAcrossPruneBoundary(setOf(Uuid.random())))
     }
 }

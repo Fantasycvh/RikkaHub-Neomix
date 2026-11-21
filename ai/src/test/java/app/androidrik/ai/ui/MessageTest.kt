@@ -36,6 +36,7 @@ class MessageTest {
 
     /**
      * limit 过小时无法构造滞回, 但至少不能崩溃, 也不能把上下文清空
+     * （安全切点回退会把起点带回 USER 轮开场，交替列表下最多多保留 1 条）
      */
     @Test
     fun `limitContext with tiny limit should degrade gracefully`() {
@@ -45,7 +46,7 @@ class MessageTest {
                 val result = all.subList(0, size).limitContext(limit)
                 assertTrue(
                     "limit=$limit size=$size produced ${result.size} messages",
-                    result.size in 1..limit
+                    result.size in 1..limit + 1
                 )
                 assertEquals(all.subList(size - result.size, size), result)
             }
@@ -57,9 +58,9 @@ class MessageTest {
         val messages = createTestMessages(11)
         val result = messages.limitContext(10)
 
-        // limit=10 -> target=5, stride=5, startIndex=5
-        assertEquals(6, result.size)
-        assertEquals(messages.subList(5, 11), result)
+        // limit=10 -> target=5, stride=5, startIndex=5；轮边界对齐（D143）回退到最近的 USER 轮起点 4
+        assertEquals(7, result.size)
+        assertEquals(messages.subList(4, 11), result)
     }
 
     /**
@@ -70,16 +71,17 @@ class MessageTest {
         val all = createTestMessages(60)
 
         // limit=10 -> stride=5, 消息数 11..14 应共用同一个截断起点
+        // （候选起点 5 被轮边界对齐带回 USER 轮开场 4，台阶内保持不动）
         val startsWithinStep = (11..14).map { size ->
             all.subList(0, size).limitContext(10).first()
         }
         assertEquals(1, startsWithinStep.distinct().size)
-        assertEquals(all[5], startsWithinStep.first())
+        assertEquals(all[4], startsWithinStep.first())
 
-        // 越过下一级台阶后起点才前进, 且前进一整个 stride
+        // 越过下一级台阶后起点才前进, 且前进一整个 stride（候选 15 同样被对齐到 14）
         assertEquals(all[10], all.subList(0, 15).limitContext(10).first())
         assertEquals(all[10], all.subList(0, 19).limitContext(10).first())
-        assertEquals(all[15], all.subList(0, 20).limitContext(10).first())
+        assertEquals(all[14], all.subList(0, 20).limitContext(10).first())
     }
 
     @Test
@@ -87,9 +89,10 @@ class MessageTest {
         val all = createTestMessages(120)
         for (size in 11..120) {
             val result = all.subList(0, size).limitContext(10)
+            // 轮边界对齐（D143）只向前回退起点，交替列表下最多多保留 1 条 ⇒ 上界放宽到 limit
             assertTrue(
                 "size=$size produced ${result.size} messages",
-                result.size in 5..9
+                result.size in 5..10
             )
             // 结果必须是原列表的后缀
             assertEquals(all.subList(size - result.size, size), result)
