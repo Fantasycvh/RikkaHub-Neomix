@@ -2078,6 +2078,14 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 
 
+## 2026-11-22 问题排查：原版导入聊天记录后「压缩历史」入口消失
+
+用户反馈导入前能在聊天加号菜单看到「压缩历史」，导入后该项消失。截图未提供原版版本、导入方式或导入后的助手设置，以下依据源码判断可能的触发路径。
+
+- **优先排查会话所用助手的「上下文消息限制」。** 原版 3.3.0 只在 `assistant.contextMessageLimit <= 0` 时渲染该入口，默认值 `0` 表示不限。原版备份还原会读取 `settings.json` 中的助手设置，导入的会话也可能关联到另一个助手。这两种情况都可能让会话用到正数限制。验证时保持会话不变，把它所用助手的限制设为 `0`，重新打开加号菜单。入口恢复即可确认触发了这条显示规则。 [原版入口条件](https://github.com/rikkahub/rikkahub/blob/3.3.0/app/src/main/java/me/rerere/rikkahub/ui/components/ai/FilesPicker.kt#L223) · [助手解析](https://github.com/rikkahub/rikkahub/blob/3.3.0/app/src/main/java/me/rerere/rikkahub/data/model/ConversationConfig.kt#L94) · [备份恢复](https://github.com/rikkahub/rikkahub/blob/3.3.0/app/src/main/java/me/rerere/rikkahub/data/sync/BackupManager.kt#L138)
+- **旧版还存在矮屏裁切。** 原版 3.1.1 的加号面板主列表无法滚动，排在底部的压缩入口可能被挤出。上游 `a046505a6` 为主列表加了滚动，3.1.2 已包含该修复。 [上游 #2258](https://github.com/rikkahub/rikkahub/issues/2258)
+- **本仓判定。** Neomix 的加号菜单始终渲染「压缩历史」，容量面板也可打开同一个压缩对话框。加号面板已在 `64e808d6a6` 加入滚动。助手的条数限制仍参与请求上下文组装，因此导入这项设置会影响发给模型的历史范围，同时两个压缩入口照常显示。当前源码已覆盖以上两条入口消失路径，本次未用原反馈的备份做真机复现。 [加号面板](../app/src/main/java/app/androidrik/rikkahub/ui/components/ai/FilesPicker.kt#L153) · [压缩入口](../app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ChatPage.kt#L996) · [请求组装](../app/src/main/java/app/androidrik/rikkahub/data/ai/PromptAssembly.kt#L282)
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md
