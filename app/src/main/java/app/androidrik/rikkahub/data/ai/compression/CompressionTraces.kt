@@ -282,6 +282,23 @@ internal fun stripTraceSection(summary: String): String {
 }
 
 /**
+ * 取回摘要正文**之后**的痕迹附录原样（用户编辑摘要时保留用）。
+ *
+ * 与 [stripTraceSection] 同一套定位判据；无附录时返回 null。
+ * 返回的是附录本体（含头行，不带与正文之间的空行分隔——调用方拼接时统一补）。
+ */
+internal fun extractTraceSection(summary: String): String? {
+    if (summary.isEmpty()) return null
+    val markerIndex = if (summary.startsWith(TRACE_SECTION_HEADER)) {
+        0
+    } else {
+        summary.indexOf("\n$TRACE_SECTION_HEADER")
+    }
+    if (markerIndex < 0) return null
+    return summary.substring(markerIndex).trim()
+}
+
+/**
  * 在摘要正文后接上痕迹附录（纯函数，`compressToCheckpoint` 只调这一个入口）。
  *
  * 顺序与判据：

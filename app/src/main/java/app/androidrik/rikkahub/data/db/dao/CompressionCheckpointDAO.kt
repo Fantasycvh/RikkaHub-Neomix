@@ -45,4 +45,13 @@ interface CompressionCheckpointDAO {
         boundaryNodeId: String,
         fingerprint: String?,
     )
+
+    /**
+     * 用户编辑摘要正文：只改 content 单列，指纹/边界/计数不动（指纹覆盖的是被摘要
+     * 区域的节点序列，不含摘要正文——编辑摘要不影响失效判定）。
+     *
+     * @return 受影响行数；0 = 该检查点已不存在（被新压缩替换/会话清理），调用方据此提示
+     */
+    @Query("UPDATE compression_checkpoint SET content = :content WHERE id = :id")
+    suspend fun updateContent(id: Long, content: String): Int
 }

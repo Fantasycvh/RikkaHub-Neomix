@@ -48,6 +48,14 @@ internal class CompressionCheckpointStore(
         checkpointDAO.deleteOfConversation(conversationId.toString())
     }
 
+    /**
+     * 用户编辑摘要正文（只改 content 单列，指纹/边界/计数不动）。
+     *
+     * @return false = 该检查点已不存在（被新压缩替换等），调用方据此提示重试
+     */
+    suspend fun updateContent(summaryId: Long, content: String): Boolean =
+        checkpointDAO.updateContent(summaryId, content) > 0
+
     /** 加载会话的压缩检查点（末行 = active）；失败静默返回空（不阻塞会话打开） */
     internal suspend fun loadCompressionSummaries(conversationId: String): List<CompressionSummary> =
         runCatching { checkpointDAO.getOfConversation(conversationId).map { it.toSummary() } }

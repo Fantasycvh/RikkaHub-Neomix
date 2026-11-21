@@ -611,6 +611,16 @@ class ChatVM(
         }
     }
 
+    /**
+     * 用户编辑压缩摘要正文（「摘要可见可编辑」sheet 的保存入口）。
+     * 只改检查点 content 单列（DB + 内存态），指纹/边界不动——编辑摘要不影响失效判定。
+     */
+    fun updateCompressionSummary(summaryId: Long, content: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            onResult(chatService.updateCompressionSummaryContent(_conversationId, summaryId, content))
+        }
+    }
+
     fun deleteConversation(conversation: Conversation): Job =
         viewModelScope.launch {
             conversationRepo.deleteConversation(conversation)

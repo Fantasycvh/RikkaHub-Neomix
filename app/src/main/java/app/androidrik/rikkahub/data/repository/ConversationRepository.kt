@@ -813,6 +813,14 @@ class ConversationRepository(
         checkpointStore.deleteCompressionCheckpoints(conversationId)
     }
 
+    /**
+     * 用户编辑摘要正文（只改 content 单列）。
+     *
+     * @return false = 该检查点已不存在（被新压缩替换等），调用方据此提示
+     */
+    suspend fun updateCompressionCheckpointContent(summaryId: Long, content: String): Boolean =
+        checkpointStore.updateContent(summaryId, content)
+
     fun getPinnedConversations(): Flow<List<Conversation>> {
         return conversationDAO
             .getPinnedConversations()

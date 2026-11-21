@@ -117,6 +117,7 @@ import app.androidrik.rikkahub.ui.components.message.LocalChatBranchController
 import app.androidrik.rikkahub.ui.components.message.MAX_RENDER_TEXT_LENGTH
 import app.androidrik.rikkahub.ui.components.richtext.SharedSelectableContent
 import app.androidrik.rikkahub.ui.components.message.CompactionCheckpointRow
+import app.androidrik.rikkahub.ui.components.message.CompressionSummarySheet
 import app.androidrik.rikkahub.ui.components.ui.ErrorCardsDisplay
 import app.androidrik.rikkahub.ui.components.ui.ListSelectableItem
 import app.androidrik.rikkahub.ui.components.ui.LocalConversationImageUrls
@@ -203,6 +204,8 @@ fun ChatList(
     onLoadEarlierNodes: () -> Unit = {},
     /** 稀疏加载：跳转目标不在窗口内时按节点 id 补齐正文 */
     onHydrateNode: (Uuid) -> Unit = {},
+    /** 压缩摘要编辑保存（「摘要可见可编辑」）；null = 折叠行不显示编辑入口 */
+    onUpdateCompressionSummary: ((summaryId: Long, content: String, onResult: (Boolean) -> Unit) -> Unit)? = null,
     scrollController: ChatListScrollController? = null,
 ) {
     // 「点击消息里的图片 ⇒ 全屏后在**本会话**的图片间左右切换」：
@@ -284,6 +287,7 @@ fun ChatList(
                     onConversationGoalChange = onConversationGoalChange,
                     onLoadEarlierNodes = onLoadEarlierNodes,
                     onHydrateNode = onHydrateNode,
+                    onUpdateCompressionSummary = onUpdateCompressionSummary,
                     scrollController = scrollController ?: defaultScrollController,
                 )
                 }
@@ -334,6 +338,8 @@ private fun ChatListNormal(
     onLoadEarlierNodes: () -> Unit = {},
     /** 稀疏加载：跳转目标不在窗口内时按节点 id 补齐正文 */
     onHydrateNode: (Uuid) -> Unit = {},
+    /** 压缩摘要编辑保存；null = 折叠行不显示编辑入口 */
+    onUpdateCompressionSummary: ((summaryId: Long, content: String, onResult: (Boolean) -> Unit) -> Unit)? = null,
     scrollController: ChatListScrollController? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -402,6 +408,8 @@ private fun ChatListNormal(
     // P1：渲染 = **激活路径**（树形分支后 messageNodes 是全量节点集，含 off-path 兄弟子树）
     val activeCheckpoint = conversation.displayCompression()
     var showCompressedHistory by remember(conversation.id) { mutableStateOf(false) }
+    // 压缩摘要查看/编辑 sheet（native 检查点；入口在折叠行上的编辑图标）
+    var showSummarySheet by remember(conversation.id) { mutableStateOf(false) }
     val visibleNodes = if (activeCheckpoint != null && !showCompressedHistory) {
         conversation.windowNodes()
     } else {
@@ -652,11 +660,18 @@ private fun ChatListNormal(
             // 压缩检查点折叠行：展开/收起切换 visibleNodes（历史消息仍是完整可操作的行）
             if (activeCheckpoint != null) {
                 item(key = "CompactionCheckpoint") {
+                    // 编辑入口只给 native 检查点（id≠0 = DB 行存在）：导入检查点的正文
+                    // 是树节点消息，走行内展开，且其编辑会动指纹覆盖区域（语义不同，不开放）
                     CompactionCheckpointRow(
                         messageCount = activeCheckpoint.messageCount,
                         summaryPreview = activeCheckpoint.content.lineSequence().firstOrNull().orEmpty(),
                         expanded = showCompressedHistory,
                         onToggle = { showCompressedHistory = !showCompressedHistory },
+                        onEditClick = if (activeCheckpoint.id != 0L && onUpdateCompressionSummary != null) {
+                            { showSummarySheet = true }
+                        } else {
+                            null
+                        },
                     )
                 }
             }
@@ -921,6 +936,17 @@ private fun ChatListNormal(
                 selectedMessages = conversation.messageNodes.filter { it.id in selectedItems }
                     .map { it.currentMessage }
             )
+
+            // 压缩摘要查看/编辑 sheet：正文来自 activeCheckpoint（流式刷新，保存后即时回显）
+            if (showSummarySheet && activeCheckpoint != null && activeCheckpoint.id != 0L) {
+                CompressionSummarySheet(
+                    summary = activeCheckpoint,
+                    onDismissRequest = { showSummarySheet = false },
+                    onSave = { newContent, onResult ->
+                        onUpdateCompressionSummary?.invoke(activeCheckpoint.id, newContent, onResult)
+                    },
+                )
+            }
 
             val captureProgress = LocalScrollCaptureInProgress.current
 

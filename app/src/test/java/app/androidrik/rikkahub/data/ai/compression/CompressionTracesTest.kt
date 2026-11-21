@@ -242,6 +242,26 @@ class CompressionTracesTest {
         assertEquals("没有附录时原样返回", "plain", stripTraceSection("plain"))
     }
 
+    @Test
+    fun `extract returns the appendix verbatim for summary edit preserve`() {
+        val withTrace = attachTraceSection(
+            summary = "# Body text",
+            priorSummary = "",
+            messages = listOf(toolMessage("read_file", """{"path":"/tmp/a.txt"}""")),
+            targetTokens = 2000,
+        )
+        val trace = extractTraceSection(withTrace)
+        assertNotNull("有附录时取回本体", trace)
+        assertTrue("含头行", trace!!.startsWith(TRACE_SECTION_HEADER))
+        assertTrue("条目在附录里", trace.contains("/tmp/a.txt"))
+        // 编辑摘要的保存拼接：新正文 + 原附录 = 与原 content 等价（附录逐字保留）
+        val editedBody = "# 用户改过的正文"
+        val rebuilt = editedBody + "\n\n" + trace
+        assertEquals("strip 后仍是用户正文", editedBody, stripTraceSection(rebuilt))
+        assertEquals("附录在拼接后逐字保留", trace, extractTraceSection(rebuilt))
+        assertEquals("无附录", null, extractTraceSection("plain"))
+    }
+
     // ===== 解析：读得回自己写的格式 =====
 
     @Test

@@ -845,6 +845,9 @@ private fun ChatPageContent(
                 onDismissError = onDismissError,
                 onLoadEarlierNodes = { vm.loadEarlierMessages() },
                 onHydrateNode = { vm.ensureNodeLoaded(it) },
+                onUpdateCompressionSummary = { summaryId, content, onResult ->
+                    vm.updateCompressionSummary(summaryId, content, onResult)
+                },
                 onClearAllErrors = onClearAllErrors,
                 onRegenerate = { message ->
                     // 有下游才需要选择/确认；无下游时两个 scope 等价，直接执行非破坏的 A

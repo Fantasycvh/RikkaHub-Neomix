@@ -2914,6 +2914,36 @@ class ChatService(
         }
 
     /**
+     * 用户编辑压缩摘要正文（摘要可见可编辑，UI 从折叠行进入）。
+     *
+     * 只改 content 单列：指纹覆盖的是被摘要**区域**的节点序列（编辑区域内消息才失效），
+     * 摘要正文不在其中——编辑后检查点继续有效，下次请求的合成检查点消息直接用新正文
+     * （`compressionWindow()` 从 `activeCompression().content` 现读）。
+     *
+     * @return false = 该检查点已不存在（编辑期间被新压缩替换/会话清理），调用方据此提示
+     */
+    suspend fun updateCompressionSummaryContent(
+        conversationId: Uuid,
+        summaryId: Long,
+        content: String,
+    ): Boolean {
+        val updated = conversationRepo.updateCompressionCheckpointContent(summaryId, content)
+        if (!updated) {
+            Log.w(TAG, "compression summary #$summaryId no longer exists (conv=$conversationId)")
+            return false
+        }
+        updateConversationState(conversationId) { latest ->
+            latest.copy(
+                compressionSummaries = latest.compressionSummaries.map {
+                    if (it.id == summaryId) it.copy(content = content) else it
+                }
+            )
+        }
+        Log.i(TAG, "compression summary #$summaryId edited (conv=$conversationId)")
+        return true
+    }
+
+    /**
      * 自动压缩：占用达到阈值时调用 [compressToCheckpoint]。
      *
      * - 未启用（默认关）或未达阈值时不动作
