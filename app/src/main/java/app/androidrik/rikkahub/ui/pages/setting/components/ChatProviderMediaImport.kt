@@ -1,18 +1,35 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
 import app.androidrik.ai.provider.ProviderSetting
-import app.androidrik.ai.provider.effectiveApiKeys
+import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
+import app.androidrik.rikkahub.data.media.legacyImageExecutable
+import app.androidrik.rikkahub.data.media.toMediaImageModel
+import app.androidrik.rikkahub.data.media.withChatProviderCredentials
 
-/**
- * 从聊天供应商导入媒体供应商。凭据走**活引用**（[MediaGenerationProviderSetting.OpenAI.credentialRef]）：
- * 之后聊天侧改 key / 端点媒体侧自动跟随；本地仍留一份导入时的快照，解除引用时回退为显式配置。
- */
-internal fun ProviderSetting.OpenAI.toMediaGenerationProvider(): MediaGenerationProviderSetting.OpenAI =
-    MediaGenerationProviderSetting.OpenAI(
-        name = name,
-        baseUrl = baseUrl,
-        apiKey = effectiveApiKeys.split(Regex("[\\s,]+")).firstOrNull { it.isNotBlank() }.orEmpty(),
-        credentialRef = id,
-        models = emptyList(),
-    )
+internal fun ProviderSetting.ApiKey.toMediaGenerationProvider(): MediaGenerationProviderSetting {
+    val draft = when (this) {
+        is ProviderSetting.OpenAI -> MediaGenerationProviderSetting.OpenAI(
+            name = name, customHeaders = customHeaders, models = emptyList(),
+        )
+        is ProviderSetting.Google -> MediaGenerationProviderSetting.Google(
+            name = name, customHeaders = customHeaders, models = emptyList(),
+        )
+        else -> error("Unsupported chat provider for media import")
+    }
+    return checkNotNull(draft.withChatProviderCredentials(this)).withImportedImageModels(this)
+}
+
+internal fun MediaGenerationProviderSetting.withImportedImageModels(
+    source: ProviderSetting.ApiKey,
+): MediaGenerationProviderSetting {
+    val existingIds = models.filter { it.kind == MediaKind.IMAGE }.map { it.modelId }.toSet()
+    val imported = source.models.asSequence()
+        .filter { it.enabled && it.modelId.isNotBlank() && it.modelId !in existingIds }
+        // A provider override can send requests to a different endpoint or account.
+        .filter { it.providerOverwrite == null && legacyImageExecutable(source, it) }
+        .distinctBy { it.modelId }
+        .map { it.toMediaImageModel() }
+        .toList()
+    return copyProvider(models = models + imported)
+}

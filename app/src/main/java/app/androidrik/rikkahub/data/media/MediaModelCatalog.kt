@@ -80,7 +80,21 @@ internal data class MediaModelOption(
                     JsonInstant.encodeToString(model.customBodies),
                 )
             }
-            null -> listOf(target.provider.javaClass.name, target.provider.baseUrl)
+            null -> {
+                val provider = target.provider
+                val destination = listOf(provider.javaClass.name, provider.baseUrl)
+                // A linked Google provider can switch endpoints without changing its stored media configuration.
+                if (provider is MediaGenerationProviderSetting.Google && provider.credentialRef != null) {
+                    destination + when {
+                        provider.vertexAI && provider.useServiceAccount ->
+                            listOf("vertex-service-account", provider.projectId, provider.location)
+                        provider.vertexAI -> listOf("vertex")
+                        else -> listOf("ai-studio")
+                    }
+                } else {
+                    destination
+                }
+            }
         }
         val bytes = JsonInstant.encodeToString(configuration).encodeToByteArray()
         return Base64.encode(MessageDigest.getInstance("SHA-256").digest(bytes))
@@ -126,14 +140,7 @@ internal fun Settings.mediaModelCatalog(): List<MediaModelOption> = buildList {
 internal fun Settings.legacyMediaOption(provider: ProviderSetting, model: Model): MediaModelOption? {
     val effective = model.findProvider(providers) ?: return null
     if (!legacyImageExecutable(effective, model)) return null
-    val presentation = MediaGenerationModel(
-        modelId = model.modelId,
-        kind = MediaKind.IMAGE,
-        displayName = model.displayName,
-        id = model.id,
-        customHeaders = model.customHeaders,
-        customBodies = model.customBodies,
-    )
+    val presentation = model.toMediaImageModel(id = model.id)
     val (snapshot, format) = when (effective) {
         is ProviderSetting.OpenAI -> MediaGenerationProviderSetting.OpenAI(
             id = effective.id,
@@ -188,35 +195,64 @@ internal fun Settings.legacyMediaOption(provider: ProviderSetting, model: Model)
  * - **其余类型**（Claude/ChatGPT/Grok 账号）：`generateImage` 是 error 占位（Anthropic
  *   API 没有生图端点），不收录。
  */
-private fun legacyImageExecutable(provider: ProviderSetting, model: Model): Boolean = when (provider) {
+internal fun legacyImageExecutable(provider: ProviderSetting, model: Model): Boolean = when (provider) {
     is ProviderSetting.OpenAI -> model.type == ModelType.IMAGE
     is ProviderSetting.Google -> model.type == ModelType.IMAGE ||
         model.outputModalities.contains(Modality.IMAGE)
     else -> false
 }
 
+internal fun Model.toMediaImageModel(id: Uuid = Uuid.random()) = MediaGenerationModel(
+    modelId = modelId,
+    kind = MediaKind.IMAGE,
+    displayName = displayName,
+    id = id,
+    customHeaders = customHeaders,
+    customBodies = customBodies,
+)
+
 /**
- * 媒体供应商的生效配置：引用了旧 AI 供应商凭据（[MediaGenerationProviderSetting.OpenAI.credentialRef]）
- * 时，baseUrl/apiKey/proxy/apiKeys 取自被引用者，两处配置共用一份凭据。被引用者被删、或引用对象
- * 不是凭据型的 OpenAI 兼容供应商时返回 null——这套配置的模型从目录消失，运行期按既有「模型不可用」
- * 路径报错。
+ * 引用旧 AI 供应商凭据时，两处配置共用一份连接和鉴权设置。引用失效后，该媒体供应商从目录消失。
  *
  * M3a-1 起代理与多 key 随引用生效（原 M2 边界「proxy 不随引用生效」因媒体侧补齐代理 parity 而作废）；
  * apiKeys 传入多 key 列表后由适配器的 keyRoulette 统一裁决（旧链路 effectiveApiKeys 同款顺序语义）。
  *
  * 供应商自身 id 不变（[MediaModelRef] 与定时授权里的引用不受影响）；`authorizationFingerprint`
- * 只看解析后的 baseUrl，凭据值变化不影响指纹，端点变化才会要求重新批准。
+ * 绑定解析后的目标地址，凭据值变化不影响指纹，端点变化才会要求重新批准。
  */
 internal fun Settings.effectiveMediaProvider(stored: MediaGenerationProviderSetting): MediaGenerationProviderSetting? {
-    if (stored !is MediaGenerationProviderSetting.OpenAI) return stored
     val refId = stored.credentialRef ?: return stored
-    val source = providers.firstOrNull { it.id == refId } as? ProviderSetting.OpenAI ?: return null
-    return stored.copyProvider(
-        baseUrl = source.baseUrl,
-        apiKey = source.effectiveApiKeys.split(Regex("[\\s,]+")).firstOrNull { it.isNotBlank() }.orEmpty(),
-        proxy = source.proxy,
-        apiKeys = source.apiKeys.map { it.key }.filter { it.isNotBlank() },
-    )
+    val source = providers.firstOrNull { it.id == refId } as? ProviderSetting.ApiKey ?: return null
+    return stored.withChatProviderCredentials(source)
+}
+
+internal fun MediaGenerationProviderSetting.withChatProviderCredentials(
+    source: ProviderSetting.ApiKey,
+): MediaGenerationProviderSetting? {
+    val keys = source.effectiveApiKeys.split(Regex("[\\s,]+")).filter { it.isNotBlank() }
+    return when {
+        this is MediaGenerationProviderSetting.OpenAI && source is ProviderSetting.OpenAI -> copy(
+            credentialRef = source.id,
+            baseUrl = source.baseUrl,
+            apiKey = keys.firstOrNull().orEmpty(),
+            proxy = source.proxy,
+            apiKeys = keys,
+        )
+        this is MediaGenerationProviderSetting.Google && source is ProviderSetting.Google -> copy(
+            credentialRef = source.id,
+            baseUrl = source.baseUrl,
+            apiKey = keys.firstOrNull().orEmpty(),
+            proxy = source.proxy,
+            apiKeys = keys,
+            vertexAI = source.vertexAI,
+            useServiceAccount = source.useServiceAccount,
+            privateKey = source.privateKey,
+            serviceAccountEmail = source.serviceAccountEmail,
+            location = source.location,
+            projectId = source.projectId,
+        )
+        else -> null
+    }
 }
 
 /** 模型级 customBodies 命中这些键 = 可能覆盖请求骨架（n/prompt/size 等），模板直跑需重新批准 */

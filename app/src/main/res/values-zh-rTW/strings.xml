@@ -2459,6 +2459,12 @@
   <string name="media_creation_page_frames_with_references">第一幀與最後一幀無法與參考素材一起使用。請移除其中一個。</string>
   <string name="media_creation_page_upload_not_configured_hint">此模型的素材必須先上傳至 S3 才能使用。點此設定。</string>
   <string name="media_creation_page_prompt_placeholder">描述您想生成的內容</string>
+  <string name="media_creation_page_optimize_prompt">最佳化提示詞</string>
+  <string name="media_creation_page_optimizing_prompt">正在最佳化提示詞…</string>
+  <string name="media_creation_page_use_optimized_prompt">使用此提示詞</string>
+  <string name="media_creation_page_optimize_no_model">請先將快速模型或聊天模型設為文字模型。</string>
+  <string name="media_creation_page_optimize_failed">無法最佳化提示詞，請重試。</string>
+  <string name="media_creation_page_optimize_draft_changed">草稿已變更，請重新最佳化。</string>
   <string name="media_creation_page_select_model">選擇模型</string>
   <string name="media_creation_error_interrupted">任務完成前應用程式已關閉</string>
   <string name="media_creation_error_provider_deleted">供應商 \"%1$s\" 已被刪除</string>
@@ -3009,8 +3015,8 @@
   <string name="setting_mcp_page_needs_oauth">需要 OAuth 授權</string>
   <string name="setting_mcp_page_oauth_action">OAuth 授權</string>
   <string name="setting_media_page_import_from_chat">從聊天供應商匯入</string>
-  <string name="setting_media_page_import_from_chat_desc">僅支援 OpenAI 相容供應商，複製名稱、API 位址和第一個可用金鑰。不匯入聊天模型、自訂請求標頭或獨立代理；匯入後請新增圖片生成模型並確認介面相容性。儲存為獨立設定，不影響原聊天供應商。</string>
-  <string name="setting_media_page_import_from_chat_empty">尚無可匯入的 OpenAI 相容聊天供應商</string>
+  <string name="setting_media_page_import_from_chat_desc">從 OpenAI 相容或 Google 聊天供應商複製符合條件的生圖模型，並共用連線與憑證。再次匯入可補齊缺少的生圖模型。</string>
+  <string name="setting_media_page_import_from_chat_empty">尚無 OpenAI 相容或 Google 聊天供應商</string>
   <string name="setting_model_page_memory_consolidation_empty">跟隨快速模型或助理聊天模型</string>
   <string name="setting_model_page_memory_consolidation_model">做夢（記憶整理）模型</string>
   <string name="setting_model_page_memory_consolidation_model_desc">用於自動和手動記憶整理。未設定時依次使用快速模型、助理聊天模型；建議選擇支援工具呼叫的模型。</string>

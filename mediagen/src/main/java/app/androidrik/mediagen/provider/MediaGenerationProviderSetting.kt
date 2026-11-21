@@ -18,6 +18,7 @@ sealed class MediaGenerationProviderSetting {
     abstract val apiKey: String
     abstract val baseUrl: String
     abstract val models: List<MediaGenerationModel>
+    open val credentialRef: Uuid? get() = null
 
     /**
      * per-provider 代理（M3a-1 parity，对齐旧链路 `ProviderSetting.proxy`）：[ProviderProxy.Inherit]
@@ -70,7 +71,7 @@ sealed class MediaGenerationProviderSetting {
          * 在目录解析时取自被引用者，改 key 不用同步两处配置；被引用者被删或换端点后，引用它的模型
          * 相应失效或以新地址生效。null = 本地显式配置（无法共用鉴权时保留这种形态）。
          */
-        val credentialRef: Uuid? = null,
+        override val credentialRef: Uuid? = null,
         override val models: List<MediaGenerationModel> = listOf(
             MediaGenerationModel(modelId = "gpt-image-2.5-sunburst", kind = MediaKind.IMAGE),
             MediaGenerationModel(modelId = "gpt-image-2.5-flare", kind = MediaKind.IMAGE),
@@ -273,8 +274,7 @@ sealed class MediaGenerationProviderSetting {
     /**
      * Google (Gemini) 生图：AI Studio API key 与 Vertex AI（服务账号）两种形态共用一套
      * generateContent IMAGE 输出模态协议（M3a-4 平移旧链路 `GoogleProvider.generateImage`）。
-     * Vertex 字段与旧链路 `ProviderSetting.Google` 同名同义；credentialRef 语义未来若复用，
-     * 由 app 层解析后借字段。旧备份没有 proxy/apiKeys 字段，反序列化落默认值。
+     * Vertex 字段与旧链路 `ProviderSetting.Google` 同名同义。凭据引用由 app 层解析。
      */
     @Serializable
     @SerialName("google")
@@ -296,6 +296,7 @@ sealed class MediaGenerationProviderSetting {
         override val models: List<MediaGenerationModel> = listOf(
             MediaGenerationModel(modelId = "gemini-2.5-flash-image", kind = MediaKind.IMAGE),
         ),
+        override val credentialRef: Uuid? = null,
     ) : MediaGenerationProviderSetting() {
         // 仅图片已接入；generateContent 同步返回结果
         override val supportedKinds: Set<MediaKind>

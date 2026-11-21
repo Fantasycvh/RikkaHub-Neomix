@@ -79,6 +79,7 @@ import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.rikkahub.ui.pages.setting.components.toMediaGenerationProvider
+import app.androidrik.rikkahub.ui.pages.setting.components.withImportedImageModels
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.common.android.sanitizeSensitiveText
@@ -118,7 +119,8 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
     var newProvider by remember { mutableStateOf<MediaGenerationProviderSetting?>(null) }
     var showAddMenu by remember { mutableStateOf(false) }
     var showChatImport by remember { mutableStateOf(false) }
-    val importableProviders = settings.providers.filterIsInstance<ProviderSetting.OpenAI>()
+    val importableProviders = settings.providers.filterIsInstance<ProviderSetting.ApiKey>()
+        .filter { it is ProviderSetting.OpenAI || it is ProviderSetting.Google }
     // 0 = 服务商，1 = 素材存储，2 = 语音
     var selectedTab by rememberSaveable { mutableStateOf(0) }
     val tabStateHolder = rememberSaveableStateHolder()
@@ -267,7 +269,14 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
                         items(importableProviders, key = { it.id }) { source ->
                             TextButton(
                                 onClick = {
-                                    newProvider = source.toMediaGenerationProvider()
+                                    val linked = settings.mediaGenerationProviders.firstOrNull {
+                                        it.credentialRef == source.id
+                                    }
+                                    if (linked == null) {
+                                        newProvider = source.toMediaGenerationProvider()
+                                    } else {
+                                        editingProvider = linked.withImportedImageModels(source)
+                                    }
                                     showChatImport = false
                                 },
                                 modifier = Modifier.fillMaxWidth(),
@@ -292,13 +301,13 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
             initial = provider,
             confirmText = stringResource(R.string.chat_page_save),
             onConfirm = { edited ->
-                vm.updateSettings(
-                    settings.copy(
-                        mediaGenerationProviders = settings.mediaGenerationProviders.map {
+                vm.updateSettings { current ->
+                    current.copy(
+                        mediaGenerationProviders = current.mediaGenerationProviders.map {
                             if (it.id == provider.id) edited else it
                         }
                     )
-                )
+                }
             },
             onDismiss = { editingProvider = null },
         )
@@ -310,11 +319,11 @@ fun SettingMediaPage(vm: SettingVM = koinViewModel()) {
             initial = provider,
             confirmText = stringResource(R.string.setting_tts_page_add),
             onConfirm = { added ->
-                vm.updateSettings(
-                    settings.copy(
-                        mediaGenerationProviders = listOf(added) + settings.mediaGenerationProviders
+                vm.updateSettings { current ->
+                    current.copy(
+                        mediaGenerationProviders = listOf(added) + current.mediaGenerationProviders
                     )
-                )
+                }
             },
             onDismiss = { newProvider = null },
         )
@@ -361,7 +370,7 @@ private fun MediaProviderList(
                             .fillMaxWidth()
                             .scale(if (isDragging) 0.95f else 1f),
                         provider = provider,
-                        credentialName = (provider as? MediaGenerationProviderSetting.OpenAI)?.credentialRef
+                        credentialName = provider.credentialRef
                             ?.let { ref -> settings.providers.firstOrNull { it.id == ref }?.name },
                         onEdit = { onEdit(provider) },
                         onDelete = { deleteTarget = provider },

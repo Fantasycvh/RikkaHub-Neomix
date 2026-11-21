@@ -4,6 +4,8 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.net.Uri
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -36,6 +38,7 @@ import app.androidrik.rikkahub.data.image.ImageGenerationUpdate
 import app.androidrik.rikkahub.data.media.MediaModelOption
 import app.androidrik.rikkahub.data.media.mediaModelCatalog
 import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.MediaCreationDraft
 import app.androidrik.rikkahub.data.model.MediaCreationParams
 import app.androidrik.rikkahub.data.model.MediaCreationRecord
 import app.androidrik.rikkahub.data.model.MediaCreationStatus
@@ -56,14 +59,18 @@ import app.androidrik.rikkahub.service.MediaCreationSubmission
 import app.androidrik.rikkahub.service.ScheduledMediaRunner
 import app.androidrik.rikkahub.service.ScheduledRunRegistry
 import app.androidrik.rikkahub.service.ScheduledTaskRunner
+import app.androidrik.rikkahub.ui.pages.mediacreation.MediaCreationVM
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
@@ -131,6 +138,7 @@ class MediaGenerationAcceptanceTest {
             when (scenario) {
                 "templates" -> fixture.templates()
                 "chat" -> fixture.chat()
+                "prompt" -> fixture.promptOptimization()
                 "seed" -> fixture.seedInterruption()
                 "recover" -> fixture.recoverInterruption()
                 "seedreconcile" -> fixture.seedReconciliation()
@@ -184,6 +192,51 @@ class MediaGenerationAcceptanceTest {
                 scheduledHeadlessEnabled = false, uploadS3Config = S3Config(),
             ) }
             withTimeout(15_000) { store.settingsFlow.first { it.imageGenerationModelId == mediaImage.id } }
+        }
+
+        suspend fun promptOptimization() {
+            val fastModel = Model(modelId = "fixture-fast")
+            store.update { settings ->
+                settings.copy(
+                    fastModelId = fastModel.id,
+                    providers = settings.providers.map { it.copyProvider(models = it.models + fastModel) },
+                )
+            }
+            withTimeout(15_000) { store.settingsFlow.first { it.fastModelId == fastModel.id } }
+            val original = "media-e2e-prompt-$token"
+            val session = media.getOrCreateEmptySession(MediaCreationDraft(prompt = original))
+            withContext(Dispatchers.Main) {
+                val vm = MediaCreationVM(
+                    id = session.id.toString(),
+                    context = app,
+                    settingsStore = store,
+                    repository = media,
+                    service = service,
+                    remoteFileStore = koin.get(),
+                    appScope = koin.get(),
+                    providerManager = koin.get(),
+                    usageRecorder = koin.get(),
+                )
+                try {
+                    withTimeout(15_000) { vm.draft.first { it.prompt == original } }
+                    val revised = vm.optimizePrompt(original, MediaKind.IMAGE).getOrThrow()
+                    assertEquals("A lighthouse in warm evening light", revised)
+                    assertEquals(original, vm.promptState.text.toString())
+
+                    vm.promptState.setTextAndPlaceCursorAtEnd("Edited while waiting")
+                    vm.applyOptimizedPrompt(original, revised)
+                    assertEquals("Edited while waiting", vm.promptState.text.toString())
+
+                    vm.promptState.setTextAndPlaceCursorAtEnd(original)
+                    vm.applyOptimizedPrompt(original, revised)
+                    assertEquals(revised, vm.promptState.text.toString())
+                } finally {
+                    vm.viewModelScope.cancel()
+                }
+            }
+            val request = events(original, "/v1/chat/completions").single()
+            assertEquals("fixture-fast", request.text("model"))
+            assertEquals(2, request.getValue("messages").jsonPrimitive.int)
         }
 
         suspend fun templates() {

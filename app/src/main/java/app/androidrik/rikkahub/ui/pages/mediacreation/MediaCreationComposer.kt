@@ -49,6 +49,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
@@ -70,6 +71,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,6 +96,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.WandSparkles
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Add01
 import me.rerere.hugeicons.stroke.ArrowUp02
@@ -146,6 +150,7 @@ internal fun MediaCreationComposer(
 ) {
     var showModels by remember { mutableStateOf(false) }
     var showParams by remember { mutableStateOf(false) }
+    var promptToOptimize by remember { mutableStateOf<Pair<String, MediaKind?>?>(null) }
 
     // 正在为哪个角色挑选素材，非空时显示素材选择面板
     var pickingRole by rememberSaveable { mutableStateOf<ImageRole?>(null) }
@@ -253,6 +258,18 @@ internal fun MediaCreationComposer(
                         }
                     }
                 } else null,
+                trailingIcon = if (vm.promptState.text.isNotBlank()) {
+                    {
+                        IconButton(onClick = {
+                            promptToOptimize = vm.promptState.text.toString() to selection?.model?.kind
+                        }) {
+                            Icon(
+                                imageVector = Lucide.WandSparkles,
+                                contentDescription = stringResource(R.string.media_creation_page_optimize_prompt),
+                            )
+                        }
+                    }
+                } else null,
             )
 
             Row(
@@ -289,6 +306,15 @@ internal fun MediaCreationComposer(
                 GenerateButton(enabled = canSubmit, onClick = vm::generate)
             }
         }
+    }
+
+    promptToOptimize?.let { (original, kind) ->
+        PromptOptimizationSheet(
+            original = original,
+            kind = kind,
+            vm = vm,
+            onDismiss = { promptToOptimize = null },
+        )
     }
 
     if (showModels) {
@@ -366,6 +392,70 @@ internal fun MediaCreationComposer(
                 vm.addSketch(result, request.role, replacing = request.asset)
             },
         )
+    }
+}
+
+@Composable
+private fun PromptOptimizationSheet(
+    original: String,
+    kind: MediaKind?,
+    vm: MediaCreationVM,
+    onDismiss: () -> Unit,
+) {
+    var result by remember(original, kind) { mutableStateOf<Result<String>?>(null) }
+    LaunchedEffect(original, kind) {
+        result = vm.optimizePrompt(original, kind)
+    }
+    val revised = result?.getOrNull()
+    val draftChanged = vm.promptState.text.toString() != original
+
+    ComposerSheet(onDismiss = onDismiss) {
+        Text(
+            text = stringResource(R.string.media_creation_page_optimize_prompt),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        when {
+            result == null -> Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text(stringResource(R.string.media_creation_page_optimizing_prompt))
+            }
+            revised != null -> Text(
+                text = revised,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState()),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            else -> Text(
+                text = result?.exceptionOrNull()?.message
+                    ?: stringResource(R.string.media_creation_page_optimize_failed),
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (revised != null && draftChanged) {
+            Text(stringResource(R.string.media_creation_page_optimize_draft_changed))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+            if (revised != null) {
+                TextButton(
+                    onClick = {
+                        vm.applyOptimizedPrompt(original, revised)
+                        onDismiss()
+                    },
+                    enabled = !draftChanged,
+                ) {
+                    Text(stringResource(R.string.media_creation_page_use_optimized_prompt))
+                }
+            }
+        }
     }
 }
 

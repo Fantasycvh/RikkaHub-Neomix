@@ -2443,6 +2443,12 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="media_creation_page_frames_with_references">首帧、尾帧不能和参考素材一起使用，请移除其中一种</string>
   <string name="media_creation_page_upload_not_configured_hint">这个模型的素材要先上传到 S3 才能使用，点这里去配置</string>
   <string name="media_creation_page_prompt_placeholder">描述你想生成的画面</string>
+  <string name="media_creation_page_optimize_prompt">优化提示词</string>
+  <string name="media_creation_page_optimizing_prompt">正在优化提示词…</string>
+  <string name="media_creation_page_use_optimized_prompt">使用此提示词</string>
+  <string name="media_creation_page_optimize_no_model">请先将快速模型或聊天模型设为文本模型。</string>
+  <string name="media_creation_page_optimize_failed">无法优化提示词，请重试。</string>
+  <string name="media_creation_page_optimize_draft_changed">草稿已更改，请重新优化。</string>
   <string name="media_creation_page_select_model">选择模型</string>
   <string name="media_creation_page_params">参数</string>
   <string name="media_creation_page_clear_input">清空输入</string>
@@ -3023,8 +3029,8 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_mcp_page_needs_oauth">需要 OAuth 授权</string>
   <string name="setting_mcp_page_oauth_action">OAuth 授权</string>
   <string name="setting_media_page_import_from_chat">从聊天服务商导入</string>
-  <string name="setting_media_page_import_from_chat_desc">仅支持 OpenAI 兼容服务商，复制名称、API 地址和第一个可用密钥。不导入聊天模型、自定义请求头或独立代理；导入后请添加生图模型并确认接口兼容性。保存为独立配置，不影响原聊天服务商。</string>
-  <string name="setting_media_page_import_from_chat_empty">暂无可导入的 OpenAI 兼容聊天服务商</string>
+  <string name="setting_media_page_import_from_chat_desc">从 OpenAI 兼容或 Google 聊天供应商复制符合条件的生图模型，并共享连接与凭据。再次导入可补齐缺少的生图模型。</string>
+  <string name="setting_media_page_import_from_chat_empty">暂无 OpenAI 兼容或 Google 聊天供应商</string>
   <string name="setting_model_page_memory_consolidation_empty">跟随快速模型或助手聊天模型</string>
   <string name="setting_model_page_memory_consolidation_model">做梦（记忆整理）模型</string>
   <string name="setting_model_page_memory_consolidation_model_desc">用于自动和手动记忆整理。未配置时依次使用快速模型、助手聊天模型；建议选择支持工具调用的模型。</string>

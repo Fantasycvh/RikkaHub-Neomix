@@ -62,12 +62,13 @@ import kotlin.uuid.Uuid
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.style.TextOverflow
 import app.androidrik.ai.provider.ProviderSetting
-import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationManager
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.media.effectiveMediaProvider
+import app.androidrik.rikkahub.data.media.withChatProviderCredentials
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.context.LocalSettings
@@ -117,7 +118,8 @@ fun MediaGenerationProviderConfigure(
     val toaster = LocalToaster.current
     val scope = rememberCoroutineScope()
     // 只有已接入、且接口能列出模型的供应商才显示「获取模型列表」
-    val canFetchModels = manager.supportsModelList(setting)
+    val effectiveSetting = LocalSettings.current.effectiveMediaProvider(setting)
+    val canFetchModels = effectiveSetting != null && manager.supportsModelList(effectiveSetting)
     var fetching by remember { mutableStateOf(false) }
     // 非 null 时显示勾选对话框
     var candidates by remember { mutableStateOf<List<MediaGenerationModel>?>(null) }
@@ -127,10 +129,10 @@ fun MediaGenerationProviderConfigure(
     val advancedModel = models.firstOrNull { it.id == advancedModelId }
 
     fun fetchModels() {
-        if (fetching) return
+        if (fetching || effectiveSetting == null) return
         fetching = true
         scope.launch {
-            manager.listModels(setting)
+            manager.listModels(effectiveSetting)
                 .onSuccess { fetched ->
                     val existingModelIds = models.map { it.modelId }.toSet()
                     val fresh = fetched
@@ -196,12 +198,12 @@ fun MediaGenerationProviderConfigure(
                     )
                 }
 
-                if (setting is MediaGenerationProviderSetting.OpenAI) {
+                if (setting is MediaGenerationProviderSetting.OpenAI || setting is MediaGenerationProviderSetting.Google) {
                     CredentialReferenceField(setting = setting, onValueChange = onValueChange)
                 }
 
                 // 引用旧 AI 供应商凭据时 Key/URL/代理/多 Key 都跟着对方走，本地显式配置不再展示
-                if (!(setting is MediaGenerationProviderSetting.OpenAI && setting.credentialRef != null)) {
+                if (setting.credentialRef == null) {
                     FormItem(label = { Text("API Key") }) {
                         OutlinedTextField(
                             value = setting.apiKey,
@@ -465,15 +467,20 @@ private fun ModelRow(
 }
 
 /**
- * OpenAI 兼容媒体供应商的凭据来源：本地显式配置，或引用一个已有 AI 供应商（活引用，
+ * 媒体供应商的凭据来源：本地显式配置，或引用一个同类型的 AI 供应商（活引用，
  * 改 key / 端点自动跟随）。引用的供应商被删时模型失效并在此提示。
  */
 @Composable
 private fun CredentialReferenceField(
-    setting: MediaGenerationProviderSetting.OpenAI,
+    setting: MediaGenerationProviderSetting,
     onValueChange: (MediaGenerationProviderSetting) -> Unit,
 ) {
-    val candidates = LocalSettings.current.providers.filterIsInstance<ProviderSetting.OpenAI>()
+    val providers = LocalSettings.current.providers
+    val candidates = when (setting) {
+        is MediaGenerationProviderSetting.OpenAI -> providers.filterIsInstance<ProviderSetting.OpenAI>()
+        is MediaGenerationProviderSetting.Google -> providers.filterIsInstance<ProviderSetting.Google>()
+        else -> return
+    }
     val referenced = setting.credentialRef?.let { ref -> candidates.firstOrNull { it.id == ref } }
     var picking by remember { mutableStateOf(false) }
 
@@ -515,7 +522,11 @@ private fun CredentialReferenceField(
                     item {
                         TextButton(
                             onClick = {
-                                onValueChange(setting.copy(credentialRef = null))
+                                val detached = when (setting) {
+                                    is MediaGenerationProviderSetting.OpenAI -> setting.copy(credentialRef = null)
+                                    is MediaGenerationProviderSetting.Google -> setting.copy(credentialRef = null)
+                                }
+                                onValueChange(detached)
                                 picking = false
                             },
                             modifier = Modifier.fillMaxWidth(),
@@ -527,14 +538,7 @@ private fun CredentialReferenceField(
                         TextButton(
                             onClick = {
                                 // 快照留在本地兜底（解除引用时回退为显式配置），生效值以引用为准
-                                onValueChange(
-                                    setting.copy(
-                                        credentialRef = source.id,
-                                        baseUrl = source.baseUrl,
-                                        apiKey = source.effectiveApiKeys
-                                            .split(Regex("[\\s,]+")).firstOrNull { it.isNotBlank() }.orEmpty(),
-                                    )
-                                )
+                                setting.withChatProviderCredentials(source)?.let(onValueChange)
                                 picking = false
                             },
                             modifier = Modifier.fillMaxWidth(),

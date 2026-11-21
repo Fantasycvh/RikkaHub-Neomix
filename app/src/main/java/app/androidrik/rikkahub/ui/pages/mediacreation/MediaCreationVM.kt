@@ -11,6 +11,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import app.androidrik.ai.provider.Modality
+import app.androidrik.ai.provider.ModelType
+import app.androidrik.ai.provider.ProviderManager
+import app.androidrik.ai.provider.TextGenerationParams
+import app.androidrik.ai.ui.UIMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -41,7 +46,13 @@ import app.androidrik.mediagen.provider.MediaGenerationCapabilities
 import app.androidrik.common.android.Logging
 import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.UsageRecorder
+import app.androidrik.rikkahub.data.ai.UsageSource
+import app.androidrik.rikkahub.data.ai.UsageTag
+import app.androidrik.rikkahub.data.ai.withGenerationRetry
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.datastore.findModelById
+import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.files.MediaCreationFiles
 import app.androidrik.rikkahub.data.files.RemoteFileStore
 import app.androidrik.rikkahub.data.media.MediaModelOption
@@ -98,6 +109,8 @@ class MediaCreationVM(
     private val service: MediaCreationService,
     private val remoteFileStore: RemoteFileStore,
     private val appScope: AppScope,
+    private val providerManager: ProviderManager,
+    private val usageRecorder: UsageRecorder,
 ) : ViewModel() {
     val sessionId: Uuid = Uuid.parse(id)
 
@@ -209,6 +222,55 @@ class MediaCreationVM(
     // ---- 草稿 ----
 
     private fun syncPrompt() = updateDraft { it.copy(prompt = promptState.text.toString()) }
+
+    internal suspend fun optimizePrompt(original: String, kind: MediaKind?): Result<String> {
+        val settings = settingsStore.settingsFlow.value
+        val destination = sequenceOf(settings.fastModelId, settings.chatModelId)
+            .mapNotNull { settings.findModelById(it) }
+            .filter {
+                it.modelId.isNotBlank() && it.type == ModelType.CHAT &&
+                    Modality.TEXT in it.inputModalities && Modality.TEXT in it.outputModalities
+            }
+            .mapNotNull { model -> model.findProvider(settings.providers)?.let { model to it } }
+            .firstOrNull()
+            ?: return Result.failure(IllegalStateException(context.getString(R.string.media_creation_page_optimize_no_model)))
+        val (model, provider) = destination
+        val medium = when (kind) {
+            MediaKind.IMAGE -> "image"
+            MediaKind.VIDEO -> "video"
+            null -> "image or video"
+        }
+        val messages = listOf(
+            UIMessage.system(
+                "Rewrite the user's draft as a clear prompt for $medium generation. Keep the user's language, " +
+                    "subjects, style, constraints, and references to assets. Improve phrasing and use concrete visual " +
+                    "details where they fit the intent. Return only the revised prompt, without commentary or formatting.",
+            ),
+            UIMessage.user(original),
+        )
+
+        return try {
+            val result = withContext(Dispatchers.IO) {
+                val handler = usageRecorder.wrap(providerManager.getProviderByType(provider), UsageTag(UsageSource.MEDIA))
+                withGenerationRetry(context, provider, settings, processingStatus = null) { effective ->
+                    handler.generateText(effective, messages, TextGenerationParams(model = model.copy(tools = emptySet())))
+                }
+            }
+            val revised = result.message.toText().trim()
+            check(revised.isNotBlank())
+            Result.success(revised)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            Result.failure(IllegalStateException(context.getString(R.string.media_creation_page_optimize_failed)))
+        }
+    }
+
+    internal fun applyOptimizedPrompt(original: String, revised: String) {
+        if (promptState.text.toString() != original || revised == original) return
+        promptState.setTextAndPlaceCursorAtEnd(revised)
+        syncPrompt()
+    }
 
     fun updateParams(params: MediaCreationParams) = updateDraft { it.copy(params = params) }
 

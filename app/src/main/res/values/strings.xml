@@ -2406,6 +2406,12 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="media_creation_page_frames_with_references">First and last frames can\'t be used together with reference assets. Remove one of the two.</string>
   <string name="media_creation_page_upload_not_configured_hint">This model\'s assets must be uploaded to S3 before they can be used. Tap here to set it up.</string>
   <string name="media_creation_page_prompt_placeholder">Describe what you want to generate</string>
+  <string name="media_creation_page_optimize_prompt">Optimize prompt</string>
+  <string name="media_creation_page_optimizing_prompt">Optimizing prompt…</string>
+  <string name="media_creation_page_use_optimized_prompt">Use this prompt</string>
+  <string name="media_creation_page_optimize_no_model">Select a text model as your fast model or chat model first.</string>
+  <string name="media_creation_page_optimize_failed">Could not optimize the prompt. Try again.</string>
+  <string name="media_creation_page_optimize_draft_changed">The draft changed. Run optimization again to update it.</string>
   <string name="media_creation_page_select_model">Select model</string>
   <string name="media_creation_page_params">Parameters</string>
   <string name="media_creation_page_clear_input">Clear input</string>
@@ -3000,8 +3006,8 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_mcp_page_needs_oauth">OAuth authorization required</string>
   <string name="setting_mcp_page_oauth_action">Authorize via OAuth</string>
   <string name="setting_media_page_import_from_chat">Import from chat provider</string>
-  <string name="setting_media_page_import_from_chat_desc">Only OpenAI-compatible chat providers are supported. The name, API endpoint, and first available key are copied. Chat models, custom headers, and dedicated proxy settings are not imported; after importing, add image generation models and verify API compatibility. Saved as a separate configuration and does not affect the original chat provider.</string>
-  <string name="setting_media_page_import_from_chat_empty">No importable OpenAI-compatible chat providers</string>
+  <string name="setting_media_page_import_from_chat_desc">Copies eligible image generation models from an OpenAI-compatible or Google chat provider. The media provider shares its connection and credentials. Import again to add missing image models.</string>
+  <string name="setting_media_page_import_from_chat_empty">No OpenAI-compatible or Google chat providers</string>
   <string name="setting_model_page_memory_consolidation_empty">Follows the fast model or assistant chat model</string>
   <string name="setting_model_page_memory_consolidation_model">Memory consolidation (dream) model</string>
   <string name="setting_model_page_memory_consolidation_model_desc">Used for automatic and manual memory consolidation. When not configured, the fast model and then the assistant chat model are used; a model with tool calling support is recommended.</string>

@@ -122,6 +122,8 @@ val viewModelModule = module {
             service = get(),
             remoteFileStore = get(),
             appScope = get(),
+            providerManager = get(),
+            usageRecorder = get(),
         )
     }
     viewModelOf(::PromptInspectVM)

@@ -140,6 +140,16 @@ class Fixture(BaseHTTPRequestHandler):
     def chat(self, body):
         messages = body["messages"]
         user = next(message for message in reversed(messages) if message["role"] == "user")
+        optimization = re.search(r"media-e2e-prompt-[a-z0-9]+", str(user["content"]))
+        if optimization:
+            self.record(path=self.path, prompt=optimization[0], model=body["model"], messages=len(messages))
+            self.send_json({
+                "id": "media-fixture-optimization", "object": "chat.completion", "created": 1,
+                "model": body["model"], "choices": [{"index": 0, "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "A lighthouse in warm evening light"}}],
+            })
+            return
+
         prompt = re.search(r"media-e2e-chat-[a-z0-9-]+", str(user["content"]))[0]
         tools = [tool["function"]["name"] for tool in body.get("tools", [])]
         tool_results = sum(message["role"] == "tool" for message in messages)
