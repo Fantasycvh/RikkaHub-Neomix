@@ -153,7 +153,7 @@ Room 75→76 给 `media_creation_record`、`scheduled_tasks` 和 `scheduled_task
 - 入口：编辑器「凭据」区（引用/更换引用/解除引用，解除后回退本地快照）+ 原有的「从聊天供应商导入」现在默认生成活引用；列表项显示引用标记。
 - 已知边界：被引用供应商的代理（proxy）设置不随引用生效（媒体适配器本来也不走代理）；多 key 轮询取第一个有效 key。
 
-**M3 重复适配收敛评估**（2026-11-20 立项：三项 parity + Google 适配器移植按批次实施）
+**M3 重复适配收敛评估**（2026-11-20 立项；**M3a 四批 + M3b 全部完成**，实施记录见提交 5d6bae8fd / 224ef4697 / 151267131 / 4918f7376 / dbf15813b / M3b-2）
 
 > 立项拍板（2026-11-20）：共享类型（ProviderProxy/CustomHeader/CustomBody/KeyRoulette/configureClientWithProxy）**下沉 common** 由 ai+mediagen 复用；媒体供应商编辑器补**完整 UI**（代理四档/多 key/模型级头 body），独立配置形态不降级。另盘点出设计稿未覆盖的增量项：`98ea41fc8` 的 Google 生图执行层在 M3b 退役旧路径时会被一并废掉，须先移植为 mediagen 适配器（M3a-4）。
 

@@ -35,7 +35,6 @@ import app.androidrik.ai.core.serverToolUseCounts
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.ClaudePromptCacheTtl
-import app.androidrik.ai.provider.ImageGenerationParams
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.*
 import app.androidrik.ai.provider.ModelAbility
@@ -48,7 +47,6 @@ import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.provider.providers.claude.ClaudeStreamDecoder
 import app.androidrik.ai.provider.stream.SseEvent
 import app.androidrik.ai.ui.StreamChunk
-import app.androidrik.ai.ui.ImageGenerationItem
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.ClaudeReasoningMetadata
 import app.androidrik.ai.ui.UIMessagePart
@@ -104,13 +102,6 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                 parseStandardCatalog(client.configureClientWithProxy(providerSetting.proxy).catalogJson(request), cursorPagination = true)
             }
         }
-
-    override suspend fun generateImage(
-        providerSetting: ProviderSetting,
-        params: ImageGenerationParams
-    ): Flow<ImageGenerationItem> {
-        error("Claude provider does not support image generation")
-    }
 
     override suspend fun generateText(
         providerSetting: ProviderSetting.Claude,

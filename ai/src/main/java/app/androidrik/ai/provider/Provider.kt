@@ -7,8 +7,6 @@ import app.androidrik.common.http.CustomBody
 import app.androidrik.common.http.CustomHeader
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.core.Tool
-import app.androidrik.ai.ui.ImageGenSize
-import app.androidrik.ai.ui.ImageGenerationItem
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 
@@ -46,19 +44,8 @@ interface Provider<T : ProviderSetting> {
         error("Embedding generation is not supported")
     }
 
-    suspend fun generateImage(
-        providerSetting: ProviderSetting,
-        params: ImageGenerationParams,
-    ): Flow<ImageGenerationItem> {
-        error("Image generation is not supported")
-    }
-
-    suspend fun editImage(
-        providerSetting: ProviderSetting,
-        params: ImageEditParams,
-    ): Flow<ImageGenerationItem> {
-        error("Image edit is not supported")
-    }
+    // 图片/视频生成已迁移 mediagen 模块（MediaGenerationProvider），M3b-2 退役本接口的
+    // generateImage/editImage——消费方一律走 MediaGenerationManager/Executor
 }
 
 /**
@@ -95,29 +82,6 @@ data class TextGenerationParams(
      * 兜底，随机默认值会破坏这段既有行为与既有单测；app 层尚未接入会话 ID，等接入后显式传入。
      */
     val sessionId: String? = null,
-)
-
-@Serializable
-data class ImageGenerationParams(
-    val model: Model,
-    val prompt: String,
-    val numOfImages: Int = 1,
-    val size: String = ImageGenSize.AUTO.value,
-    val partialImages: Int = 2,
-    val customHeaders: List<CustomHeader> = emptyList(),
-    val customBody: List<CustomBody> = emptyList(),
-)
-
-@Serializable
-data class ImageEditParams(
-    val model: Model,
-    val prompt: String,
-    val images: List<String>,
-    val numOfImages: Int = 1,
-    val size: String = ImageGenSize.AUTO.value,
-    val partialImages: Int = 2,
-    val customHeaders: List<CustomHeader> = emptyList(),
-    val customBody: List<CustomBody> = emptyList(),
 )
 
 @Serializable
