@@ -2004,6 +2004,12 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 其余：#2371 流式回复锚定滚动模式、#2370 生图路径自定义与提示词优化、#2369 横屏全屏聊天、#2368 导出时间戳选项、#2363 电池优化白名单、#2358 公式左滑进对话地图冲突、#2356 测试功能不支持供应商重写、#2355 ModelScope 媒体生成、#2353 无障碍服务失效、#2344 ASR 录音常亮、#2343 模型确认点击/滑动位置。
 
+### 已关闭 issue 复核：#2335（后台任务详情无法滚动）
+
+> 用户指定复核（2026-11-21）。issue：AI 起 `run_in_background` 后点进任务详情 sheet，命令代码块展开（20+ 行）后把页面撑爆——sheet 无滚动容器、日志区被挤掉、长命令后半段不可见。上游 11-16 当天修复关闭（completed）；修复后结构 = 外层 `verticalScroll` + 代码块 `heightIn(max)` 内部滚动 + 日志区 `reverseScrolling` 贴底（见 upstream/master `ui/components/ai/BackgroundTasksSheet.kt`）。
+
+**不移植（本仓无同款问题）**：本仓没有上游那个 chat 侧 `BackgroundTasksSheet`；后台任务 UI 是自研三件套（[WorkspaceToolUIs.kt:877](../app/src/main/java/app/androidrik/rikkahub/ui/components/message/tools/WorkspaceToolUIs.kt#L877) 启动卡标题截断 40 字符、状态卡输出尾部限 8 行 `maxLines`）+ 详情页任务行（命令预览 60 字符单行省略，[WorkspaceBasicTab.kt:529](../app/src/main/java/app/androidrik/rikkahub/ui/pages/extensions/workspace/WorkspaceBasicTab.kt#L529)）。设计上没有「展开完整命令块」的交互路径，撑爆场景不存在。若未来给任务卡加命令展开交互，需按上游修复结构办：展开块必须 `heightIn(max)` + 内部 `verticalScroll`，宿主保持滚动容器（与 AGENTS.md TextField 宿主规范同族）。
+
 ## 2026-11-19 issue 复核（#2311 关闭 + fork 分支评估 + mimeType 吸收）
 
 > 起因：复核 11-11 节 issue 扫描时发现「上游无 diff 可借」是**漏判**——#2311 唯一评论是报告者指到自己 fork 分支 `FYNIXqwq/rikkahub@fix/responses-image-generation`（5 笔提交，2026-11-10/11），扫描时只看了 upstream/master 没跟外链。今日全量拉取复核。issue 本体：上游仍 OPEN、无上游修复提交；崩溃机制 = Responses API `image_generation` 服务端工具把 data URL 图片写进 Image part 后，**ChatPage Paging collect 驱动的随流式写库**撞上 `conversationToConversationEntity` 的 `require(no base64 part)`（上游源码 :392）。
