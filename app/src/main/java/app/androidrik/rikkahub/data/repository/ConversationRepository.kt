@@ -40,6 +40,7 @@ import app.androidrik.rikkahub.data.model.summaryAreaFingerprint
 import app.androidrik.rikkahub.data.model.selectedMessageIdOrNull
 import app.androidrik.rikkahub.data.model.NodeSummary
 import app.androidrik.rikkahub.data.model.NodeTreeInfo
+import android.net.Uri
 import android.util.Log
 import app.androidrik.rikkahub.utils.JsonInstant
 import kotlin.uuid.Uuid
@@ -746,12 +747,29 @@ class ConversationRepository(
         // 历史页撤销场景：deleteFiles=false 时保留附件文件，
         // 撤销窗口结束后由调用方清理（否则撤销恢复的对话附件会永久丢失）。
         if (deleteFiles) {
-            filesManager.deleteChatFiles(fullConversation.files)
+            deleteFilesWithReferenceCheck(fullConversation.files)
+        }
+    }
+
+    /**
+     * 删除会话附件前做引用计数保护：fork/分支复制、同一附件发到多个会话时，
+     * 文件 URI 可能仍被其他会话的消息引用，此时跳过物理删除避免他处裂图。
+     *
+     * 调用时机必须在**会话行（含节点）已从库中删除**之后——[MessageNodeDAO.hasFileReference]
+     * 扫全表，此时天然只统计「剩余的其他会话」。
+     */
+    private suspend fun deleteFilesWithReferenceCheck(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val orphaned = uris.distinct().filter { uri ->
+            !messageNodeDAO.hasFileReference(JsonInstant.encodeToString(uri.toString()))
+        }
+        if (orphaned.isNotEmpty()) {
+            filesManager.deleteChatFiles(orphaned)
         }
     }
 
     suspend fun deleteConversationFiles(conversation: Conversation) {
-        filesManager.deleteChatFiles(conversation.files)
+        deleteFilesWithReferenceCheck(conversation.files)
     }
 
     /** 删除这些节点的收藏，节点从会话里移除后调用（#2299 同构） */
