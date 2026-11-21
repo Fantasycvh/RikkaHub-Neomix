@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
@@ -97,9 +98,24 @@ fun ScheduledTasksPage(vm: ScheduledTasksVM = koinViewModel()) {
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
         ) {
-            // 曲面屏/新装机的常见坑：通知权限没给，任务跑了但用户完全无感
+            // 曲面屏/新装机的常见坑：通知权限没给，任务跑了但用户完全无感。
+            // 三种可探测的前置状态在回到页面时刷新（组合期直读函数不会因授权返回而重组），
+            // 否则授权回来提示仍挂着；ROM 自启动管理无法程序探测，保持常驻。
             val context = LocalContext.current
-            if (!NotificationUtil.hasNotificationPermission(context)) {
+            var notifGranted by remember {
+                mutableStateOf(NotificationUtil.hasNotificationPermission(context))
+            }
+            var batteryIgnored by remember {
+                mutableStateOf(KeepAliveService.isIgnoringBatteryOptimizations(context))
+            }
+            var keepAliveEnabled by remember { mutableStateOf(KeepAliveService.isEnabled(context)) }
+            LifecycleResumeEffect(Unit) {
+                notifGranted = NotificationUtil.hasNotificationPermission(context)
+                batteryIgnored = KeepAliveService.isIgnoringBatteryOptimizations(context)
+                keepAliveEnabled = KeepAliveService.isEnabled(context)
+                onPauseOrDispose { }
+            }
+            if (!notifGranted) {
                 TaskPermissionHint(
                     text = stringResource(R.string.scheduled_task_notif_permission_hint),
                     action = stringResource(R.string.scheduled_task_notif_permission_action),
@@ -115,7 +131,7 @@ fun ScheduledTasksPage(vm: ScheduledTasksVM = koinViewModel()) {
             // 真机实测（OnePlus/ColorOS 15）：即使闹钟精确投递，ROM 的 OplusAppStartupManager
             // 也会 `prevent start ... by broadcast system[alarmManger]`——必须让用户把本应用
             // 加进「允许自启动 / 允许后台活动」，App 侧无法代劳。
-            if (!KeepAliveService.isIgnoringBatteryOptimizations(context)) {
+            if (!batteryIgnored) {
                 TaskPermissionHint(
                     text = stringResource(R.string.scheduled_task_battery_hint),
                     action = stringResource(R.string.scheduled_task_battery_action),
@@ -127,13 +143,14 @@ fun ScheduledTasksPage(vm: ScheduledTasksVM = koinViewModel()) {
             // 保活开关：这台 ROM 的「应用启动管理」会丢弃后台广播/启动（§6.2.1 实测
             // SKIPPED ... reason: oplus startup），而进程常驻时闹钟广播能正常投递——真机上
             // 「开着保活 + 熄屏」是唯一验证通过的组合，所以这里一定要提示。
-            if (!KeepAliveService.isEnabled(context)) {
+            if (!keepAliveEnabled) {
                 TaskPermissionHint(
                     text = stringResource(R.string.scheduled_task_keepalive_hint),
                     action = stringResource(R.string.scheduled_task_keepalive_action),
                     onClick = {
                         KeepAliveService.setEnabled(context, true)
                         KeepAliveService.start(context)
+                        keepAliveEnabled = true
                     },
                 )
             }
