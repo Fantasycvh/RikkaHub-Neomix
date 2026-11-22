@@ -410,7 +410,11 @@ private class DisplayController(
 
     override suspend fun pressKey(key: PhoneKey): Boolean {
         if (isVirtual && key != PhoneKey.ENTER) {
-            check(key == PhoneKey.BACK) { "Use open_app to switch apps on the Phone Use virtual display." }
+            // HOME/RECENTS/NOTIFICATIONS 是全局键，input -d 只会作用于主屏（会把用户真机拉回桌面）：
+            // 这里必须拒绝，不能用 keyevent 实现。
+            check(key == PhoneKey.BACK) {
+                "Use open_app to switch apps on the Phone Use virtual display; list_recent shows recently used apps."
+            }
             targetWindows()
             return withContext(Dispatchers.IO) { checkNotNull(virtual).back() }
         }
@@ -438,6 +442,11 @@ private class DisplayController(
             .filter { it.packageName != service.packageName }
             .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase() }
+    }
+
+    override fun listRecent(): List<PhoneApp> {
+        requireVirtualDisplay()
+        return checkNotNull(virtual).listRecent()
     }
 
     // 开启了无障碍服务的应用可以从后台启动 Activity

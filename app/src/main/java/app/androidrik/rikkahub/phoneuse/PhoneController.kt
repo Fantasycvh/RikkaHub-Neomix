@@ -88,6 +88,13 @@ interface PhoneController {
 
     fun listApps(): List<PhoneApp>
 
+    /**
+     * 最近使用过的应用（最近优先）。仅虚拟屏支持：HOME/RECENTS 是 PhoneWindowManager 全局键，
+     * `input -d` 只会作用于主屏（会把用户真机拉回桌面），不能按屏分发，所以用任务列表替代。
+     */
+    fun listRecent(): List<PhoneApp> =
+        error("list_recent is only available on the Phone Use virtual display.")
+
     fun openApp(packageName: String): Boolean
 }
 

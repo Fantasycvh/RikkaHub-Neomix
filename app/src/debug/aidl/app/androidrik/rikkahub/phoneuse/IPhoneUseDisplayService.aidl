@@ -10,5 +10,6 @@ interface IPhoneUseDisplayService {
     void release() = 3;
     List<Bundle> listLaunchers() = 4;
     boolean openUrl(String packageName, String url) = 5;
+    List<Bundle> listRecentTasks() = 6;
     void destroy() = 16777114;
 }

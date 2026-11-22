@@ -91,7 +91,7 @@ fun phoneUseActionOf(input: String): String? = runCatching {
 /**
  * 这个调用要不要走本轮审批（S2）。
  *
- * - `observe`（dump）、`list_apps`、`wait`：只读/无副作用
+ * - `observe`（dump）、`list_apps`、`list_recent`、`wait`：只读/无副作用
  * - `press HOME`：安全导航（AI 要离开本应用）
  * - `screenshot`：像素会发给模型服务商，按敏感读取处理
  * - 其余变更类全部需要
@@ -101,7 +101,7 @@ fun phoneUseActionOf(input: String): String? = runCatching {
 internal fun phoneUseActionNeedsApproval(input: JsonElement): Boolean {
     val args = runCatching { input.jsonObject }.getOrNull() ?: return true
     return when (args.string("action")) {
-        "observe", "list_apps", "wait" -> false
+        "observe", "list_apps", "list_recent", "wait" -> false
         "press" -> !args.string("key").equals("home", ignoreCase = true)
         // 参数还在流式输出时按最严格处理，避免半截 JSON 绕过审批
         null -> true
@@ -155,7 +155,10 @@ internal fun buildPhoneUseTool(
                         put("type", "string")
                         put("enum", buildJsonArray {
                             ACTIONS.forEach { add(it) }
-                            if (virtualDisplay) add("open_url")
+                            if (virtualDisplay) {
+                                add("open_url")
+                                add("list_recent")
+                            }
                         })
                         put(
                             "description",
@@ -166,7 +169,8 @@ internal fun buildPhoneUseTool(
                                 "type: replace the text of an input field ('element', or the focused field) with 'text'. " +
                                 "press: press 'key'. open_app: launch an app by 'app' (name or package). " +
                                 "list_apps: list installed apps. wait: wait 'seconds' for loading." +
-                                if (virtualDisplay) " open_url: open an HTTP(S) 'url' in the browser named by 'app' on the virtual display." else ""
+                                if (virtualDisplay) " open_url: open an HTTP(S) 'url' in the browser named by 'app' on the virtual display." +
+                                    " list_recent: list apps with tasks on the virtual display, most recent first (use open_app to switch)." else ""
                         )
                     })
                     put("element", buildJsonObject {
@@ -270,6 +274,27 @@ private class PhoneUseSession(
                             append("… ${apps.size - MAX_LISTED_APPS} more apps; use open_app with a name instead.")
                         }
                     }.trimEnd()
+                )
+            }
+
+            "list_recent" -> {
+                if (!controller.isVirtual) {
+                    error("list_recent is only available on the Phone Use virtual display.")
+                }
+                val blocked = blockedPackages()
+                val recent = controller.listRecent().filterNot { it.packageName in blocked }
+                text(
+                    buildString {
+                        if (recent.isEmpty()) {
+                            append("No apps have tasks on the virtual display yet. Use list_apps or open_app.")
+                        } else {
+                            append("Apps with tasks on the virtual display, most recent first:")
+                            recent.take(MAX_LISTED_APPS).forEach { appendLine("\n${it.label} (${it.packageName})") }
+                            if (recent.size > MAX_LISTED_APPS) {
+                                append("\n… ${recent.size - MAX_LISTED_APPS} more; use open_app with a name instead.")
+                            }
+                        }
+                    }
                 )
             }
 

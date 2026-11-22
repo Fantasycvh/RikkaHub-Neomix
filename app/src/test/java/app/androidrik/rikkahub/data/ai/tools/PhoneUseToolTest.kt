@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.ai.tools
 
+import androidx.compose.ui.graphics.ImageBitmap
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.tools.local.buildPhoneUseTool
@@ -14,6 +15,7 @@ import app.androidrik.rikkahub.phoneuse.PhoneScreen
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplay
 import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -114,6 +116,31 @@ class PhoneUseToolTest {
             budget.reset()
             withContext(budget.pinDisplay()) { call { tap() } }
             assertEquals(1, controller.gestures.size)
+        } finally {
+            display.close()
+        }
+    }
+
+    @Test
+    fun `list_recent lists display tasks and hides blocked apps`() = runTest {
+        manager.attach(controller)
+        val secondaryController = FakeController(manager, isVirtual = true)
+        val display = FakeVirtualDisplay(secondaryController)
+
+        assertTrue(runCatching {
+            call { put("action", "list_recent") }
+        }.exceptionOrNull()?.message.orEmpty().contains("only available on the Phone Use virtual display"))
+        assertTrue(PhoneUseVirtualDisplays.attach(display))
+        try {
+            withContext(PhoneUseTurnBudget().pinDisplay()) {
+                secondaryController.recentApps = listOf(
+                    PhoneApp("com.tencent.mm", "WeChat"),
+                    PhoneApp("com.demo.notes", "Notes"),
+                )
+                val output = call { put("action", "list_recent") }
+                assertTrue(output.contains("Notes (com.demo.notes)"))
+                assertFalse(output.contains("WeChat"))
+            }
         } finally {
             display.close()
         }
@@ -438,6 +465,9 @@ class PhoneUseToolTest {
             return true
         }
         override fun back() = true
+        override fun listRecent(): List<PhoneApp> = controller.listRecent()
+        override val previewFrames = MutableStateFlow<ImageBitmap?>(null)
+        override fun setPreviewActive(active: Boolean) {}
         override fun close() = PhoneUseVirtualDisplays.detach(this)
     }
 
@@ -516,6 +546,9 @@ class PhoneUseToolTest {
             PhoneApp("com.yocto.wenote", "WeNote"),
             PhoneApp("cn.wps.moffice_eng", "WPS Office"),
         )
+
+        var recentApps: List<PhoneApp> = emptyList()
+        override fun listRecent(): List<PhoneApp> = recentApps
 
         override fun openApp(packageName: String): Boolean {
             opened += packageName

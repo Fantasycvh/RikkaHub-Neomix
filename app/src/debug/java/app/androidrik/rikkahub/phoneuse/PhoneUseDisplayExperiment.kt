@@ -108,7 +108,7 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
         .processNameSuffix("phone_use_display")
         .tag("phone-use-${UUID.randomUUID()}")
         .daemon(false)
-        .version(1)
+        .version(2)
     private var reader: ImageReader? = null
     private var connection: ServiceConnection? = null
     private var deviceMonitor: Job? = null
@@ -221,6 +221,10 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
     override fun openApp(packageName: String): Boolean = remote().launch(packageName)
     override fun openUrl(packageName: String, url: String): Boolean = remote().openUrl(packageName, url)
     override fun back(): Boolean = remote().back()
+
+    override fun listRecent(): List<PhoneApp> = remote().listRecentTasks().mapNotNull { task ->
+        task.getString("package")?.let { PhoneApp(it, task.getString("label") ?: it) }
+    }
 
     override fun setPreviewActive(active: Boolean) {
         previewActive = active

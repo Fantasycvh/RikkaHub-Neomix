@@ -30,6 +30,30 @@ private const val MIN_DISPLAY_LIFETIME_MS = 500L
 internal const val SHELL_UID = 2000
 internal const val ROOT_UID = 0
 
+private val RECENT_TASK_LINE = Regex("""taskId=(\d+): (\S+)""")
+private val ROOT_TASK_DISPLAY = Regex("""\bdisplayId=(\d+)\b""")
+
+/**
+ * 解析 `am stack list` 输出，返回 [displayId] 上任务的包名（按列出的先后，即最近优先）。
+ * RootTask 行决定所属屏，其后的 `taskId=N: pkg/cls ...` 行属于该屏。
+ */
+internal fun parseRecentTaskComponents(stackListOutput: String, displayId: Int): List<String> {
+    var currentDisplay = -1
+    val packages = mutableListOf<String>()
+    stackListOutput.lineSequence().forEach { line ->
+        val trimmed = line.trimStart()
+        if (trimmed.startsWith("RootTask")) {
+            currentDisplay = ROOT_TASK_DISPLAY.find(line)?.groupValues?.get(1)?.toInt() ?: -1
+            return@forEach
+        }
+        if (currentDisplay != displayId) return@forEach
+        val match = RECENT_TASK_LINE.find(trimmed) ?: return@forEach
+        val pkg = match.groupValues[2].substringBefore('/')
+        if (pkg !in packages) packages.add(pkg)
+    }
+    return packages
+}
+
 // The SDK display flags below are hidden APIs in Android 15. The shell process can set them.
 private const val SUPPORTS_TOUCH = 1 shl 6
 private const val DESTROY_CONTENT_ON_REMOVAL = 1 shl 8
@@ -146,6 +170,24 @@ class PhoneUseDisplayService(private val context: Context) : IPhoneUseDisplaySer
             }
     }
 
+    // HOME/RECENTS 是 PhoneWindowManager 全局键，`input -d` 只会作用于主屏（会把用户真机拉回桌面），
+    // 所以「最近用过的应用」只能靠任务列表：模型拿列表后用 open_app 切换，等价于 recents 的意图。
+    @Synchronized
+    override fun listRecentTasks(): List<Bundle> {
+        val id = display?.display?.displayId ?: return emptyList()
+        val output = runCommandText("/system/bin/am", "stack", "list") ?: return emptyList()
+        val pm = context.packageManager
+        return parseRecentTaskComponents(output, id).map { pkg ->
+            val label = runCatching {
+                pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+            }.getOrDefault(pkg)
+            Bundle().apply {
+                putString("package", pkg)
+                putString("label", label)
+            }
+        }
+    }
+
     private fun launcherIntent(packageName: String? = null): Intent =
         Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName)
 
@@ -169,6 +211,18 @@ class PhoneUseDisplayService(private val context: Context) : IPhoneUseDisplaySer
                 if (!succeeded) Log.w("PhoneUseDisplay", if (logDetails) "${args[0]} failed: ${output.trim()}" else "${args[0]} failed")
                 succeeded
             }
+        } finally {
+            command.destroy()
+        }
+    }
+
+    private fun runCommandText(vararg args: String): String? {
+        val command = ProcessBuilder(*args).redirectErrorStream(true).start()
+        return try {
+            if (!command.waitFor(3, TimeUnit.SECONDS)) {
+                Log.w("PhoneUseDisplay", "${args[0]} timed out")
+                null
+            } else command.inputStream.bufferedReader().use { it.readText() }
         } finally {
             command.destroy()
         }

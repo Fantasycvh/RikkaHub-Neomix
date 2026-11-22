@@ -16,6 +16,10 @@ internal interface PhoneUseVirtualDisplay {
     fun openApp(packageName: String): Boolean
     fun openUrl(packageName: String, url: String): Boolean
     fun back(): Boolean
+
+    /** Apps whose tasks are currently listed on this display (`am stack list`), most recent first. */
+    fun listRecent(): List<PhoneApp>
+
     fun close()
 
     /** Latest frame for the live preview; only produced while [setPreviewActive] is on. */
