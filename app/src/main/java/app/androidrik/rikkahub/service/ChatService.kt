@@ -501,6 +501,16 @@ class ChatService(
     }
 
     /**
+     * 是否有任一会话正在处理（生成 Job 活跃或处理状态非空）。
+     *
+     * 给设置页「切换从下一轮生效」提示用：Phone Use 的操作目标在每轮开始时冻结，
+     * 轮进行中切模式不影响当前轮，需要如实告知用户。
+     */
+    fun isAnyTurnProcessing(): Boolean = sessions.values.any { session ->
+        session.getJob()?.isActive == true || session.processingStatus.value != null
+    }
+
+    /**
      * 该会话**当前轮次**的后台任务归属令牌（P0.5 定时取消的 Job 归属判据）；无 session → null。
      *
      * 为什么需要：`getGenerationJobStateFlow` 只回答「有没有 Job」，不回答「是谁的 Job」。

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.rikkahub.data.datastore.PhoneUseTargetMode
 import app.androidrik.rikkahub.phoneuse.PhoneUseDisplayTarget
 import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
 
@@ -27,10 +28,23 @@ class PhoneUseTurnBudget(
     private var steps: Int = 0
     private var displayTarget: PhoneUseDisplayTarget? = null
 
-    /** An approval can resume generation. Keep the original display through that resume. */
+    /**
+     * 每轮生成开始时冻结一次的操作目标（design-phoneuse-target-mode.md §3.2）。
+     *
+     * 模式按用户设置解析：AUTO=有屏用屏、无屏实体手机；DEVICE=恒实体手机（忽略运行中的屏）；
+     * VIRTUAL=只虚拟屏，无屏时 [PhoneUseDisplayTarget.requireVirtual] 让执行层报错而非降级。
+     * pin 后同轮内（含审批续跑）不再看设置——切换模式从下一轮生效。
+     */
     @Synchronized
-    internal fun pinDisplay(): PhoneUseDisplayTarget =
-        displayTarget ?: PhoneUseDisplayTarget(PhoneUseVirtualDisplays.current.value).also { displayTarget = it }
+    internal fun pinDisplay(mode: PhoneUseTargetMode = PhoneUseTargetMode.AUTO): PhoneUseDisplayTarget =
+        displayTarget ?: when (mode) {
+            PhoneUseTargetMode.AUTO -> PhoneUseDisplayTarget(PhoneUseVirtualDisplays.current.value, mode)
+            PhoneUseTargetMode.DEVICE -> PhoneUseDisplayTarget(display = null, mode)
+            PhoneUseTargetMode.VIRTUAL -> PhoneUseDisplayTarget(
+                display = PhoneUseVirtualDisplays.current.value,
+                mode = mode,
+            )
+        }.also { displayTarget = it }
 
     @Synchronized
     internal fun closeDisplay() {

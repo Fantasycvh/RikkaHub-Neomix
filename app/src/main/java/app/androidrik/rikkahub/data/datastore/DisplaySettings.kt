@@ -172,6 +172,20 @@ fun DisplaySetting.migrateChatLink(linkMap: Map<String, String> = builtinSkinCha
     return if (detached) copy(chatAppearanceDetached = true) else this
 }
 
+/**
+ * Phone Use 操作目标（design-phoneuse-target-mode.md）：用户显式选择「操作哪块屏」。
+ *
+ * - [AUTO]：虚拟屏开启时在虚拟屏操作，否则操作实体手机（历史行为，默认值保持存量零感知）
+ * - [DEVICE]：始终操作实体手机，忽略运行中的虚拟屏
+ * - [VIRTUAL]：只操作虚拟屏；未启动时工具明确报错，禁止静默降级到实体手机
+ */
+@Serializable
+enum class PhoneUseTargetMode {
+    @SerialName("auto") AUTO,
+    @SerialName("device") DEVICE,
+    @SerialName("virtual") VIRTUAL,
+}
+
 @Serializable
 data class DisplaySetting(
     val chatAppearanceDetails: ChatAppearanceDetails = ChatAppearanceDetails(),
@@ -238,6 +252,8 @@ data class DisplaySetting(
      * 由 `PhoneUseTool` 与内置表合并后用于读屏、打开应用与可见窗口检查。
      */
     val phoneUseBlockedPackages: Set<String> = emptySet(),
+    /** Phone Use 操作目标；每轮生成开始时解析并冻结（见 [PhoneUseTargetMode]）。 */
+    val phoneUseTargetMode: PhoneUseTargetMode = PhoneUseTargetMode.AUTO,
     val codeBlockAutoWrap: Boolean = false,
     val codeBlockAutoCollapse: Boolean = false,
     val showLineNumbers: Boolean = false,

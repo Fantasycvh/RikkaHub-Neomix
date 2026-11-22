@@ -3315,6 +3315,15 @@
   <string name="assistant_page_local_tools_phone_use_enable_service">在無障礙設定中開啟「Neomix Phone Use」</string>
   <string name="assistant_page_local_tools_phone_use_floating_window_required">請先開啟背景懸浮視窗</string>
   <string name="assistant_page_local_tools_phone_use_interactive_only">僅在本機聊天中可用；排程任務與遠端網頁工作階段不會執行手機操作。</string>
+  <string name="assistant_page_local_tools_phone_use_target_title">操作目標</string>
+  <string name="assistant_page_local_tools_phone_use_target_auto">自動</string>
+  <string name="assistant_page_local_tools_phone_use_target_auto_desc">虛擬螢幕開啟時在虛擬螢幕上操作，否則操作本機。</string>
+  <string name="assistant_page_local_tools_phone_use_target_device">實體手機</string>
+  <string name="assistant_page_local_tools_phone_use_target_device_desc">始終操作本機；執行中的虛擬螢幕會被忽略。</string>
+  <string name="assistant_page_local_tools_phone_use_target_virtual">虛擬螢幕（需 Shizuku）</string>
+  <string name="assistant_page_local_tools_phone_use_target_virtual_desc">只操作虛擬螢幕。未啟動時會告知 AI 停止，而不會改操作本機。</string>
+  <string name="assistant_page_local_tools_phone_use_target_next_turn">目前有任務正在執行，切換將從下一則訊息開始生效。</string>
+  <string name="assistant_page_local_tools_phone_use_target_device_display_running">虛擬螢幕正在執行，但目前目標為實體手機，不會被使用。</string>
   <string name="assistant_page_local_tools_phone_use_approval_title">每輪首次操作前確認</string>
   <string name="assistant_page_local_tools_phone_use_approval_desc">關閉後 AI 會直接操作手機；懸浮視窗仍會顯示目前動作。</string>
   <string name="assistant_page_local_tools_phone_use_blocked_apps_title">被封鎖的應用</string>

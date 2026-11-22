@@ -3314,6 +3314,15 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="assistant_page_local_tools_phone_use_enable_service">Turn on \"Neomix Phone Use\" in the accessibility settings</string>
   <string name="assistant_page_local_tools_phone_use_floating_window_required">Turn on the background floating window first</string>
   <string name="assistant_page_local_tools_phone_use_interactive_only">Only available in chats on this device. Scheduled tasks and remote web sessions never operate the phone.</string>
+  <string name="assistant_page_local_tools_phone_use_target_title">Target screen</string>
+  <string name="assistant_page_local_tools_phone_use_target_auto">Auto</string>
+  <string name="assistant_page_local_tools_phone_use_target_auto_desc">Operate the virtual display when it is running, otherwise this device.</string>
+  <string name="assistant_page_local_tools_phone_use_target_device">This device</string>
+  <string name="assistant_page_local_tools_phone_use_target_device_desc">Always operate this device; a running virtual display is ignored.</string>
+  <string name="assistant_page_local_tools_phone_use_target_virtual">Virtual display (requires Shizuku)</string>
+  <string name="assistant_page_local_tools_phone_use_target_virtual_desc">Only operate the virtual display. If none is running, the AI is told to stop instead of touching this device.</string>
+  <string name="assistant_page_local_tools_phone_use_target_next_turn">A turn is running. The change applies from the next message.</string>
+  <string name="assistant_page_local_tools_phone_use_target_device_display_running">A virtual display is running but will not be used while the target is this device.</string>
   <string name="assistant_page_local_tools_phone_use_approval_title">Ask before the first action each turn</string>
   <string name="assistant_page_local_tools_phone_use_approval_desc">When off, the AI acts without confirmation. The floating window still shows what it is doing.</string>
   <string name="assistant_page_local_tools_phone_use_blocked_apps_title">Blocked apps</string>

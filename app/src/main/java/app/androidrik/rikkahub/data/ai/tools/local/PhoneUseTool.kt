@@ -21,6 +21,7 @@ import kotlinx.serialization.json.put
 import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.datastore.PhoneUseTargetMode
 import app.androidrik.rikkahub.phoneuse.PhoneController
 import app.androidrik.rikkahub.phoneuse.PhoneElement
 import app.androidrik.rikkahub.phoneuse.PhoneKey
@@ -121,6 +122,8 @@ internal fun buildPhoneUseTool(
     isDeviceLocked: () -> Boolean = { false },
     /** 用户附加黑名单（包名）；内置支付/银行表不可移除 */
     userBlockedPackages: () -> Set<String> = { emptySet() },
+    /** 操作目标模式（仅用于请求面：DEVICE 时不暴露虚拟屏专属动作） */
+    targetMode: () -> PhoneUseTargetMode = { PhoneUseTargetMode.AUTO },
 ): Tool {
     val session = PhoneUseSession(
         ownPackageName,
@@ -148,7 +151,9 @@ internal fun buildPhoneUseTool(
             unless they already told you to do exactly that.
         """.trimIndent().replace("\n", " "),
         parameters = {
-            val virtualDisplay = PhoneUseVirtualDisplays.current.value != null
+            // 只反映「有效目标」：DEVICE 模式下即使屏在跑也不暴露 open_url/list_recent
+            val virtualDisplay = targetMode() != PhoneUseTargetMode.DEVICE &&
+                PhoneUseVirtualDisplays.current.value != null
             InputSchema.Obj(
                 properties = buildJsonObject {
                     put("action", buildJsonObject {
@@ -236,8 +241,13 @@ private class PhoneUseSession(
 
     suspend fun execute(params: JsonObject): List<UIMessagePart> {
         val displayTarget = currentCoroutineContext()[PhoneUseDisplayTarget]
+        // 「虚拟屏」模式下无屏必须报错，禁止静默落到实体手机（design-phoneuse-target-mode.md §3.3）
+        check(!(displayTarget?.requireVirtual == true && displayTarget.display == null)) {
+            "Virtual display mode is selected but no Phone Use virtual display is running. " +
+                "Ask the user to start it from the Phone Use settings, or to switch the target screen setting to this device."
+        }
         return manager.withPhoneControl(displayTarget?.takeIf { it.display != null } ?: this) { epoch ->
-            execute(params, epoch, displayTarget?.display)
+            execute(params, epoch, displayTarget?.display, displayTarget)
         }
     }
 
@@ -245,6 +255,7 @@ private class PhoneUseSession(
         params: JsonObject,
         epoch: Long,
         display: PhoneUseVirtualDisplay?,
+        displayTarget: PhoneUseDisplayTarget? = null,
     ): List<UIMessagePart> {
         if (lastEpoch != epoch) {
             lastScreen = null
@@ -259,7 +270,10 @@ private class PhoneUseSession(
         check((!isDeviceLocked()).also { if (!it) display?.close() }) {
             "The phone is locked or the screen is off. Ask the user to unlock it and try again."
         }
-        PhoneUseVirtualDisplays.checkTarget(display)
+        // 「实体手机」模式故意忽略运行中的虚拟屏：跳过屏变更守卫，其余模式照旧防飘移
+        if (displayTarget?.mode != PhoneUseTargetMode.DEVICE) {
+            PhoneUseVirtualDisplays.checkTarget(display)
+        }
         val controller = display?.controller ?: manager.controller.value ?: error(
             "Phone Use is not enabled. Ask the user to turn on \"Neomix Phone Use\" in the system accessibility settings."
         )

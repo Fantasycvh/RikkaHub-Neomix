@@ -3329,6 +3329,15 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="assistant_page_local_tools_phone_use_enable_service">在无障碍设置中开启 “Neomix Phone Use”</string>
   <string name="assistant_page_local_tools_phone_use_floating_window_required">请先开启后台悬浮窗</string>
   <string name="assistant_page_local_tools_phone_use_interactive_only">仅在本机聊天中可用；定时任务和远程网页会话不会执行手机操作。</string>
+  <string name="assistant_page_local_tools_phone_use_target_title">操作目标</string>
+  <string name="assistant_page_local_tools_phone_use_target_auto">自动</string>
+  <string name="assistant_page_local_tools_phone_use_target_auto_desc">虚拟屏开启时在虚拟屏上操作，否则操作本机。</string>
+  <string name="assistant_page_local_tools_phone_use_target_device">实体手机</string>
+  <string name="assistant_page_local_tools_phone_use_target_device_desc">始终操作本机；运行中的虚拟屏会被忽略。</string>
+  <string name="assistant_page_local_tools_phone_use_target_virtual">虚拟屏（需 Shizuku）</string>
+  <string name="assistant_page_local_tools_phone_use_target_virtual_desc">只操作虚拟屏。未启动时会告知 AI 停止，而不会改操作本机。</string>
+  <string name="assistant_page_local_tools_phone_use_target_next_turn">当前有任务正在执行，切换将从下一条消息开始生效。</string>
+  <string name="assistant_page_local_tools_phone_use_target_device_display_running">虚拟屏正在运行，但当前目标为实体手机，不会被使用。</string>
   <string name="assistant_page_local_tools_phone_use_approval_title">每轮首次操作前确认</string>
   <string name="assistant_page_local_tools_phone_use_approval_desc">关闭后 AI 会直接操作手机；悬浮窗仍会显示当前动作。</string>
   <string name="assistant_page_local_tools_phone_use_blocked_apps_title">被禁应用</string>

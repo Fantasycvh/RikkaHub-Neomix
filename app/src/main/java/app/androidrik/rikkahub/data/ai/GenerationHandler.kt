@@ -534,7 +534,9 @@ class GenerationHandler(
         usageTag: UsageTag = UsageTag(UsageSource.CHAT),
         memoryToolBinding: String? = null,
     ): Flow<GenerationChunk> = flow {
-        val phoneUseDisplay = if (tools.any { it.name == PHONE_USE_TOOL_NAME }) phoneUseBudget.pinDisplay() else null
+        val phoneUseDisplay = if (tools.any { it.name == PHONE_USE_TOOL_NAME }) {
+            phoneUseBudget.pinDisplay(settings.displaySetting.phoneUseTargetMode)
+        } else null
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = usageRecorder.wrap(providerManager.getProviderByType(provider), usageTag)
 

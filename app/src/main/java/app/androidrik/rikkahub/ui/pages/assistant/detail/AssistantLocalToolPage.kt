@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.assistant.detail
 import android.Manifest
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -27,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,10 +57,13 @@ import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete01
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.datastore.PhoneUseTargetMode
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.rikkahub.phoneuse.PhoneUseExperimentSetting
+import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
 import app.androidrik.rikkahub.phoneuse.isFloatingChatWindowOn
+import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.permission.PermissionInfo
@@ -69,6 +75,7 @@ import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.hasUsageStatsPermission
 import app.androidrik.rikkahub.utils.openAccessibilitySettings
 import app.androidrik.rikkahub.utils.openUsageAccessSettings
+import kotlinx.coroutines.delay
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -336,6 +343,24 @@ private fun AssistantLocalToolContent(
                                 Text(
                                     text = stringResource(R.string.assistant_page_local_tools_phone_use_service_off),
                                     color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                            if (phoneUseEnabled) {
+                                PhoneUseTargetModeSelector(
+                                    mode = settings.displaySetting.phoneUseTargetMode,
+                                    displayRunning = PhoneUseVirtualDisplays.current
+                                        .collectAsStateWithLifecycle().value != null,
+                                    onChange = { target ->
+                                        coroutineScope.launch {
+                                            settingsStore.update { current ->
+                                                current.copy(
+                                                    displaySetting = current.displaySetting.copy(
+                                                        phoneUseTargetMode = target,
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    },
                                 )
                             }
                             if (phoneUseEnabled) PhoneUseExperimentSetting()
@@ -608,4 +633,71 @@ private fun PhoneUseBlockedAppsSheet(
             Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+/**
+ * Phone Use 操作目标三选一（design-phoneuse-target-mode.md §3.4）。
+ *
+ * 切换只影响下一轮：目标在每轮生成开始时冻结（`PhoneUseTurnBudget.pinDisplay`），
+ * 因此有轮进行中时如实提示；轮进行中状态用 500ms 轮询进程级会话状态（精确到实际处理中）。
+ */
+@Composable
+private fun PhoneUseTargetModeSelector(
+    mode: PhoneUseTargetMode,
+    displayRunning: Boolean,
+    onChange: (PhoneUseTargetMode) -> Unit,
+) {
+    val chatService: ChatService = koinInject()
+    var turnRunning by remember { mutableStateOf(false) }
+    LaunchedEffect(chatService) {
+        while (true) {
+            turnRunning = chatService.isAnyTurnProcessing()
+            delay(500)
+        }
+    }
+
+    Text(
+        text = stringResource(R.string.assistant_page_local_tools_phone_use_target_title),
+        style = MaterialTheme.typography.labelLarge,
+    )
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PhoneUseTargetMode.entries.forEach { option ->
+            FilterChip(
+                selected = mode == option,
+                onClick = { if (mode != option) onChange(option) },
+                label = { Text(stringResource(option.labelRes())) },
+            )
+        }
+    }
+    Text(
+        text = stringResource(mode.descRes()),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (turnRunning) {
+        Text(
+            text = stringResource(R.string.assistant_page_local_tools_phone_use_target_next_turn),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (mode == PhoneUseTargetMode.DEVICE && displayRunning) {
+        Text(
+            text = stringResource(R.string.assistant_page_local_tools_phone_use_target_device_display_running),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+private fun PhoneUseTargetMode.labelRes(): Int = when (this) {
+    PhoneUseTargetMode.AUTO -> R.string.assistant_page_local_tools_phone_use_target_auto
+    PhoneUseTargetMode.DEVICE -> R.string.assistant_page_local_tools_phone_use_target_device
+    PhoneUseTargetMode.VIRTUAL -> R.string.assistant_page_local_tools_phone_use_target_virtual
+}
+
+private fun PhoneUseTargetMode.descRes(): Int = when (this) {
+    PhoneUseTargetMode.AUTO -> R.string.assistant_page_local_tools_phone_use_target_auto_desc
+    PhoneUseTargetMode.DEVICE -> R.string.assistant_page_local_tools_phone_use_target_device_desc
+    PhoneUseTargetMode.VIRTUAL -> R.string.assistant_page_local_tools_phone_use_target_virtual_desc
 }

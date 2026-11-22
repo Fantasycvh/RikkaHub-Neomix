@@ -1,12 +1,14 @@
 package app.androidrik.rikkahub.data.ai.tools
 
 import androidx.compose.ui.graphics.ImageBitmap
+import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.ai.tools.local.buildPhoneUseTool
 import app.androidrik.rikkahub.data.ai.tools.local.describe
 import app.androidrik.rikkahub.data.ai.tools.local.phoneUseActionNeedsApproval
 import app.androidrik.rikkahub.data.ai.PhoneUseTurnBudget
+import app.androidrik.rikkahub.data.datastore.PhoneUseTargetMode
 import app.androidrik.rikkahub.phoneuse.PhoneApp
 import app.androidrik.rikkahub.phoneuse.PhoneController
 import app.androidrik.rikkahub.phoneuse.PhoneElement
@@ -21,6 +23,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -32,6 +37,7 @@ class PhoneUseToolTest {
     private val controller = FakeController(manager)
     private var selfInForeground = false
     private var floatingWindowOn = true
+    private var targetMode = PhoneUseTargetMode.AUTO
     private val savedScreenshots = mutableListOf<ByteArray>()
     private val tool: Tool = buildPhoneUseTool(
         ownPackageName = "app.androidrik.rikkahub",
@@ -42,6 +48,7 @@ class PhoneUseToolTest {
         },
         isFloatingWindowOn = { floatingWindowOn },
         isSelfInForeground = { selfInForeground },
+        targetMode = { targetMode },
     )
 
     private suspend fun call(build: JsonObjectBuilder.() -> Unit): String =
@@ -453,6 +460,89 @@ class PhoneUseToolTest {
         call { put("action", "open_app"); put("app", "WPS") }
         // 完整标签命中 ColorOS Notes；模糊档取最短标签而不是 WeNote；WPS 走包含匹配
         assertEquals(listOf("com.coloros.note", "com.coloros.note", "cn.wps.moffice_eng"), controller.opened)
+    }
+
+    // ---- 操作目标三态（design-phoneuse-target-mode.md） ----
+
+    @Test
+    fun `virtual target mode without a display fails instead of touching the device`() = runTest {
+        manager.attach(controller)
+        targetMode = PhoneUseTargetMode.VIRTUAL
+        val budget = PhoneUseTurnBudget()
+        val result = runCatching {
+            withContext(budget.pinDisplay(PhoneUseTargetMode.VIRTUAL)) {
+                call { put("action", "observe") }
+            }
+        }
+        assertTrue(result.exceptionOrNull()?.message.orEmpty().contains("Virtual display mode"))
+        assertTrue(controller.gestures.isEmpty())
+    }
+
+    @Test
+    fun `device target mode ignores a running virtual display`() = runTest {
+        manager.attach(controller)
+        val secondaryController = FakeController(manager, isVirtual = true)
+        val display = FakeVirtualDisplay(secondaryController)
+        assertTrue(PhoneUseVirtualDisplays.attach(display))
+        try {
+            val budget = PhoneUseTurnBudget()
+            withContext(budget.pinDisplay(PhoneUseTargetMode.DEVICE)) {
+                call { put("action", "tap"); put("element", 0) }
+            }
+            assertEquals(1, controller.gestures.size)
+            assertTrue(secondaryController.gestures.isEmpty())
+        } finally {
+            display.close()
+        }
+    }
+
+    @Test
+    fun `pinned target is frozen for the turn and re-resolved after reset`() {
+        val secondaryController = FakeController(manager, isVirtual = true)
+        val display = FakeVirtualDisplay(secondaryController)
+        assertTrue(PhoneUseVirtualDisplays.attach(display))
+        try {
+            val budget = PhoneUseTurnBudget()
+            val first = budget.pinDisplay(PhoneUseTargetMode.AUTO)
+            assertTrue(first.display === display)
+            assertFalse(first.requireVirtual)
+            // 轮内改模式不漂移（审批续跑保持同一目标）
+            assertTrue(budget.pinDisplay(PhoneUseTargetMode.DEVICE) === first)
+
+            budget.reset()
+            val afterReset = budget.pinDisplay(PhoneUseTargetMode.DEVICE)
+            assertTrue(afterReset.display == null)
+            assertFalse(afterReset.requireVirtual)
+
+            val requireVirtual = PhoneUseTurnBudget().pinDisplay(PhoneUseTargetMode.VIRTUAL)
+            assertTrue(requireVirtual.requireVirtual && requireVirtual.display === display)
+        } finally {
+            display.close()
+        }
+    }
+
+    @Test
+    fun `virtual-only actions are advertised only when the effective target is virtual`() {
+        fun advertisedActions(): List<String> =
+            (tool.parameters() as InputSchema.Obj).properties["action"]!!.jsonObject["enum"]!!
+                .jsonArray.map { it.jsonPrimitive.content }
+
+        targetMode = PhoneUseTargetMode.AUTO
+        assertFalse(advertisedActions().contains("open_url"))
+
+        val display = FakeVirtualDisplay(FakeController(manager, isVirtual = true))
+        assertTrue(PhoneUseVirtualDisplays.attach(display))
+        try {
+            assertTrue(advertisedActions().contains("open_url"))
+            targetMode = PhoneUseTargetMode.VIRTUAL
+            assertTrue(advertisedActions().contains("list_recent"))
+            // DEVICE 模式下即使屏在跑也不暴露虚拟屏专属动作
+            targetMode = PhoneUseTargetMode.DEVICE
+            assertFalse(advertisedActions().contains("open_url"))
+            assertFalse(advertisedActions().contains("list_recent"))
+        } finally {
+            display.close()
+        }
     }
 
     private class FakeVirtualDisplay(override val controller: FakeController) : PhoneUseVirtualDisplay {

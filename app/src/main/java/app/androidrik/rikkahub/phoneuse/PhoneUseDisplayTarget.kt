@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.phoneuse
 
 import androidx.compose.ui.graphics.ImageBitmap
+import app.androidrik.rikkahub.data.datastore.PhoneUseTargetMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,8 +40,18 @@ internal interface PhoneUseDisplayControllerFactory {
     fun forDisplay(display: PhoneUseVirtualDisplay): PhoneController
 }
 
-internal class PhoneUseDisplayTarget(val display: PhoneUseVirtualDisplay?) :
+internal class PhoneUseDisplayTarget(
+    val display: PhoneUseVirtualDisplay?,
+    /** 本轮冻结的操作目标模式（design-phoneuse-target-mode.md §3.2）。 */
+    val mode: PhoneUseTargetMode = PhoneUseTargetMode.AUTO,
+) :
     AbstractCoroutineContextElement(Key) {
+    /**
+     * 用户选择了「虚拟屏」模式：本轮 `display == null` 时工具必须报错，
+     * 不能静默落到实体手机。
+     */
+    val requireVirtual: Boolean get() = mode == PhoneUseTargetMode.VIRTUAL
+
     companion object Key : CoroutineContext.Key<PhoneUseDisplayTarget>
 }
 
