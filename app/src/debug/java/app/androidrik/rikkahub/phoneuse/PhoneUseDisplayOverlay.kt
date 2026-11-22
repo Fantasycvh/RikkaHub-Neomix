@@ -20,7 +20,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_BLOCKED_APPS
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape

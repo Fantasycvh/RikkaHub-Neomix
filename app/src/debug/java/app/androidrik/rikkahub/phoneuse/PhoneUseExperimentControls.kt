@@ -87,22 +87,29 @@ internal fun PhoneUseExperimentPreview(onStopped: () -> Unit) {
     }
 }
 
-/** 面板预览与观察窗共用的实时帧；观察端配对 add/remove，黑名单应用上屏时只显示占位。 */
+/** 黑名单应用是否在虚拟屏上；观察端每 500ms 轮询一次。 */
 @Composable
-internal fun PhoneUseLiveFrame(target: PhoneUseVirtualDisplay, blocked: Set<String>, modifier: Modifier) {
-    val frame by target.previewFrames.collectAsState()
+internal fun rememberBlockedOnScreen(target: PhoneUseVirtualDisplay, blocked: Set<String>): Boolean {
     var blockedOnScreen by remember(target) { mutableStateOf(false) }
-
-    DisposableEffect(target) {
-        target.setPreviewActive(true)
-        onDispose { target.setPreviewActive(false) }
-    }
     LaunchedEffect(target, blocked) {
         while (true) {
             blockedOnScreen = runCatching { target.controller.visiblePackages().any { it in blocked } }
                 .getOrDefault(false)
             delay(500)
         }
+    }
+    return blockedOnScreen
+}
+
+/** 面板预览与观察窗共用的实时帧；观察端配对 add/remove，黑名单应用上屏时只显示占位。 */
+@Composable
+internal fun PhoneUseLiveFrame(target: PhoneUseVirtualDisplay, blocked: Set<String>, modifier: Modifier) {
+    val frame by target.previewFrames.collectAsState()
+    val blockedOnScreen = rememberBlockedOnScreen(target, blocked)
+
+    DisposableEffect(target) {
+        target.setPreviewActive(true)
+        onDispose { target.setPreviewActive(false) }
     }
 
     if (blockedOnScreen) {
