@@ -1,6 +1,6 @@
 # 导航统计（P0-4 埋点）设计稿
 
-> 状态：**M1 已实施并真机验证通过（2026-11-22）**——单测 6/6 绿、IME 审计 A/A'=0；真机（PJX110/SDK35, debug 变体）实测：Chat→设置→关于→长按进 Debug 全链路计数与转移对正确（`Chat>Setting`/`Setting>SettingAbout`/`SettingAbout>Debug` 各 1），Debug Nav tab 显示与 run-as 文件一致，force-stop 重启后计数保留、新会话再计一次。**未提交**
+> 状态：**M1 已提交（559c4cf6d）+ release R8 路由名混淆修复待提交**（2026-11-22）——debug 变体真机验证通过；release 首装实测发现 `Screen::class.simpleName` 被 R8 混淆成 crc/esc 等短名（debug 不混淆未暴露），修复 = `app/proguard-rules.pro` 对 Screen 类族 keepnames + build.gradle.kts release 挂载，重装重验通过（新链路记录正确类名，旧混淆名历史数据已 Reset 清零）。
 > 上游：[ui-simplification-proposal.md](../../ui-simplification-proposal.md)（P0-4）· [design-ui-overhaul-research.md](design-ui-overhaul-research.md)
 > 硬约束：不引入遥测/上报（Firebase 已移除，纯本地统计）；不动 IME 宿主拓扑；LayoutInspector 坑照旧。
 
@@ -81,6 +81,7 @@ LaunchedEffect(topScreen) { NavStats.recordPageEnter(topScreen?.let { it::class.
 | 风险 | 对策 |
 |------|------|
 | nav3 手势补投导致重复计数 | 同名去重 + 只对相邻转移记录（已在 §2.2 说明） |
+| **R8 混淆路由类名**（release 实测：simpleName → crc/esc） | `app/proguard-rules.pro` 对 `Screen` 类族 `-keepnames`，release 构建挂载该文件 |
 | JSON 文件损坏 | init 时 runCatching 丢弃重建，等价于重置计数 |
 | 长期膨胀 | 路由封顶 61 类 + 转移对封顶 61²，量级可控；Debug 可重置 |
 | 隐私 | 类名不含参数；无上报通道 |
