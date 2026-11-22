@@ -5,8 +5,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
+import android.media.Image
 import android.media.ImageReader
 import android.os.Binder
 import android.os.Build
@@ -15,13 +17,18 @@ import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.view.Display
 import androidx.annotation.RequiresApi
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -29,6 +36,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import rikka.shizuku.Shizuku
+import java.nio.ByteBuffer
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
@@ -36,6 +44,7 @@ import kotlin.coroutines.resumeWithException
 
 private const val SHIZUKU_PERMISSION_REQUEST = 314
 private const val DEVICE_STATE_CHECK_INTERVAL_MS = 500L
+private const val PREVIEW_FRAME_INTERVAL_MS = 100L
 private val startMutex = Mutex()
 private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -105,6 +114,13 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
     private var deviceMonitor: Job? = null
     @Volatile private var service: IPhoneUseDisplayService? = null
     @Volatile private var displayId = Display.INVALID_DISPLAY
+    private val _previewFrames = MutableStateFlow<ImageBitmap?>(null)
+    override val previewFrames: StateFlow<ImageBitmap?> get() = _previewFrames
+    @Volatile private var previewActive = false
+    // 只在帧回调线程（worker looper）上访问
+    private var lastPreviewFrameAt = 0L
+    private val previewCopyBuffer =
+        ByteBuffer.allocateDirect(PHONE_USE_DISPLAY_WIDTH * PHONE_USE_DISPLAY_HEIGHT * 4)
     override val id: Int get() = displayId
     override lateinit var controller: PhoneController
         private set
@@ -129,10 +145,25 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
         worker.start()
         val frames = ImageReader.newInstance(PHONE_USE_DISPLAY_WIDTH, PHONE_USE_DISPLAY_HEIGHT, PixelFormat.RGBA_8888, 2)
         reader = frames
-        // The surface keeps the virtual display rendering. Preview and model images use the
-        // existing accessibility screenshot path so its secure-window handling still applies.
+        // The surface keeps the virtual display rendering; while the preview is off its
+        // frames are discarded immediately. Model images still use the accessibility
+        // screenshot path so its secure-window handling applies to what the model sees.
         frames.setOnImageAvailableListener({ source ->
-            runCatching { source.acquireLatestImage()?.close() }
+            if (!previewActive) {
+                runCatching { source.acquireLatestImage()?.close() }
+                return@setOnImageAvailableListener
+            }
+            val now = SystemClock.elapsedRealtime()
+            if (now - lastPreviewFrameAt < PREVIEW_FRAME_INTERVAL_MS) {
+                runCatching { source.acquireLatestImage()?.close() }
+                return@setOnImageAvailableListener
+            }
+            val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
+            image.use { frame ->
+                val bitmap = runCatching { frame.toPreviewBitmap() }.getOrNull() ?: return@use
+                lastPreviewFrameAt = now
+                _previewFrames.value = bitmap
+            }
         }, Handler(worker.looper))
         withContext(Dispatchers.IO) {
             apps = remote.listLaunchers().mapNotNull { app ->
@@ -191,6 +222,36 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
     override fun openUrl(packageName: String, url: String): Boolean = remote().openUrl(packageName, url)
     override fun back(): Boolean = remote().back()
 
+    override fun setPreviewActive(active: Boolean) {
+        previewActive = active
+        if (!active) _previewFrames.value = null
+    }
+
+    // ImageReader 是虚拟屏 Surface 的消费者：拿到的是绕过 FLAG_SECURE 的原始帧，
+    // 预览侧必须自己拦黑名单应用（见 PhoneUseExperimentPreview）。
+    private fun Image.toPreviewBitmap(): ImageBitmap {
+        val plane = planes[0]
+        val buffer = plane.buffer
+        val bitmap = Bitmap.createBitmap(PHONE_USE_DISPLAY_WIDTH, PHONE_USE_DISPLAY_HEIGHT, Bitmap.Config.ARGB_8888)
+        val rowStride = plane.rowStride
+        if (rowStride == PHONE_USE_DISPLAY_WIDTH * 4) {
+            buffer.rewind()
+            bitmap.copyPixelsFromBuffer(buffer)
+        } else {
+            val dst = previewCopyBuffer
+            dst.clear()
+            for (row in 0 until PHONE_USE_DISPLAY_HEIGHT) {
+                buffer.clear()
+                buffer.position(row * rowStride)
+                buffer.limit(row * rowStride + PHONE_USE_DISPLAY_WIDTH * 4)
+                dst.put(buffer)
+            }
+            dst.rewind()
+            bitmap.copyPixelsFromBuffer(dst)
+        }
+        return bitmap.asImageBitmap()
+    }
+
     private fun remote(): IPhoneUseDisplayService {
         checkUnlocked()
         check(!closed.get() && Shizuku.pingBinder()) { "The Phone Use display disconnected." }
@@ -199,6 +260,7 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        setPreviewActive(false)
         PhoneUseVirtualDisplays.detach(this)
         cleanupScope.launch {
             deviceMonitor?.cancel()

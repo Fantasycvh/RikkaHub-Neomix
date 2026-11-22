@@ -1,6 +1,8 @@
 package app.androidrik.rikkahub.phoneuse
 
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.coroutines.AbstractCoroutineContextElement
@@ -15,6 +17,10 @@ internal interface PhoneUseVirtualDisplay {
     fun openUrl(packageName: String, url: String): Boolean
     fun back(): Boolean
     fun close()
+
+    /** Latest frame for the live preview; only produced while [setPreviewActive] is on. */
+    val previewFrames: StateFlow<ImageBitmap?>
+    fun setPreviewActive(active: Boolean)
 }
 
 internal fun phoneUseHttpUrl(value: String): String? {
