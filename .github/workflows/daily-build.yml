@@ -9,6 +9,10 @@ on:
         description: '强制构建（跳过纯文档跳过逻辑）'
         type: boolean
         default: false
+      build_cache:
+        description: '启用构建缓存（跨 run 复用，--build-cache）'
+        type: boolean
+        default: false
 
 # 发布 nightly release 需要写权限；仓库默认是 read（2026-11-23 run 45056322871
 # 发布步骤 403 "Resource not accessible by integration"），此处显式声明。
@@ -145,12 +149,17 @@ jobs:
       #     ./gradlew testDebugUnitTest
 
       - name: Gradle Build
+        env:
+          BUILD_CACHE: ${{ inputs.build_cache }}
         run: |
           chmod +x gradlew
+          # 构建缓存默认关（陈旧输出风险），勾选 build_cache 输入才启用跨 run 复用
+          cache_flag=""
+          if [ "$BUILD_CACHE" = "true" ]; then cache_flag="--build-cache"; fi
           # 公开仓库免费 runner 上限 4c/16G：按 gradle.properties 的 -Xmx8g 叠上 Kotlin
           # daemon + R8 worker 会顶满内存导致 runner 失联（2026-11-23 run 45056322871，
           # 51 分钟后 "lost communication"）。压到 6G 堆 + 2 worker 换稳定性。
-          ./gradlew assembleRelease \
+          ./gradlew assembleRelease $cache_flag \
             -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8" \
             --max-workers=2
 
