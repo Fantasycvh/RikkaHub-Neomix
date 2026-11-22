@@ -26,6 +26,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -96,6 +99,7 @@ fun AssistantDetailPage(id: String) {
             item {
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.assistant_detail_group_identity)) },
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.AssistantBasic(id)) },
@@ -112,26 +116,20 @@ fun AssistantDetailPage(id: String) {
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(
-                        onClick = { navController.navigate(Screen.AssistantInjections(id)) },
-                        leadingContent = { Icon(HugeIcons.Puzzle, null) },
-                        supportingContent = { Text(stringResource(R.string.assistant_detail_extensions_desc)) },
-                        headlineContent = { Text(stringResource(R.string.assistant_page_tab_extensions)) },
-                        trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
-                    )
-                    item(
-                        onClick = { navController.navigate(Screen.AssistantMemory(id)) },
-                        leadingContent = { Icon(HugeIcons.Brain02, null) },
-                        supportingContent = { Text(stringResource(R.string.assistant_detail_memory_desc)) },
-                        headlineContent = { Text(stringResource(R.string.assistant_page_tab_memory)) },
-                        trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
-                    )
-                    item(
                         onClick = { navController.navigate(Screen.AssistantRequest(id)) },
                         leadingContent = { Icon(HugeIcons.Code, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_request_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_request)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
+                }
+            }
+
+            item {
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    title = { Text(stringResource(R.string.assistant_detail_group_capabilities)) },
+                ) {
                     item(
                         onClick = { navController.navigate(Screen.AssistantMcp(id)) },
                         leadingContent = { Icon(HugeIcons.Wrench01, null) },
@@ -160,6 +158,35 @@ fun AssistantDetailPage(id: String) {
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_knowledge_base)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
+                }
+            }
+
+            item {
+                var advancedExpanded by rememberSaveable { mutableStateOf(false) }
+                val advancedTitle = stringResource(R.string.assistant_detail_group_advanced)
+                CardGroup(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) {
+                    advancedGroup(
+                        title = advancedTitle,
+                        expanded = advancedExpanded,
+                        onToggle = { advancedExpanded = it },
+                    ) {
+                        item(
+                            onClick = { navController.navigate(Screen.AssistantInjections(id)) },
+                            leadingContent = { Icon(HugeIcons.Puzzle, null) },
+                            supportingContent = { Text(stringResource(R.string.assistant_detail_extensions_desc)) },
+                            headlineContent = { Text(stringResource(R.string.assistant_page_tab_extensions)) },
+                            trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
+                        )
+                        item(
+                            onClick = { navController.navigate(Screen.AssistantMemory(id)) },
+                            leadingContent = { Icon(HugeIcons.Brain02, null) },
+                            supportingContent = { Text(stringResource(R.string.assistant_detail_memory_desc)) },
+                            headlineContent = { Text(stringResource(R.string.assistant_page_tab_memory)) },
+                            trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
+                        )
+                    }
                 }
             }
         }

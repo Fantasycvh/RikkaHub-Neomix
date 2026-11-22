@@ -15,6 +15,9 @@
   <string name="asr_button_stop">Stop</string>
   <string name="assistant_detail_basic_desc">Configure name, avatar, model, and parameters</string>
   <string name="assistant_detail_extensions_desc">Manage quick messages, prompt injections, lorebooks and skills</string>
+  <string name="assistant_detail_group_advanced">Advanced</string>
+  <string name="assistant_detail_group_capabilities">Capabilities</string>
+  <string name="assistant_detail_group_identity">Identity &amp; Chat</string>
   <string name="assistant_detail_local_tools_desc">Enable local tools like JavaScript engine</string>
   <string name="assistant_detail_mcp_desc">Configure MCP server tools for the assistant</string>
   <string name="assistant_detail_memory_desc">Manage assistant memory and recent chat references</string>

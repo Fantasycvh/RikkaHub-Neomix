@@ -15,6 +15,9 @@
   <string name="asr_button_stop">停止</string>
   <string name="assistant_detail_basic_desc">配置名称、头像、模型和参数</string>
   <string name="assistant_detail_extensions_desc">管理提示词注入、世界书和技能等扩展</string>
+  <string name="assistant_detail_group_advanced">进阶</string>
+  <string name="assistant_detail_group_capabilities">能力</string>
+  <string name="assistant_detail_group_identity">身份与对话</string>
   <string name="assistant_detail_local_tools_desc">启用本地工具（如 JavaScript 引擎）</string>
   <string name="assistant_detail_mcp_desc">为助手配置 MCP 服务器工具</string>
   <string name="assistant_detail_memory_desc">管理助手记忆和最近的聊天引用</string>

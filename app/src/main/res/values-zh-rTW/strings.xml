@@ -15,6 +15,9 @@
   <string name="asr_button_stop">停止</string>
   <string name="assistant_detail_basic_desc">設定名稱、頭像、模型與參數</string>
   <string name="assistant_detail_extensions_desc">管理提示注入、背景知識庫與技能</string>
+  <string name="assistant_detail_group_advanced">進階</string>
+  <string name="assistant_detail_group_capabilities">能力</string>
+  <string name="assistant_detail_group_identity">身分與對話</string>
   <string name="assistant_detail_local_tools_desc">啟用本機工具如 JavaScript 引擎</string>
   <string name="assistant_detail_mcp_desc">為助理設定 MCP 伺服器工具</string>
   <string name="assistant_detail_memory_desc">管理助理記憶體與近期聊天參考</string>
