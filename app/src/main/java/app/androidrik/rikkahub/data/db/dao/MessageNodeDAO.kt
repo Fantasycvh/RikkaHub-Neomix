@@ -49,7 +49,14 @@ data class MessageNodeTreeRow(
     val preview: String,
 )
 
-@Dao
+/**
+ * 文件→会话扫描的投影行（design-file-conversation-link.md Phase A）：
+ * 不含 id/node_index 等元数据，只要 JSON 全文供 FileConversationScanner 正则提取。
+ */
+data class MessageNodeRefRow(
+    @ColumnInfo("conversation_id") val conversationId: String,
+    val messages: String,
+)@Dao
 interface MessageNodeDAO {
     /** 节点总数（统计页「总消息数」）。只数行，不碰 messages JSON。 */
     @Query("SELECT COUNT(*) FROM message_node")
@@ -144,5 +151,9 @@ interface MessageNodeDAO {
     // 队列附件清理：判断某 file:// URL 是否仍被任何消息 JSON 引用（保守保留所有分支出现的 URL）。
     @Query("SELECT EXISTS(SELECT 1 FROM message_node WHERE instr(messages, :encodedFileUrl) > 0)")
     suspend fun hasFileReference(encodedFileUrl: String): Boolean
+
+    /** 文件→会话全量扫描（FileConversationScanner）：单条 SELECT 原子读，后台 IO 专用。 */
+    @Query("SELECT conversation_id, messages FROM message_node")
+    suspend fun getAllRefRows(): List<MessageNodeRefRow>
 
 }

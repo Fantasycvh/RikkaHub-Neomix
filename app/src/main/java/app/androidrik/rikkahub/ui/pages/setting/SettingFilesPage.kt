@@ -7,6 +7,7 @@ import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -29,23 +30,27 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.entity.ManagedFileEntity
 import app.androidrik.rikkahub.data.files.*
 import app.androidrik.rikkahub.ui.components.files.BatchRenameDialog
 import app.androidrik.rikkahub.ui.components.files.RenameItem
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.utils.fileProviderUri
 import app.androidrik.rikkahub.utils.fileSizeToString
 import app.androidrik.rikkahub.utils.shareFile
+import app.androidrik.rikkahub.utils.toLocalDateTime
 import coil3.compose.AsyncImage
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.File
 import com.composables.icons.lucide.Import
 import com.composables.icons.lucide.ListChecks
+import com.composables.icons.lucide.MessageCircle
 import com.composables.icons.lucide.Pencil
 import com.composables.icons.lucide.Share2
 import com.composables.icons.lucide.Timer
@@ -53,17 +58,21 @@ import com.composables.icons.lucide.Trash2
 import com.composables.icons.lucide.X
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 import java.io.File as JavaFile
+import java.time.Instant
 
 @Composable
-fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
+fun SettingFilesPage(filesManager: FilesManager = koinInject(), vm: SettingFilesVM = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     val context = LocalContext.current
     val settingsStore: SettingsStore = koinInject()
     val settings = LocalSettings.current
+    val navController = LocalNavController.current
+    val refsState by vm.refs.collectAsState()
     val folders = remember { listOf(FileFolders.UPLOAD, FileFolders.EXPORTS) }
     var selectedFolder by remember { mutableStateOf(FileFolders.UPLOAD) }
     var selectionMode by remember { mutableStateOf(false) }
@@ -75,9 +84,12 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
     var pendingDelete by remember { mutableStateOf<List<ManagedFileEntity>?>(null) }
     var pendingRename by remember { mutableStateOf<List<ManagedFileEntity>?>(null) }
     var report by remember { mutableStateOf<Pair<String, List<ManagedFileOperationResult>>?>(null) }
+    var pendingConversationFile by remember { mutableStateOf<ManagedFileEntity?>(null) }
     val files by remember(selectedFolder) { filesManager.observe(selectedFolder) }.collectAsState(initial = emptyList())
     val selectedFiles = files.filter { it.id in selectedIds }
     val enabled = !busy && !picking
+
+    LaunchedEffect(Unit) { vm.ensureScanned() }
 
     fun clearSelection() { selectedIds = emptySet(); selectionMode = false }
     fun toggle(file: ManagedFileEntity) {
@@ -161,6 +173,27 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
             dismissButton = { TextButton(onClick = { showRetentionDialog = false }) { Text(stringResource(R.string.common_cancel)) } },
         )
     }
+    pendingConversationFile?.let { target ->
+        val rows = refsState.refs[target.relativePath].orEmpty()
+            .mapNotNull { refsState.titles[it] }
+            .sortedByDescending { it.updateAt }
+        ModalBottomSheet(onDismissRequest = { pendingConversationFile = null }) {
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                Text("所属会话", style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp))
+                rows.forEach { row ->
+                    ListItem(
+                        headlineContent = { Text(row.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        supportingContent = { Text(remember(row.updateAt) { Instant.ofEpochMilli(row.updateAt).toLocalDateTime() }) },
+                        modifier = Modifier.clickable(enabled = enabled) {
+                            pendingConversationFile = null
+                            navController.navigate(Screen.Chat(row.id))
+                        },
+                    )
+                }
+            }
+        }
+    }
 
     GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         topBar = {
@@ -220,7 +253,25 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
                 LazyVerticalStaggeredGrid(columns = StaggeredGridCells.Fixed(2), modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp), verticalItemSpacing = 8.dp, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(files, key = { it.id }) { file ->
+                        val conversationIds = refsState.refs[file.relativePath].orEmpty()
+                        val firstConversationId = conversationIds.firstOrNull()
+                        val conversationLabel = when {
+                            !refsState.ready || conversationIds.isEmpty() -> null
+                            conversationIds.size == 1 && firstConversationId != null ->
+                                refsState.titles[firstConversationId]?.title
+                            else -> "${conversationIds.size} 个会话"
+                        }
+                        val onOpenConversation: (() -> Unit)? = when {
+                            conversationLabel == null || firstConversationId == null -> null
+                            conversationIds.size == 1 -> {
+                                { navController.navigate(Screen.Chat(firstConversationId)) }
+                            }
+                            else -> {
+                                { pendingConversationFile = file }
+                            }
+                        }
                         FileItem(file, filesManager.getFile(file), selectionMode, file.id in selectedIds, enabled,
+                            conversationLabel = conversationLabel, onOpenConversation = onOpenConversation,
                             onToggle = { toggle(file) }, onRename = { pendingRename = listOf(file) },
                             onDelete = { pendingDelete = listOf(file) }, onShare = {
                                 try { context.shareFile(context.fileProviderUri(filesManager.getFile(file)), file.mimeType) }
@@ -236,6 +287,7 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject()) {
 @Composable
 private fun FileItem(
     file: ManagedFileEntity, fileOnDisk: JavaFile, selectionMode: Boolean, selected: Boolean, enabled: Boolean,
+    conversationLabel: String?, onOpenConversation: (() -> Unit)?,
     onToggle: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit, onShare: () -> Unit,
 ) {
     Card(
@@ -253,6 +305,15 @@ private fun FileItem(
             Text(file.displayName, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(file.mimeType, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(file.sizeBytes.fileSizeToString(), style = MaterialTheme.typography.bodySmall)
+            // 会话行独立可点（卡片点击=分享），不是分享语义的一部分
+            if (!selectionMode && conversationLabel != null && onOpenConversation != null) {
+                Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onOpenConversation),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Lucide.MessageCircle, null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+                    Text(conversationLabel, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
         }
         if (!selectionMode) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             IconButton(enabled = enabled, onClick = onRename) { Icon(Lucide.Pencil, stringResource(R.string.common_rename)) }

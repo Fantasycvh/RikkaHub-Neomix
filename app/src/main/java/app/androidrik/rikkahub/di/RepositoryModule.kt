@@ -4,6 +4,7 @@ import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.sync.WorkspaceBackupHelper
 import android.content.Context
+import app.androidrik.rikkahub.data.files.FileConversationScanner
 import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.SkillManager
@@ -137,6 +138,10 @@ val repositoryModule = module {
 
     single {
         FilesManager(get(), get(), get(), get())
+    }
+
+    single {
+        FileConversationScanner(get(), get(), get())
     }
 
     single {

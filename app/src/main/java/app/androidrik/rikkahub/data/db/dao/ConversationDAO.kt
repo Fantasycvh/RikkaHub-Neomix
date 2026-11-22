@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.db.dao
 
 import androidx.paging.PagingSource
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
@@ -45,6 +46,13 @@ const val CONVERSATION_ORDER_BY_TIME = "is_pinned DESC, update_at DESC, id ASC"
 data class TierOrderRow(
     val id: String,
     val sortOrder: Long,
+)
+
+/** 文件关联展示的轻投影（design-file-conversation-link.md Phase A）：标题+时间，不载节点。 */
+data class ConversationTitleRow(
+    val id: String,
+    val title: String,
+    val updateAt: Long,
 )
 
 @Dao
@@ -101,6 +109,10 @@ interface ConversationDAO {
 
     @Query("SELECT id FROM conversationentity")
     suspend fun getAllIds(): List<String>
+
+    /** 文件关联展示：按 id 批量取标题轻投影（不 hidden 过滤——被引用即归属）。 */
+    @Query("SELECT id, title, update_at as updateAt FROM conversationentity WHERE id IN (:ids)")
+    suspend fun getTitleRowsByIds(ids: List<String>): List<ConversationTitleRow>
 
     @Query("SELECT * FROM conversationentity WHERE id = :id")
     suspend fun getConversationById(id: String): ConversationEntity?

@@ -29,6 +29,7 @@ import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceSshEditorV
 import app.androidrik.rikkahub.ui.pages.extensions.workspace.WorkspaceVM
 import app.androidrik.rikkahub.ui.pages.setting.KnowledgeBaseDetailVM
 import app.androidrik.rikkahub.ui.pages.setting.KnowledgeBasesVM
+import app.androidrik.rikkahub.ui.pages.setting.SettingFilesVM
 import app.androidrik.rikkahub.ui.pages.setting.SettingVM
 import app.androidrik.rikkahub.ui.pages.setting.StorageVM
 import app.androidrik.rikkahub.ui.pages.setting.scheduled.ScheduledTaskDetailVM
@@ -53,6 +54,7 @@ val viewModelModule = module {
     }
     viewModelOf(::ChatDrawerVM)
     viewModelOf(::SettingVM)
+    viewModelOf(::SettingFilesVM)
     viewModelOf(::StorageVM)
     viewModelOf(::ScheduledTasksVM)
     viewModel { params ->
