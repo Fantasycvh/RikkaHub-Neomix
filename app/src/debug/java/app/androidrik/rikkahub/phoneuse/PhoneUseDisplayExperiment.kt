@@ -117,6 +117,8 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
     private val _previewFrames = MutableStateFlow<ImageBitmap?>(null)
     override val previewFrames: StateFlow<ImageBitmap?> get() = _previewFrames
     @Volatile private var previewActive = false
+    // 只在主线程增减（Compose DisposableEffect 配对调用）
+    private var previewClients = 0
     // 只在帧回调线程（worker looper）上访问
     private var lastPreviewFrameAt = 0L
     private val previewCopyBuffer =
@@ -179,6 +181,7 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
         check(PhoneUseManager.instance.controller.value === factory) { "The accessibility service disconnected." }
         controller = factory.forDisplay(this@PhoneUseDisplayExperiment)
         check(PhoneUseVirtualDisplays.attach(this@PhoneUseDisplayExperiment)) { "A Phone Use virtual display is already active." }
+        PhoneUseDisplayOverlay.show(context)
         // Check the primary display directly because some ROMs delay the screen-off broadcast.
         deviceMonitor = cleanupScope.launch {
             while (canUseDisplay()) delay(DEVICE_STATE_CHECK_INTERVAL_MS)
@@ -227,8 +230,10 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
     }
 
     override fun setPreviewActive(active: Boolean) {
-        previewActive = active
-        if (!active) _previewFrames.value = null
+        // 多个观察端（悬浮窗 / 面板预览）各自配对调用，引用计数归零才真正停帧
+        previewClients = (previewClients + if (active) 1 else -1).coerceAtLeast(0)
+        previewActive = previewClients > 0
+        if (!previewActive) _previewFrames.value = null
     }
 
     // ImageReader 是虚拟屏 Surface 的消费者：拿到的是绕过 FLAG_SECURE 的原始帧，
@@ -264,7 +269,10 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        setPreviewActive(false)
+        previewClients = 0
+        previewActive = false
+        _previewFrames.value = null
+        PhoneUseDisplayOverlay.hide()
         PhoneUseVirtualDisplays.detach(this)
         cleanupScope.launch {
             deviceMonitor?.cancel()
