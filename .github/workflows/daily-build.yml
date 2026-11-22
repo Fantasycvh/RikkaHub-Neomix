@@ -10,6 +10,11 @@ on:
         type: boolean
         default: false
 
+# 发布 nightly release 需要写权限；仓库默认是 read（2026-11-23 run 45056322871
+# 发布步骤 403 "Resource not accessible by integration"），此处显式声明。
+permissions:
+  contents: write
+
 jobs:
   # 与「上次构建点」（nightly tag，每次构建都会重定位到当时 HEAD）比对差异：
   # 无差异，或**只有纯文档差异**（docs/** 或任意 *.md），都跳过构建——
