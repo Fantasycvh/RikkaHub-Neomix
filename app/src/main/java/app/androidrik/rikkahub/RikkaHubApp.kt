@@ -40,10 +40,9 @@ import app.androidrik.rikkahub.data.sync.DowngradeQuarantineStore
 import app.androidrik.rikkahub.data.sync.PendingRestoreStore
 import app.androidrik.rikkahub.data.sync.repo.FtsRebuildPending
 import app.androidrik.rikkahub.data.db.fts.SearchIndexRebuildSignal
-import app.androidrik.rikkahub.data.db.dao.MessageFileRefDAO
-import app.androidrik.rikkahub.data.db.entity.MessageFileRefEntity
 import app.androidrik.rikkahub.data.files.FileConversationScanner
 import app.androidrik.rikkahub.data.files.FileRefBackfillPending
+import app.androidrik.rikkahub.data.files.FileRefSync
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
 import java.util.concurrent.atomic.AtomicBoolean
@@ -335,13 +334,8 @@ class RikkaHubApp : Application() {
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching {
                 val scanner = get<FileConversationScanner>()
-                val refDAO = get<MessageFileRefDAO>()
-                val now = System.currentTimeMillis()
-                val refs = scanner.scan().flatMap { (path, ids) ->
-                    ids.map { MessageFileRefEntity(conversationId = it, relativePath = path, firstSeenAt = now) }
-                }
-                refDAO.deleteAll()
-                refDAO.insertAll(refs)
+                val sync = get<FileRefSync>()
+                sync.rewriteFromScan(scanner.scan())
             }
                 .onSuccess {
                     FileRefBackfillPending.markDone(filesDir)

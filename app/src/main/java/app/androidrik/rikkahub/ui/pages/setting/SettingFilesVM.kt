@@ -5,8 +5,8 @@ import androidx.lifecycle.viewModelScope
 import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.ConversationTitleRow
 import app.androidrik.rikkahub.data.db.dao.MessageFileRefDAO
-import app.androidrik.rikkahub.data.db.entity.MessageFileRefEntity
 import app.androidrik.rikkahub.data.files.FileConversationScanner
+import app.androidrik.rikkahub.data.files.FileRefSync
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,6 +29,7 @@ data class FileConversationRefs(
 class SettingFilesVM(
     private val scanner: FileConversationScanner,
     private val messageFileRefDAO: MessageFileRefDAO,
+    private val fileRefSync: FileRefSync,
     private val conversationDAO: ConversationDAO,
 ) : ViewModel() {
 
@@ -45,12 +46,7 @@ class SettingFilesVM(
                         fallbackAttempted = true
                         val scanned = runCatching { scanner.scan() }.getOrDefault(emptyMap())
                         if (scanned.isNotEmpty()) {
-                            val now = System.currentTimeMillis()
-                            messageFileRefDAO.insertAll(
-                                scanned.flatMap { (path, ids) ->
-                                    ids.map { MessageFileRefEntity(conversationId = it, relativePath = path, firstSeenAt = now) }
-                                }
-                            )
+                            fileRefSync.mergeFromScan(scanned)
                             return@collect
                         }
                     }

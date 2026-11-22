@@ -21,10 +21,10 @@ import app.androidrik.rikkahub.data.favorite.NodeFavoriteAdapter
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
 import app.androidrik.rikkahub.data.db.dao.MessageFileRefDAO
 import app.androidrik.rikkahub.data.db.entity.ConversationEntity
-import app.androidrik.rikkahub.data.db.entity.MessageFileRefEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
 import app.androidrik.rikkahub.data.files.FileConversationScanner
+import app.androidrik.rikkahub.data.files.FileRefSync
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.decideTierMove
 import app.androidrik.rikkahub.data.model.TierMoveAction
@@ -69,6 +69,11 @@ class ConversationRepository(
     private val checkpointDAO: CompressionCheckpointDAO,
     private val messageFileRefDAO: MessageFileRefDAO,
 ) {
+    /** filesDir 是启动后不变的应用目录；同步核心无状态，lazy 单份即可 */
+    private val fileRefSync by lazy {
+        FileRefSync(messageNodeDAO, messageFileRefDAO, filesManager.getFilesDir())
+    }
+
     // 批次 9 拆出的两个存储：Koin 不动，仓库内部组装（调用面保持原样）。
     private val checkpointStore = CompressionCheckpointStore(checkpointDAO)
     private val nodeStore = ConversationNodeStore(messageNodeDAO, favoriteDAO, database)
@@ -107,41 +112,19 @@ class ConversationRepository(
 
     /**
      * 文件→会话关联的保存边界同步（design-file-conversation-link.md §4.2）。
-     * 必须在 [saveMessageNodes] 之后、**同一事务内**调用（insertConversation /
-     * updateConversation 的写收口；checkpointGeneratingNode 不收口——流式半截消息
-     * 不落关联，轮次结束的正常保存会补齐）。
-     *
-     * 稀疏窗口只含尾部（见 updateConversation 对 FTS 的同款约束）：只做增量合并
-     * （IGNORE）+ 被删节点的精确移除，未加载前缀的关联不能按「未出现=已删」清掉；
-     * 全量保存才 diff 重写（编辑/分支删除后失效的引用得以清除）。
+     * 必须在 [saveMessageNodes] 之后、**同一事务内**调用；语义细节见 [FileRefSync]
+     * （稀疏=增量合并+被删节点精确移除，全量=diff 重写；checkpointGeneratingNode 不收口）。
      */
     private suspend fun syncFileRefsOnSave(
         conversation: Conversation,
         deletedNodeIds: Collection<Uuid>,
     ) {
-        val conversationId = conversation.id.toString()
-        val filesDir = filesManager.getFilesDir()
-        val refs = conversation.messageNodes
-            .flatMap { it.messages }
-            .flatMap { FileConversationScanner.extractRelativePathsFromParts(it.parts, filesDir) }
-            .toSet()
-        if (conversation.isSparse) {
-            if (deletedNodeIds.isNotEmpty()) {
-                messageNodeDAO.getNodesByIds(deletedNodeIds.map(Uuid::toString))
-                    .flatMap { FileConversationScanner.extractRelativePathsFromJson(it.messages, filesDir) }
-                    .forEach { messageFileRefDAO.deleteRef(conversationId, it) }
-            }
-            if (refs.isNotEmpty()) {
-                val now = System.currentTimeMillis()
-                messageFileRefDAO.insertAll(refs.map { MessageFileRefEntity(conversationId, it, now) })
-            }
-        } else {
-            messageFileRefDAO.deleteByConversation(conversationId)
-            if (refs.isNotEmpty()) {
-                val now = System.currentTimeMillis()
-                messageFileRefDAO.insertAll(refs.map { MessageFileRefEntity(conversationId, it, now) })
-            }
-        }
+        fileRefSync.syncOnSave(
+            conversationId = conversation.id.toString(),
+            messageNodes = conversation.messageNodes,
+            deletedNodeIds = deletedNodeIds,
+            sparse = conversation.isSparse,
+        )
     }
 
     /**

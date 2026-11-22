@@ -98,6 +98,16 @@ class FileConversationScannerTest {
         assertEquals(emptySet<String>(), FileConversationScanner.extractRelativePathsFromJson("""[{"parts":[{"type":"text","text":"hello"}]}]""", root))
     }
 
+    @Test
+    fun `json extraction handles percent encoded chinese filename`() {
+        val root = filesDirWithUpload("中文 截图.png")
+        // URI 路径段编码空格是 %20（URLEncoder 的 + 是表单语义，Android Uri.fromFile 也用 %20）
+        val encoded = java.net.URLEncoder.encode("中文 截图.png", "UTF-8").replace("+", "%20")
+        val url = "file://" + root.absolutePath.replace('\\', '/') + "/upload/" + encoded
+        val json = """[{"parts":[{"type":"image","url":"$url"}]}]"""
+        assertEquals(setOf("upload/中文 截图.png"), FileConversationScanner.extractRelativePathsFromJson(json, root))
+    }
+
     // ---- extractRelativePathsFromParts（内存遍历，含 Tool 嵌套）----
 
     @Test

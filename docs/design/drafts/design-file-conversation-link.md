@@ -1,6 +1,6 @@
 # 文件管理页：显示文件所属会话并跳转 设计稿
 
-> 状态：**Phase A+B 均已实施，真机验证通过（debug 包，2026-11-22）**——A：扫描 567 路径/810ms、单会话行+跳转已验；B：v79→80 迁移成功、回填 570 行、展示层切 `message_file_ref` LEFT JOIN（卡片显示「玩机手机推荐(1)」）已验。**多会话 Sheet 分支未验**（当前数据无多引用文件）；写路径的稀疏合并/会话删除清理未真机专项验证（有单测覆盖提取逻辑）。Phase A 已提交 `f1ce06ce4`。
+> 状态：**Phase A+B 已实施，真机验证通过（debug 包，2026-11-22）**——A：扫描 567 路径/810ms、单会话行+跳转已验；B：v79→80 迁移成功、回填 570 行、展示层切 `message_file_ref` LEFT JOIN 已验。**多会话 Sheet 分支未真机验**（无多引用数据）；写路径稀疏合并/删除清理有 FileRefSyncTest（Fake DAO）钉住语义。§7.3 单测清单已全部落地（扫描提取含 Tool 嵌套/中文文件名/http+data 排除；回填重写/合并幂等；diff 重写幂等+稀疏语义），同步核心抽为 `FileRefSync`（仓库/回填/兜底三处共享）。Phase A `f1ce06ce4`、Phase B `daf709f67d`。
 > 实测备注：验证必须用 debug 包 `app.androidrik.rikkahub.debug`（release 包无后缀且 not debuggable，UI 改动在 release 上完全不可见）。
 > 关联：`design-storage-management.md`（存储管理 Phase 3 只读行未做，本稿的「未关联文件」展示可与其对齐）· `design-export-retention.md`（exports 生命周期）
 > 硬约束：不动 IME 宿主拓扑；新表迁移走 v79→v80；扫描/回填一律后台 IO + 单事务（套 `rebuildAllIndexes` 骨架），禁止启动阻塞。
