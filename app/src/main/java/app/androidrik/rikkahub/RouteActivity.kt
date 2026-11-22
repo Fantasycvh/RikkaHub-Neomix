@@ -38,6 +38,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
@@ -88,7 +90,9 @@ import app.androidrik.rikkahub.ui.pages.debug.PerfOverlay
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.ui.theme.RikkahubTheme
 import app.androidrik.rikkahub.utils.LauncherAlias
+import app.androidrik.rikkahub.utils.NavStats
 import app.androidrik.rikkahub.utils.openUsageAccessSettings
+import java.io.File
 import okhttp3.OkHttpClient
 import org.koin.android.ext.android.inject
 import org.koin.compose.koinInject
@@ -235,6 +239,7 @@ open class RouteActivity : ComponentActivity() {
         enableEdgeToEdge()
         disableNavigationBarContrast()
         super.onCreate(savedInstanceState)
+        NavStats.init(File(filesDir, "nav_stats.json"))
         if ((application as RikkaHubApp).crashRecoveryPending) {
             startActivity(Intent(this, SafeModeActivity::class.java))
             finish()
@@ -420,6 +425,14 @@ open class RouteActivity : ComponentActivity() {
             while (pendingIntents.isNotEmpty()) {
                 handleIntent(pendingIntents.removeFirst())
             }
+        }
+
+        // P0-4 导航统计（docs/design/drafts/design-nav-stats.md）：观察栈顶变化记录页面进入；
+        // pop 同样计为新一次进入（回溯行为正是要观测的数据），同页连击由 NavStats 同名去重挡住
+        val topScreen by remember(backStack) { derivedStateOf { backStack.lastOrNull() } }
+        LaunchedEffect(topScreen) {
+            val screen = topScreen
+            if (screen != null) NavStats.recordPageEnter(screen::class.simpleName)
         }
 
         SharedTransitionLayout {

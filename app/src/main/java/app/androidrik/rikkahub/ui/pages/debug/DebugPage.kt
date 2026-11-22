@@ -58,7 +58,11 @@ import app.androidrik.rikkahub.ui.context.LocalSettings
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.theme.JetbrainsMono
+import app.androidrik.rikkahub.utils.NavStats
 import org.koin.androidx.compose.koinViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.random.Random
 import kotlin.random.nextInt
 import kotlin.uuid.Uuid
@@ -81,7 +85,7 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
             )
         }
     ) { contentPadding ->
-        val state = rememberPagerState { 5 }
+        val state = rememberPagerState { 6 }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -145,6 +149,17 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                         Text("Perf")
                     }
                 )
+                Tab(
+                    selected = state.currentPage == 5,
+                    onClick = {
+                        scope.launch {
+                            state.animateScrollToPage(5)
+                        }
+                    },
+                    text = {
+                        Text("Nav")
+                    }
+                )
             }
             HorizontalPager(
                 state = state,
@@ -158,6 +173,7 @@ fun DebugPage(vm: DebugVM = koinViewModel()) {
                     2 -> Box {}
                     3 -> RecoveryPage(vm)
                     4 -> PerfPage()
+                    5 -> NavPage()
                 }
             }
         }
@@ -469,6 +485,47 @@ private fun ColorTokenItem(name: String, color: Color) {
 private fun Color.toHexString(): String {
     val argb = toArgb()
     return "#%08X".format(argb)
+}
+
+/**
+ * 导航统计查看（P0-4 埋点，docs/design/drafts/design-nav-stats.md）：
+ * 页面进入次数 + 相邻转移对，用于 IA 决策（入口去留/排序/主导航模型评估）。
+ */
+@Composable
+private fun NavPage() {
+    var stats by remember { mutableStateOf(NavStats.snapshot()) }
+    val timeFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US) }
+    Column(
+        modifier = Modifier
+            .padding(8.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text("Since: ${timeFormat.format(Date(stats.startedAt))}")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { stats = NavStats.snapshot() }) {
+                Text("Refresh")
+            }
+            Button(onClick = {
+                NavStats.reset()
+                stats = NavStats.snapshot()
+            }) {
+                Text("Reset")
+            }
+        }
+        Text("Page enters", style = MaterialTheme.typography.titleSmall)
+        stats.pageCounts.entries
+            .sortedByDescending { it.value }
+            .forEach { (name, count) ->
+                Text("$name: $count", fontFamily = JetbrainsMono)
+            }
+        Text("Transitions", style = MaterialTheme.typography.titleSmall)
+        stats.transitions.entries
+            .sortedByDescending { it.value }
+            .forEach { (key, count) ->
+                Text("$key: $count", fontFamily = JetbrainsMono)
+            }
+    }
 }
 
 private val BETTERTEXT_DEBUG_SAMPLE = """
