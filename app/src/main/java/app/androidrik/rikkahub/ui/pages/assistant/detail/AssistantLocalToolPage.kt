@@ -56,6 +56,7 @@ import me.rerere.hugeicons.stroke.Delete01
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
+import app.androidrik.rikkahub.phoneuse.PhoneUseExperimentSetting
 import app.androidrik.rikkahub.phoneuse.isFloatingChatWindowOn
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
@@ -337,6 +338,7 @@ private fun AssistantLocalToolContent(
                                     color = MaterialTheme.colorScheme.error,
                                 )
                             }
+                            if (phoneUseEnabled) PhoneUseExperimentSetting()
                         }
                     },
                     trailingContent = {

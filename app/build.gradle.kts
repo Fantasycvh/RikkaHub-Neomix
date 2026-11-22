@@ -113,6 +113,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
+        aidl = true
         compose = true
         buildConfig = true
     }
@@ -354,4 +355,6 @@ dependencies {
     androidTestImplementation(libs.androidx.room.testing)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    debugImplementation("dev.rikka.shizuku:api:13.1.5")
+    debugImplementation("dev.rikka.shizuku:provider:13.1.5")
 }

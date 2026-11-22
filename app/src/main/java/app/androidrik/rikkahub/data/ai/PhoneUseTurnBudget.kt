@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.data.ai
 
+import app.androidrik.rikkahub.phoneuse.PhoneUseDisplayTarget
+import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
+
 /**
  * Phone Use 的**单轮步数硬上限**。
  *
@@ -15,13 +18,24 @@ package app.androidrik.rikkahub.data.ai
  * break 等用户），由 [app.androidrik.rikkahub.service.ConversationSession] 持有，
  * 新一轮用户消息 / 重新生成时 [reset]。
  *
- * 本类无副作用、无 Android 依赖，可直接上 JVM 单测。
+ * 步数和显示目标的绑定都可直接上 JVM 单测。
  */
 class PhoneUseTurnBudget(
     /** 单轮步数上限；`<= 0` 表示不受限（设置项 0 = 不受限） */
     private val maxSteps: Int = DEFAULT_MAX_STEPS,
 ) {
     private var steps: Int = 0
+    private var displayTarget: PhoneUseDisplayTarget? = null
+
+    /** An approval can resume generation. Keep the original display through that resume. */
+    @Synchronized
+    internal fun pinDisplay(): PhoneUseDisplayTarget =
+        displayTarget ?: PhoneUseDisplayTarget(PhoneUseVirtualDisplays.current.value).also { displayTarget = it }
+
+    @Synchronized
+    internal fun closeDisplay() {
+        displayTarget?.display?.close()
+    }
 
     /** 本轮已使用的 Phone Use 步数（诊断/提示用）。 */
     val usedSteps: Int get() = steps
@@ -33,8 +47,10 @@ class PhoneUseTurnBudget(
     }
 
     /** 清零（新一轮开始时调用）。 */
+    @Synchronized
     fun reset() {
         steps = 0
+        displayTarget = null
     }
 
     sealed interface Verdict {

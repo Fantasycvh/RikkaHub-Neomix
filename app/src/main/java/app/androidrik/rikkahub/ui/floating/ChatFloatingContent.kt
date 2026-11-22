@@ -210,6 +210,7 @@ fun ChatFloatingPanel(
     titleModifier: Modifier = Modifier,
     onToggleMaximize: (() -> Unit)? = null,
     maximized: Boolean = false,
+    phoneUsePreview: @Composable () -> Unit = {},
 ) {
     Box(modifier = windowModifier.then(if (panelWidth == null) Modifier.fillMaxWidth() else Modifier).heightIn(max = maxHeight), contentAlignment = Alignment.TopCenter) {
         Surface(
@@ -229,6 +230,7 @@ fun ChatFloatingPanel(
                     }
                 }
                 PanelHeader(state, onOpenConversation, onCollapse, onDismiss, titleModifier.then(moveModifier))
+                phoneUsePreview()
                 if (onToggleMaximize != null) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = onToggleMaximize) { Text(stringResource(if (maximized) R.string.floating_chat_restore else R.string.floating_chat_maximize)) }

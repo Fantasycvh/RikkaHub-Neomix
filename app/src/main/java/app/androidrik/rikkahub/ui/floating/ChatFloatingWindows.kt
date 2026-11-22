@@ -73,6 +73,8 @@ import app.androidrik.rikkahub.data.model.generationPhase
 import app.androidrik.rikkahub.data.ai.tools.local.PHONE_USE_TOOL_NAME
 import app.androidrik.rikkahub.data.model.pendingToolCalls
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
+import app.androidrik.rikkahub.phoneuse.PhoneUseExperimentPreview
+import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatFloatingTracker
 import app.androidrik.rikkahub.service.ChatService
@@ -333,7 +335,10 @@ class ChatFloatingWindows(
                         saveGeometry()
                     },
                     onCollapse = tracker::collapse,
-                    onDismiss = tracker::dismiss,
+                    onDismiss = {
+                        PhoneUseVirtualDisplays.current.value?.close()
+                        tracker.dismiss()
+                    },
                     onOpenConversation = { openConversation(conversationId) },
                     onToolApproval = { toolCallId, approved ->
                         // 仅普通会话工具；子代理审批必须走独立队列/回调。
@@ -346,6 +351,11 @@ class ChatFloatingWindows(
                         }
                     },
                     onStop = { appScope.launch { chatService.stopGeneration(conversationId) } },
+                    phoneUsePreview = {
+                        PhoneUseExperimentPreview {
+                            appScope.launch { chatService.stopGeneration(conversationId) }
+                        }
+                    },
                     onSend = { text -> chatService.sendMessage(conversationId, listOf(UIMessagePart.Text(text))) },
                     onResumeQueue = { chatService.resumeMessageQueue(conversationId) },
                 )

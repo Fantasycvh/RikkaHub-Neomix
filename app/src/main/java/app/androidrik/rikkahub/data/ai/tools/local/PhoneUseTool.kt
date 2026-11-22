@@ -3,8 +3,10 @@ package app.androidrik.rikkahub.data.ai.tools.local
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -24,6 +26,10 @@ import app.androidrik.rikkahub.phoneuse.PhoneElement
 import app.androidrik.rikkahub.phoneuse.PhoneKey
 import app.androidrik.rikkahub.phoneuse.PhoneScreen
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
+import app.androidrik.rikkahub.phoneuse.PhoneUseDisplayTarget
+import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplay
+import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
+import app.androidrik.rikkahub.phoneuse.phoneUseHttpUrl
 
 const val PHONE_USE_TOOL_NAME = "phone_use"
 
@@ -85,7 +91,7 @@ fun phoneUseActionOf(input: String): String? = runCatching {
 /**
  * 这个调用要不要走本轮审批（S2）。
  *
- * - `observe`（dump）、`list_apps`、`wait`：只读/无副作用
+ * - `observe`（dump）、`list_apps`、`list_recent`、`wait`：只读/无副作用
  * - `press HOME`：安全导航（AI 要离开本应用）
  * - `screenshot`：像素会发给模型服务商，按敏感读取处理
  * - 其余变更类全部需要
@@ -95,7 +101,7 @@ fun phoneUseActionOf(input: String): String? = runCatching {
 internal fun phoneUseActionNeedsApproval(input: JsonElement): Boolean {
     val args = runCatching { input.jsonObject }.getOrNull() ?: return true
     return when (args.string("action")) {
-        "observe", "list_apps", "wait" -> false
+        "observe", "list_apps", "list_recent", "wait" -> false
         "press" -> !args.string("key").equals("home", ignoreCase = true)
         // 参数还在流式输出时按最严格处理，避免半截 JSON 绕过审批
         null -> true
@@ -129,24 +135,31 @@ internal fun buildPhoneUseTool(
         name = PHONE_USE_TOOL_NAME,
         description = """
             Operate the user's Android phone: read the screen, tap, swipe, type and open apps.
-            Workflow: open_app (or press home) first, then observe to get the on-screen elements, then act.
+            Workflow: use open_app first, then observe to get the on-screen elements, then act.
             Every action that changes the screen returns the new element list, so you rarely need to call observe again.
             Prefer targeting elements by their index from the latest element list; indexes are only valid for that list.
             Coordinates are on a $GRID x $GRID grid: (0,0) is the top-left of the screen and ($GRID,$GRID) the bottom-right,
             in both the element list and screenshots.
             Use screenshot only when the element list is not enough (images, canvas, games, custom views).
-            This app itself cannot be operated; leave it with open_app or press home before acting.
+            Neomix cannot be operated. If the control screen is empty or shows Neomix, use open_app.
             Payment and banking apps are blocked: you cannot open, read or operate them. If a task ends up in one,
             press back or home and tell the user to finish that step themselves.
             Stop and ask the user before irreversible steps such as paying, sending messages or deleting data,
             unless they already told you to do exactly that.
         """.trimIndent().replace("\n", " "),
         parameters = {
+            val virtualDisplay = PhoneUseVirtualDisplays.current.value != null
             InputSchema.Obj(
                 properties = buildJsonObject {
                     put("action", buildJsonObject {
                         put("type", "string")
-                        put("enum", buildJsonArray { ACTIONS.forEach { add(it) } })
+                        put("enum", buildJsonArray {
+                            ACTIONS.forEach { add(it) }
+                            if (virtualDisplay) {
+                                add("open_url")
+                                add("list_recent")
+                            }
+                        })
                         put(
                             "description",
                             "observe: list on-screen elements. screenshot: capture the screen as an image. " +
@@ -155,7 +168,9 @@ internal fun buildPhoneUseTool(
                                 "scroll: scroll the content in 'direction', optionally inside 'element'. " +
                                 "type: replace the text of an input field ('element', or the focused field) with 'text'. " +
                                 "press: press 'key'. open_app: launch an app by 'app' (name or package). " +
-                                "list_apps: list installed apps. wait: wait 'seconds' for loading."
+                                "list_apps: list installed apps. wait: wait 'seconds' for loading." +
+                                if (virtualDisplay) " open_url: open an HTTP(S) 'url' in the browser named by 'app' on the virtual display." +
+                                    " list_recent: list apps with tasks on the virtual display, most recent first (use open_app to switch)." else ""
                         )
                     })
                     put("element", buildJsonObject {
@@ -182,7 +197,11 @@ internal fun buildPhoneUseTool(
                     })
                     put("app", buildJsonObject {
                         put("type", "string")
-                        put("description", "App name or package name for open_app")
+                        put("description", if (virtualDisplay) "App name or package for open_app or open_url" else "App name or package name for open_app")
+                    })
+                    if (virtualDisplay) put("url", buildJsonObject {
+                        put("type", "string")
+                        put("description", "Full HTTP(S) URL for open_url")
                     })
                     put("seconds", buildJsonObject { put("type", "number"); put("description", "For wait, up to 10") })
                 },
@@ -215,24 +234,36 @@ private class PhoneUseSession(
     // 而差分压缩只在「模型确实见过全量列表」时才敢回“没变化”
     private var lastDescribedScreen: PhoneScreen? = null
 
-    suspend fun execute(params: JsonObject): List<UIMessagePart> = manager.withPhoneControl(this) { epoch ->
+    suspend fun execute(params: JsonObject): List<UIMessagePart> {
+        val displayTarget = currentCoroutineContext()[PhoneUseDisplayTarget]
+        return manager.withPhoneControl(displayTarget?.takeIf { it.display != null } ?: this) { epoch ->
+            execute(params, epoch, displayTarget?.display)
+        }
+    }
+
+    private suspend fun execute(
+        params: JsonObject,
+        epoch: Long,
+        display: PhoneUseVirtualDisplay?,
+    ): List<UIMessagePart> {
         if (lastEpoch != epoch) {
             lastScreen = null
             lastDescribedScreen = null
             lastEpoch = epoch
         }
         // 开启工具时已经要求过，这里防的是之后又把悬浮窗或它的权限关掉
-        check(isFloatingWindowOn()) {
+        check(isFloatingWindowOn().also { if (!it) display?.close() }) {
             "The background floating window is turned off, so the user cannot watch or stop you. " +
                 "Ask them to turn it on in Settings > Notifications (and grant the overlay permission) first."
         }
-        check(!isDeviceLocked()) {
+        check((!isDeviceLocked()).also { if (!it) display?.close() }) {
             "The phone is locked or the screen is off. Ask the user to unlock it and try again."
         }
-        val controller = manager.controller.value ?: error(
+        PhoneUseVirtualDisplays.checkTarget(display)
+        val controller = display?.controller ?: manager.controller.value ?: error(
             "Phone Use is not enabled. Ask the user to turn on \"Neomix Phone Use\" in the system accessibility settings."
         )
-        when (val action = params.string("action") ?: error("action is required")) {
+        return when (val action = params.string("action") ?: error("action is required")) {
             "list_apps" -> {
                 val blocked = blockedPackages()
                 val apps = controller.listApps().filterNot { it.packageName in blocked }
@@ -246,15 +277,72 @@ private class PhoneUseSession(
                 )
             }
 
+            "list_recent" -> {
+                if (!controller.isVirtual) {
+                    error("list_recent is only available on the Phone Use virtual display.")
+                }
+                val blocked = blockedPackages()
+                val recent = controller.listRecent().filterNot { it.packageName in blocked }
+                text(
+                    buildString {
+                        if (recent.isEmpty()) {
+                            append("No apps have tasks on the virtual display yet. Use list_apps or open_app.")
+                        } else {
+                            append("Apps with tasks on the virtual display, most recent first:")
+                            recent.take(MAX_LISTED_APPS).forEach { appendLine("\n${it.label} (${it.packageName})") }
+                            if (recent.size > MAX_LISTED_APPS) {
+                                append("\n… ${recent.size - MAX_LISTED_APPS} more; use open_app with a name instead.")
+                            }
+                        }
+                    }
+                )
+            }
+
             "open_app" -> {
                 val app = resolveApp(controller, params.string("app") ?: error("app is required"))
                 check(app.packageName != ownPackageName) { "This app itself cannot be operated." }
                 check(app.packageName !in blockedPackages()) {
                     "${app.label} is blocked for safety. Tell the user to do this step themselves."
                 }
-                check(controller.openApp(app.packageName)) { "Failed to open ${app.label}" }
+                val launched = if (controller.isVirtual) {
+                    withContext(Dispatchers.IO) { controller.openApp(app.packageName) }
+                } else controller.openApp(app.packageName)
+                check(launched) { "Failed to open ${app.label}" }
                 delay(OPEN_APP_SETTLE_MS)
+                if (controller.isVirtual) {
+                    check(app.packageName in controller.visiblePackages()) {
+                        "${app.label} did not appear on the Phone Use virtual display."
+                    }
+                }
                 text("Opened ${app.label}.\n" + describeCurrent(controller))
+            }
+
+            "open_url" -> {
+                val virtual = display ?: error("Start a Phone Use virtual display and send a new message to use open_url.")
+                val url = params.string("url")?.let(::phoneUseHttpUrl)
+                    ?: error("url must be a full HTTP or HTTPS address without credentials.")
+                val browser = params.string("app")?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: error("app is required for open_url. Specify a browser name or package.")
+                val app = resolveApp(controller, browser)
+                check(app.packageName != ownPackageName && app.packageName !in blockedPackages()) {
+                    "${app.label} is blocked in Phone Use. Choose another browser."
+                }
+                lastScreen = null
+                lastDescribedScreen = null
+                check(withContext(Dispatchers.IO) { virtual.openUrl(app.packageName, url) }) {
+                    "${app.label} did not accept the link. Choose a browser that handles this URL."
+                }
+                delay(OPEN_APP_SETTLE_MS)
+                val screen = withTimeoutOrNull(4_000) {
+                    var current = capture(controller)
+                    while (current.packageName != app.packageName && current.packages.blocked() == null) {
+                        delay(250)
+                        current = capture(controller)
+                    }
+                    current
+                } ?: error("${app.label} did not appear on the virtual display. Try another browser.")
+                text("Requested a page in ${app.label}. Verify the page from this virtual screen.\n" +
+                    describeScreen(controller, screen, forceFull = true))
             }
 
             "wait" -> {
@@ -269,7 +357,7 @@ private class PhoneUseSession(
                     // 回到桌面是离开本应用和被禁应用的办法
                     PhoneKey.HOME -> {}
                     // 返回也能离开被禁的应用，但本应用在前台时会落在本应用上
-                    PhoneKey.BACK -> ensureNotSelf()
+                    PhoneKey.BACK -> ensureNotSelf(controller)
                     else -> ensureOperable(controller)
                 }
                 act(controller, "press ${key.name.lowercase()}") { controller.pressKey(key) }
@@ -285,7 +373,7 @@ private class PhoneUseSession(
                 ensureOperable(controller)
                 val screen = capture(controller)
                 val bytes = try {
-                    hidingOverlays { controller.screenshot(SCREENSHOT_MAX_SIDE) }
+                    hidingOverlays(controller) { controller.screenshot(SCREENSHOT_MAX_SIDE) }
                 } catch (e: Exception) {
                     // 受限应用的防截图会以 FLAG_SECURE/空窗口形式失败：给针对性说明，别让模型反复试
                     screen.restrictedMessage(RestrictionKind.SCREENSHOT)?.let { throw IllegalStateException(it) }
@@ -360,7 +448,7 @@ private class PhoneUseSession(
         name: String,
         block: suspend () -> Boolean,
     ): List<UIMessagePart> {
-        val done = hidingOverlays { block() }
+        val done = hidingOverlays(controller, block)
         if (!done) {
             return text("$name failed: the system rejected it. Observe the screen and try another way.")
         }
@@ -368,7 +456,8 @@ private class PhoneUseSession(
         return text("$name done.\n" + describeCurrent(controller))
     }
 
-    private suspend fun <T> hidingOverlays(block: suspend () -> T): T {
+    private suspend fun <T> hidingOverlays(controller: PhoneController, block: suspend () -> T): T {
+        if (controller.isVirtual) return block()
         manager.beginActing()
         try {
             delay(OVERLAY_HIDE_MS)
@@ -382,8 +471,8 @@ private class PhoneUseSession(
         controller.captureScreen().also { lastScreen = it }
 
     // 本应用在前台时不操作：模型不能替用户点自己的工具审批，也不该改动应用设置
-    private suspend fun ensureNotSelf() {
-        check(!isSelfInForeground()) {
+    private suspend fun ensureNotSelf(controller: PhoneController) {
+        check(controller.isVirtual || !isSelfInForeground()) {
             "This app is in the foreground and cannot be operated. Use open_app or press home first."
         }
     }
@@ -391,7 +480,7 @@ private class PhoneUseSession(
     // 每次操作前都看一眼屏幕上有谁：被禁的应用可能是从别的应用跳转进来的（比如购物应用拉起支付）。
     // 只看应用窗口，通知栏等内容默认不读（见设计稿隐私边界）。
     private suspend fun ensureOperable(controller: PhoneController) {
-        ensureNotSelf()
+        ensureNotSelf(controller)
         controller.visiblePackages().blocked()?.let { error(blockedMessage(it)) }
     }
 
@@ -400,8 +489,10 @@ private class PhoneUseSession(
      *
      * [forceFull] 为真时忽略差分（`observe`）：模型显式读屏就应该拿到完整列表。
      */
-    private suspend fun describeCurrent(controller: PhoneController, forceFull: Boolean = false): String {
-        val screen = capture(controller)
+    private suspend fun describeCurrent(controller: PhoneController, forceFull: Boolean = false): String =
+        describeScreen(controller, capture(controller), forceFull)
+
+    private fun describeScreen(controller: PhoneController, screen: PhoneScreen, forceFull: Boolean): String {
         screen.packages.blocked()?.let { return blockedMessage(it) }
         // 受限应用可能返回空元素树：这不是“还在加载”，重试没有意义
         if (screen.elements.isEmpty()) {
@@ -410,7 +501,7 @@ private class PhoneUseSession(
         val text = describe(screen, previous = lastDescribedScreen.takeUnless { forceFull })
         // 差分文本同样让模型对新列表建立完整认知：作为下一份基线
         lastDescribedScreen = screen
-        return text
+        return if (controller.isVirtual) "Virtual display.\n${text}" else text
     }
 
     private fun blockedPackages(): Set<String> = PHONE_USE_BLOCKED_APPS + userBlockedPackages()

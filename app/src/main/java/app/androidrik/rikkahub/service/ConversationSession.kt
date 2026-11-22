@@ -208,8 +208,9 @@ class ConversationSession(
     val scheduledMemoryDecisions = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
     /**
-     * Phone Use 来源门控：只有 App 交互回合为 true。定时任务/Web/子代理/重生成/续写为 false。
-     * 由 [ChatService.sendQueuedMessage] 按队列项覆盖。
+     * Phone Use 来源门控：只有 App 交互回合为 true。定时任务/Web/子代理/后台工作区续跑为 false；
+     * 手动重生成/续写视同交互回合为 true（历史里的旧 phone_use 调用会被模型模仿重发）。
+     * 发送路径由 [ChatService.sendQueuedMessage] 按队列项覆盖；重生成/续写在各自入口设置。
      */
     @Volatile
     var phoneUseAllowedForTurn: Boolean = false

@@ -7,6 +7,11 @@
       而不是 androidTest APK（那里的 Activity 属于另一个进程）。
     -->
     <application>
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
         <activity android:name=".SkinLargeFontTestHostActivity" android:exported="false"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <activity

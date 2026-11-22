@@ -61,9 +61,11 @@ enum class PhoneKey { BACK, HOME, RECENTS, NOTIFICATIONS, ENTER }
 
 /**
  * 操作手机的底层能力，坐标都是屏幕像素。
- * 实现是 [PhoneUseAccessibilityService]；Android 11 以下与无服务时不可用。
+ * 由 [PhoneUseAccessibilityService] 提供；Android 11 以下与无服务时不可用。
  */
 interface PhoneController {
+    val isVirtual: Boolean get() = false
+
     /**
      * 屏幕上所有可见窗口所属的应用，和 [captureScreen] 读取的窗口范围一致，不算本应用自己的悬浮窗。
      * 分屏时不止一个；只用来判断屏幕上有谁，不影响元素编号
@@ -85,6 +87,13 @@ interface PhoneController {
     suspend fun pressKey(key: PhoneKey): Boolean
 
     fun listApps(): List<PhoneApp>
+
+    /**
+     * 最近使用过的应用（最近优先）。仅虚拟屏支持：HOME/RECENTS 是 PhoneWindowManager 全局键，
+     * `input -d` 只会作用于主屏（会把用户真机拉回桌面），不能按屏分发，所以用任务列表替代。
+     */
+    fun listRecent(): List<PhoneApp> =
+        error("list_recent is only available on the Phone Use virtual display.")
 
     fun openApp(packageName: String): Boolean
 }
@@ -197,7 +206,9 @@ class PhoneUseManager {
     }
 
     fun detach(controller: PhoneController) {
-        _controller.compareAndSet(controller, null)
+        if (_controller.compareAndSet(controller, null)) {
+            PhoneUseVirtualDisplays.current.value?.close()
+        }
         invalidateScreenCache()
     }
 

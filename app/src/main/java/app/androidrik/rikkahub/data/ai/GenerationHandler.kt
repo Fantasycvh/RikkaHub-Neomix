@@ -534,6 +534,7 @@ class GenerationHandler(
         usageTag: UsageTag = UsageTag(UsageSource.CHAT),
         memoryToolBinding: String? = null,
     ): Flow<GenerationChunk> = flow {
+        val phoneUseDisplay = if (tools.any { it.name == PHONE_USE_TOOL_NAME }) phoneUseBudget.pinDisplay() else null
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = usageRecorder.wrap(providerManager.getProviderByType(provider), usageTag)
 
@@ -1184,7 +1185,10 @@ class GenerationHandler(
                         }
                     }
                     val toolDef = toolsInternal.find { toolDef -> toolDef.name == tool.toolName }
-                        ?: error("Tool ${tool.toolName} not found")
+                        ?: throw ToolNotAvailableException(
+                            "Tool ${tool.toolName} is not available in this turn (not enabled for this " +
+                                "request's source). Do not retry it; reply in text or use another available tool."
+                        )
                     val args = try {
                         val parsed = parseToolArguments(tool.input.ifBlank { "{}" }, json)
                         if (parsed.trailingChars > 0 || parsed.lenient) {
@@ -1203,7 +1207,13 @@ class GenerationHandler(
                         error("Invalid tool arguments JSON for ${tool.toolName}: ${t.message}")
                     }
                     Log.i(TAG, "generateText: executing tool ${toolDef.name} with args: $args")
-                    val result = executeToolWithTimeout(toolDef, args) { toolDef.execute(it) }
+                    val result = executeToolWithTimeout(toolDef, args) { input ->
+                        if (toolDef.name == PHONE_USE_TOOL_NAME) {
+                            withContext(checkNotNull(phoneUseDisplay)) { toolDef.execute(input) }
+                        } else {
+                            toolDef.execute(input)
+                        }
+                    }
                     if (toolDef.shouldEndTurn(result)) endTurnAfterTools = true
                     // 空输出补占位：否则 isExecuted 仍为假 ⇒ 下一轮又被选出来重复执行
                     val output = finalizeToolOutput(
@@ -1286,10 +1296,17 @@ class GenerationHandler(
                     // 判定结果此处不设提示（成功路径统一负责），只记账。
                     // 错误文本同样受 per-call 限幅（堆栈可以非常长）；JSON 包裹后
                     // 截断会破坏结构，故在编码前硬切。
-                    val errorText = buildString {
-                        append("[${it.javaClass.name}] ${it.message}")
-                        append("\n${it.stackTraceToString()}")
-                    }.let { text ->
+                    // 专用异常：工具不在本回合工具表里（来源门控，如重生成前旧候选里的
+                    // phone_use 调用被模仿重发）。onFailure 对它不带堆栈——模型只需要
+                    // 一句「不可用、别重试」，长栈只会污染上下文诱导再试。
+                    val errorText = (if (it is ToolNotAvailableException) {
+                        "[${it.javaClass.name}] ${it.message}"
+                    } else {
+                        buildString {
+                            append("[${it.javaClass.name}] ${it.message}")
+                            append("\n${it.stackTraceToString()}")
+                        }
+                    }).let { text ->
                         if (text.length > prepared.outputBudget) {
                             text.take(prepared.outputBudget) +
                                 "\n[... error text truncated at ${prepared.outputBudget} chars]"
@@ -1954,6 +1971,14 @@ class GenerationPartialFailureException(
 internal class EmptyGenerationResponseException : java.io.IOException(
     "The model returned an empty response. Please retry or choose another model."
 )
+
+/**
+ * 模型发出了本回合工具表里没有的调用（来源门控装配，如重生成轮不装配 phone_use 但
+ * 历史候选里带着旧调用）。不视为工具执行故障：onFailure 对它回填不带堆栈的单行错误，
+ * 轮次照常继续，由 loopGuard 的 markFailed 兜住反复重试。
+ */
+internal class ToolNotAvailableException(message: String) : IllegalStateException(message)
+
 
 private fun List<UIMessagePart>.hasGenerationContent(): Boolean =
     !isEmptyUIMessage() || any { it is UIMessagePart.Reasoning && it.metadata != null }
