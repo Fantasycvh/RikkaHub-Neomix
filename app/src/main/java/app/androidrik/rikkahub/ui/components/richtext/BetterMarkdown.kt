@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.components.richtext
 import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import android.content.ClipData
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -423,20 +424,27 @@ private fun TableCard(table: MarkdownBlock.Table) {
     // HTML 写出的表格没有 Markdown 源码，复制时退回到 CSV
     val tableText = table.source ?: tableCsv
 
-    val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/csv")
-    ) { uri ->
-        uri?.let {
-            scope.launch {
-                try {
-                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                        outputStream.write(tableCsv.toByteArray())
+    // 浮窗/悬浮面板等无 Activity 宿主的组合环境没有 ActivityResultRegistryOwner，
+    // rememberLauncherForActivityResult 会直接抛异常——此时隐藏「导出 CSV」入口（复制走 Clipboard 不受影响）
+    val hasResultRegistryOwner = LocalActivityResultRegistryOwner.current != null
+    val createDocumentLauncher = if (hasResultRegistryOwner) {
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument("text/csv")
+        ) { uri ->
+            uri?.let {
+                scope.launch {
+                    try {
+                        context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                            outputStream.write(tableCsv.toByteArray())
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
+    } else {
+        null
     }
 
     Column(
@@ -483,22 +491,24 @@ private fun TableCard(table: MarkdownBlock.Table) {
                         .size(iconSize)
                 )
 
-                Icon(
-                    imageVector = HugeIcons.Download04,
-                    contentDescription = "Download",
-                    tint = iconTint,
-                    modifier = Modifier
-                        .clip(appSkinRoundedShape(4f))
-                        .onClick {
-                            createDocumentLauncher.launch(
-                                "table_${
-                                    Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-                                }.csv"
-                            )
-                        }
-                        .padding(4.dp)
-                        .size(iconSize)
-                )
+                if (createDocumentLauncher != null) {
+                    Icon(
+                        imageVector = HugeIcons.Download04,
+                        contentDescription = "Download",
+                        tint = iconTint,
+                        modifier = Modifier
+                            .clip(appSkinRoundedShape(4f))
+                            .onClick {
+                                createDocumentLauncher.launch(
+                                    "table_${
+                                        Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                                    }.csv"
+                                )
+                            }
+                            .padding(4.dp)
+                            .size(iconSize)
+                    )
+                }
             }
         }
         DataTable(
