@@ -6,6 +6,7 @@ import app.androidrik.rikkahub.data.sync.WorkspaceBackupHelper
 import android.content.Context
 import app.androidrik.rikkahub.data.files.FileConversationScanner
 import app.androidrik.rikkahub.data.files.FileFolders
+import app.androidrik.rikkahub.data.files.FileRefSync
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.repository.ConversationRepository
@@ -142,6 +143,13 @@ val repositoryModule = module {
 
     single {
         FileConversationScanner(get(), get(), get())
+    }
+
+    // SettingFilesVM 构造依赖 + 冷启动 message_file_ref 回填（RikkaHubApp.backfillFileRefsIfPending）
+    // 都按类型取它；Phase B（daf709f67d）加构造参数时漏了注册，缺定义时 VM 创建抛
+    // InstanceCreationException、回填被 runCatching 静默吞掉。
+    single {
+        FileRefSync(get(), get(), get<FilesManager>().getFilesDir())
     }
 
     single {
