@@ -39,7 +39,7 @@ internal fun PhoneUseExperimentSetting() {
     var starting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Text("Phone Use virtual display (debug)", style = MaterialTheme.typography.labelLarge)
+    Text("Phone Use virtual display (experimental)", style = MaterialTheme.typography.labelLarge)
     if (display == null) {
         Text("Start a display, then send a new chat message to use it. Requires Shizuku (ADB or root).")
         TextButton(

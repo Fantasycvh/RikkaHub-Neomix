@@ -87,6 +87,12 @@
     android:theme="@style/Theme.Rikkahub"
     android:usesCleartextTraffic="true"
     tools:targetApi="33">
+    <!-- Phone Use 虚拟屏（Shizuku）：需 provider 供 Shizuku 管理器查询应用身份/权限 -->
+    <provider
+      android:name="rikka.shizuku.ShizukuProvider"
+      android:authorities="${applicationId}.shizuku"
+      android:exported="true"
+      android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     <activity
       android:name=".ui.activity.SafeModeActivity"
       android:exported="false"

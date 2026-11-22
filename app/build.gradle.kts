@@ -355,6 +355,7 @@ dependencies {
     androidTestImplementation(libs.androidx.room.testing)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    debugImplementation("dev.rikka.shizuku:api:13.1.5")
-    debugImplementation("dev.rikka.shizuku:provider:13.1.5")
+    // Phone Use 虚拟屏（Shizuku UserService）：release 也提供，见 proguard-rules.pro 的 keep 约束
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }
