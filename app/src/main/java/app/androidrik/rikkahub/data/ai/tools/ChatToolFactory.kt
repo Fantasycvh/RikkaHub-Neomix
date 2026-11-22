@@ -158,7 +158,8 @@ class ChatToolFactory(
         awaitBackgroundTasks: (suspend () -> List<String>)? = null,
         /**
          * Phone Use 来源门控（design-phone-use.md §2.3）：只有 App 交互回合为 true。
-         * 定时任务、子代理、Web 远程会话传 false，装配期就不提供 `phone_use`。
+         * 定时任务、子代理、Web 远程会话、后台工作区续跑传 false，装配期就不提供 `phone_use`；
+         * 手动重生成/续写视同交互回合传 true。
          */
         allowPhoneUse: Boolean = true,
     ): List<Tool> = createToolSegments(

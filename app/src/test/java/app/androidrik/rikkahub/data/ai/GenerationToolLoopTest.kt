@@ -277,6 +277,24 @@ class GenerationToolLoopTest {
     }
 
     @Test
+    fun `unregistered tool call degrades to a one-line error and the turn continues`() {
+        // 2026-11-23：重生成轮不装配 phone_use，但旧候选历史里的调用被模型模仿重发——
+        // 原行为 error("Tool not found") 会把整段堆栈塞进上下文；现在回填单行可读错误、轮次照常。
+        val provider = ScriptedProvider { index, _ ->
+            if (index == 0) toolCallStep(toolCall("ghost", "ghost_tool")) else textStep("recovered")
+        }
+        val registered = tool("registered") { listOf(UIMessagePart.Text("ok")) }
+        val sent = runGeneration(provider, listOf(registered))
+        assertEquals(2, provider.calls.get())
+        val ghost = sent.flatten().flatMap { it.getTools() }
+            .filter { it.toolCallId == "ghost" && it.isExecuted }
+            .last()
+        val output = ghost.output.filterIsInstance<UIMessagePart.Text>().single().text
+        assertTrue(output.contains("ghost_tool") && output.contains("not available"))
+        assertFalse("错误结果不应带堆栈", output.contains("\n\tat "))
+    }
+
+    @Test
     fun `streamed file memory calls keep their binding across approval and replay`() {
         val assistant = Assistant(
             chatModelId = model.id,

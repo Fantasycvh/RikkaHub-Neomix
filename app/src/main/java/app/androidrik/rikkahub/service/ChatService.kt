@@ -1035,8 +1035,8 @@ class ChatService(
         session.beginNewTurn(queued.turnOwner)
         // 闸门随本轮队列项带入（beginNewTurn 已清空，这里覆盖；用户发起的轮次恒为 null）
         session.turnLoopGate = queued.loopGate
-        // Phone Use 来源门控随本轮队列项带入：只有 App 交互回合允许；重生成/续写不经过这里，
-        // beginNewTurn 已把它们重置为 false。
+        // Phone Use 来源门控随本轮队列项带入：只有 App 交互回合允许。重生成/续写在各自
+        // 入口同样置 true（用户手动发起），后台工作区续跑保持 false。
         session.phoneUseAllowedForTurn = queued.allowPhoneUse
         val job = appScope.launch {
             try {
@@ -1232,6 +1232,10 @@ class ChatService(
         // 护栏历史一并清空，让新尝试从干净的额度开始，避免上一轮的重复记录误伤本次。
         // 含换新后台任务归属令牌：被顶掉的那一轮若起过后台任务，它的取消回调用旧令牌收尾。
         session.beginNewTurn()
+        // 用户在 App 里手动重生成 = App 交互回合：与发送同权装配 phone_use。
+        // 否则工具表缺 phone_use 而旧候选的历史里带着调用，模型模仿重发只会拿到
+        // 「Tool not available」错误结果（design-phone-use.md §2.3 的重生成豁免修正）。
+        session.phoneUseAllowedForTurn = true
 
         val job = appScope.launch {
             try {
@@ -1293,6 +1297,8 @@ class ChatService(
         // 续写是用户发起的**新一轮尝试**（与重生成同理）：护栏额度重置 + 换新归属令牌。
         // 必须在 launch 之前同步执行（`setJob` 注册取消回调时要捕获令牌，见 beginNewTurn）。
         session.beginNewTurn()
+        // 与重生成同理：App 交互回合装配 phone_use（历史里的旧调用会被模型模仿重发）
+        session.phoneUseAllowedForTurn = true
 
         val job = appScope.launch {
             try {

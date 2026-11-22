@@ -84,15 +84,21 @@ v1 只允许 **APP 交互回合**：
 | 来源 | 处理 |
 |---|---|
 | App 前台/后台、悬浮窗开着 | 允许 |
+| 手动重生成 / 续写 | 允许（2026-11-23 修正：原定 false，但旧候选历史里的 phone_use 调用会被模型模仿重发，缺装配只会拿到工具错误结果——改与发送同权） |
 | 定时任务（`sched:` run） | 装配期不提供 `phone_use` |
 | 子代理（`SubagentRunner`） | 装配期不提供 |
 | Web/API 会话 | 装配期不提供 |
+| 后台工作区续跑（`startWorkspaceContinuation`） | 装配期不提供 |
 | 语音（App 内） | 允许；注意本应用前台时 `ensureNotSelf` 会阻止实际操作 |
 
 实现：`QueuedMessage.allowPhoneUse` 随队列项走；`ChatService` 把它带到本轮的
 `ConversationSession.phoneUseAllowedForTurn`；`ChatToolFactory.createTools/createToolSegments`
 接收 `allowPhoneUse`，为 false 时跳过 Phone Use 段。`SubagentRunner` 固定传 false。
 Web 的发送/编辑入口传 false；App 默认 true。`PromptInspection` 只做预览，不执行。
+
+兜底（2026-11-23）：即使门控漏了，`GenerationHandler.runPreparedTool` 对「工具表里没有
+的调用」抛 `ToolNotAvailableException`，onFailure 回填**不带堆栈**的单行错误结果（模型
+可读：「不可用、勿重试、改文本回复」），轮次照常继续；loopGuard 的 markFailed 兜住反复重试。
 
 ### 2.4 隐私
 
