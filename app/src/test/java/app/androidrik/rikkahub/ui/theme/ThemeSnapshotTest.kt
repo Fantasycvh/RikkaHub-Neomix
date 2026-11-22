@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ThemeSnapshotTest {
@@ -104,7 +105,9 @@ class ThemeSnapshotTest {
         assertEquals(BackgroundEffectType.GLASS, snapshot.topBarEffectType)
         assertEquals(ChatFontFamily.MONOSPACE, snapshot.chatFontFamily)
         assertEquals(display.themeRoleOverrides, snapshot.themeRoleOverrides)
-        // 回路：应用回 DisplaySetting 后快照域逐字段相等
-        assertEquals(display, DisplaySetting().withAppearanceSnapshot(snapshot))
+        // 回路：应用回 DisplaySetting 后快照域逐字段相等；导入即物化 → 独立于皮肤（design-skin-chat-binding.md §3.3）
+        val roundTrip = DisplaySetting().withAppearanceSnapshot(snapshot)
+        assertEquals(display.copy(chatAppearanceDetached = true), roundTrip)
+        assertTrue(roundTrip.chatAppearanceDetached)
     }
 }

@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import app.androidrik.plugin.api.RikkaPlugin
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
+import app.androidrik.rikkahub.data.datastore.builtinSkinChatLink
 import app.androidrik.rikkahub.data.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,9 +51,17 @@ fun resolveAppSkin(
     chatPresets: List<ChatAppearancePreset> = ChatAppearanceRegistry.shared.presets.value,
 ): ResolvedAppSkin {
     val base = skins.firstOrNull { it.id == display.appSkinId }?.skin ?: AppSkin()
-    val chat = chatPresets.firstOrNull { it.id == display.chatAppearancePresetId }?.appearance ?: display.toChatAppearance()
+    // 绑定态下皮肤推荐方案遮蔽 presetId（换肤即时跟随）；解绑态/无推荐回落 presetId ?: details。
+    val linkedPresetId = if (display.chatAppearanceDetached) null else builtinSkinChatLink[display.appSkinId]
+    val chat = chatPresets.firstOrNull { it.id == (linkedPresetId ?: display.chatAppearancePresetId) }?.appearance
+        ?: display.toChatAppearance()
     return ResolvedAppSkin(display.appSkinOverrides.applyTo(base), chat.normalized())
 }
+
+/** 绑定/解绑状态下实际生效的聊天方案 id（= resolveAppSkin 的 chat 选择口），供设置页 UI 展示。 */
+fun effectiveChatPresetId(display: DisplaySetting): String? =
+    (if (display.chatAppearanceDetached) null else builtinSkinChatLink[display.appSkinId])
+        ?: display.chatAppearancePresetId
 
 val LocalAppSkin = compositionLocalOf { ResolvedAppSkin() }
 
@@ -62,7 +71,10 @@ fun rememberAppSkin(display: DisplaySetting): ResolvedAppSkin {
     val chats by ChatAppearanceRegistry.shared.presets.collectAsState()
     val trial by SkinTrialController.shared.trial.collectAsState()
     val resolved = resolveAppSkin(display, skins, chats)
-    return trial?.let { resolved.copy(skin = it.skin) } ?: resolved
+    // 试穿预览整份重解析：绑定态下聊天域方案随 target 皮肤联动预览（SkinSelection 只含皮肤字段，
+    // 不触碰聊天域持久化字段，确认/撤销的 CAS 语义不受影响）
+    val preview = trial?.let { resolveAppSkin(it.target.applyTo(display), skins, chats) }
+    return preview ?: resolved
 }
 
 val builtInAppSkins = listOf(
@@ -117,12 +129,4 @@ val builtInAppSkins = listOf(
             dividerInsetDp = 56f, dividerWidthDp = 0.5f),
         palette = CustomTheme(id = "builtin.ios.palette", name = "iOS 风",
             primaryColorArgb = 0xFF0A84FF, paletteStyle = ThemePaletteStyle.FIDELITY))),
-)
-
-/** 皮肤档位 → 推荐聊天域方案（应用皮肤时联动写入；用户可随时改回）。 */
-val builtinSkinChatLink: Map<String, String> = mapOf(
-    "builtin.squircle" to "builtin.chat:glass",
-    "builtin.paper" to "builtin.chat:paper",
-    "builtin.engineering" to "builtin.chat:engineering",
-    "builtin.ios" to "builtin.chat:ios",
 )

@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -350,6 +351,9 @@ class SettingsStore(
         val REMOVED_BUILTIN_PROVIDERS = stringPreferencesKey("removed_builtin_providers")
         val REMOVED_ASSISTANTS = stringPreferencesKey("removed_assistants")
         val LEGACY_DEFAULT_ASSISTANT_MERGED = booleanPreferencesKey("legacy_default_assistant_merged")
+        // 皮肤↔聊天方案联动迁移（migrateChatLink）的一次性落盘标记：判定只允许在升级首读时发生，
+        // 常驻读路径会把绑定态的覆写槽残留（旧 link 值）误判成解绑（design-skin-chat-binding.md §4）
+        val CHAT_LINK_MIGRATION_DONE = booleanPreferencesKey("chat_link_migration_done")
 
         // 助手
         val SELECT_ASSISTANT = stringPreferencesKey("select_assistant")
@@ -599,7 +603,11 @@ class SettingsStore(
                         JsonInstant.decodeFromString(it)
                     } ?: emptyList(),
                     developerMode = preferences[DEVELOPER_MODE] == true,
-                    displaySetting = JsonInstant.decodeFromString(preferences[DISPLAY_SETTING] ?: "{}"),
+                    displaySetting = JsonInstant.decodeFromString<DisplaySetting>(
+                        preferences[DISPLAY_SETTING] ?: "{}")
+                        // 标记未落 = 升级首读窗口，兜底派生（与 migrateChatLinkOnce 写回同一结果）；
+                        // 标记已落 = 运行期，覆写槽残留值不再参与判定（否则绑定态被永久误判解绑）
+                        .let { if (preferences[CHAT_LINK_MIGRATION_DONE] == true) it else it.migrateChatLink() },
                     avatarFrameSchemes = preferences[AVATAR_FRAME_SCHEMES]?.let {
                         JsonInstant.decodeFromString(it)
                     } ?: emptyList(),
@@ -851,6 +859,35 @@ class SettingsStore(
 
     private val dataStore = createSettingsDataStore(dataStoreFile) {
         get<AppDatabase>().mergeDefaultAssistantReferences()
+    }
+
+    init {
+        scope.launch { migrateChatLinkOnce() }
+    }
+
+    /**
+     * 皮肤↔聊天方案联动的一次性迁移（design-skin-chat-binding.md §4）：判定结果落盘 + 打标记。
+     * 只允许在升级首读时判定——绑定态的 `chatAppearancePresetId` 覆写槽会随换肤残留旧 link 值，
+     * 常驻读路径派生会把这类绑定态误判成解绑。判定与解析均幂等，与 decodeSettings 的首读兜底并发安全。
+     */
+    private suspend fun migrateChatLinkOnce() {
+        repeat(3) { attempt ->
+            try {
+                val preferences = dataStore.data.first()
+                if (preferences[CHAT_LINK_MIGRATION_DONE] == true) return
+                val migrated = JsonInstant.decodeFromString<DisplaySetting>(
+                    preferences[DISPLAY_SETTING] ?: "{}").migrateChatLink()
+                dataStore.edit {
+                    it[DISPLAY_SETTING] = JsonInstant.encodeToString(migrated)
+                    it[CHAT_LINK_MIGRATION_DONE] = true
+                }
+                Log.d(TAG, "chat link migration applied: detached=${migrated.chatAppearanceDetached}")
+                return
+            } catch (e: IOException) {
+                Log.w(TAG, "chat link migration write failed (attempt ${attempt + 1}/3)", e)
+                delay(200L shl attempt)
+            }
+        }
     }
 
     // 读取失败**绝不能**回退为空配置：空 Preferences 随后会被 update() 当成用户数据写回，

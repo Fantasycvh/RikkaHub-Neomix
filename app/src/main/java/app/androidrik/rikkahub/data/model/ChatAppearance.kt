@@ -187,6 +187,8 @@ fun DisplaySetting.withChatAppearance(value: ChatAppearance): DisplaySetting {
     val a = value.normalized()
     return copy(
         chatAppearancePresetId = null,
+        // 微调即解绑：独立设置的聊天域不再跟随皮肤推荐方案（design-skin-chat-binding.md §3.3）
+        chatAppearanceDetached = true,
         chatFontFamily = a.typography.family,
         chatCustomFontPath = a.typography.customFontPath,
         chatCustomFontName = a.typography.customFontName,

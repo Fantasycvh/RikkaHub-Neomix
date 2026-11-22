@@ -8,6 +8,7 @@ import app.androidrik.plugin.manager.PluginLifecycleObserver
 import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.plugin.manager.PluginResources
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
+import app.androidrik.rikkahub.data.datastore.builtinSkinChatLink
 import app.androidrik.rikkahub.data.model.BubbleMaterial
 import app.androidrik.rikkahub.data.model.ChatAppearance
 import app.androidrik.rikkahub.data.model.ChatBubble

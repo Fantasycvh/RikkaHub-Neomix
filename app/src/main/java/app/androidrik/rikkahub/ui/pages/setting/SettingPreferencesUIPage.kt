@@ -67,7 +67,6 @@ import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.data.model.ChatAppearance
 import app.androidrik.rikkahub.data.model.withChatAppearance
-import app.androidrik.rikkahub.ui.theme.builtinSkinChatLink
 import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
 import app.androidrik.rikkahub.ui.theme.rememberChatAppearance
 import app.androidrik.rikkahub.ui.theme.resolveChatAppearance
@@ -225,11 +224,9 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
             item(key = "app_skin") {
                 AppSkinSettings(displaySetting,
                     onSelect = { id -> updateDisplaySetting { current ->
-                        // 第三轮气质档联动聊天域方案（builtinSkinChatLink），用户可随时在聊天外观改回；
-                        // 「跟随默认」或未命中档位不碰聊天域
-                        val link = id?.let { builtinSkinChatLink[it] }
-                        if (link != null) current.copy(appSkinId = id, chatAppearancePresetId = link)
-                        else current.copy(appSkinId = id)
+                        // 聊天域跟随由解析层按绑定态实时派生（builtinSkinChatLink），换肤只写皮肤档位；
+                        // 解绑态（用户独立设置过聊天域）换肤不碰聊天域
+                        current.copy(appSkinId = id)
                     } },
                     onEdit = { before, after -> updateDisplaySetting { current ->
                         current.copy(appSkinOverrides = current.appSkinOverrides.withEdits(before, after))
@@ -242,9 +239,15 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                     display = displaySetting,
                     appearance = appearance,
                     onSelectPreset = { id ->
-                        displaySetting = displaySetting.copy(chatAppearancePresetId = id)
-                        vm.updateSettings { current -> current.copy(displaySetting = current.displaySetting.copy(chatAppearancePresetId = id)) }
+                        displaySetting = displaySetting.copy(chatAppearancePresetId = id, chatAppearanceDetached = true)
+                        vm.updateSettings { current -> current.copy(displaySetting = current.displaySetting.copy(chatAppearancePresetId = id, chatAppearanceDetached = true)) }
                     },
+                    // 独立设置 = 物化当前生效方案进覆写槽（换无推荐方案的皮肤时保持观感）
+                    onDetachFromSkin = { linkId -> updateDisplaySetting { current ->
+                        current.copy(chatAppearanceDetached = true, chatAppearancePresetId = linkId ?: current.chatAppearancePresetId)
+                    } },
+                    // 跟随皮肤 = 仅清除解绑标记；覆写槽保留作无推荐方案皮肤的回落
+                    onFollowSkin = { updateDisplaySetting { it.copy(chatAppearanceDetached = false) } },
                     onChange = ::updateAppearance,
                 )
             }

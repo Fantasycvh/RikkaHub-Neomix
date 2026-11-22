@@ -81,6 +81,8 @@ fun DisplaySetting.toAppearanceSnapshot(): ThemeAppearanceSnapshot {
 /** 应用外观快照：逐字段合并，只覆盖快照携带的域，其余显示设置不动（纯函数）。 */
 fun DisplaySetting.withAppearanceSnapshot(a: ThemeAppearanceSnapshot): DisplaySetting = copy(
     chatAppearancePresetId = null,
+    // 快照导入是物化语义：落地为独立设置，不跟随皮肤推荐方案
+    chatAppearanceDetached = true,
     chatAppearanceDetails = a.chatAppearanceDetails ?: chatAppearanceDetails,
     enableBlurEffect = a.enableBlurEffect,
     inputEffectType = a.inputEffectType,

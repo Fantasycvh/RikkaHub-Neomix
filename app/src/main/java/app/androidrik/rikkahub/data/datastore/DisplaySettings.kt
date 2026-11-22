@@ -140,10 +140,45 @@ data class ChainOfThoughtScheme(
     val style: ChainOfThoughtCustomStyle = ChainOfThoughtCustomStyle(),
 )
 
+/**
+ * 皮肤档位 → 推荐聊天域方案（设计稿 `docs/design/drafts/design-skin-chat-binding.md`）。
+ * 绑定态下解析层实时生效（换肤即整套观感切换）；解绑态由用户覆写槽接管。
+ * 纯静态数据放在 data 层，供解析与迁移共用；插件皮肤无条目 = 无推荐方案。
+ */
+val builtinSkinChatLink: Map<String, String> = mapOf(
+    "builtin.squircle" to "builtin.chat:glass",
+    "builtin.paper" to "builtin.chat:paper",
+    "builtin.engineering" to "builtin.chat:engineering",
+    "builtin.ios" to "builtin.chat:ios",
+)
+
+/**
+ * 联动迁移：判定存量 [DisplaySetting] 是否处于「独立设置」态（幂等，读路径每次调用）。
+ * 规则（零感知迁移，老用户行为不变）：
+ * - 当前皮肤无推荐方案 → 绑定无害（解析回落），不标解绑；
+ * - presetId 与推荐方案不同 → 用户选过别的 preset，解绑；
+ * - presetId 为空但 details 有自定义 → 微调过，解绑（withChatAppearance 编辑时置空 presetId）；
+ * - 其余（含 presetId==link 的老联动写入）→ 干净态，保持绑定。
+ */
+fun DisplaySetting.migrateChatLink(linkMap: Map<String, String> = builtinSkinChatLink): DisplaySetting {
+    if (chatAppearanceDetached) return this
+    val link = linkMap[appSkinId]
+    val detached = when {
+        link == null -> false
+        chatAppearancePresetId != null && chatAppearancePresetId != link -> true
+        chatAppearancePresetId == null && chatAppearanceDetails != ChatAppearanceDetails() -> true
+        else -> false
+    }
+    return if (detached) copy(chatAppearanceDetached = true) else this
+}
+
 @Serializable
 data class DisplaySetting(
     val chatAppearanceDetails: ChatAppearanceDetails = ChatAppearanceDetails(),
+    /** 解绑后的独立聊天方案槽；绑定态下被 [builtinSkinChatLink] 的皮肤推荐遮蔽。 */
     val chatAppearancePresetId: String? = null,
+    /** false=跟随当前皮肤的推荐聊天方案；true=独立设置（覆写槽生效）。详见 design-skin-chat-binding.md。 */
+    val chatAppearanceDetached: Boolean = false,
     val userAvatar: Avatar = Avatar.Dummy,
     val userNickname: String = "",
     val useAppIconStyleLoadingIndicator: Boolean = true,

@@ -2,6 +2,8 @@ package app.androidrik.rikkahub.ui.theme
 
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
+import app.androidrik.rikkahub.data.datastore.builtinSkinChatLink
+import app.androidrik.rikkahub.data.datastore.migrateChatLink
 import app.androidrik.rikkahub.data.model.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -256,5 +258,53 @@ class AppSkinTest {
         val clamped = AppSkinTypography(weightDelta = 999, letterSpacingSp = Float.NaN).normalized()
         assertEquals(200, clamped.weightDelta)
         assertEquals(0f, clamped.letterSpacingSp)
+    }
+
+    // —— 皮肤↔聊天方案绑定/解绑（design-skin-chat-binding.md）——
+
+    private val glass = ChatAppearancePreset("builtin.chat:glass", "Glass",
+        ChatAppearance(userBubble = ChatBubble(colorHex = "#ABCDEF")))
+    private val paper = ChatAppearancePreset("builtin.chat:paper", "Paper",
+        ChatAppearance(userBubble = ChatBubble(colorHex = "#123456")))
+    private val presets = listOf(glass, paper)
+
+    @Test fun `bound chat follows the skin link and shadows the preset slot`() {
+        val display = DisplaySetting(appSkinId = "builtin.squircle", chatAppearancePresetId = paper.id)
+        // 绑定态：link 遮蔽 presetId
+        assertEquals(glass.appearance, resolveAppSkin(display, emptyList(), presets).chat)
+        // 解绑态：覆写槽生效
+        assertEquals(paper.appearance, resolveAppSkin(display.copy(chatAppearanceDetached = true), emptyList(), presets).chat)
+        // 绑定态但皮肤无推荐方案（旧皮肤/插件皮肤）→ 回落 presetId
+        val noLink = DisplaySetting(appSkinId = "builtin.compact", chatAppearancePresetId = paper.id)
+        assertEquals(paper.appearance, resolveAppSkin(noLink, emptyList(), presets).chat)
+        // 回落槽也缺失 → details
+        assertEquals(DisplaySetting().toChatAppearance(),
+            resolveAppSkin(DisplaySetting(appSkinId = "builtin.compact"), emptyList(), presets).chat)
+        // 推荐/覆写方案都未注册（registry 卸载）→ details
+        val orphan = DisplaySetting(appSkinId = "builtin.squircle",
+            chatAppearanceDetails = ChatAppearanceDetails(userBubbleColorHex = "#999999"))
+        assertEquals(orphan.toChatAppearance(), resolveAppSkin(orphan, emptyList(), emptyList()).chat)
+    }
+
+    @Test fun `chat link migration preserves legacy behavior and is idempotent`() {
+        // 老联动写入（presetId==link）→ 干净态绑定
+        val legacyLinked = DisplaySetting(appSkinId = "builtin.squircle", chatAppearancePresetId = "builtin.chat:glass")
+        assertFalse(legacyLinked.migrateChatLink().chatAppearanceDetached)
+        // 选过别的 preset → 解绑
+        assertTrue(DisplaySetting(appSkinId = "builtin.squircle", chatAppearancePresetId = paper.id)
+            .migrateChatLink().chatAppearanceDetached)
+        // 微调过 details（presetId 置空）→ 解绑
+        assertTrue(DisplaySetting(appSkinId = "builtin.squircle",
+            chatAppearanceDetails = ChatAppearanceDetails(userBubbleColorHex = "#654321"))
+            .migrateChatLink().chatAppearanceDetached)
+        // 皮肤无推荐方案 → 不标解绑（绑定无害，解析回落）
+        assertFalse(DisplaySetting(appSkinId = "builtin.compact").migrateChatLink().chatAppearanceDetached)
+        assertFalse(DisplaySetting().migrateChatLink().chatAppearanceDetached)
+        // 已解绑 → 幂等返回原值
+        val detached = DisplaySetting(appSkinId = "builtin.squircle", chatAppearanceDetached = true)
+        assertEquals(detached, detached.migrateChatLink())
+        // 干净态迁移后解析结果与迁移前逐字段等值（零感知）
+        val migrated = legacyLinked.migrateChatLink()
+        assertEquals(glass.appearance, resolveAppSkin(migrated, emptyList(), presets).chat)
     }
 }

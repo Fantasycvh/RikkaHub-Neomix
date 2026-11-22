@@ -16,35 +16,61 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
+import app.androidrik.rikkahub.data.datastore.builtinSkinChatLink
 import app.androidrik.rikkahub.data.model.ChatAppearance
 import app.androidrik.rikkahub.data.model.ChatBubble
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.theme.ChatAppearanceRegistry
 import app.androidrik.rikkahub.ui.theme.ChatLayoutRegistry
+import app.androidrik.rikkahub.ui.theme.AppSkinRegistry
+import app.androidrik.rikkahub.ui.theme.effectiveChatPresetId
 
 @Composable
 fun ChatAppearanceSettings(
     display: DisplaySetting,
     appearance: ChatAppearance,
     onSelectPreset: (String?) -> Unit,
+    onDetachFromSkin: (String?) -> Unit,
+    onFollowSkin: () -> Unit,
     onChange: ((ChatAppearance) -> ChatAppearance) -> Unit,
 ) {
     val presets by ChatAppearanceRegistry.shared.presets.collectAsState()
     val layouts by ChatLayoutRegistry.shared.layouts.collectAsState()
+    val skins by AppSkinRegistry.shared.skins.collectAsState()
     var editingUser by remember { mutableStateOf<Boolean?>(null) }
     var editingTypography by remember { mutableStateOf(false) }
+    val skinName = skins.firstOrNull { it.id == display.appSkinId }?.name
+    val hasLink = builtinSkinChatLink.containsKey(display.appSkinId)
+    val effectiveId = effectiveChatPresetId(display)
     CardGroup(modifier = Modifier.padding(horizontal = 8.dp), title = { Text("聊天外观") }) {
+        if (hasLink || skinName != null) {
+            item(headlineContent = { Text("与皮肤联动") }, supportingContent = {
+                Column {
+                    val schemeName = presets.firstOrNull { it.id == effectiveId }?.name
+                    Text(when {
+                        !hasLink -> "皮肤「$skinName」无推荐聊天方案"
+                        display.chatAppearanceDetached -> "独立于皮肤「$skinName」"
+                        else -> "跟随皮肤「$skinName」" + (schemeName?.let { " · $it" } ?: "")
+                    })
+                }
+            }, trailingContent = {
+                if (hasLink) TextButton(onClick = {
+                    if (display.chatAppearanceDetached) onFollowSkin() else onDetachFromSkin(effectiveId)
+                }) { Text(if (display.chatAppearanceDetached) "跟随皮肤" else "独立设置") }
+            })
+        }
         item(headlineContent = { Text("外观方案") }, supportingContent = {
             Column {
                 Select(
                     options = listOf<String?>(null) + presets.map { it.id },
-                    selectedOption = display.chatAppearancePresetId.takeIf { id -> presets.any { it.id == id } },
+                    // 绑定态展示生效方案（皮肤推荐遮蔽覆写槽），否则选完看似无效
+                    selectedOption = effectiveId.takeIf { id -> presets.any { it.id == id } },
                     onOptionSelected = onSelectPreset,
                     optionToString = { id -> presets.firstOrNull { it.id == id }?.name ?: "自定义" },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (display.chatAppearancePresetId != null && presets.none { it.id == display.chatAppearancePresetId }) {
+                if (effectiveId != null && presets.none { it.id == effectiveId }) {
                     Text("方案暂不可用，已回退到自定义外观")
                 }
             }
