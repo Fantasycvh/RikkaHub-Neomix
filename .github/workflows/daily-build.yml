@@ -142,7 +142,12 @@ jobs:
       - name: Gradle Build
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          # 公开仓库免费 runner 上限 4c/16G：按 gradle.properties 的 -Xmx8g 叠上 Kotlin
+          # daemon + R8 worker 会顶满内存导致 runner 失联（2026-11-23 run 45056322871，
+          # 51 分钟后 "lost communication"）。压到 6G 堆 + 2 worker 换稳定性。
+          ./gradlew assembleRelease \
+            -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8" \
+            --max-workers=2
 
       # 验签闸：有签名材料时产物必须出自钉死的 release 密钥（CN=neomix）；
       # 没有时是 debug 签名（预期内），只打印证书信息不拦。

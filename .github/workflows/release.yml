@@ -126,7 +126,11 @@ jobs:
       - name: Gradle Build
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          # 同 daily-build：4c/16G runner 上压堆与 worker 数，防 R8 阶段内存顶满失联
+          # （2026-11-23 run 45056322871）
+          ./gradlew assembleRelease \
+            -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8" \
+            --max-workers=2
 
       # 验签闸：产物必须出自钉死的 release 密钥（CN=neomix）。
       # 签名配置缺失/被 AGP 静默降级/secret 配错钥匙，都会在这里拦下——
