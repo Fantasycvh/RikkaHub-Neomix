@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.data.datastore.migration.SettingsJsonMigrator
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.files.FileFolders
+import app.androidrik.rikkahub.data.files.FileRefBackfillPending
 import app.androidrik.rikkahub.data.files.SkillPaths
 import app.androidrik.rikkahub.data.sync.repo.DatabaseObjectCapture
 import app.androidrik.rikkahub.data.sync.repo.DatabaseObjectMerge
@@ -322,6 +323,9 @@ class BackupArchiveEngine(
                 // **先 stage 再写 settings**：stage 失败（典型：上次恢复未重启就再次恢复）时
                 // settings 必须保持原样，否则用户面对「报错但设置已换、库没换」的半套恢复状态。
                 if (BackupItem.DATABASE in items) {
+                    // 换库后 message_file_ref 可能缺本表（旧版本备份）或与会话不一致：
+                    // 清回填完成标记，下次启动（staged 库已应用）重灌（design-file-conversation-link.md §4.4）
+                    FileRefBackfillPending.clear(context.filesDir)
                     prepareStagedDatabase(stagedDatabaseFiles)
                     val stagedMain = stagedDatabaseFiles["rikka_hub.db"]
                     if (stagedMain != null) {

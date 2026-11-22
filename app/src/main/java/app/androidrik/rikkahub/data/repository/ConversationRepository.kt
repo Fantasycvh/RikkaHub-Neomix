@@ -19,9 +19,12 @@ import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
 import app.androidrik.rikkahub.data.favorite.NodeFavoriteAdapter
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
+import app.androidrik.rikkahub.data.db.dao.MessageFileRefDAO
 import app.androidrik.rikkahub.data.db.entity.ConversationEntity
+import app.androidrik.rikkahub.data.db.entity.MessageFileRefEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
+import app.androidrik.rikkahub.data.files.FileConversationScanner
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.decideTierMove
 import app.androidrik.rikkahub.data.model.TierMoveAction
@@ -64,6 +67,7 @@ class ConversationRepository(
     private val filesManager: FilesManager,
     private val messageFtsManager: MessageFtsManager,
     private val checkpointDAO: CompressionCheckpointDAO,
+    private val messageFileRefDAO: MessageFileRefDAO,
 ) {
     // 批次 9 拆出的两个存储：Koin 不动，仓库内部组装（调用面保持原样）。
     private val checkpointStore = CompressionCheckpointStore(checkpointDAO)
@@ -100,6 +104,45 @@ class ConversationRepository(
         nodes: List<MessageNode>,
         deletedNodeIds: Collection<Uuid> = emptyList(),
     ) = nodeStore.saveMessageNodes(conversationId, nodes, deletedNodeIds)
+
+    /**
+     * 文件→会话关联的保存边界同步（design-file-conversation-link.md §4.2）。
+     * 必须在 [saveMessageNodes] 之后、**同一事务内**调用（insertConversation /
+     * updateConversation 的写收口；checkpointGeneratingNode 不收口——流式半截消息
+     * 不落关联，轮次结束的正常保存会补齐）。
+     *
+     * 稀疏窗口只含尾部（见 updateConversation 对 FTS 的同款约束）：只做增量合并
+     * （IGNORE）+ 被删节点的精确移除，未加载前缀的关联不能按「未出现=已删」清掉；
+     * 全量保存才 diff 重写（编辑/分支删除后失效的引用得以清除）。
+     */
+    private suspend fun syncFileRefsOnSave(
+        conversation: Conversation,
+        deletedNodeIds: Collection<Uuid>,
+    ) {
+        val conversationId = conversation.id.toString()
+        val filesDir = filesManager.getFilesDir()
+        val refs = conversation.messageNodes
+            .flatMap { it.messages }
+            .flatMap { FileConversationScanner.extractRelativePathsFromParts(it.parts, filesDir) }
+            .toSet()
+        if (conversation.isSparse) {
+            if (deletedNodeIds.isNotEmpty()) {
+                messageNodeDAO.getNodesByIds(deletedNodeIds.map(Uuid::toString))
+                    .flatMap { FileConversationScanner.extractRelativePathsFromJson(it.messages, filesDir) }
+                    .forEach { messageFileRefDAO.deleteRef(conversationId, it) }
+            }
+            if (refs.isNotEmpty()) {
+                val now = System.currentTimeMillis()
+                messageFileRefDAO.insertAll(refs.map { MessageFileRefEntity(conversationId, it, now) })
+            }
+        } else {
+            messageFileRefDAO.deleteByConversation(conversationId)
+            if (refs.isNotEmpty()) {
+                val now = System.currentTimeMillis()
+                messageFileRefDAO.insertAll(refs.map { MessageFileRefEntity(conversationId, it, now) })
+            }
+        }
+    }
 
     /**
      * 最近会话。[加载节点] 默认 false（仅需 id/标题/时间的调用方不应付出
@@ -547,6 +590,8 @@ class ConversationRepository(
             }
             conversationDAO.insert(entity.copy(sortOrder = sortOrder))
             saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
+            // 撤销恢复/会话导入走这里：insertConversation = 全量保存语义，关联一并重建
+            syncFileRefsOnSave(conversation, emptyList())
         }
         messageFtsManager.indexConversation(conversation)
     }
@@ -683,6 +728,8 @@ class ConversationRepository(
                     conversation.messageNodes,
                     deletedNodeIds,
                 )
+                // 文件→会话关联（design-file-conversation-link.md §4.2），与节点同一事务
+                syncFileRefsOnSave(conversation, deletedNodeIds)
             }
         }
         // 稀疏窗口只含尾部：FTS 不能把未加载前缀当成「已删除」。
@@ -754,6 +801,9 @@ class ConversationRepository(
         database.withTransaction {
             // 收藏表和会话没有外键，节点收藏要单独删（#2299 同构）
             favoriteDAO.deleteNodeFavoritesOfConversation(conversationId)
+            // 文件→会话关联没有外键，随会话删除一并清（design-file-conversation-link.md §4.3）；
+            // 撤销恢复走 insertConversation，关联会在那里重建
+            messageFileRefDAO.deleteByConversation(conversationId)
             // message_node 会通过 CASCADE 自动删除
             conversationDAO.delete(
                 conversationToConversationEntity(conversation)

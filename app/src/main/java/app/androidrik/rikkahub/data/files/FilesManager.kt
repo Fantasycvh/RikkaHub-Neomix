@@ -198,6 +198,9 @@ class FilesManager(
     fun getFile(entity: ManagedFileEntity): File =
         File(context.filesDir, entity.relativePath)
 
+    /** filesDir 根（文件→会话关联的 relativePath 归一基准，FileConversationScanner 口径）。 */
+    fun getFilesDir(): File = context.filesDir
+
     /**
      * 保存一张**头像**图片（助手头像 / 用户头像），落 [FileFolders.AVATARS]。
      *

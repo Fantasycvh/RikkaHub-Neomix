@@ -40,6 +40,10 @@ import app.androidrik.rikkahub.data.sync.DowngradeQuarantineStore
 import app.androidrik.rikkahub.data.sync.PendingRestoreStore
 import app.androidrik.rikkahub.data.sync.repo.FtsRebuildPending
 import app.androidrik.rikkahub.data.db.fts.SearchIndexRebuildSignal
+import app.androidrik.rikkahub.data.db.dao.MessageFileRefDAO
+import app.androidrik.rikkahub.data.db.entity.MessageFileRefEntity
+import app.androidrik.rikkahub.data.files.FileConversationScanner
+import app.androidrik.rikkahub.data.files.FileRefBackfillPending
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.ui.pages.backup.components.RestoreRestartSignal
 import java.util.concurrent.atomic.AtomicBoolean
@@ -282,6 +286,9 @@ class RikkaHubApp : Application() {
         _startupState.value = StartupState.Ready
         // P2：逻辑对象快照恢复后 FTS 需要按当前数据重建（不阻塞 Ready，失败保留标记下轮重试）。
         rebuildSearchIndexIfPending()
+        // 文件→会话关联表存量回填（design-file-conversation-link.md §4.4）：不阻塞 Ready，
+        // 失败不置 done 标记，冷启动自然重试。
+        backfillFileRefsIfPending()
         // 原 onCreate 里 startKoin 之后的所有步骤原样后移（依赖 Koin 或 Ready 语义）
         withContext(Dispatchers.Main) { postReadyInit() }
     }
@@ -316,6 +323,34 @@ class RikkaHubApp : Application() {
         SearchIndexRebuildSignal.reset()
         rebuildSearchIndexIfPending()
         return true
+    }
+
+    /**
+     * message_file_ref 存量回填：首次进入 v80（或恢复换库后标记被清）时跑一次。
+     * 扫描器全量重写灌库（单事务幂等），成功置 done 标记；失败静默，冷启动重试。
+     */
+    private fun backfillFileRefsIfPending() {
+        val filesDir = filesDir
+        if (FileRefBackfillPending.isDone(filesDir)) return
+        get<AppScope>().launch(Dispatchers.IO) {
+            runCatching {
+                val scanner = get<FileConversationScanner>()
+                val refDAO = get<MessageFileRefDAO>()
+                val now = System.currentTimeMillis()
+                val refs = scanner.scan().flatMap { (path, ids) ->
+                    ids.map { MessageFileRefEntity(conversationId = it, relativePath = path, firstSeenAt = now) }
+                }
+                refDAO.deleteAll()
+                refDAO.insertAll(refs)
+            }
+                .onSuccess {
+                    FileRefBackfillPending.markDone(filesDir)
+                    Log.i(TAG, "file refs backfilled")
+                }
+                .onFailure {
+                    Log.e(TAG, "file refs backfill failed", it)
+                }
+        }
     }
 
     /**

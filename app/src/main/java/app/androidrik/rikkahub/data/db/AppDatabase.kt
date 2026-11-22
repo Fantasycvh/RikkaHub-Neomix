@@ -24,6 +24,7 @@ import app.androidrik.rikkahub.data.db.dao.MemoryFileVersionDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryFileProgressDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryHistoryDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryTrashDAO
+import app.androidrik.rikkahub.data.db.dao.MessageFileRefDAO
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
 import app.androidrik.rikkahub.data.db.dao.ScheduledTaskDAO
 import app.androidrik.rikkahub.data.db.dao.TranslationHistoryDAO
@@ -51,6 +52,7 @@ import app.androidrik.rikkahub.data.db.entity.MemoryHistoryEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryTrashEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryProposalEntity
 import app.androidrik.rikkahub.data.db.entity.MemoryReviewCursorEntity
+import app.androidrik.rikkahub.data.db.entity.MessageFileRefEntity
 import app.androidrik.rikkahub.data.db.entity.MessageNodeEntity
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskRunEntity
@@ -95,8 +97,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         TranslationHistoryEntity::class,
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
+        MessageFileRefEntity::class,
     ],
-    version = 79,
+    version = 80,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -240,6 +243,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 两列 NOT NULL + DEFAULT 0 ⇒ 免 spec；旧行全 0 = 无序号语义，UI 回退不带头文案。
         // seq 接力只看最新行（表经 trim 只留一行），无需回填。
         AutoMigration(from = 78, to = 79),
+        // 79→80：文件→会话关联表 message_file_ref（design-file-conversation-link.md Phase B，
+        // 纯新增表、无外键无回填——存量由运行时回填 Job 灌入，理由见实体 kdoc）。
+        AutoMigration(from = 79, to = 80),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -258,6 +264,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun genMediaDao(): GenMediaDAO
 
     abstract fun messageNodeDao(): MessageNodeDAO
+
+    abstract fun messageFileRefDao(): MessageFileRefDAO
 
     abstract fun managedFileDao(): ManagedFileDAO
 
@@ -300,7 +308,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 79
+        const val SCHEMA_VERSION = 80
     }
 }
 

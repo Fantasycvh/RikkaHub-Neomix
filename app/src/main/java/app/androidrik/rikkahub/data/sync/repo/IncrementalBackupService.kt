@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.data.DataOperationLock
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.files.FileFolders
+import app.androidrik.rikkahub.data.files.FileRefBackfillPending
 import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
 import app.androidrik.rikkahub.data.sync.RestoreMode
 import app.androidrik.rikkahub.data.sync.BackupItem
@@ -290,6 +291,8 @@ class IncrementalBackupService(
                     .restoreFromBackupFile(zip, snapshot.items, RestoreMode.OVERWRITE, scopeOverride = null, onProgress = onProgress)
                 // 逻辑对象快照不含 FTS；换库后由启动期按当前数据重建搜索索引。
                 if (snapshot.dbObjects.isNotEmpty()) FtsRebuildPending.mark(context.filesDir)
+                // 快照可能来自旧版本（不含 message_file_ref）：清回填完成标记，下次启动重灌。
+                FileRefBackfillPending.clear(context.filesDir)
                 if (warnings.isNotEmpty()) Log.i("IncrementalBackup", "restore cross-schema warnings=${warnings.size}")
                 outcome
             } finally { zip.parentFile?.deleteRecursively() }

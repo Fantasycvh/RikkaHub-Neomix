@@ -89,7 +89,6 @@ fun SettingFilesPage(filesManager: FilesManager = koinInject(), vm: SettingFiles
     val selectedFiles = files.filter { it.id in selectedIds }
     val enabled = !busy && !picking
 
-    LaunchedEffect(Unit) { vm.ensureScanned() }
 
     fun clearSelection() { selectedIds = emptySet(); selectionMode = false }
     fun toggle(file: ManagedFileEntity) {

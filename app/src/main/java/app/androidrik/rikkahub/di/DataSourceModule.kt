@@ -196,6 +196,10 @@ val dataSourceModule = module {
     }
 
     single {
+        get<AppDatabase>().messageFileRefDao()
+    }
+
+    single {
         get<AppDatabase>().managedFileDao()
     }
 
