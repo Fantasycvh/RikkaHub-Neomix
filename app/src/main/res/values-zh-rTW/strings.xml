@@ -3405,6 +3405,11 @@
   <string name="conversation_multi_select_title">已選 %1$d 項</string>
   <string name="conversation_multi_select_select_all">全選</string>
   <string name="conversation_multi_select_delete_selected">刪除所選</string>
+  <string name="conversation_multi_select_move_selected">移動</string>
+  <string name="conversation_move_sheet_batch_title">移動 %1$d 條會話到助理</string>
+  <string name="conversation_move_result_moved">已遷移 %1$d 條會話</string>
+  <string name="conversation_move_result_skipped_suffix">，%1$d 條已屬於該助理</string>
+  <string name="conversation_move_result_noop">所選會話已屬於該助理</string>
   <string name="conversation_multi_select_exit">退出多選</string>
   <string name="conversation_multi_select_delete_confirm_title">刪除所選會話？</string>
   <string name="conversation_multi_select_delete_confirm_text">將刪除所選的 %1$d 個會話，此操作無法撤銷。</string>

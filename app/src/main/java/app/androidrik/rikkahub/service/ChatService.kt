@@ -3422,21 +3422,59 @@ class ChatService(
         }
 
     /**
-     * 把会话移动到另一个助手。
+     * 把会话（单条或批量）移动到另一个助手。
      *
-     * `folderId = null`：文件夹是**助手内**分组，换了助手后原文件夹在新助手下不可见，
-     * 不清空会让会话在列表里「消失」。两者在同一原语内一次落地（单列 UPDATE 也一并写 folder_id）。
+     * 文件夹跟随（设计稿 `design-conversation-batch-assistant-migration.md` D1）：文件夹隶属助手，
+     * folderId 不能跨助手字面保留（会话会在新助手抽屉里不可见），也不能一刀切清空（丢组织）。
+     * 解析出目标 folderId 后走 [moveConversationToFolder] 落库——它同时同步活跃 session 的
+     * 内存 folderId，防止后续整对象保存把旧值覆盖回去。
+     *
+     * 逐条走 [updateConversationMetadata] 原语（活跃 session 在途内容不丢），不打包整批事务；
+     * 已属于目标助手的会话整条跳过（D3）；冻结锚点照旧清空（D4，跨助手串味防回归）。
      */
-    suspend fun moveConversationToAssistant(conversationId: Uuid, assistantId: Uuid) {
-        updateConversationMetadata(
-            conversationId = conversationId,
-            // 换助手 ⇒ 锚点来源换了人：一并清空冻结快照，下一次生成按**新助手**的锚点重新冻结。
-            // 不清空就会把上一个助手的锚点继续当成本会话的「既定事实」（跨助手串味）。
-            update = { it.copy(assistantId = assistantId, folderId = null, frozenAnchors = null, frozenFileAnchors = null) },
-            persist = { conversationRepo.updateConversationAssistant(conversationId, it.assistantId) },
+    suspend fun moveConversationsToAssistant(
+        ids: Collection<Uuid>,
+        targetAssistantId: Uuid,
+    ): AssistantMoveResult {
+        val settings = settingsStore.settingsFlow.first()
+        // 迁移写库必须显式失败：getAssistantById 的「回落首个助手」在这里等于把会话迁错人
+        if (settings.assistants.none { it.id == targetAssistantId }) {
+            return AssistantMoveResult(moved = 0, skipped = ids.size)
+        }
+        val resolver = FolderFollowResolver(
+            loadSourceFolder = { folderRepository.getFolderById(it) },
+            findTargetByName = { name ->
+                folderRepository.getFoldersOfAssistant(targetAssistantId)
+                    .first()
+                    .find { it.name == name }?.id
+            },
+            createTargetFolder = { name -> folderRepository.createFolder(targetAssistantId, name).id },
         )
-        // 冻结快照单独清（同一原语：内存态上面已置 null，库侧单列补齐）
-        conversationRepo.updateConversationFrozenAnchors(conversationId, null)
+        var moved = 0
+        var skipped = 0
+        for (id in ids) {
+            val current = conversationRepo.getConversationById(id)
+            if (current == null || current.assistantId == targetAssistantId) {
+                skipped++
+                continue
+            }
+            updateConversationMetadata(
+                conversationId = id,
+                // 换助手 ⇒ 锚点来源换了人：一并清空冻结快照，下一次生成按**新助手**的锚点重新冻结。
+                // 不清空就会把上一个助手的锚点继续当成本会话的「既定事实」（跨助手串味）。
+                update = { it.copy(assistantId = targetAssistantId, frozenAnchors = null, frozenFileAnchors = null) },
+                persist = { conversationRepo.updateConversationAssistant(id, it.assistantId) },
+            )
+            // 冻结快照单独清（同一原语：内存态上面已置 null，库侧单列补齐）
+            conversationRepo.updateConversationFrozenAnchors(id, null)
+            moveConversationToFolder(id, resolver.resolve(current.folderId))
+            moved++
+        }
+        return AssistantMoveResult(moved = moved, skipped = skipped)
+    }
+
+    suspend fun moveConversationToAssistant(conversationId: Uuid, assistantId: Uuid) {
+        moveConversationsToAssistant(listOf(conversationId), assistantId)
     }
 
     /**

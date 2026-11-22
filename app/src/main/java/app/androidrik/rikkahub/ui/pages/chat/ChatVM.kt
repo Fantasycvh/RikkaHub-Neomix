@@ -46,6 +46,7 @@ import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.data.model.NodeFavoriteTarget
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FavoriteRepository
+import app.androidrik.rikkahub.service.AssistantMoveResult
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.service.InterruptReason
@@ -716,14 +717,24 @@ class ChatVM(
         chatService.freezeAnchorsForConversation(conversation.id, conversation.assistantId)
 
     fun moveConversationToAssistant(conversation: Conversation, targetAssistantId: Uuid) {
+        moveConversationsToAssistant(listOf(conversation.id), targetAssistantId) { }
+    }
+
+    /** 批量迁移（多选入口）。当前打开的会话在名单里时联动切换当前助手；结果回调给 toast。 */
+    fun moveConversationsToAssistant(
+        ids: List<Uuid>,
+        targetAssistantId: Uuid,
+        onResult: (AssistantMoveResult) -> Unit,
+    ) {
         viewModelScope.launch {
             // 走 ChatService 的统一元数据原语：改的是**内存最新态** + 只写单列。
             // 旧写法「读 DB 整对象 → 改字段 → saveConversation」会用旧快照覆盖活跃 session，
             // 生成中途切助手时已在流式接收的内容会被换成 DB 里的旧 messageNodes。
-            chatService.moveConversationToAssistant(conversation.id, targetAssistantId)
-            if (conversation.id == _conversationId) {
+            val result = chatService.moveConversationsToAssistant(ids, targetAssistantId)
+            if (_conversationId in ids) {
                 settingsStore.updateAssistant(targetAssistantId)
             }
+            onResult(result)
         }
     }
 

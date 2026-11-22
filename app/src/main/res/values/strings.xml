@@ -3423,5 +3423,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="conversation_multi_select_delete_confirm_title">Delete selected conversations?</string>
   <string name="conversation_multi_select_delete_confirm_text">The %1$d selected conversations will be deleted and cannot be undone.</string>
   <string name="conversation_multi_select_deleted_toast">Deleted %1$d conversations</string>
+  <string name="conversation_multi_select_move_selected">Move</string>
+  <string name="conversation_move_sheet_batch_title">Move %1$d conversations to assistant</string>
+  <string name="conversation_move_result_moved">Moved %1$d conversations</string>
+  <string name="conversation_move_result_skipped_suffix"> (%1$d already belong to this assistant)</string>
+  <string name="conversation_move_result_noop">Selected conversations already belong to this assistant</string>
 </resources>
 

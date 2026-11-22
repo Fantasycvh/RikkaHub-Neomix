@@ -3419,6 +3419,11 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="conversation_multi_select_title">已选 %1$d 项</string>
   <string name="conversation_multi_select_select_all">全选</string>
   <string name="conversation_multi_select_delete_selected">删除所选</string>
+  <string name="conversation_multi_select_move_selected">移动</string>
+  <string name="conversation_move_sheet_batch_title">移动 %1$d 条会话到助手</string>
+  <string name="conversation_move_result_moved">已迁移 %1$d 条会话</string>
+  <string name="conversation_move_result_skipped_suffix">，%1$d 条已属于该助手</string>
+  <string name="conversation_move_result_noop">所选会话已属于该助手</string>
   <string name="conversation_multi_select_exit">退出多选</string>
   <string name="conversation_multi_select_delete_confirm_title">删除所选会话？</string>
   <string name="conversation_multi_select_delete_confirm_text">将删除所选的 %1$d 个会话，此操作无法撤销。</string>

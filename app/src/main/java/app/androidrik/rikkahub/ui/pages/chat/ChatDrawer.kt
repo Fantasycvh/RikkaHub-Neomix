@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -219,6 +221,10 @@ fun ChatDrawerContent(
     // 移动对话状态
     var showMoveToAssistantSheet by remember { mutableStateOf(false) }
     var conversationToMove by remember { mutableStateOf<Conversation?>(null) }
+    // 批量迁移（多选操作条入口）：batchMoveIds 非空 = 批量模式；
+    // batchMoveAssistantIds 用于「所选会话全部已属于某助手」时让迁移静默跳过并 toast 说明
+    var batchMoveIds by remember { mutableStateOf<List<Uuid>>(emptyList()) }
+    var batchMoveAssistantIds by remember { mutableStateOf<Set<Uuid>>(emptySet()) }
     val bottomSheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
 
     // 抽屉面板：当前助手绑定工作区时提供「会话 / 文件」切换（文件段 = 工作区文件浏览）
@@ -555,7 +561,7 @@ fun ChatDrawerContent(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 2.dp),
+                                .padding(horizontal = 8.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             IconButton(onClick = { exitSelectionMode() }) {
@@ -564,31 +570,58 @@ fun ChatDrawerContent(
                                     contentDescription = stringResource(R.string.conversation_multi_select_exit)
                                 )
                             }
+                            // 计数必须单行：三个动作按钮收紧后它才拿得到足够宽度，
+                            // 放开软换行会被挤成逐字竖排（真机 2026-11-22 踩过）
                             Text(
                                 text = stringResource(R.string.conversation_multi_select_title, selectedIds.size),
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = {
-                                val ids = (0 until conversations.itemCount).mapNotNull { i ->
-                                    (conversations[i] as? ConversationListItem)?.let { item ->
-                                        when (item) {
-                                            is ConversationListItem.Item -> item.conversation.id.toString()
-                                            else -> null
+                            TextButton(
+                                onClick = {
+                                    val ids = (0 until conversations.itemCount).mapNotNull { i ->
+                                        (conversations[i] as? ConversationListItem)?.let { item ->
+                                            when (item) {
+                                                is ConversationListItem.Item -> item.conversation.id.toString()
+                                                else -> null
+                                            }
                                         }
                                     }
-                                }
-                                selectedIds.clear()
-                                selectedIds.addAll(ids)
-                            }) {
+                                    selectedIds.clear()
+                                    selectedIds.addAll(ids)
+                                },
+                                contentPadding = PaddingValues(horizontal = 4.dp),
+                                modifier = Modifier.defaultMinSize(minWidth = 36.dp),
+                            ) {
                                 Text(stringResource(R.string.conversation_multi_select_select_all))
+                            }
+                            TextButton(
+                                onClick = {
+                                    // 与「全选」同一快照口径：多选只会勾到快照里可见的条目
+                                    val selected = (0 until conversations.itemCount).mapNotNull { i ->
+                                        (conversations[i] as? ConversationListItem.Item)?.conversation
+                                    }.filter { it.id.toString() in selectedIds }
+                                    batchMoveIds = selected.map { it.id }
+                                    batchMoveAssistantIds = selected.map { it.assistantId }.toSet()
+                                    showMoveToAssistantSheet = true
+                                },
+                                enabled = selectedIds.isNotEmpty(),
+                                contentPadding = PaddingValues(horizontal = 4.dp),
+                                modifier = Modifier.defaultMinSize(minWidth = 36.dp),
+                            ) {
+                                Text(stringResource(R.string.conversation_multi_select_move_selected))
                             }
                             TextButton(
                                 onClick = { showBatchDeleteDialog = true },
                                 enabled = selectedIds.isNotEmpty(),
+                                contentPadding = PaddingValues(horizontal = 4.dp),
+                                modifier = Modifier.defaultMinSize(minWidth = 36.dp),
                             ) {
                                 Text(
-                                    text = stringResource(R.string.conversation_multi_select_delete_selected),
+                                    // 用短文案「删除」：操作条宽度挤不下「删除所选」，计数会被省略号吃掉
+                                    text = stringResource(R.string.chat_page_delete),
                                     color = MaterialTheme.colorScheme.error
                                 )
                             }
@@ -1021,12 +1054,15 @@ fun ChatDrawerContent(
         )
     }
 
-    // 移动到助手 Bottom Sheet
+    // 移动到助手 Bottom Sheet（单会话长按入口 + 多选批量入口共用）
     if (showMoveToAssistantSheet) {
+        val isBatchMove = batchMoveIds.isNotEmpty()
         ModalBottomSheet(
             onDismissRequest = {
                 showMoveToAssistantSheet = false
                 conversationToMove = null
+                batchMoveIds = emptyList()
+                batchMoveAssistantIds = emptySet()
             },
             sheetState = bottomSheetState
         ) {
@@ -1038,7 +1074,11 @@ fun ChatDrawerContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = stringResource(R.string.chat_page_move_to_assistant),
+                    text = if (isBatchMove) {
+                        stringResource(R.string.conversation_move_sheet_batch_title, batchMoveIds.size)
+                    } else {
+                        stringResource(R.string.chat_page_move_to_assistant)
+                    },
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
@@ -1049,14 +1089,45 @@ fun ChatDrawerContent(
                     items(settings.assistants) { assistant ->
                         AssistantItem(
                             assistant = assistant,
-                            isCurrentAssistant = assistant.id == conversationToMove?.assistantId,
+                            isCurrentAssistant = if (isBatchMove) {
+                                batchMoveAssistantIds.all { it == assistant.id }
+                            } else {
+                                assistant.id == conversationToMove?.assistantId
+                            },
                             onClick = {
-                                conversationToMove?.let { conversation ->
-                                    vm.moveConversationToAssistant(conversation, assistant.id)
+                                if (isBatchMove) {
+                                    vm.moveConversationsToAssistant(batchMoveIds, assistant.id) { result ->
+                                        // 已属于目标助手的会话由 service 跳过（D3），这里只汇报口径
+                                        val message = when {
+                                            result.moved == 0 && result.skipped > 0 ->
+                                                resources.getString(R.string.conversation_move_result_noop)
+                                            else -> buildString {
+                                                append(resources.getString(R.string.conversation_move_result_moved, result.moved))
+                                                if (result.skipped > 0) {
+                                                    append(resources.getString(R.string.conversation_move_result_skipped_suffix, result.skipped))
+                                                }
+                                            }
+                                        }
+                                        toaster.show(message)
+                                    }
+                                    exitSelectionMode()
                                     scope.launch {
                                         bottomSheetState.hide()
                                         showMoveToAssistantSheet = false
-                                        conversationToMove = null
+                                        batchMoveIds = emptyList()
+                                        batchMoveAssistantIds = emptySet()
+                                        conversations.refresh()
+                                    }
+                                } else {
+                                    conversationToMove?.let { conversation ->
+                                        vm.moveConversationToAssistant(conversation, assistant.id)
+                                        scope.launch {
+                                            bottomSheetState.hide()
+                                            showMoveToAssistantSheet = false
+                                            conversationToMove = null
+                                            // 文件夹跟随可能改变会话所在分组（未归档 ↔ 文件夹）
+                                            conversations.refresh()
+                                        }
                                     }
                                 }
                             }

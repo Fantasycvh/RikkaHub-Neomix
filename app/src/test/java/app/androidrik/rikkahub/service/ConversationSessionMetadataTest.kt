@@ -68,19 +68,21 @@ class ConversationSessionMetadataTest {
     }
 
     @Test
-    fun `moving assistant keeps streamed nodes and clears folder`() = runBlocking {
+    fun `moving assistant keeps streamed nodes and clears frozen anchors`() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val session = newSession(scope, generatingConversation(Uuid.random()))
         val nodesBefore = session.state.value.messageNodes
         val target = Uuid.random()
 
+        // 换助手的 update 语义（设计稿 D2/D4）：清冻结锚点，**不动 folderId**——
+        // 文件夹跟随由 FolderFollowResolver 解析出目标后走 moveConversationToFolder 单独落
         session.updateMetadata(
-            update = { it.copy(assistantId = target, folderId = null) },
+            update = { it.copy(assistantId = target, frozenAnchors = null, frozenFileAnchors = null) },
             persist = { },
         )
 
         assertEquals(target, session.state.value.assistantId)
-        assertNull("换助手要清空文件夹归属（否则会话在新助手下不可见）", session.state.value.folderId)
+        assertNull("换助手要清空冻结锚点（否则跨助手串味）", session.state.value.frozenAnchors)
         // 在途内容必须原样保留 —— 这是旧写法会丢的东西
         assertEquals(nodesBefore, session.state.value.messageNodes)
     }
