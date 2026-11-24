@@ -1,16 +1,16 @@
 # 皮肤第三批设计稿：浅蓝 / Premium Blue（含图标色块与功能快捷 Banner）
 
-> 状态：**M1–M3 已接入（2026-11-24），M4 待验收**
+> 状态：**M1–M3 已接入（2026-11-24），M4 待验收；工具链升级已独立完成，SaltUI 仅形成隔离 spike 方案**
 > 日期：2026-11-24
 > 配色：**低饱和浅蓝系**（按用户要求由初版深蓝紫修订）
 > 视觉稿：[`原型/RikkaHub-UI第三批-高级感视觉对比稿.html`](../../../原型/RikkaHub-UI第三批-高级感视觉对比稿.html)
-> 上游：[UI 改造调研](design-ui-overhaul-research.md)、[第三轮几何/动效皮肤](design-ui-round3-skins-geometry-motion.md)、[第二批工程感/iOS 风](design-skins-batch2-engineering-ios.md)
+> 上游：[UI 改造调研](design-ui-overhaul-research.md)、[第三轮几何/动效皮肤](design-ui-round3-skins-geometry-motion.md)、[第二批工程感/iOS 风](design-skins-batch2-engineering-ios.md)、[SaltUI 隔离 spike 方案](design-saltui-spike.md)
 > 约束沿用 AGENTS.md：皮肤 token 契约、IME 宿主规范、`supportingContent` 单子节点坑、长文本增量渲染、AMOLED 与低版本效果回落。
 > 两稿合并后的实施准备见 [§13](#13-结合-ui-改造调研的实施准备)。
 
 ---
 
-## 0. 本批提案（尚未拍板）
+## 0. 本批已拍板项（M1–M3 已落地）
 
 | # | 拍板点 | 本稿建议 |
 |---|--------|----------|
@@ -21,7 +21,7 @@
 | 5 | 分组默认形态 | `FLAT` 逐行卡片，贴近截图；编辑器仍可切现有 `INSET` 整组分隔 |
 | 6 | 聊天域 | 新增 `builtin.chat:premium-dark` 并绑定；用户解绑后继续使用现有独立聊天方案 |
 | 7 | 输入栏 | 本批**不改输入栏宿主拓扑**；视觉稿里的胶囊输入栏仅作气质参考，pill 化另案评估 |
-| 8 | 外部组件库 | SaltUI / miuix / compose-cupertino 均纳入综合参考；本批默认不新增依赖，选择性能力先过 §2.1 准入门槛 |
+| 8 | 外部组件库 | SaltUI / miuix / compose-cupertino 均纳入综合参考；本批不新增依赖。工具链升级已独立完成，SaltUI 的 debug-only spike 见 [design-saltui-spike.md](design-saltui-spike.md)，生产采用仍需另行拍板 |
 
 ---
 
@@ -38,7 +38,7 @@
 
 ### 1.2 非目标
 
-- 本批不直接引入 SaltUI / miuix / compose-cupertino，也不叠加第二套全局主题；但允许按 §2.1 综合评估，后续若引入只做隔离 spike，不改默认皮肤与主路径。
+- 本批不直接引入 SaltUI / miuix / compose-cupertino，也不叠加第二套全局主题；SaltUI 仅已形成 debug-only spike 提案，是否实施与是否生产采用均待批准，见 [design-saltui-spike.md](design-saltui-spike.md)。
 - 不做付费墙、不制造「免费版功能受限」语义；Banner 只快捷进入现有功能页。
 - 不因 Banner 新增「高级功能」信息架构分组，不复制设置入口；默认只承载一个主行动。
 - 本批不把记忆、MCP、搜索、备份、工作区等全部功能塞进 Banner；多入口总览会增加皮肤组件与页面状态耦合。
@@ -52,7 +52,7 @@
 
 | 能力 | 当前实现 | 本批处理 |
 |------|----------|----------|
-| 内置皮肤 | `AppSkinRegistry.kt:80-132` 已有 default / compact / reading / squircle / paper / engineering / ios，共 7 个 | 追加第 8 个 `builtin.premium-dark` |
+| 内置皮肤 | `AppSkinRegistry.kt:81` 已包含 default / compact / reading / squircle / paper / engineering / ios / premium-dark，共 8 个 | 已追加第 8 个 `builtin.premium-dark`（浅蓝） |
 | 皮肤组 | `AppSkin.kt:8-28` 已有 typography / shapes / spacing / motion / palette / panels / groups 等 | 末尾新增 `hero`，不重排既有字段 |
 | 分组形态 | `AppSkinGroups.kt:7-45` 已有 `FLAT / OUTLINED / INSET` 与分隔线 | 复用；不新增 enum |
 | 面板材质 | `AppSkinPanels.kt:8-59` 已有通用 panel、材质与 5 个 slot | Hero 有深浅色双渐变与装饰语义，**不塞进通用 panel slot** |
@@ -67,15 +67,15 @@
 
 ### 2.1 外部组件库综合评估（2026-11-24）
 
-**结论**：三家都值得参考，但当前没有一家适合作为 Premium Blue 的直接依赖。SaltUI 与「分组元项 + 开关形态」最接近；miuix 的偏好密度、连续曲率与渐进模糊最值得借鉴；compose-cupertino 只适合补充 iOS 控件细节。默认路径仍是用 AppSkin / CardGroup / Hero 吸收形态，外部依赖若确有价值，必须另立隔离 spike 并通过下门槛。
+**结论**：三家都值得参考，但当前没有一家适合作为 Premium Blue 的直接依赖。SaltUI 与「分组元项 + 开关形态」最接近，且本仓已满足其 3.0.0 公开工具链门槛；miuix 的偏好密度、连续曲率与渐进模糊最值得借鉴；compose-cupertino 只适合补充 iOS 控件细节。默认路径仍是用 AppSkin / CardGroup / Hero 吸收形态，SaltUI 先按 [隔离 spike 方案](design-saltui-spike.md) 验证收益、语义、动效、合规与包体，不进入生产设置页。
 
 #### 2.1.1 版本与工具链兼容
 
-本仓当前基线为 AGP `9.4.0`、Kotlin `2.4.10`、Compose BOM `2026.06.01`、Material3 `1.5.0-rc01`、compileSdk 37、minSdk 26、Java/JVM target 17；`bettertext-text` 另用 Compose BOM `2026.09.00`。因此「库能编译」不等于「能无冲突并入当前依赖图」。
+本仓当前基线为 AGP `9.4.0`、Kotlin `2.4.20`、共享 Compose BOM `2026.09.00`、CMP `1.12.2`、Material3 `1.5.0-rc01`、compileSdk 37、minSdk 26、Java/JVM target 17；`bettertext-text` 已改用同一 catalog BOM，不再维护独立版本。工具链升级已完成并由用户验证，SaltUI 3.0.0 的公开版本门槛已满足，但「能消费依赖」不等于「可进入生产」。
 
 | 库 | 本轮可确认版本 | 工具链 / 主题边界 | 当前结论 |
 |----|----------------|-------------------|----------|
-| **SaltUI** | latest stable `3.0.0`（2026-11-02）；main README 已出现 `3.1.0-alpha01`，alpha 不作为稳定基线 | 3.0.0 文档要求 Kotlin `2.4.20`、Compose/CMP `1.12.2`、AGP `9.1.1`、JDK 21、compileSdk 37；本仓 Kotlin/Compose 低于门槛，AGP/compileSdk 已满足，Java target 17 不等于构建 JDK 21。使用独立 `SaltTheme`；已依赖 haze `2.0.1` | **形态参考优先，不作本批依赖**。若要引入，先解决 Kotlin/Compose 升级与主题适配，且只允许稳定版 |
+| **SaltUI** | latest stable `3.0.0`（2026-11-02）；main README 已出现 `3.1.0-alpha01`，alpha 不作为稳定基线 | 3.0.0 文档要求 Kotlin `2.4.20`、Compose/CMP `1.12.2`、AGP `9.1.1`、JDK 21、compileSdk 37；本仓已满足公开门槛。使用独立 `SaltTheme`；已依赖 haze `2.0.1`，但没有 motion token API，且包含 unstable API、HiddenApiBypass 与 Play 披露边界 | **工具链不再阻塞；debug-only spike 方案待拍板**。具体范围见 [design-saltui-spike.md](design-saltui-spike.md)；生产依赖与页面迁移未批准 |
 | **miuix** | latest release `0.9.4`（2026-09-20），README 明确 experimental；main catalog 基线持续前移 | `MiuixTheme` / `ThemeController` 与 Material3/AppSkin 分离；模块可拆，但 API churn 与实验性风险仍在 | **只借鉴，不直接引入**。现有 squircle/haze/CardGroup 已覆盖大部分能力，等待稳定版与明确缺口后再评估 |
 | **compose-cupertino** | 旧调研记录为 `1.6.1`；本轮 latest release 查询超时，未确认当前最新 stable | README badge 仍标 CMP `1.6.1` / Kotlin `1.9.23`；master catalog 标 Kotlin `2.0.20` / Compose `1.7.0` / AGP `8.6.1`，均明显旧于本仓。核心库不是 Material3，adaptive/decompose 会扩大边界 | **只借鉴 iOS 控件细节，不直接引入**。不引入 `cupertino-decompose` 或默认打包 SF Symbols |
 
@@ -86,20 +86,20 @@
 - `Item` 的标题 / 副文 / tag / 箭头层级，以及整行只拥有一个点击语义的组织方式；
 - `ItemSwitcher` 把交互放在整行、`Switcher` 只负责绘制的语义拆分，避免开关被读屏播报两次；
 - `LabelValue` 的「左侧标签 + 右侧当前值」元项结构；
-- `Switcher` 的 unchecked 圆环到 checked 竖条 morph、`drawWithCache` 与 RTL 处理；
-- `ItemDivider` 的起始缩进和 hairline；`PillButton` 的胶囊几何。
+- `Switcher` 的 unchecked 圆环到 checked 竖条 morph、`drawWithCache` 与 RTL 处理；其 46×26dp 几何与 800/200/300ms 固定时长是生产风险，不是可直接复用的 motion token；
+- `ItemDivider` 的起始缩进和 hairline；`PillButton` 的胶囊几何，但该入口标注 `@UnstableSaltUiApi`，只作观察。
 
 映射到本仓：
 
 | SaltUI 能力 | 本仓落点 | 本批处理 |
 |------------|----------|----------|
-| `Item` / `ItemLabelValueContainer` | `CardGroup.item` + `trailingValue` / `CardGroupValueChip` | 复用现有 DSL，不引第二套偏好行 |
-| `ItemSwitcher` / `Switcher` | 现有 `Switch` + `Role.Switch` + `LocalMotionTokens` | 保留单行单语义；若后续做 morph，只做本地绘制组件，时长进 motion token |
-| `LabelValue` | 设置页枚举 / 跳转型值 chip | 不照搬固定 `96.dp` 标签宽，必须适应中文、英文、大字体与 RTL |
+| `Item` | `CardGroup.item` + M3 `ListItem` | 复用现有 DSL，不引第二套偏好行；SaltUI `Item` 的点击 role 需在 spike 中核验 |
+| `ItemSwitcher` / `Switcher` | 现有 `Switch` + `Role.Switch` + `LocalMotionTokens` | 保留单行单语义；SaltUI 固定时长不接入 AppSkin motion，若本地做 morph 则时长进 token |
+| `LabelValue` | 设置页枚举 / 跳转型值 chip | 入口为 `@UnstableSaltUiApi`，且必须适应中文、英文、长值、大字体与 RTL |
 | `ItemDivider` | `AppSkinGroups.divider` / `dividerInsetDp` / `dividerWidthDp` | 已有契约，直接复用 |
-| `PillButton` / `Sheet` / Navigation 3 | 现有 M3 按钮、`ModalBottomSheet`、Nav3 | 本批不替换宿主与导航 |
+| `PillButton` / `Sheet` / Navigation 3 | 现有 M3 按钮、`ModalBottomSheet`、Nav3 | `PillButton` 为 unstable；本批不替换按钮、Sheet 宿主与导航 |
 
-直接依赖还需审计 SaltUI 使用的 `AndroidHiddenApiBypass` 及 Google Play dependenciesInfo reporting；这不是皮肤层可以忽略的发布边界。
+直接依赖还需审计 SaltUI 使用的 `AndroidHiddenApiBypass` 及 Google Play dependenciesInfo reporting；这不是皮肤层可以忽略的发布边界。debug-only 验证范围、主题投影与生产一票否决项见 [design-saltui-spike.md](design-saltui-spike.md)。
 
 #### 2.1.3 miuix：参考 HyperOS 气质，不重复建设
 
@@ -127,44 +127,36 @@
 后续任何外部库进入 Gradle 前，必须同时满足：
 
 1. **能力缺口**：本仓没有等价实现，且能说明用户可见收益；不能只为「像某个库」而引入。
-2. **稳定版本**：不使用 alpha / experimental 作为生产基线；SaltUI 必须先解决 Kotlin/Compose 门槛，miuix 必须先退出实验性风险区间。
+2. **稳定版本**：不使用 alpha / experimental 作为生产基线；SaltUI 3.0.0 的工具链门槛已满足，但仍需通过 spike 核验 unstable API、固定动效与合规；miuix 必须先退出实验性风险区间。
 3. **主题边界**：业务页仍只读 AppSkin/Material3。库主题如不可避免，只能收口在一个适配器内，把颜色、字体、形状、动效映射进来，不允许页面同时读取两套主题权威。
 4. **语义与无障碍**：整行/开关只保留一个交互语义；值 chip 不重复播报；RTL、大字体、读屏、系统移除动画全部通过。
 5. **性能与降级**：给出 APK 增量、R8、冷启动、长列表滚动数据；AMOLED、深浅色、SDK 31/33 均有确定回落，不新增无预算 shader。
 6. **发布与合规**：审计许可证、隐藏 API、依赖披露和图标版权；SF Symbols 不作为普通 Apache 图标资产打包。
 7. **可移除性**：限定页面、限定组件、独立提交/模块，失败时能完整回滚，不进入默认皮肤、聊天管线或输入栏宿主。
-8. **用户批准**：本稿不授权添加依赖、升级 Kotlin/Compose 或修改 AGP；实际引入需另行拍板。
+8. **用户批准**：本次 Kotlin/Compose 升级已单独完成；本稿不授权添加 SaltUI 或其他依赖，也不授权修改 AGP，实际引入需另行拍板。
 
-#### 2.1.6 Kotlin / Compose 升级影响评估（2026-11-24）
+#### 2.1.6 Kotlin / Compose 升级结果与影响（2026-11-24）
 
-**结论**：若只为借鉴 SaltUI 形态，不需要升级；若批准直接依赖 SaltUI 3.0.0，Kotlin/Compose 升级是**中等风险、影响面广但通常可控**的全工程变更，必须独立于皮肤实现提交。当前无需同步修改 AGP、compileSdk、minSdk 或 CI JDK。
+**结论**：Kotlin/Compose 升级已作为独立前置变更完成，并由用户确认验证结果；本 spike 不重复执行。AGP、compileSdk、minSdk、Gradle Wrapper 与 CI JDK 保持现状。工具链满足 SaltUI 3.0.0 的公开门槛，但 SaltUI 的 debug 依赖与生产采用仍未获批。
 
-| 项目 | 当前基线 | SaltUI 3.0.0 门槛 / 目标 | 影响 |
-|------|----------|------------------------|------|
-| Kotlin | `2.4.10`（[libs.versions.toml:5](../../../gradle/libs.versions.toml#L5)） | 至少 `2.4.20` | **需要升级**；Compose 编译器插件跟随 Kotlin，KSP/Room、序列化插件和语言/API 兼容性需重验 |
-| Compose | app BOM `2026.06.01`；BetterText 模块 BOM `2026.09.00`（[bettertext-text/build.gradle.kts:7](../../../bettertext-text/build.gradle.kts#L7)） | 文档标注 Compose/CMP `1.12.2` | **需要对齐实际解析版本**；不能只改 BOM 名称，要确认 runtime/UI/foundation 最终版本一致 |
-| AGP | `9.4.0`（[libs.versions.toml:2](../../../gradle/libs.versions.toml#L2)） | `9.1.1` | 当前已更高，**无需为此降级或升级** |
-| compileSdk / minSdk | 37 / 26（[app/build.gradle.kts:17-33](../../../app/build.gradle.kts#L17)） | 37 / 23（navigation 24） | 当前已满足，**无需改动** |
-| JDK / Java target | CI 已用 JDK 21（[release.yml:40](../../../.github/workflows/release.yml#L40)）；app Java/JVM target 17（[app/build.gradle.kts:111-113](../../../app/build.gradle.kts#L111)） | 文档要求构建 JDK 21 | CI 已满足；本地 JDK 需确认，**Java/JVM target 不一定需要改成 21** |
-| Gradle | Wrapper `9.6.0`（[gradle-wrapper.properties:4](../../../gradle/wrapper/gradle-wrapper.properties#L4)） | 随工具链验证 | 当前先保留；若插件矩阵不兼容，再单独评审 |
+| 项目 | 当前值 | SaltUI 3.0.0 门槛 / 目标 | 结果 |
+|------|--------|------------------------|------|
+| Kotlin | `2.4.20`（[libs.versions.toml:5](../../../gradle/libs.versions.toml#L5)） | 至少 `2.4.20` | 已对齐；Compose compiler 插件随 Kotlin 版本，KSP/Room、序列化插件与语言/API 兼容性属于本次升级的回归面 |
+| Compose | 共享 BOM `2026.09.00`；CMP `1.12.2`（[libs.versions.toml:16-17](../../../gradle/libs.versions.toml#L16)、[app/build.gradle.kts:196-204](../../../app/build.gradle.kts#L196)、[bettertext-text/build.gradle.kts:6-9](../../../bettertext-text/build.gradle.kts#L6)） | 文档标注 CMP `1.12.2` | BOM 已收敛，CMP runtime/foundation/UI 已约束；AndroidX Compose runtime 解析为 `1.12.1`，与 CMP `1.12.2` 属不同坐标体系 |
+| AGP | `9.4.0`（[libs.versions.toml:2](../../../gradle/libs.versions.toml#L2)） | `9.1.1` | 当前已更高，无需为此降级或升级 |
+| compileSdk / minSdk | 37 / 26（[app/build.gradle.kts:17-33](../../../app/build.gradle.kts#L17)） | 37 / 23（navigation 24） | 已满足，无需改动 |
+| JDK / Java target | CI 已用 JDK 21（[release.yml:40](../../../.github/workflows/release.yml#L40)）；app Java/JVM target 17（[app/build.gradle.kts:111-113](../../../app/build.gradle.kts#L111)） | 文档要求构建 JDK 21 | 构建 JDK 与编译 target 分开判断；target 保持 17 |
+| Gradle | Wrapper `9.6.0`（[gradle-wrapper.properties:4](../../../gradle/wrapper/gradle-wrapper.properties#L4)） | 随工具链验证 | 保持现状 |
 
-主要影响：
+评估过的主要影响与当前处理：
 
-1. **依赖图与插件链**：Compose compiler、KSP/Room、kotlinx.serialization 与 Gradle/AGP 需要重新确认兼容矩阵；Material3 `1.5.0-rc01`、haze `2.0.1`、Navigation3、adaptive 等可能被连带解析或发生冲突。
-2. **双 BOM 收敛**：app 与 `bettertext-text` 必须解析到一致的 Compose runtime/UI/foundation；保留两套不一致版本会把问题推迟到运行时或发布构建。
-3. **Compose 运行回归**：重点覆盖文本测量、焦点与 IME、Lazy 列表、Canvas/Shape、触摸和绘制时序；本仓高风险点是 ChatInput 中文输入法、长文本增量渲染、连续曲率和玻璃效果。
-4. **发布与性能重验**：Clean build、全量单测、R8/APK/AAB、启动时间、长列表滚动与 Baseline Profile 都需要重新确认；SaltUI 的隐藏 API 和 dependenciesInfo reporting 另行审计。
-5. **变更隔离**：工具链 spike 与 Premium Blue 皮肤提交分开，失败时只回滚工具链，不牵连 AppSkin、聊天外观或输入栏。
+1. **依赖图与插件链**：Compose compiler、KSP/Room、kotlinx.serialization 与 Gradle/AGP 的兼容矩阵是主要风险；Material3 `1.5.0-rc01`、haze `2.0.1`、Navigation3、adaptive 的最终解析需保持可追踪。
+2. **BOM 收敛**：app 与 `bettertext-text` 已改用同一 catalog BOM；AndroidX 与 CMP 的版本分开记录，不把 `1.12.2` 误写成 AndroidX runtime 版本。
+3. **Compose 运行回归**：文本测量、焦点与 IME、Lazy 列表、Canvas/Shape、触摸和绘制时序是高风险面；既有验证按用户确认处理，不重复执行。
+4. **SaltUI 新增风险**：隐藏 API、dependenciesInfo 与固定开关动效由 debug-only spike 核验；R8/APK/AAB 与冷启动等发布指标不属于该 debug spike，须另立获批准的测量构建，不能把工具链升级结果当作 SaltUI 发布验收。
+5. **变更隔离**：工具链升级与 Premium Blue 皮肤、SaltUI spike 保持独立，失败时只回滚对应变更，不牵连 AppSkin、聊天外观或输入栏。
 
-升级前置验收：
-
-- 用 `dependencyInsight` 核对 Compose runtime/UI/foundation、Material3、haze 的最终解析版本；
-- `:app:compileDebugKotlin`、`:app:testDebugUnitTest`、Clean assemble 全通过；
-- `python scripts/audit_ime_trap.py` 的 A/A' 为零，真机中文 IME 注入无丢字/光标漂移；
-- release R8、APK/AAB 体积、冷启动和 7000 节点长文本/长列表回归通过；
-- 旧 AppSkin JSON、聊天绑定/解绑、深浅色与 AMOLED 回归通过。
-
-**本批决定**：M1–M4 不依赖三家组件库，不改 Gradle。后续 spike 候选优先级为 SaltUI 的 Item/Switcher 语义与形态、miuix 的渐进模糊/偏好密度、compose-cupertino 的 iOS 控件细节；优先级只代表研究顺序，不代表已批准引入。
+**本批决定**：M1–M4 不依赖三家组件库，也不需要额外 Gradle 变更；已完成的工具链升级独立保留。SaltUI 的 debug-only 范围、主题投影、验证矩阵与一票否决项见 [design-saltui-spike.md](design-saltui-spike.md)，生产默认仍是「不直接依赖，优先本地实现形态」。
 
 来源：[SaltUI 仓库](https://github.com/Moriafly/SaltUI) / [3.0.0 release](https://github.com/Moriafly/SaltUI/releases/tag/3.0.0)、[miuix 仓库](https://github.com/compose-miuix-ui/miuix) / [v0.9.4 release](https://github.com/compose-miuix-ui/miuix/releases/tag/v0.9.4)、[compose-cupertino 仓库](https://github.com/alexzhirkevich/compose-cupertino)。Cupertino 的 latest stable 本轮未复核，文中只记录可确认的 README/catalog 基线。
 
