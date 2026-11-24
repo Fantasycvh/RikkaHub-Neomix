@@ -1,6 +1,6 @@
 # UI 改造初步调研：控件、风格与竞品（2026-11）
 
-> 状态：**调研稿** · 2026-11-13 撰写；A+G+D/C/B/I/F 七方向已于 2026-11-14 全部落地（9df438545/2f7eaec17/7e9b623ca/6704e4258/a945e0f57/4ee3390ca/858ef57be）。**第三轮已拍板（2026-11-14）**：首轮皮肤 = HyperOS squircle + 纸质感，serif 系统衬线起步、squircle 连续曲率做、气泡几何 v2 / IA 三件 / motion TOKENS 全通过——正式稿见 [design-ui-round3-skins-geometry-motion.md](design-ui-round3-skins-geometry-motion.md)（第三轮 M1–M4 已于 2026-11-15 全部实施并提交，本稿归档为调研底稿）
+> 状态：**调研稿** · 2026-11-13 撰写；A+G+D/C/B/I/F 七方向已于 2026-11-14 全部落地（9df438545/2f7eaec17/7e9b623ca/6704e4258/a945e0f57/4ee3390ca/858ef57be）。**第三轮已拍板（2026-11-14）**：首轮皮肤 = HyperOS squircle + 纸质感，serif 系统衬线起步、squircle 连续曲率做、气泡几何 v2 / IA 三件 / motion TOKENS 全通过——正式稿见 [design-ui-round3-skins-geometry-motion.md](design-ui-round3-skins-geometry-motion.md)（第三轮 M1–M4 已于 2026-11-15 全部实施并提交，本稿归档为调研底稿）。**2026-11-24 补充**：刷新 SaltUI / miuix / compose-cupertino 的版本与兼容性评估，结论更新为「整库替换不做，选择性依赖需单独 spike」；第三批 Premium Blue 仍待拍板。
 > 目的：为下一轮 UI 改造提供外部情报（设计语言 / 组件库 / 竞品模式 / 视觉趋势）与本仓基线对照，产出候选方向清单供决策。
 > 方法：网络调研（来源见 §8）+ 本仓代码盘点（关键结论均已核实到 file:line）。
 
@@ -24,22 +24,25 @@
 
 **不建议**：整套引入 miuix / compose-cupertino 替换 M3（与 AppSkin/M3E 体系冲突，风格应做成皮肤 tokens 而非换库）；直接替换 ChatInput 为 prompt-bar 库（IME 历史坑族，交互模式可借鉴、宿主不可轻换）。
 
+> **2026-11-24 更新**：Material3 已到 `1.5.0-rc01`，AppSkin 已有 7 个内置皮肤。上述「不整套引入」结论保留，但范围细化为：**不整库替换、不叠加第二套全局主题；SaltUI / miuix / compose-cupertino 均可综合参考，选择性依赖必须另立隔离 spike 并通过工具链、语义、性能、合规门槛**。详见 §3.1–§3.3。
+
 ---
 
 ## 1. 本仓基线盘点（已核实）
 
 ### 1.1 技术栈版本
 
-- Compose BOM `2026.06.01`、material3 `1.5.0-beta02`（[gradle/libs.versions.toml:16](../../../gradle/libs.versions.toml#L16)）
-- haze `2.0.1`，含 `haze-blur` / `haze-glass` 双引擎（[gradle/libs.versions.toml:53](../../../gradle/libs.versions.toml#L53)、:166-170）
-- material3-adaptive（Nav3 版）`1.3.0-rc01` 已在依赖；Coil 3.5、Lucide/HugeIcons 图标
+- AGP `9.4.0`、Kotlin `2.4.10`、Compose BOM `2026.06.01`、Material3 `1.5.0-rc01`（[gradle/libs.versions.toml:2-17](../../../gradle/libs.versions.toml#L2)）
+- app compileSdk 37（minor API 2）、minSdk 26、Java/JVM target 17（[app/build.gradle.kts:17-33](../../../app/build.gradle.kts#L17)、[app/build.gradle.kts:111-113](../../../app/build.gradle.kts#L111)、[app/build.gradle.kts:164-167](../../../app/build.gradle.kts#L164)）
+- haze `2.0.1`，含 `haze-blur` / `haze-glass` 双引擎；`bettertext-text` 另用 Compose BOM `2026.09.00`（[gradle/libs.versions.toml:53](../../../gradle/libs.versions.toml#L53)、[bettertext-text/build.gradle.kts:7](../../../bettertext-text/build.gradle.kts#L7)）
+- material3-adaptive（Nav3 版）`1.3.0-rc01`、Navigation3 `1.2.0` 已在依赖；Coil 3.5、Lucide/HugeIcons 图标
 
 ### 1.2 已有能力（改造时不可重复建设）
 
 | 能力 | 现状 | 证据 |
 |------|------|------|
 | Expressive 主题 | `MaterialExpressiveTheme` + `MotionScheme.expressive()` 默认开启，皮肤可切 standard | ui/theme/AppSkinTheme.kt:34-35 |
-| AppSkin 皮肤系统 | 全链路已实现：typography/shapes/spacing/motion/palette/顶栏/抽屉/卡片/终端/resources；3 内置皮肤 + 插件注册 + 试用/回滚（SkinTrialController） | data/model/AppSkin.kt、ui/theme/AppSkinRegistry.kt、Theme.kt:186 |
+| AppSkin 皮肤系统 | 全链路已实现：typography/shapes/spacing/motion/motionTokens/palette/顶栏/抽屉/卡片/终端/resources/groups；7 个内置皮肤 + 插件注册 + 试用/回滚（SkinTrialController） | data/model/AppSkin.kt、data/model/AppSkinGroups.kt、ui/theme/AppSkinRegistry.kt:80、Theme.kt:186 |
 | 三级色源 | 皮肤 palette → 动态色（Monet 壁纸 / 用户 seed 走 TONAL_SPOT）→ 预设/自定义 themeId；角色覆写层 + AMOLED 纯黑覆盖 + gray1-10 HCT 插值 | ui/theme/Theme.kt:70-148 |
 | 气泡材质引擎 | SOLID/GRADIENT/PATTERN/NOISE/GLASS + 最多 4 层图层栈（TEXTURE/SHADER），AGSL RuntimeShader + CPU 降级，纹理 zip 导入导出 | data/model/ChatAppearance.kt、BubbleLayers.kt、ui/components/message/BubbleShaderRenderer.kt |
 | 已用 Expressive 组件 | ButtonGroupDefaults（MediaCreationComposer）、SplitButtonLayout（AssistantImporter）、HorizontalFloatingToolbar（ChatList/LorebookPage）、ContainedLoadingIndicator、MaterialShapes（AvatarShape/AppLogo） | 各消费点 |
@@ -52,7 +55,7 @@
 1. **排版全默认**：`Typography()` 未定制（[ui/theme/Type.kt:13-14](../../../app/src/main/java/app/androidrik/rikkahub/ui/theme/Type.kt#L13)）；emphasized 排版整段被注释（Type.kt:17-78）；`GoogleSansFlex` 可变字体族**是死代码**——全仓仅 Type.kt 注释引用，字体资源已就位却未接线。
 2. **Expressive 组件未用齐**：无 `FloatingActionButtonMenu` / `ToggleFloatingActionButton`、无 VerticalFloatingToolbar、无 wavy ProgressIndicator、无 shape morphing 动画。
 3. **材质局限聊天域**：设置页、抽屉、对话列表、助手详情无玻璃/材质表达，与聊天页视觉断层。
-4. **版本滞后**：material3 1.5.0-rc01 已于 2026-10-21 发布（Expressive 转 stable 的候选版本），本仓仍在 beta02。
+4. **外部组件库兼容性**：SaltUI 3.0.0 已 stable，但 Kotlin/Compose 门槛高于当前仓库；miuix 仍 experimental；compose-cupertino 公开基线旧于当前仓库。可借鉴形态，不能当作 drop-in 依赖，详见 §3.1。
 
 ---
 
@@ -90,8 +93,9 @@
 
 | 库                                        | 风格/定位                                                               | 版本（调研时）                                   | 坐标                                                                                                                                     | 评估                                                                                                                   |
 | ---------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **miuix**（compose-miuix-ui）              | 小米 HyperOS 风格全套 CMP 组件                                              | v0.9.4（2026-09-20），minSdk 24，experimental | `top.yukonga.miuix.kmp:miuix-ui` + `miuix-preference`/`miuix-blur`（progressive blur）/`miuix-glass`/`miuix-nav`（BreadcrumbBar）/squircle | **不整库引入**（与 AppSkin/M3E 冲突）。借鉴：squircle 连续曲率形状、progressive blur（渐进模糊）、preference 分组形态；可做成一套「HyperOS 风」AppSkin tokens |
-| **compose-cupertino**                    | iOS 风格全套 CMP 组件                                                     | v1.6.1，Apache 2.0                         | `io.github.alexzhirkevich:cupertino`                                                                                                   | 同上，风格参考而非依赖；iOS 风皮肤在角色扮演受众中有市场                                                                                       |
+| **SaltUI**（Moriafly/SaltUI）            | Compose Multiplatform UI toolkit；分组 Item、LabelValue、Switcher、PillButton、Sheet          | latest stable `3.0.0`（2026-11-02）；main 已出现 `3.1.0-alpha01` | `io.github.moriafly:salt-ui:3.0.0` | **最接近高级感分组形态，但非 drop-in**：3.0.0 要求 Kotlin 2.4.20 / Compose 1.12.2 / AGP 9.1.1 / JDK 21。借鉴 Item 层级、开关语义拆分、LabelValue 与 morph；不直接叠加 SaltTheme，先评估工具链与隐藏 API/Play 披露 |
+| **miuix**（compose-miuix-ui）              | 小米 HyperOS 风格全套 CMP 组件                                              | v0.9.4（2026-09-20），minSdk 24，experimental | `top.yukonga.miuix.kmp:miuix-ui` + `miuix-preference`/`miuix-blur`（progressive blur）/`miuix-glass`/`miuix-nav`（BreadcrumbBar）/squircle | **不整库引入**（与 AppSkin/M3E 冲突）。借鉴：squircle 连续曲率形状、progressive blur（渐进模糊）、preference 分组形态；现有 SmoothCornerShape/haze/CardGroup 已覆盖大部分能力，等待稳定版与明确缺口后再做单模块 spike |
+| **compose-cupertino**                    | iOS 风格全套 CMP 组件                                                     | 旧记录 `1.6.1`；latest stable 本轮未确认。README badge CMP 1.6.1 / Kotlin 1.9.23；master catalog Kotlin 2.0.20 / Compose 1.7.0 / AGP 8.6.1 | `io.github.alexzhirkevich:cupertino`（核心）、`cupertino-adaptive`；排除 `cupertino-decompose` | **只做风格参考，不直接引入**：公开工具链基线旧于本仓，核心不是 Material3，且存在 CupertinoTheme 与 SF Symbols 版权边界。借鉴 Switch/Slider/导航层次，服务已有 iOS 皮肤即可 |
 | **Kyant0 AndroidLiquidGlass / Backdrop** | 液态玻璃 backdrop（折射/透镜畸变/色散），CMP                                       | 已 stable（2025-11 起）                       | `io.github.kyant0:backdrop`                                                                                                            | 效果上限高于 haze-glass，但**无高层组件**需自建；AGSL 需 Android 13+。候选：作为 BubbleGlass/TopBarCapsule 的增强后端，与现有 SDK 分级降级框架对接            |
 | **haze**（已在仓）                            | blur + glass 双引擎                                                    | 2.0.1                                     | `dev.chrisbanes.haze:*`                                                                                                                | 扩展到全局（抽屉/设置顶栏）成本最低，首选                                                                                                |
 | **prompt-bar**（NadeemIqbal）              | AI 聊天输入栏：自增高多行、slash 命令、@ 提及、附件 chips、send/stop 状态机、语音输入、token 计数   | 0.2.0                                     | `io.github.nadeemiqbal:prompt-bar`                                                                                                     | 与 ChatInput.kt 功能重叠度高；**不替换**（IME 宿主历史坑族），借鉴其交互模式与状态机划分                                                              |
@@ -100,6 +104,41 @@
 | 其他（jetc.dev #315 新库）                     | compose-capabilities / filament-kmp（3D）/ ComposePdfReader / Laygent | 新                                         | — 关注度低，本轮不评估                                                                                                                           |                                                                                                                      |
 
 **组件参考资产**：`meticha/material-3-expressive-catalog`（Expressive 组件目录 demo app，可作为改造时的对照样例）。
+
+### 3.1 2026-11-24 兼容性核对
+
+| 维度 | 本仓 | SaltUI 3.0.0 | miuix | compose-cupertino |
+|------|------|--------------|-------|-------------------|
+| Kotlin | 2.4.10 | 要求 2.4.20 | 随 release/catalog 变动 | README 1.9.23；master catalog 2.0.20 |
+| Compose | BOM 2026.06.01；BetterText 模块 BOM 2026.09.00 | 要求 1.12.2 | CMP 基线随 release/catalog 变动 | README CMP 1.6.1；master catalog 1.7.0 |
+| AGP | 9.4.0 | 要求 9.1.1 | main catalog 9.5.2；0.9.4 release 基线未单独复核 | master catalog 8.6.1 |
+| Android | compileSdk 37 / minSdk 26 / Java target 17 | compileSdk 37 / minSdk 23（navigation 24）/ 文档要求 JDK 21 | minSdk 24 | 随版本线变动，需重新核对 |
+| 主题 | MaterialExpressiveTheme + AppSkin + LocalMotionTokens | 独立 SaltTheme | 独立 MiuixTheme / ThemeController | CupertinoTheme；adaptive 可桥接 M3 |
+| 当前判断 | 单一主题权威 | 工具链需升级/隔离验证 | experimental，优先参考 | 基线偏旧，优先参考 |
+
+SaltUI 已依赖 haze `2.0.1`，版本与本仓一致，这不是障碍；真正门槛是 Kotlin/Compose、SaltTheme 边界和发布审计。miuix 模块化值得保留，但现有 `SmoothCornerShape`、haze 和 `AppSkinGroups` 已覆盖主要能力。Cupertino 的 latest stable 本轮未确认，不能把旧记录 `1.6.1` 写成当前最新版。
+
+### 3.2 能力映射：先问「本仓是否已有等价实现」
+
+| 外部能力 | 本仓现有落点 | 结论 |
+|----------|--------------|------|
+| SaltUI `Item` / `LabelValue` | `CardGroup.item` / `trailingValue` / `CardGroupValueChip`（[CardGroup.kt:99-133](../../../app/src/main/java/app/androidrik/rikkahub/ui/components/ui/CardGroup.kt#L99)、[CardGroup.kt:410-432](../../../app/src/main/java/app/androidrik/rikkahub/ui/components/ui/CardGroup.kt#L410)） | 复用 DSL；不照搬固定 96dp 标签宽 |
+| SaltUI `ItemSwitcher` / `Switcher` | 现有 Switch + 行级 `Role.Switch` + `LocalMotionTokens`（[AppSkinTheme.kt:39-43](../../../app/src/main/java/app/androidrik/rikkahub/ui/theme/AppSkinTheme.kt#L39)） | 借鉴「交互归整行、绘制归开关」；morph 如需要则本地实现并收 motion token |
+| SaltUI `ItemDivider` / `PillButton` | `AppSkinGroups` 分隔线（[AppSkinGroups.kt:19-45](../../../app/src/main/java/app/androidrik/rikkahub/data/model/AppSkinGroups.kt#L19)）/ 现有 M3 按钮 | 已有 token，不引依赖 |
+| miuix preference / squircle / progressive blur | `CardGroup` / `SmoothCornerShape` / haze + SDK 31/33 降级 | 只参考密度、曲率与模糊预算；不重复建设 |
+| Cupertino Switch / Slider / TopBar | 现有 M3 控件 + iOS 风 AppSkin | 借鉴几何与动效，不引入 CupertinoTheme |
+| Cupertino Decompose / Navigation 3 模块 | 当前 Navigation 3 | 明确排除，避免第二套导航栈 |
+
+### 3.3 选择性依赖准入规则
+
+1. 必须先证明本仓没有等价能力，且用户可见收益大于工具链与包体成本。
+2. 只用 stable release；alpha / experimental 不能作为生产基线。
+3. 业务页只读 AppSkin/Material3；库主题如需存在，只能收口在单一适配器内并映射颜色、字体、形状、动效。
+4. 整行/开关只保留一个交互语义；值 chip 不重复播报；RTL、大字体、系统移除动画必须通过。
+5. 给出 APK 增量、R8、冷启动和长列表数据；AMOLED、深浅色、SDK 31/33 有确定回落。
+6. 审计许可证、AndroidHiddenApiBypass、Google Play dependenciesInfo reporting 与 SF Symbols 版权。
+7. 限定页面和组件、可独立回滚，不进入默认皮肤、聊天增量管线或输入栏宿主。
+8. 添加依赖或升级 Kotlin/Compose/AGP 必须另行获得用户批准；本调研不构成实施授权。
 
 ---
 
@@ -156,9 +195,10 @@
 - 借鉴 llm-typewriter 的逐块淡入（非逐字，避免「假打字」反模式）；思维链展开用 MotionScheme 弹簧。
 - 风险：longtext 系列设计稿的性能约束（大原子/静态 lazy），动效不得破坏增量渲染管线。
 
-### G. 依赖 bump（低成本，先行）
+### G. 依赖 bump（历史方向，已部分完成）
 
-- material3 `1.5.0-beta02` → `1.5.0-rc01`：Expressive 转 stable 前最后验证窗口；跑全量单测 + audit + 真机冒烟。
+- material3 已从 `1.5.0-beta02` 到 `1.5.0-rc01`，当前无需重复执行该 bump。
+- 若未来批准 SaltUI spike，Kotlin/Compose 升级必须作为独立工具链变更评审，不与皮肤实现混在同一提交；先跑全量单测、IME audit、R8/APK 体积与真机冒烟。
 
 ### H. 大屏 adaptive（观察项）
 
@@ -180,9 +220,9 @@
 
 ## 7. 建议下一步
 
-1. 从 §0 表中选定方向组合（建议 A + G 先行，B/C 二选一跟进）。
+1. 从 §0 表中选定方向组合；A/G 已落地，当前皮肤改造优先走 AppSkin tokens，外部库只做能力参考。
 2. 出正式设计稿：tokens 契约变更、分阶段计划、真机验证矩阵（含中文 IME 注入、AMOLED、低端机降级）。
-3. 实施前 bump material3 rc01 并跑全量单测 + audit 基线。
+3. 若批准外部组件库 spike，先按 §3.3 做隔离验证；不要为皮肤换库，也不要把 Kotlin/Compose/AGP 升级与 UI 实现捆绑。
 
 ---
 
@@ -205,8 +245,9 @@
 - [M3 Typography](https://m3.material.io/styles/typography/overview)、[Compose 可变字体](https://developer.android.com/develop/ui/compose/text/fonts)
 
 **组件库**
-- [miuix](https://github.com/compose-miuix-ui/miuix)、[releases](https://github.com/compose-miuix-ui/miuix/releases)（v0.9.4）
-- [compose-cupertino](https://github.com/alexzhirkevich/compose-cupertino)（v1.6.1）
+- [SaltUI](https://github.com/Moriafly/SaltUI)、[3.0.0 release](https://github.com/Moriafly/SaltUI/releases/tag/3.0.0)（latest stable；main alpha 不计入稳定基线）
+- [miuix](https://github.com/compose-miuix-ui/miuix)、[v0.9.4 release](https://github.com/compose-miuix-ui/miuix/releases/tag/v0.9.4)（experimental）
+- [compose-cupertino](https://github.com/alexzhirkevich/compose-cupertino)（latest stable 本轮未确认；版本口径见 §3.1）
 - [Kyant0 AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)、[Backdrop 文档](https://kyant.gitbook.io/backdrop)
 - [Haze 1.0 发布文](https://chrisbanes.me/posts/haze-1.0/)
 - [prompt-bar](https://github.com/NadeemIqbal/prompt-bar)、[llm-typewriter](https://github.com/originalFactor/llm-typewriter/blob/main/README.md)、[compose-markdown](https://klibs.io/project/adamglin0/compose-markdown)

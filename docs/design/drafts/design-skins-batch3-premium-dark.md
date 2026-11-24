@@ -1,9 +1,9 @@
-# 皮肤第三批设计稿：高级感 / Premium Blue（含图标色块与功能总览 Banner）
+# 皮肤第三批设计稿：高级感 / Premium Blue（含图标色块与功能快捷 Banner）
 
 > 状态：**设计草稿，待拍板；未实施 App 代码**
 > 日期：2026-11-24
 > 配色：**低饱和浅蓝系**（按用户要求由初版深蓝紫修订）
-> 视觉稿：[`原型/RikkaHub-UI第三批-高级感视觉对比稿.html`](../../原型/RikkaHub-UI第三批-高级感视觉对比稿.html)
+> 视觉稿：[`原型/RikkaHub-UI第三批-高级感视觉对比稿.html`](../../../原型/RikkaHub-UI第三批-高级感视觉对比稿.html)
 > 上游：[UI 改造调研](design-ui-overhaul-research.md)、[第三轮几何/动效皮肤](design-ui-round3-skins-geometry-motion.md)、[第二批工程感/iOS 风](design-skins-batch2-engineering-ios.md)
 > 约束沿用 AGENTS.md：皮肤 token 契约、IME 宿主规范、`supportingContent` 单子节点坑、长文本增量渲染、AMOLED 与低版本效果回落。
 
@@ -15,11 +15,12 @@
 |---|--------|----------|
 | 1 | 档位名称 / id | **高级感** / `builtin.premium-dark`；成为第 8 个内置预设、第 5 档风格皮肤 |
 | 2 | 核心视觉 | 近黑冷灰 tonal 底 + **低饱和浅蓝渐变** Banner + 40dp 圆角图标色块 + quiet dark 卡片 |
-| 3 | Banner 语义 | 标题「功能总览」，副文案「搜索、记忆、工具与自动化，一处直达」；点击打开**现有设置搜索**，不做付费墙、不新增页面 |
+| 3 | Banner 语义 | 不采用付费墙或「高级版解锁」；作为**单一功能快捷入口**，默认「让 AI 定时为你办事」→ `Screen.SettingScheduledTasks`。任务中心开启时改跳 `Screen.TaskCenter`，也可由宿主换为现有任务/工作区入口 |
 | 4 | 浅色策略 | 皮肤不强制深色；深色用截图渐变，浅色用同色相浅渐变，全局明暗设置仍是唯一权威 |
 | 5 | 分组默认形态 | `FLAT` 逐行卡片，贴近截图；编辑器仍可切现有 `INSET` 整组分隔 |
 | 6 | 聊天域 | 新增 `builtin.chat:premium-dark` 并绑定；用户解绑后继续使用现有独立聊天方案 |
 | 7 | 输入栏 | 本批**不改输入栏宿主拓扑**；视觉稿里的胶囊输入栏仅作气质参考，pill 化另案评估 |
+| 8 | 外部组件库 | SaltUI / miuix / compose-cupertino 均纳入综合参考；本批默认不新增依赖，选择性能力先过 §2.1 准入门槛 |
 
 ---
 
@@ -31,13 +32,15 @@
 2. 新增两种本仓此前没有的视觉能力：
    - 列表 leading 图标的**可选色块容器**；
    - 设置页顶部的**深浅色双渐变 Hero Banner**。
-3. 复用现有 `CustomTheme`、`AppSkinGroups`、`ChatAppearance`、皮肤试用与聊天绑定机制，不引入第二套组件库。
+3. 复用现有 `CustomTheme`、`AppSkinGroups`、`ChatAppearance`、皮肤试用与聊天绑定机制，保持 Material3 / AppSkin 为唯一全局主题权威；外部组件库只作能力参考，任何选择性依赖另案批准。
 4. 老皮肤、旧 JSON、插件皮肤与默认皮肤保持原行为；新能力只在显式 token 下启用。
 
 ### 1.2 非目标
 
-- 不引入 SaltUI / miuix / compose-cupertino，只借视觉形态。
-- 不新增「高级功能」信息架构分组，不复制现有设置入口；Banner 只跳现有设置搜索。
+- 本批不直接引入 SaltUI / miuix / compose-cupertino，也不叠加第二套全局主题；但允许按 §2.1 综合评估，后续若引入只做隔离 spike，不改默认皮肤与主路径。
+- 不做付费墙、不制造「免费版功能受限」语义；Banner 只快捷进入现有功能页。
+- 不因 Banner 新增「高级功能」信息架构分组，不复制设置入口；默认只承载一个主行动。
+- 本批不把记忆、MCP、搜索、备份、工作区等全部功能塞进 Banner；多入口总览会增加皮肤组件与页面状态耦合。
 - 不改 M3 颜色角色，不新增 surface 角色；截图颜色作为 seed / Hero 渐变起点，不整页写死。
 - 不改聊天输入栏、长文本渲染、消息增量更新或 IME 宿主。
 - 不做主题分享格式扩展、不做付费墙、不把 UI 简化提案 P1-3/P1-4 混进本批。
@@ -54,12 +57,115 @@
 | 面板材质 | `AppSkinPanels.kt:8-59` 已有通用 panel、材质与 5 个 slot | Hero 有深浅色双渐变与装饰语义，**不塞进通用 panel slot** |
 | 图标容器 | `CardGroup.kt:223-252` 的 `CardGroupIcon` 固定 40dp 圆底 + 20dp 图标 | 增加可选 tile token；null 时保持原圆底 |
 | 设置页 leading 图标 | `SettingPage.kt` 有 18 处裸 `Icon`；全仓简单 `leadingContent = { Icon(...) }` 共 52 处 / 9 文件 | 新增默认等价裸 `Icon` 的皮肤感知包装器并机械迁移；否则设置首页不会出现截图色块 |
-| Hero 宿主 | `SettingPage.kt:121-127` 已有稳定 key 的设置搜索入口 | 搜索栏后插入可选 Hero，跳现有 `Screen.SettingGlobalSearch` |
+| Hero 宿主 | `SettingPage.kt:121-127` 已有稳定 key 的设置搜索入口 | 搜索栏后保留可选 Hero；作为功能快捷入口，跳现有任务页，不改搜索栏 |
 | 聊天联动 | `DisplaySettings.kt:148-153` 与 `AppSkinRegistry.kt:61-64` 已支持绑定态实时联动、解绑态独立覆写 | 只追加 preset 与 link，不重构机制 |
-| 编辑器 | `AppSkinSettings` 使用 registry 自动生成预设；`SkinPanelsControls.kt` 编辑通用 panel | 新增独立「图标色块」「功能总览 Banner」控件段 |
+| 编辑器 | `AppSkinSettings` 使用 registry 自动生成预设；`SkinPanelsControls.kt` 编辑通用 panel | 新增独立「图标色块」「功能快捷 Banner」控件段 |
 | 试用/撤销 | `SkinTrialController` / `SkinTrialHost` 已有 CAS 试用、确认、一步撤销、自动撤销 | 原样复用 |
 
 **关键纠正**：只改 `CardGroupIcon` 不足以实现截图风格。设置首页大多数入口直接使用裸 `Icon`，必须通过默认无视觉变化的包装器接入新 token。
+
+### 2.1 外部组件库综合评估（2026-11-24）
+
+**结论**：三家都值得参考，但当前没有一家适合作为 Premium Blue 的直接依赖。SaltUI 与「分组元项 + 开关形态」最接近；miuix 的偏好密度、连续曲率与渐进模糊最值得借鉴；compose-cupertino 只适合补充 iOS 控件细节。默认路径仍是用 AppSkin / CardGroup / Hero 吸收形态，外部依赖若确有价值，必须另立隔离 spike 并通过下门槛。
+
+#### 2.1.1 版本与工具链兼容
+
+本仓当前基线为 AGP `9.4.0`、Kotlin `2.4.10`、Compose BOM `2026.06.01`、Material3 `1.5.0-rc01`、compileSdk 37、minSdk 26、Java/JVM target 17；`bettertext-text` 另用 Compose BOM `2026.09.00`。因此「库能编译」不等于「能无冲突并入当前依赖图」。
+
+| 库 | 本轮可确认版本 | 工具链 / 主题边界 | 当前结论 |
+|----|----------------|-------------------|----------|
+| **SaltUI** | latest stable `3.0.0`（2026-11-02）；main README 已出现 `3.1.0-alpha01`，alpha 不作为稳定基线 | 3.0.0 文档要求 Kotlin `2.4.20`、Compose/CMP `1.12.2`、AGP `9.1.1`、JDK 21、compileSdk 37；本仓 Kotlin/Compose 低于门槛，AGP/compileSdk 已满足，Java target 17 不等于构建 JDK 21。使用独立 `SaltTheme`；已依赖 haze `2.0.1` | **形态参考优先，不作本批依赖**。若要引入，先解决 Kotlin/Compose 升级与主题适配，且只允许稳定版 |
+| **miuix** | latest release `0.9.4`（2026-09-20），README 明确 experimental；main catalog 基线持续前移 | `MiuixTheme` / `ThemeController` 与 Material3/AppSkin 分离；模块可拆，但 API churn 与实验性风险仍在 | **只借鉴，不直接引入**。现有 squircle/haze/CardGroup 已覆盖大部分能力，等待稳定版与明确缺口后再评估 |
+| **compose-cupertino** | 旧调研记录为 `1.6.1`；本轮 latest release 查询超时，未确认当前最新 stable | README badge 仍标 CMP `1.6.1` / Kotlin `1.9.23`；master catalog 标 Kotlin `2.0.20` / Compose `1.7.0` / AGP `8.6.1`，均明显旧于本仓。核心库不是 Material3，adaptive/decompose 会扩大边界 | **只借鉴 iOS 控件细节，不直接引入**。不引入 `cupertino-decompose` 或默认打包 SF Symbols |
+
+#### 2.1.2 SaltUI：最接近目标形态，但先吸收模式
+
+值得借鉴：
+
+- `Item` 的标题 / 副文 / tag / 箭头层级，以及整行只拥有一个点击语义的组织方式；
+- `ItemSwitcher` 把交互放在整行、`Switcher` 只负责绘制的语义拆分，避免开关被读屏播报两次；
+- `LabelValue` 的「左侧标签 + 右侧当前值」元项结构；
+- `Switcher` 的 unchecked 圆环到 checked 竖条 morph、`drawWithCache` 与 RTL 处理；
+- `ItemDivider` 的起始缩进和 hairline；`PillButton` 的胶囊几何。
+
+映射到本仓：
+
+| SaltUI 能力 | 本仓落点 | 本批处理 |
+|------------|----------|----------|
+| `Item` / `ItemLabelValueContainer` | `CardGroup.item` + `trailingValue` / `CardGroupValueChip` | 复用现有 DSL，不引第二套偏好行 |
+| `ItemSwitcher` / `Switcher` | 现有 `Switch` + `Role.Switch` + `LocalMotionTokens` | 保留单行单语义；若后续做 morph，只做本地绘制组件，时长进 motion token |
+| `LabelValue` | 设置页枚举 / 跳转型值 chip | 不照搬固定 `96.dp` 标签宽，必须适应中文、英文、大字体与 RTL |
+| `ItemDivider` | `AppSkinGroups.divider` / `dividerInsetDp` / `dividerWidthDp` | 已有契约，直接复用 |
+| `PillButton` / `Sheet` / Navigation 3 | 现有 M3 按钮、`ModalBottomSheet`、Nav3 | 本批不替换宿主与导航 |
+
+直接依赖还需审计 SaltUI 使用的 `AndroidHiddenApiBypass` 及 Google Play dependenciesInfo reporting；这不是皮肤层可以忽略的发布边界。
+
+#### 2.1.3 miuix：参考 HyperOS 气质，不重复建设
+
+值得借鉴：
+
+- preference 行的密度、`startAction` / `endActions` / `bottomAction` 分层和按压反馈；
+- squircle 连续曲率与 HyperOS 分组节奏；
+- progressive blur 的层级与性能预算思路；
+- `miuix-nav` 的 BreadcrumbBar 形态，仅作为后续导航密度参考。
+
+本仓已有 `SmoothCornerShape`、`AppSkinGroups`、`CardGroup`、haze blur/glass 与 SDK 31/33 降级框架。因此本批不引入 `miuix-preference`、`miuix-squircle`、`miuix-blur`、`miuix-glass` 或 `miuix-nav`，避免相同能力出现两套 token、两套主题和两套降级策略。若未来证明现有 haze/形状存在 measurable gap，再对单个模块做稳定版 spike。
+
+#### 2.1.4 compose-cupertino：服务已有 iOS 皮肤，不引入导航栈
+
+值得借鉴：
+
+- iOS Switch 的几何、滑块刻度与触控反馈；
+- 扁平导航栏的层次、边缘返回手势与转场节奏；
+- 与 Material3 对照时的自适应布局思路。
+
+本仓 iOS 风已由 `AppSkinGroups.INSET`、连续曲率和现有 M3 控件实现，Premium Blue 也不需要 Cupertino 主题。直接引入会带来旧工具链、`CupertinoTheme` 与 Material3 双主题、包体和 SF Symbols 版权边界；`cupertino-decompose` 还与当前 Navigation 3 主架构不一致，明确排除。若只借鉴单个控件，应优先用本地 M3/Canvas 实现并接入 AppSkin motion，而不是拖入整套库。
+
+#### 2.1.5 选择性依赖准入门槛
+
+后续任何外部库进入 Gradle 前，必须同时满足：
+
+1. **能力缺口**：本仓没有等价实现，且能说明用户可见收益；不能只为「像某个库」而引入。
+2. **稳定版本**：不使用 alpha / experimental 作为生产基线；SaltUI 必须先解决 Kotlin/Compose 门槛，miuix 必须先退出实验性风险区间。
+3. **主题边界**：业务页仍只读 AppSkin/Material3。库主题如不可避免，只能收口在一个适配器内，把颜色、字体、形状、动效映射进来，不允许页面同时读取两套主题权威。
+4. **语义与无障碍**：整行/开关只保留一个交互语义；值 chip 不重复播报；RTL、大字体、读屏、系统移除动画全部通过。
+5. **性能与降级**：给出 APK 增量、R8、冷启动、长列表滚动数据；AMOLED、深浅色、SDK 31/33 均有确定回落，不新增无预算 shader。
+6. **发布与合规**：审计许可证、隐藏 API、依赖披露和图标版权；SF Symbols 不作为普通 Apache 图标资产打包。
+7. **可移除性**：限定页面、限定组件、独立提交/模块，失败时能完整回滚，不进入默认皮肤、聊天管线或输入栏宿主。
+8. **用户批准**：本稿不授权添加依赖、升级 Kotlin/Compose 或修改 AGP；实际引入需另行拍板。
+
+#### 2.1.6 Kotlin / Compose 升级影响评估（2026-11-24）
+
+**结论**：若只为借鉴 SaltUI 形态，不需要升级；若批准直接依赖 SaltUI 3.0.0，Kotlin/Compose 升级是**中等风险、影响面广但通常可控**的全工程变更，必须独立于皮肤实现提交。当前无需同步修改 AGP、compileSdk、minSdk 或 CI JDK。
+
+| 项目 | 当前基线 | SaltUI 3.0.0 门槛 / 目标 | 影响 |
+|------|----------|------------------------|------|
+| Kotlin | `2.4.10`（[libs.versions.toml:5](../../../gradle/libs.versions.toml#L5)） | 至少 `2.4.20` | **需要升级**；Compose 编译器插件跟随 Kotlin，KSP/Room、序列化插件和语言/API 兼容性需重验 |
+| Compose | app BOM `2026.06.01`；BetterText 模块 BOM `2026.09.00`（[bettertext-text/build.gradle.kts:7](../../../bettertext-text/build.gradle.kts#L7)） | 文档标注 Compose/CMP `1.12.2` | **需要对齐实际解析版本**；不能只改 BOM 名称，要确认 runtime/UI/foundation 最终版本一致 |
+| AGP | `9.4.0`（[libs.versions.toml:2](../../../gradle/libs.versions.toml#L2)） | `9.1.1` | 当前已更高，**无需为此降级或升级** |
+| compileSdk / minSdk | 37 / 26（[app/build.gradle.kts:17-33](../../../app/build.gradle.kts#L17)） | 37 / 23（navigation 24） | 当前已满足，**无需改动** |
+| JDK / Java target | CI 已用 JDK 21（[release.yml:40](../../../.github/workflows/release.yml#L40)）；app Java/JVM target 17（[app/build.gradle.kts:111-113](../../../app/build.gradle.kts#L111)） | 文档要求构建 JDK 21 | CI 已满足；本地 JDK 需确认，**Java/JVM target 不一定需要改成 21** |
+| Gradle | Wrapper `9.6.0`（[gradle-wrapper.properties:4](../../../gradle/wrapper/gradle-wrapper.properties#L4)） | 随工具链验证 | 当前先保留；若插件矩阵不兼容，再单独评审 |
+
+主要影响：
+
+1. **依赖图与插件链**：Compose compiler、KSP/Room、kotlinx.serialization 与 Gradle/AGP 需要重新确认兼容矩阵；Material3 `1.5.0-rc01`、haze `2.0.1`、Navigation3、adaptive 等可能被连带解析或发生冲突。
+2. **双 BOM 收敛**：app 与 `bettertext-text` 必须解析到一致的 Compose runtime/UI/foundation；保留两套不一致版本会把问题推迟到运行时或发布构建。
+3. **Compose 运行回归**：重点覆盖文本测量、焦点与 IME、Lazy 列表、Canvas/Shape、触摸和绘制时序；本仓高风险点是 ChatInput 中文输入法、长文本增量渲染、连续曲率和玻璃效果。
+4. **发布与性能重验**：Clean build、全量单测、R8/APK/AAB、启动时间、长列表滚动与 Baseline Profile 都需要重新确认；SaltUI 的隐藏 API 和 dependenciesInfo reporting 另行审计。
+5. **变更隔离**：工具链 spike 与 Premium Blue 皮肤提交分开，失败时只回滚工具链，不牵连 AppSkin、聊天外观或输入栏。
+
+升级前置验收：
+
+- 用 `dependencyInsight` 核对 Compose runtime/UI/foundation、Material3、haze 的最终解析版本；
+- `:app:compileDebugKotlin`、`:app:testDebugUnitTest`、Clean assemble 全通过；
+- `python scripts/audit_ime_trap.py` 的 A/A' 为零，真机中文 IME 注入无丢字/光标漂移；
+- release R8、APK/AAB 体积、冷启动和 7000 节点长文本/长列表回归通过；
+- 旧 AppSkin JSON、聊天绑定/解绑、深浅色与 AMOLED 回归通过。
+
+**本批决定**：M1–M4 不依赖三家组件库，不改 Gradle。后续 spike 候选优先级为 SaltUI 的 Item/Switcher 语义与形态、miuix 的渐进模糊/偏好密度、compose-cupertino 的 iOS 控件细节；优先级只代表研究顺序，不代表已批准引入。
+
+来源：[SaltUI 仓库](https://github.com/Moriafly/SaltUI) / [3.0.0 release](https://github.com/Moriafly/SaltUI/releases/tag/3.0.0)、[miuix 仓库](https://github.com/compose-miuix-ui/miuix) / [v0.9.4 release](https://github.com/compose-miuix-ui/miuix/releases/tag/v0.9.4)、[compose-cupertino 仓库](https://github.com/alexzhirkevich/compose-cupertino)。Cupertino 的 latest stable 本轮未复核，文中只记录可确认的 README/catalog 基线。
 
 ---
 
@@ -229,7 +335,18 @@ val hero: AppSkinHero = AppSkinHero()
 - 背景用静态 `Brush.linearGradient`，形状优先消费 `AppSkinShapes.continuous`；
 - 装饰圆用 `Canvas` / `drawCircle` 静态绘制，透明度来自 token；不进 semantics、无动画；
 - 标题与副文案使用 `onSurface` / `onSurfaceVariant`；
-- 宿主拥有点击与文案，组件只拥有视觉容器。
+- 宿主负责图标、文案与单一目的地；组件只拥有视觉容器。
+
+#### Banner 内容策略（非付费墙）
+
+用户明确允许「除付费墙之外都可以考虑」。据此，Banner 不再限定为设置搜索，而是作为**现有功能的单一快捷入口**。默认推荐：
+
+- 标题：**让 AI 定时为你办事**
+- 副文案：**按计划运行对话、整理记忆或执行自动化任务**
+- 图标：时钟 / 自动化
+- 点击：`settings.taskCenterEnabled=false` 时进入 `Screen.SettingScheduledTasks`；开启时进入 `Screen.TaskCenter`，与现有定时任务入口的迁移语义一致。
+
+其他现有功能也可替换宿主内容：记忆整理 → `SettingMemoryTrigger`；任务中心 → `TaskCenter`；工作区 → `Workspaces`。MCP、联网搜索、备份在设置页已有直接入口，不作为默认 Banner 内容，避免同一操作重复出现。Phone Use 依赖具体助手且要求 Android 11+，不做无参数 Banner 入口。
 
 宿主放在 `SettingPage` 搜索栏之后：
 
@@ -239,11 +356,19 @@ val showHero = hero.visible && (hero.lightGradient != null || hero.darkGradient 
 
 // LazyColumn 内
 if (showHero) {
-    item("featureOverview") {
+    item("featureShortcut") {
         AppSkinHeroCard(
-            title = stringResource(R.string.setting_page_feature_overview_title),
-            description = stringResource(R.string.setting_page_feature_overview_desc),
-            onClick = { navController.navigate(Screen.SettingGlobalSearch) },
+            title = stringResource(R.string.setting_page_feature_shortcut_title),
+            description = stringResource(R.string.setting_page_feature_shortcut_desc),
+            icon = HugeIcons.Time02,
+            onClick = {
+                val destination = if (settings.taskCenterEnabled) {
+                    Screen.TaskCenter
+                } else {
+                    Screen.SettingScheduledTasks
+                }
+                navController.navigate(destination)
+            },
             modifier = Modifier.padding(horizontal = 8.dp),
         )
     }
@@ -252,7 +377,7 @@ if (showHero) {
 
 语义边界：
 
-- 不新增「高级功能」CardGroup；参考截图中的列表只用于展示图标色块，实际入口仍走现有设置页 / 搜索页。
+- 不新增「高级功能」CardGroup；Banner 只展示一个现有功能快捷入口，不复制其页面或完整入口列表。
 - Hero 是稳定 Lazy item，无 TextField，不触碰 IME 规范。
 - 文案使用 string resource；实现期补齐 `values` / `values-zh` / `values-zh-rTW`，不硬编码中文。
 
@@ -405,9 +530,9 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 
 颜色不增加控件：容器/前景继续使用 `secondaryContainer` / `onSecondaryContainer`，换 seed 即整体联动。
 
-### 7.2 功能总览 Banner
+### 7.2 功能快捷 Banner
 
-独立段「功能总览 Banner」，不混入「分组容器」选择器：
+独立段「功能快捷 Banner」，不混入「分组容器」选择器：
 
 | 控件 | 行为 |
 |------|------|
@@ -438,7 +563,7 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 | M3 预设与编辑器 | 第 8 个 preset、聊天 preset/link、图标与 Hero 控件、字符串 | `AppSkinRegistry.kt`、`ChatAppearanceRegistry.kt`、`DisplaySettings.kt`、`AppSkinSettings.kt`、strings | 试穿/撤销、聊天绑定/解绑、编辑器实时预览 |
 | M4 验收 | 回归矩阵、真机截图、性能与无障碍 | `docs/design/verification/` | 下列矩阵通过后转 completed |
 
-每阶段独立可真机验证、可单独回滚；未获实施批准前不进入 M1。
+每阶段独立可真机验证、可单独回滚；未获实施批准前不进入 M1。§2.1 的外部组件库评估不进入 M1–M4 关键路径；若后续批准依赖 spike，应单独立项，不阻塞本批皮肤实施。
 
 ---
 
@@ -450,7 +575,7 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 | 契约 | 旧 `AppSkin` JSON 无 hero/iconTile 时等于默认行为；新 JSON round-trip；NaN/Infinity/越界归一；`withEdits` 只改 hero 或 shapes 的组级隔离 |
 | 默认回归 | default / compact / reading / squircle / paper / engineering / ios 的 `iconTile=null`、`hero.visible=false`；裸 Icon 包装器默认路径与原来一致 |
 | 图标 | 52 处迁移逐页抽查；自定义 tint / error 图标不被 secondary 角色覆盖；RTL 与大字体不挤压文字 |
-| Hero | 深色浅蓝渐变、浅色冰蓝渐变、AMOLED 纯黑页面上的可读性；装饰圆不进 semantics；点击只打开现有搜索 |
+| Hero | 深色浅蓝渐变、浅色冰蓝渐变、AMOLED 纯黑页面上的可读性；装饰圆不进 semantics；点击按任务中心开关进入现有任务页 |
 | 聊天 | 绑定态换肤实时切换；解绑态保留独立方案；手动微调解绑；助手平铺与用户渐变气泡 radius / tail / padding 正确 |
 | 宿主 | 设置页、助手详情、备份、扩展、工作区、定时任务等 CardGroup 抽查；`SettingProviderPage` 拖拽分段圆角不变 |
 | 无障碍 | 普通文字 ≥4.5:1、大文字 ≥3:1；图标与交互边界 ≥3:1；Hero 单节点点击语义；值 chip / Switch 不重复播报 |
@@ -464,12 +589,13 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 
 1. **52 处 Icon 迁移是视觉覆盖面的关键**：不能只改 `CardGroupIcon`；包装器 null 分支必须逐字段等价旧 `Icon`。
 2. **默认皮肤红线**：新 token 默认关闭；squircle / iOS 也不能因 `continuous=true` 被动获得 icon tile。
-3. **IA 红线**：Banner 不是新功能入口集合，不新增「高级功能」分组，不复制现有路由。
+3. **IA 红线**：Banner 不是新功能集合，不做付费墙；默认只承载一个现有任务入口，不复制路由或完整入口列表。
 4. **Hero 不复用通用 panel slot**：深浅色渐变与装饰层是独立语义，避免污染 5 slot 编辑器与纹理收集。
 5. **配色红线**：本稿只使用低饱和浅蓝/雾蓝；不得把已废弃的紫 seed、紫 Hero 或紫聊天气泡重新引入，也不把 `#12161C / #202730` 写死成全局 surface。AMOLED、动态色覆写与用户角色覆写继续按现有优先级工作。
 6. **聊天联动红线**：只追加 link，不改绑定/解绑状态机；用户独立方案必须继续保留。
 7. **输入栏红线**：视觉稿胶囊输入栏不代表本批实施；不得改动 IME 宿主。
 8. **连续曲率边界**：`cardGroupItemShape()` 与拖拽列表保持原语义；continuous 只消费于 M3 Shapes、Hero、icon tile。
+9. **组件库边界**：Material3 / AppSkin 仍是唯一全局主题权威；不得为 Premium Blue 叠加 SaltTheme、MiuixTheme 或 CupertinoTheme，也不得借外部库重做导航、表单宿主或聊天气泡材质。
 
 ---
 
@@ -478,11 +604,12 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 以下均为提案，不视为已批准：
 
 1. 名称是否采用「高级感」与 id `builtin.premium-dark`；若希望名字不暗示强制深色，可改用 `builtin.premium`，视觉策略不变。
-2. Banner 文案与「点击打开现有设置搜索」的目的地。
+2. Banner 默认承载「让 AI 定时为你办事」；评审可替换为记忆整理、任务中心或工作区，但保持单一快捷入口语义。
 3. 浅色采用同色相浅渐变，而非隐藏 Banner 或保持深色 Hero。
 4. 默认分组采用 `FLAT`，`INSET` 仅保留为编辑器选项。
 5. 聊天域默认绑定 `builtin.chat:premium-dark`，保留用户解绑。
 6. 输入栏 pill 化继续留到后续独立评估，本批不实施。
+7. 是否批准选择性组件库 spike；默认不批准，本批保持零新增依赖。
 
 ---
 
