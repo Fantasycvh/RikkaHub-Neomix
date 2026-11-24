@@ -2086,6 +2086,44 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - **旧版还存在矮屏裁切。** 原版 3.1.1 的加号面板主列表无法滚动，排在底部的压缩入口可能被挤出。上游 `a046505a6` 为主列表加了滚动，3.1.2 已包含该修复。 [上游 #2258](https://github.com/rikkahub/rikkahub/issues/2258)
 - **本仓判定。** Neomix 的加号菜单始终渲染「压缩历史」，容量面板也可打开同一个压缩对话框。加号面板已在 `64e808d6a6` 加入滚动。助手的条数限制仍参与请求上下文组装，因此导入这项设置会影响发给模型的历史范围，同时两个压缩入口照常显示。当前源码已覆盖以上两条入口消失路径，本次未用原反馈的备份做真机复现。 [加号面板](../app/src/main/java/app/androidrik/rikkahub/ui/components/ai/FilesPicker.kt#L153) · [压缩入口](../app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/ChatPage.kt#L996) · [请求组装](../app/src/main/java/app/androidrik/rikkahub/data/ai/PromptAssembly.kt#L282)
 
+## 2026-11-23 同步（`a2479770a..2435dbdf4`，5 新提交；含 BiliPai 与上游 issues 扫描）
+
+上游 3.3.1 发版批。5 条中 1 条版本号、2 条已有等价、2 条候选。
+
+| 提交 | 实质 | 判定 |
+|---|---|---|
+| `2435dbdf4` | bump 3.3.1 | 不适用（版本号） |
+| `2d93676e4` | **安全模式页支持导出/导入备份**（Closes #2361）：崩溃进不去主界面时在安全模式页导出完整备份（设置/聊天记录/附件）或导入覆盖后重启生效；**Room 打不开库（迁移失败/降级安装）时改为只读打开库文件直接拍快照，保留盘上 schema 版本，恢复时再走迁移** | **候选 P2**。本仓 `SafeModeActivity` 目前只有清超大设置。可移植判据：① 安全模式页加导出/导入入口复用 `BackupManager`；② 「只读拍快照绕过 Room 迁移失败」是关键判据——本仓 BackupManager 依赖正常打开 Room，迁移失败场景同样兜不住 |
+| `fbfb9926f` | Google 模型列表缺 displayName 时回退 modelId（原来 `!!` 让整个列表解析失败） | **已有等价**：本仓模型目录走 [ModelCatalog.kt](../app/src/main/java/app/androidrik/ai/provider/ModelCatalog.kt#L214) `catalogString("displayName") ?: id`，天然兜底，无 `!!` 炸点 |
+| `48a68f873` | 模型名最多显示两行 | **已有等价**：本仓 #2320 已改 `ModelList` maxLines=2（2026-11-15） |
+| `b7cf74ddc` | **PhoneUse：识别被系统停掉的无障碍服务并提示重开**（#2353）：ColorOS 等划掉最近任务会停服务但设置仍显示开启；区分「没开」与「勾选但服务未运行」，工具调用时最多等 2 秒连接，仍未连上提示关掉重开+最近任务锁定+允许自启动；本地工具页红字/开关按两种状态分别显示，从系统设置返回时重查 | **候选 P2**。本仓 PhoneUse 同构存在，同样的系统行为坑在国产 ROM 上必然复现；判据与上游逐字对齐（状态区分 + 等待窗口 + 引导文案 + resume 重查） |
+
+### 上游 issues 扫描（#2363–#2379，2026-11-21 后新增）
+
+- **#2363**（设置通知增加「请求电池优化白名单」）→ **已有等价**：本仓定时任务页已做电池优化白名单检测+跳转（2026-11-21）。
+- **#2366/#2367**（bettertext 多重积分公式挤压）→ **已修**：本仓 2026-11-21 已 bump bettertext `v0.1.6`。
+- **#2372**（`conversation_search` 未按当前助手过滤跨助手串台）→ **已有等价**：本仓工具族原生按 `assistantId` 过滤（[ConversationTools.kt](../app/src/main/java/app/androidrik/rikkahub/data/ai/tools/ConversationTools.kt#L99-L100)）。
+- **#2374**（压缩上下文按钮丢失）→ 本仓加号面板常驻压缩入口（2026-11-22 排查已覆盖显示规则与矮屏两条路径），暂判不适用。
+- **#2375**（异步生图 API 客户端不显示已生成图片）→ 本仓 mediagen 独立实现，**待复核**其 API 轮询/取图路径是否同构。
+- **#2376**（模型页自定义 body 的 tools 字段覆盖助手本地工具）→ 本仓支持自定义 body，**待复核**合并语义。
+- **#2377**（长时间 Phone Use 后崩溃）→ **待复核**，与 `b7cf74ddc` 候选一起排查 PhoneUse 稳定性。
+- **#2379**（删除记忆 md 后做梦无法再生成）→ 本仓做梦/记忆同构，**待复核**删除路径的状态机。
+- **#2371**（流式回复锚定开头的第三种滚动模式）→ 增强**候选 P3**，与现有滚动锚点行为并列。
+- **#2378**（按 Telegram forum topic 拆分会话，closed 未实施）→ 不跟。
+
+> 借鉴克隆：BiliPai 增量见 [bilipai.md](references/other%20projects/bilipai.md) 2026-11-23 节。kelivo 本轮顺手同步至 `fe41aaf5`（v1.3.7），非常设借鉴集（文档无基线），暂不评估；若要跟踪需先立项。
+
+## 2026-11-24 同步（上游与 kelivo 零新提交；BiliPai 26 提交 → v0.10.0）
+
+上游 `master` 停在 `2435dbdf4`（3.3.1）无新提交；kelivo 停在 `fe41aaf5` 无新提交；BiliPai 增量评估见 [bilipai.md](references/other%20projects/bilipai.md) 2026-11-24 节（判据记账 5 条：玻璃组件统一收口、菜单滚动提示几何、主题切换转场、内存 trim 延续、测试导入门禁）。
+
+### 上游 issues 扫描（新增 2 条）
+
+- **#2383**（消息队列直接插话）→ enhancement **观察**：生成中往队列插话与现有队列机制的关系需先看上游方案，暂不立项。
+- **#2382**（自托管 OpenAI Realtime ASR 无服务端 VAD）→ enhancement **观察**：本仓 speech 模块 ASR 未走 realtime WS 路径，暂不适用。
+
+昨日待复核项（#2375/#2376/#2377/#2379）无新进展。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md
