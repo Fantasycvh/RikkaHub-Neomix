@@ -194,6 +194,14 @@ dependencies {
     // 在各家 provider 上更容易出静默错误（设计 §6.1）
     implementation(libs.androidx.documentfile)
     implementation(platform(libs.androidx.compose.bom))
+    // Align the Compose Multiplatform modules brought in by Haze.
+    constraints {
+        implementation(libs.compose.multiplatform.runtime)
+        implementation(libs.compose.multiplatform.foundation)
+        implementation(libs.compose.multiplatform.ui)
+        implementation(libs.compose.multiplatform.ui.backhandler)
+        implementation(libs.compose.multiplatform.ui.tooling.preview)
+    }
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
