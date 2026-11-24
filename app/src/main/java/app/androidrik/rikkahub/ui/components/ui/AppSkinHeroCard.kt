@@ -43,7 +43,7 @@ fun AppSkinHeroCard(
     title: String,
     description: String,
     icon: ImageVector,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val skin = LocalAppSkin.current.skin
@@ -58,6 +58,7 @@ fun AppSkinHeroCard(
     }
     val shape = skin.shapes.shapeForRadius(hero.radiusDp)
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val action = if (onClick == null) Modifier else Modifier.clickable(role = Role.Button, onClick = onClick)
 
     Row(
         modifier = modifier
@@ -77,7 +78,7 @@ fun AppSkinHeroCard(
                     if (foreground.scrim.alpha > 0f) drawRect(foreground.scrim)
                 }
             }
-            .clickable(role = Role.Button, onClick = onClick)
+            .then(action)
             .heightIn(min = 48.dp)
             .padding(horizontal = hero.paddingHorizontalDp.dp, vertical = hero.paddingVerticalDp.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),

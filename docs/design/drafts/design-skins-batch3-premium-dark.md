@@ -1,6 +1,6 @@
-# 皮肤第三批设计稿：高级感 / Premium Blue（含图标色块与功能快捷 Banner）
+# 皮肤第三批设计稿：浅蓝 / Premium Blue（含图标色块与功能快捷 Banner）
 
-> 状态：**M1 契约、M2 组件已接入（2026-11-24），M3–M4 待推进**
+> 状态：**M1–M3 已接入（2026-11-24），M4 待验收**
 > 日期：2026-11-24
 > 配色：**低饱和浅蓝系**（按用户要求由初版深蓝紫修订）
 > 视觉稿：[`原型/RikkaHub-UI第三批-高级感视觉对比稿.html`](../../../原型/RikkaHub-UI第三批-高级感视觉对比稿.html)
@@ -14,7 +14,7 @@
 
 | # | 拍板点 | 本稿建议 |
 |---|--------|----------|
-| 1 | 档位名称 / id | **高级感** / `builtin.premium-dark`；成为第 8 个内置预设、第 5 档风格皮肤 |
+| 1 | 档位名称 / id | **浅蓝** / `builtin.premium-dark`，成为第 8 个内置预设、第 5 档风格皮肤 |
 | 2 | 核心视觉 | 近黑冷灰 tonal 底 + **低饱和浅蓝渐变** Banner + 40dp 圆角图标色块 + quiet dark 卡片 |
 | 3 | Banner 语义 | 不采用付费墙或「高级版解锁」；作为**单一功能快捷入口**，默认「让 AI 定时为你办事」→ `Screen.SettingScheduledTasks`。任务中心开启时改跳 `Screen.TaskCenter`，也可由宿主换为现有任务/工作区入口 |
 | 4 | 浅色策略 | 皮肤不强制深色；深色用截图渐变，浅色用同色相浅渐变，全局明暗设置仍是唯一权威 |
@@ -397,11 +397,11 @@ if (showHero) {
 
 ## 5. `builtin.premium-dark` 预设终值（浅蓝配色提案）
 
-> id 暂保留 `premium-dark` 以维持文件与映射稳定；名称与视觉策略均为「高级感 / Premium Blue」。若评审希望去掉 id 中的 dark，可在实施前统一改名，不影响本稿契约结构。
+> 档位显示名先用「浅蓝」，内部 id 沿用 `premium-dark`，深浅模式继续跟随全局设置。
 
 | 组 | 值 |
 |----|----|
-| id / name | `builtin.premium-dark` / 高级感 |
+| id / name | `builtin.premium-dark` / 浅蓝 |
 | palette | `CustomTheme(primaryColorArgb = 0xFF22678E, secondaryColorArgb = 0xFF4B7086, tertiaryColorArgb = 0xFF4E899F, paletteStyle = TONAL_SPOT, contrastLevel = 0.0)` |
 | typography | DEFAULT / sizeRatio 1.0 / expressive 关 / weightDelta 0 / letterSpacing 0 / 数字与标签不等宽 |
 | shapes | xs 8 / sm 12 / md 16 / lg 20 / xl 28；cardGroup 外 22 内 4；button 16；input 16；continuous=true |
@@ -420,7 +420,7 @@ if (showHero) {
 预设结构示意：
 
 ```kotlin
-AppSkinPreset("builtin.premium-dark", "高级感", AppSkin(
+AppSkinPreset("builtin.premium-dark", "浅蓝", AppSkin(
     typography = AppSkinTypography(),
     shapes = AppSkinShapes(
         extraSmallDp = 8f, smallDp = 12f, mediumDp = 16f, largeDp = 20f, extraLargeDp = 28f,
@@ -456,7 +456,7 @@ AppSkinPreset("builtin.premium-dark", "高级感", AppSkin(
         ),
     ),
     palette = CustomTheme(
-        id = "builtin.premium-dark.palette", name = "高级感",
+        id = "builtin.premium-dark.palette", name = "浅蓝",
         primaryColorArgb = 0xFF22678E,
         secondaryColorArgb = 0xFF4B7086,
         tertiaryColorArgb = 0xFF4E899F,
@@ -479,7 +479,7 @@ AppSkinPreset("builtin.premium-dark", "高级感", AppSkin(
 在 `ChatAppearanceRegistry.kt` 的 `builtinChatAppearancePresets` 追加：
 
 ```kotlin
-ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearance(
+ChatAppearancePreset("premium-dark", "浅蓝（渐变气泡）", ChatAppearance(
     userBubble = ChatBubble(
         material = BubbleMaterial.GRADIENT,
         gradient = AppearanceGradient(
@@ -553,7 +553,7 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 - 多字段编辑继续放 `ModalBottomSheet + Column + verticalScroll + imePadding`；
 - 颜色输入保留半成品字符串，保存时校验；
 - `visible=true` 但两套渐变都为空时保存禁用，避免空 Banner；
-- 预设列表由 registry 自动生成，不需要为高级感单写列表项。
+- 预设列表由 registry 自动生成，浅蓝沿用同一个列表入口。
 
 ---
 
@@ -606,7 +606,7 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 
 以下均为提案，不视为已批准：
 
-1. 名称是否采用「高级感」与 id `builtin.premium-dark`；若希望名字不暗示强制深色，可改用 `builtin.premium`，视觉策略不变。
+1. 显示名先用「浅蓝」（2026-11-24 确认），id 沿用 `builtin.premium-dark`。
 2. Banner 默认承载「让 AI 定时为你办事」；评审可替换为记忆整理、任务中心或工作区，但保持单一快捷入口语义。
 3. 浅色采用同色相浅渐变，而非隐藏 Banner 或保持深色 Hero。
 4. 默认分组采用 `FLAT`，`INSET` 仅保留为编辑器选项。
@@ -666,3 +666,11 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 - 设置搜索入口后接入 `featureShortcut`。Banner 以选中的明暗渐变和装饰叠色检验文字对比度，必要时在组件内换前景色或加遮罩。整卡是一项点击操作，两种任务中心开关状态各走现有路由。两条文案覆盖英文、简体和繁体。
 - Kotlin 编译与 App 单测通过，共 3,764 项，2 项跳过。新增 3 项 Banner 对比度测试全过。IME 审计无新增阻断，脚本自测 11 项全过。AppSkin 静态审计的发现项与 HEAD 一致。
 - PJX110（API 35）两项组件测试通过，覆盖默认图标逐像素对照、色块尺寸、Banner 深浅色、200% 字体与 RTL、单一点击语义、两个任务目的地及关闭时隐藏。全量 Android 测试编译受 4 个旧夹具缺少 `messageFileRefDAO` 阻塞。本轮将两个用例和运行器放在同一个隔离 APK 中验证。
+
+### 13.6 M3 实施记录（2026-11-24）
+
+- 第 8 个内置皮肤的显示名为「浅蓝」，内部 id 为 `builtin.premium-dark`。绑定时使用「浅蓝（渐变气泡）」，解绑后继续使用独立聊天方案。色板、分组和两套 Banner 渐变按 §5 注册。
+- 编辑器增加图标色块和 Banner 设置。两套渐变分开配置，新建渐变可用 2–3 个色标，导入的额外色标保留。编辑时保留半成品颜色，保存和试穿都校验合法色标与可见性。预览使用页面实际组件，Banner 的恢复默认操作回到 `AppSkinHero()`。
+- 编辑现有档位或试穿中的档位时，跨页面试穿沿用其档位 id 和未改动的设置组。编辑期间若档位已失效或试穿来源已替换，使用编辑器中的完整草稿试穿。
+- Debug Kotlin 编译通过，App 单测 3,764 项通过、2 项跳过。IME 审计无新增阻断，脚本自测 11 项通过。新增 17 个编辑器文案键在英文、简体、繁体资源各有一份。
+- PJX110（API 35）隔离 APK 的 4 项组件用例通过。M3 覆盖颜色半成品滚动后继续编辑、保存和试穿校验、在试穿中继续编辑并确认及撤销。M2 图标和 Banner 用例也通过复跑。文本操作使用 Compose 测试接口，系统中文 IME 连续键入与 API 31/33 实机检查纳入 M4。

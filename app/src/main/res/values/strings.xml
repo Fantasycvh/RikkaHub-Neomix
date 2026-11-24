@@ -3439,5 +3439,22 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="conversation_move_result_noop">Selected conversations already belong to this assistant</string>
   <string name="setting_page_feature_shortcut_title">Put AI to work on a schedule</string>
   <string name="setting_page_feature_shortcut_desc">Schedule chats, memory cleanup, or automated tasks</string>
+  <string name="setting_skin_icon_tile">Icon tile</string>
+  <string name="setting_skin_icon_tile_size">Tile size (dp)</string>
+  <string name="setting_skin_icon_tile_radius">Tile corner radius (dp)</string>
+  <string name="setting_skin_icon_tile_icon_size">Icon size (dp)</string>
+  <string name="setting_skin_hero">Shortcut banner</string>
+  <string name="setting_skin_hero_visible">Show banner</string>
+  <string name="setting_skin_hero_light_gradient">Light mode gradient</string>
+  <string name="setting_skin_hero_dark_gradient">Dark mode gradient</string>
+  <string name="setting_skin_hero_color_stop">Color stop %1$d</string>
+  <string name="setting_skin_hero_third_color">Third color</string>
+  <string name="setting_skin_hero_extra_stops">Additional color stops are preserved.</string>
+  <string name="setting_skin_hero_needs_gradient">Configure at least one gradient to show the banner.</string>
+  <string name="setting_skin_hero_radius">Banner corner radius (dp)</string>
+  <string name="setting_skin_hero_horizontal_padding">Horizontal padding (dp)</string>
+  <string name="setting_skin_hero_vertical_padding">Vertical padding (dp)</string>
+  <string name="setting_skin_hero_decoration_opacity">Decoration opacity</string>
+  <string name="setting_skin_hero_reset">Reset banner</string>
 </resources>
 

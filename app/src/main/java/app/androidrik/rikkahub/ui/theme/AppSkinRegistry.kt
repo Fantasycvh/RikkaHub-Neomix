@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import app.androidrik.plugin.api.RikkaPlugin
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
+import app.androidrik.rikkahub.data.datastore.TopBarChromeStyle
 import app.androidrik.rikkahub.data.datastore.builtinSkinChatLink
 import app.androidrik.rikkahub.data.model.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -129,4 +130,36 @@ val builtInAppSkins = listOf(
             dividerInsetDp = 56f, dividerWidthDp = 0.5f),
         palette = CustomTheme(id = "builtin.ios.palette", name = "iOS 风",
             primaryColorArgb = 0xFF0A84FF, paletteStyle = ThemePaletteStyle.FIDELITY))),
+    AppSkinPreset("builtin.premium-dark", "浅蓝", AppSkin(
+        shapes = AppSkinShapes(
+            extraSmallDp = 8f, smallDp = 12f, mediumDp = 16f, largeDp = 20f, extraLargeDp = 28f,
+            cardGroupOuterDp = 22f, cardGroupInnerDp = 4f,
+            buttonDp = 16f, inputDp = 16f, continuous = true, iconTile = AppSkinIconTile(),
+        ),
+        spacing = AppSkinSpacing(
+            pageDp = 12f, sectionDp = 20f, groupItemDp = 10f,
+            formHorizontalDp = 16f, formVerticalDp = 14f, formGapDp = 10f,
+        ),
+        motion = AppSkinMotion.STANDARD,
+        topBar = AppSkinTopBar(
+            mode = TopBarChromeStyle.CAPSULES,
+            panel = AppSkinPanel(radiusDp = 24f, borderWidthDp = 0.5f,
+                paddingHorizontalDp = 12f, paddingVerticalDp = 8f),
+        ),
+        drawer = AppSkinDrawer(item = AppSkinPanel(radiusDp = 12f)),
+        cards = AppSkinCards(
+            reasoning = AppSkinPanel(radiusDp = 16f, borderWidthDp = 0.5f),
+            tool = AppSkinPanel(radiusDp = 16f, borderWidthDp = 0.5f),
+        ),
+        hero = AppSkinHero(
+            visible = true,
+            lightGradient = AppearanceGradient(listOf("#D6ECFF", "#C4E3F7", "#D9F0F5")),
+            darkGradient = AppearanceGradient(listOf("#16344F", "#245979", "#356985")),
+        ),
+        palette = CustomTheme(
+            id = "builtin.premium-dark.palette", name = "浅蓝",
+            primaryColorArgb = 0xFF22678E, secondaryColorArgb = 0xFF4B7086, tertiaryColorArgb = 0xFF4E899F,
+            paletteStyle = ThemePaletteStyle.TONAL_SPOT, contrastLevel = 0.0,
+        ),
+    )),
 )

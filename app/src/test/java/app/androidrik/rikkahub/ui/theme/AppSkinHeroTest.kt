@@ -9,9 +9,12 @@ import app.androidrik.rikkahub.data.model.AppSkinShapes
 import app.androidrik.rikkahub.data.model.AppearanceGradient
 import app.androidrik.rikkahub.data.model.GradientDirection
 import app.androidrik.rikkahub.data.model.panels
+import app.androidrik.rikkahub.ui.pages.setting.components.isValidForEditor
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppSkinHeroTest {
@@ -112,5 +115,18 @@ class AppSkinHeroTest {
         assertEquals(skin, Json.decodeFromString<DisplaySetting>(saved).appSkinOverrides.applyTo(AppSkin()))
         assertEquals(skin, restored.appSkinOverrides.applyTo(AppSkin()))
         assertEquals(AppSkin().panels(), skin.panels())
+    }
+
+    @Test fun `editor accepts one configured mode and preserves imported stops but rejects partial colors`() {
+        val active = AppSkinHero(visible = true, lightGradient = lightGradient)
+        val incomplete = AppearanceGradient(listOf("#1234", "#123456"))
+        val imported = AppearanceGradient(List(8) { "#12345$it" }, GradientDirection.HORIZONTAL)
+
+        assertTrue(AppSkinHero().isValidForEditor())
+        assertFalse(AppSkinHero(visible = true).isValidForEditor())
+        assertTrue(active.isValidForEditor())
+        assertTrue(active.copy(darkGradient = imported).isValidForEditor())
+        assertFalse(active.copy(darkGradient = incomplete).isValidForEditor())
+        assertFalse(active.copy(visible = false, lightGradient = incomplete).isValidForEditor())
     }
 }

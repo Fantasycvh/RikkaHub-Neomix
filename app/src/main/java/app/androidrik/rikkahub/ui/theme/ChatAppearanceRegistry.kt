@@ -9,6 +9,7 @@ import app.androidrik.plugin.manager.PluginManager
 import app.androidrik.plugin.manager.PluginResources
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.datastore.builtinSkinChatLink
+import app.androidrik.rikkahub.data.model.AppearanceGradient
 import app.androidrik.rikkahub.data.model.BubbleMaterial
 import app.androidrik.rikkahub.data.model.ChatAppearance
 import app.androidrik.rikkahub.data.model.ChatBubble
@@ -88,6 +89,17 @@ val builtinChatAppearancePresets = listOf(
                 paddingHorizontalDp = 12f, paddingVerticalDp = 8f)),
         assistantBubble = ChatBubble(visible = false)),
     ),
+    ChatAppearancePreset("premium-dark", "浅蓝（渐变气泡）", ChatAppearance(
+        userBubble = ChatBubble(
+            material = BubbleMaterial.GRADIENT,
+            gradient = AppearanceGradient(listOf("#2A6687", "#173D58")),
+            geometry = ChatBubbleGeometry(
+                radiusDp = 20f, tailCornerDp = 6f, maxWidthFraction = 0.92f,
+                paddingHorizontalDp = 14f, paddingVerticalDp = 10f,
+            ),
+        ),
+        assistantBubble = ChatBubble(visible = false),
+    )),
 )
 
 fun resolveChatAppearance(

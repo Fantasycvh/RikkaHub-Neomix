@@ -123,8 +123,8 @@ class AppSkinTest {
         assertEquals(ThemePaletteStyle.NEUTRAL, paper.skin.palette?.paletteStyle)
         // resolve 归一化后与预设等价（registered skins 不走 normalized，resolve 兜底）
         assertEquals(squircle.skin, resolveAppSkin(DisplaySetting(appSkinId = squircle.id), builtInAppSkins, emptyList()).skin)
-        // 联动表覆盖两档且指向注册的聊天方案 id
-        assertEquals(setOf("builtin.squircle", "builtin.paper", "builtin.engineering", "builtin.ios"), builtinSkinChatLink.keys)
+        assertEquals("builtin.chat:glass", builtinSkinChatLink[squircle.id])
+        assertEquals("builtin.chat:paper", builtinSkinChatLink[paper.id])
     }
 
     @Test fun `second batch presets carry group styles and typography tokens`() {
@@ -144,6 +144,34 @@ class AppSkinTest {
         assertEquals(0f, ios.skin.spacing.groupItemDp)
         assertEquals(ThemePaletteStyle.FIDELITY, ios.skin.palette?.paletteStyle)
         assertEquals(ios.skin, resolveAppSkin(DisplaySetting(appSkinId = ios.id), builtInAppSkins, emptyList()).skin)
+    }
+
+    @Test fun `light blue registers palette tiles hero and a detachable chat preset`() {
+        val preset = builtInAppSkins.first { it.id == "builtin.premium-dark" }
+        assertEquals("浅蓝", preset.name)
+        assertEquals(8, builtInAppSkins.size)
+        assertEquals(AppSkinIconTile(), preset.skin.shapes.iconTile)
+        assertTrue(preset.skin.shapes.continuous)
+        assertEquals(AppSkinGroupStyle.FLAT, preset.skin.groups.style)
+        assertEquals(0xFF22678EL, preset.skin.palette?.primaryColorArgb)
+        assertEquals("#D6ECFF", preset.skin.hero.gradientFor(darkMode = false)?.colors?.first())
+        assertEquals("#16344F", preset.skin.hero.gradientFor(darkMode = true)?.colors?.first())
+
+        val registry = ChatAppearanceRegistry()
+        ChatAppearanceRegistry.installBuiltins(registry)
+        val chats = registry.presets.value
+        val display = DisplaySetting(appSkinId = preset.id, chatAppearancePresetId = "builtin.chat:paper")
+        assertEquals("builtin.chat:premium-dark", effectiveChatPresetId(display))
+        val resolved = resolveAppSkin(display, builtInAppSkins, chats)
+        assertEquals(preset.skin, resolved.skin)
+        assertEquals(BubbleMaterial.GRADIENT, resolved.chat.userBubble.material)
+        assertEquals(listOf("#2A6687", "#173D58"), resolved.chat.userBubble.gradient.colors)
+        assertEquals(0.92f, resolved.chat.userBubble.geometry.maxWidthFraction)
+        assertFalse(resolved.chat.assistantBubble.visible)
+
+        val detached = resolveAppSkin(display.copy(chatAppearanceDetached = true), builtInAppSkins, chats)
+        assertEquals(resolved.skin, detached.skin)
+        assertEquals(chats.first { it.id == "builtin.chat:paper" }.appearance, detached.chat)
     }
 
     @Test fun `builtin chat appearance presets register and resolve by link`() {

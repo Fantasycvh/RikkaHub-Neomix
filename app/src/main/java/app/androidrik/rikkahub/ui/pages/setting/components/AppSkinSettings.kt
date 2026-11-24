@@ -61,7 +61,15 @@ fun AppSkinSettings(display: DisplaySetting, onSelect: (String?) -> Unit,
         packages = false
     })
     editing?.let { initial -> AppSkinEditor(initial, onTry = { value ->
-        SkinTrialController.shared.start(display, SkinSelection(null, AppSkinOverrides.from(value)), value, "编辑中的皮肤")
+        val controller = SkinTrialController.shared
+        val selection = controller.trial.value?.target ?: SkinSelection.from(display)
+        val available = selection.id == null || presets.any { it.id == selection.id }
+        val target = if (available && resolveAppSkin(selection.applyTo(display)).skin == initial) {
+            selection.copy(overrides = selection.overrides.withEdits(initial, value))
+        } else {
+            SkinSelection(null, AppSkinOverrides.from(value))
+        }
+        controller.start(display, target, resolveAppSkin(target.applyTo(display)).skin, "编辑中的皮肤")
         editing = null
     }, onSave = { value ->
         onEdit(initial, value); editing = null
@@ -72,6 +80,7 @@ fun AppSkinSettings(display: DisplaySetting, onSelect: (String?) -> Unit,
 internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismiss: () -> Unit, onTry: ((AppSkin) -> Unit)? = null) {
     var draft by remember { mutableStateOf(initial.normalized()) }
     var importing by remember { mutableStateOf(false) }
+    val canApply = !importing && draft.hero.isValidForEditor()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
@@ -102,6 +111,8 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
                     }
                 }
             }
+            SkinIconTileControls(draft.shapes) { draft = draft.copy(shapes = it) }
+            SkinHeroControls(draft.hero, draft.shapes.continuous) { draft = draft.copy(hero = it) }
             // 一项一家：全局字体族在这里，聊天正文的字体族在「显示设置 · 聊天字体族」，同名区分
             Text("全局字体族")
             Select(options = ChatFontFamily.entries.filter { it != ChatFontFamily.CUSTOM || draft.typography.customFontPath.isNotBlank() },
@@ -150,16 +161,16 @@ internal fun AppSkinEditor(initial: AppSkin, onSave: (AppSkin) -> Unit, onDismis
             SkinResourceControls(draft, { draft = it }, { importing = it }, enabled = !importing)
             if (importing) LinearProgressIndicator(Modifier.fillMaxWidth())
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (onTry != null) AppOutlinedButton(enabled = !importing, onClick = { onTry(draft.normalized()) }) { Text("跨页面试穿") }
+                if (onTry != null) AppOutlinedButton(enabled = canApply, onClick = { onTry(draft.normalized()) }) { Text("跨页面试穿") }
                 AppTextButton(enabled = !importing, onClick = onDismiss) { Text("取消") }
-                AppButton(enabled = !importing, onClick = { onSave(draft.normalized()) }) { Text("保存") }
+                AppButton(enabled = canApply, onClick = { onSave(draft.normalized()) }) { Text("保存") }
             }
         }
     }
 }
 
 @Composable
-private fun SkinSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
+internal fun SkinSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onChange: (Float) -> Unit) {
     Text("$label：${"%.2f".format(value)}")
     Slider(value, onValueChange = onChange, valueRange = range,
         modifier = Modifier.semantics { contentDescription = "皮肤 $label" })

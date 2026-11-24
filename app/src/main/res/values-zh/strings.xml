@@ -3439,4 +3439,21 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="conversation_multi_select_deleted_toast">已删除 %1$d 个会话</string>
   <string name="setting_page_feature_shortcut_title">让 AI 定时为你办事</string>
   <string name="setting_page_feature_shortcut_desc">按计划运行对话、整理记忆或执行自动化任务</string>
+  <string name="setting_skin_icon_tile">图标色块</string>
+  <string name="setting_skin_icon_tile_size">色块尺寸（dp）</string>
+  <string name="setting_skin_icon_tile_radius">色块圆角（dp）</string>
+  <string name="setting_skin_icon_tile_icon_size">图标尺寸（dp）</string>
+  <string name="setting_skin_hero">功能快捷 Banner</string>
+  <string name="setting_skin_hero_visible">显示 Banner</string>
+  <string name="setting_skin_hero_light_gradient">浅色渐变</string>
+  <string name="setting_skin_hero_dark_gradient">深色渐变</string>
+  <string name="setting_skin_hero_color_stop">色标 %1$d</string>
+  <string name="setting_skin_hero_third_color">第三个色标</string>
+  <string name="setting_skin_hero_extra_stops">其余色标会保留。</string>
+  <string name="setting_skin_hero_needs_gradient">至少配置一套渐变后才能显示 Banner。</string>
+  <string name="setting_skin_hero_radius">Banner 圆角（dp）</string>
+  <string name="setting_skin_hero_horizontal_padding">水平留白（dp）</string>
+  <string name="setting_skin_hero_vertical_padding">垂直留白（dp）</string>
+  <string name="setting_skin_hero_decoration_opacity">装饰圆透明度</string>
+  <string name="setting_skin_hero_reset">恢复 Banner 默认值</string>
 </resources>

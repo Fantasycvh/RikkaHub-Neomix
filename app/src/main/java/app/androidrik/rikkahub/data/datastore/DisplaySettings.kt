@@ -150,6 +150,7 @@ val builtinSkinChatLink: Map<String, String> = mapOf(
     "builtin.paper" to "builtin.chat:paper",
     "builtin.engineering" to "builtin.chat:engineering",
     "builtin.ios" to "builtin.chat:ios",
+    "builtin.premium-dark" to "builtin.chat:premium-dark",
 )
 
 /**
