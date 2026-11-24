@@ -1,11 +1,12 @@
 # 皮肤第三批设计稿：高级感 / Premium Blue（含图标色块与功能快捷 Banner）
 
-> 状态：**设计草稿，待拍板；未实施 App 代码**
+> 状态：**M1 契约已接入（2026-11-24），M2–M4 待推进**
 > 日期：2026-11-24
 > 配色：**低饱和浅蓝系**（按用户要求由初版深蓝紫修订）
 > 视觉稿：[`原型/RikkaHub-UI第三批-高级感视觉对比稿.html`](../../../原型/RikkaHub-UI第三批-高级感视觉对比稿.html)
 > 上游：[UI 改造调研](design-ui-overhaul-research.md)、[第三轮几何/动效皮肤](design-ui-round3-skins-geometry-motion.md)、[第二批工程感/iOS 风](design-skins-batch2-engineering-ios.md)
 > 约束沿用 AGENTS.md：皮肤 token 契约、IME 宿主规范、`supportingContent` 单子节点坑、长文本增量渲染、AMOLED 与低版本效果回落。
+> 两稿合并后的实施准备见 [§13](#13-结合-ui-改造调研的实施准备)。
 
 ---
 
@@ -56,7 +57,7 @@
 | 分组形态 | `AppSkinGroups.kt:7-45` 已有 `FLAT / OUTLINED / INSET` 与分隔线 | 复用；不新增 enum |
 | 面板材质 | `AppSkinPanels.kt:8-59` 已有通用 panel、材质与 5 个 slot | Hero 有深浅色双渐变与装饰语义，**不塞进通用 panel slot** |
 | 图标容器 | `CardGroup.kt:223-252` 的 `CardGroupIcon` 固定 40dp 圆底 + 20dp 图标 | 增加可选 tile token；null 时保持原圆底 |
-| 设置页 leading 图标 | `SettingPage.kt` 有 18 处裸 `Icon`；全仓简单 `leadingContent = { Icon(...) }` 共 52 处 / 9 文件 | 新增默认等价裸 `Icon` 的皮肤感知包装器并机械迁移；否则设置首页不会出现截图色块 |
+| 设置页 leading 图标 | 本批 9 个文件有 53 处简单裸 `Icon`，其中 1 处是设置首页的 API 配置告警 | 52 处普通入口接入默认等价的皮肤感知包装器，告警保留原绘制 |
 | Hero 宿主 | `SettingPage.kt:121-127` 已有稳定 key 的设置搜索入口 | 搜索栏后保留可选 Hero；作为功能快捷入口，跳现有任务页，不改搜索栏 |
 | 聊天联动 | `DisplaySettings.kt:148-153` 与 `AppSkinRegistry.kt:61-64` 已支持绑定态实时联动、解绑态独立覆写 | 只追加 preset 与 link，不重构机制 |
 | 编辑器 | `AppSkinSettings` 使用 registry 自动生成预设；`SkinPanelsControls.kt` 编辑通用 panel | 新增独立「图标色块」「功能快捷 Banner」控件段 |
@@ -198,7 +199,7 @@
 旧截图 supporting 文字 `#8A8B94` 落在 `#28292E` 上约 **4.29:1**，低于普通文字 AA 4.5:1；该问题仍作为设计约束保留，但不再沿用旧紫灰配色。新方案规定：
 
 - 列表标题、supporting 分别使用 `onSurface` / `onSurfaceVariant`；
-- Hero 标题、副文案同样使用 `onSurface` / `onSurfaceVariant`，保证浅色与深色都可读；
+- Hero 标题、副文案优先取 `onSurface` / `onSurfaceVariant`。当实际渐变与装饰下的对比度不足时，在 Hero 内调整前景色或使用局部遮罩，阈值见 §9；
 - 图标容器与图标使用 M3 成对角色，不手写固定前景色；
 - 装饰圆只画背景，不进入 semantics；
 - 最终对比度以真机生成的 `ColorScheme` 为准，截图色值只作起点。
@@ -208,7 +209,7 @@
 - quiet dark：低对比度边框、tonal 底卡、少阴影；不靠厚重描边或纯黑卡片堆层级。
 - 图标色块：40dp 容器、20dp 图标、12dp 圆角；连续曲率只用于显式启用 tile 的皮肤。
 - Hero：28dp 外圆角、20dp 内边距、静态斜向渐变、两个低透明度装饰圆；无循环动画、无 shader。
-- 分组：默认 `FLAT`，每行独立 22dp 圆角与 10dp 间隙；`INSET` 作为编辑器可选项，不新增契约。
+- 分组：默认 `FLAT`，行间距 10dp，复用现有分段圆角（外侧 22dp、内侧 4dp）。编辑器可切 `INSET` 分组底卡，并单独选择内缩分隔线。
 
 ---
 
@@ -273,13 +274,13 @@ fun AppSkinListItemIcon(
    - tile 非 null：使用 tile 尺寸；`continuous=true` 时用 `SmoothCornerShape`，否则用 `RoundedCornerShape`；
    - 调用方显式传入的 `containerColor` / `contentColor` 仍优先。
 3. `cardGroupItemShape()` 公开语义不动，`SettingProviderPage` 的分段拖拽列表不受影响。
-4. 迁移范围：全仓 52 处简单裸 leading `Icon`（9 文件）。带自定义 tint、modifier、Avatar、Switch 等复杂 leading 内容不机械替换。
+4. 迁移范围：下表 9 个文件中的 52 处普通 leading `Icon`。API 配置告警，以及带自定义 tint、modifier、Avatar、Switch 等的 leading 内容保留专用绘制。
 
 当前分布：
 
 | 文件 | 简单 leading Icon |
 |------|-------------------|
-| `SettingPage.kt` | 18 |
+| `SettingPage.kt` | 17 |
 | `AssistantDetailPage.kt` | 9 |
 | `ExtensionsPage.kt` | 8 |
 | `SettingPreferencesPage.kt` | 6 |
@@ -310,12 +311,14 @@ data class AppSkinHero(
         radiusDp = radiusDp.bound(0f, 48f, 28f),
         paddingHorizontalDp = paddingHorizontalDp.bound(0f, 32f, 20f),
         paddingVerticalDp = paddingVerticalDp.bound(0f, 24f, 20f),
-        lightGradient = lightGradient?.normalized(),
-        darkGradient = darkGradient?.normalized(),
+        lightGradient = lightGradient?.normalizedOrNull(),
+        darkGradient = darkGradient?.normalizedOrNull(),
         decorationOpacity = decorationOpacity.bound(0f, 0.2f, 0.06f),
     )
 }
 ```
+
+`AppearanceGradient.normalizedOrNull()` 沿用现有色标格式校验，保留 2..8 个合法色标，少于两个时返回 null。`AppSkinHero.gradientFor(darkMode)` 负责可见性、明暗选择及跨档回落。
 
 `AppSkin` 末尾增加：
 
@@ -334,7 +337,7 @@ val hero: AppSkinHero = AppSkinHero()
 - `visible=false` 或两套渐变都为空时不发射可见节点；
 - 背景用静态 `Brush.linearGradient`，形状优先消费 `AppSkinShapes.continuous`；
 - 装饰圆用 `Canvas` / `drawCircle` 静态绘制，透明度来自 token；不进 semantics、无动画；
-- 标题与副文案使用 `onSurface` / `onSurfaceVariant`；
+- 标题与副文案按 §3.2 处理对比度，以最终选中的渐变为准（含借用另一明暗档的情况）；
 - 宿主负责图标、文案与单一目的地；组件只拥有视觉容器。
 
 #### Banner 内容策略（非付费墙）
@@ -621,3 +624,38 @@ ChatAppearancePreset("premium-dark", "高级感（浅蓝渐变）", ChatAppearan
 - 2026-11-24 配色修订：Hero、图标、seed、聊天气泡、预览缩略图与说明文案已统一改为低饱和浅蓝；深浅色色值分别校准。
 - 当前内嵌浏览器未提供可见正尺寸 viewport，浅色截图输出失败；因此浅色只声明结构/计算样式通过，不声明像素截图通过。
 - 视觉稿后续仍在同一 HTML 内调整文案；最终实施前需重新打开并复核深浅色、FLAT/INSET 两种形态。
+
+---
+
+## 13. 结合 UI 改造调研的实施准备
+
+### 13.1 本批从调研承接的能力
+
+| 调研方向 | 本批落点 |
+|----------|----------|
+| 方向 E：设置页分组 | 复用第二批的 `AppSkinGroups` 和现有 `CardGroup`。Premium 默认 `FLAT`，`INSET` 底卡和分隔线分别沿用现有编辑能力。Bento 栅格和服务组重分组仍按各自提案评估。 |
+| 设置页信息架构 | 沿用第三轮「一项一家」及值摘要、低频折叠规则。Banner 是搜索入口下方的单一快捷操作，`taskCenterEnabled` 关闭时去「定时任务」，开启时去「任务中心」。两条路径复用各自现有目的页和入口。图标迁移保留行原有的点击、开关和值摘要语义。 |
+| 形状、动效与材质 | 复用 `SmoothCornerShape`、`AppSkinMotion.STANDARD` 和现有聊天气泡几何。Hero 只用静态渐变和装饰绘制，兼顾 AMOLED、系统移除动画和低版本验证。输入栏形态、流式动效和大屏布局各走原提案。 |
+| 组件库 | SaltUI 的标题、副文案与整行点击组织可作参考，miuix 的分组节奏与曲率用现有 token 表达，iOS 控件细节沿已有 iOS 档评估。M1–M4 沿用 Material3 / AppSkin 与当前 Gradle 配置，选择性依赖按调研 §3.3 独立评估。 |
+
+历史候选状态以[调研稿页首](design-ui-overhaul-research.md)、[第三轮实施记录](design-ui-round3-skins-geometry-motion.md#9-m3m4-实施记录2026-11-15未提交)和[第二批设计状态](design-skins-batch2-engineering-ios.md)为准。Expressive 排版、值摘要、折叠段、动效 token 和气泡几何均有现成落点。第三轮的[设置页盘点表](../verification/ia-inventory-round3.md)供宿主回归时对照。
+
+### 13.2 开工时的核对项
+
+- **M1 契约。** Hero 渐变单独校验，合法色标不足两个时将该档视为空。现有 `AppearanceGradient.normalized()` 会用默认紫色填补失效渐变，适合原聊天用途。验收覆盖旧 JSON、非法值、单档回落、双档为空，以及 Hero 和 Shapes 覆写分别保存、清除和恢复继承。
+- **M2 组件。** 用仓库实际 Material 色值计算，深色 `onSurfaceVariant` 在 `#356985` 上为 3.51:1。验收应测实际渐变与装饰的叠色、调换明暗档后的回落、AMOLED 和角色覆写。图标按 §4.2 的 52 处迁移，关注旧版裸图标的尺寸和继承色，以及大字体、RTL 下标题和操作的排布。Banner 整体只提供一个点击语义，两种任务中心开关状态均走到对应目的页。
+- **M3 预设与编辑器。** 按 §0 建议准备第 8 个预设及聊天绑定，沿用试用、确认、撤销和手动编辑解绑。编辑器保持本地草稿，颜色字段放在带 `imePadding` 的常驻滚动表单里。实测开启中文 IME 连续编辑、翻到表单底部、保存后重新打开。
+- **M4 验收。** 用同一设备和字体档对照默认皮肤与 Premium，覆盖深浅色、分行卡片与整组底卡加内缩线、200% 字体、启用和关闭任务中心、聊天绑定与解绑、API 31/33，以及已有 7000 节点会话的滚动基线。真机结果按 §9 记录。
+
+### 13.3 准备基线（2026-11-24）
+
+- App Kotlin 编译任务和离线 App 单测通过，共 3,755 项，2 项跳过。IME 审计 `A=0`、`A'=0`，脚本自测 11 项通过。
+- 当前 HTML 原型在 390px 和 1040px 下验证了深浅色与两种分组形态的切换，均无横向溢出。Android 端待 M2–M4 验证，准备阶段检测到的真机为 API 35。
+- 本节记录实施前基线，§11 保留预设和宿主的评审项。
+
+### 13.4 M1 实施记录（2026-11-24）
+
+- `AppSkinShapes.iconTile` 与 `AppSkin.hero` 已接入归一化和现有序列化。图标色块归 Shapes 组，Hero 可单独覆写和恢复继承。已有皮肤默认关闭这两项能力。
+- Hero 渐变用有效色标判断明暗档是否可用，两档都不可用时 `gradientFor()` 返回空。聊天渐变继续沿用自己的默认色标。页面渲染和路由接线属于 M2。
+- `AppSkinHeroTest` 覆盖 6 个契约用例，包括旧 JSON、尺寸边界、明暗回落、两组覆写及外观快照读回。
+- `:app:compileDebugKotlin` 和 `:app:testDebugUnitTest` 通过。单测共 3,761 项，2 项跳过，新增 6 项全过。IME 审计 `A=0`、`A'=0`，脚本自测 11 项全过。

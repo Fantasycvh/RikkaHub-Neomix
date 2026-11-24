@@ -21,11 +21,12 @@ data class AppSkin(
     val resources: AppSkinResources = AppSkinResources(),
     /** 分组容器形态（CardGroup）；默认 FLAT = 第一批逐行卡片现状。 */
     val groups: AppSkinGroups = AppSkinGroups(),
+    val hero: AppSkinHero = AppSkinHero(),
 ) {
     fun normalized() = copy(typography = typography.normalized(), shapes = shapes.normalized(), spacing = spacing.normalized(),
         motionTokens = motionTokens?.normalized(),
         topBar = topBar.normalized(), drawer = drawer.normalized(), cards = cards.normalized(), embedded = embedded.normalized(), resources = resources.normalized(),
-        groups = groups.normalized())
+        groups = groups.normalized(), hero = hero.normalized())
 }
 
 @Serializable
@@ -66,6 +67,8 @@ data class AppSkinShapes(
     val inputDp: Float = 4f,
     /** 连续曲率（squircle）：true 时 Shapes 用 SmoothCornerShape 代替圆弧圆角。列表项暂不消费。 */
     val continuous: Boolean = false,
+    /** null preserves the original leading icon style. */
+    val iconTile: AppSkinIconTile? = null,
 ) {
     /** Preserve host radii between the five Material reference sizes while following skin tokens. */
     fun scaledCornerRadius(defaultDp: Float): Float {
@@ -90,7 +93,23 @@ data class AppSkinShapes(
         mediumDp = mediumDp.bound(0f, 48f, 12f), largeDp = largeDp.bound(0f, 48f, 16f),
         extraLargeDp = extraLargeDp.bound(0f, 64f, 28f), cardGroupOuterDp = cardGroupOuterDp.bound(0f, 48f, 20f),
         cardGroupInnerDp = cardGroupInnerDp.bound(0f, 24f, 4f), buttonDp = buttonDp?.bound(0f, 48f, 20f),
-        inputDp = inputDp.bound(0f, 48f, 4f))
+        inputDp = inputDp.bound(0f, 48f, 4f), iconTile = iconTile?.normalized())
+}
+
+@Serializable
+data class AppSkinIconTile(
+    val sizeDp: Float = 40f,
+    val radiusDp: Float = 12f,
+    val iconSizeDp: Float = 20f,
+) {
+    fun normalized(): AppSkinIconTile {
+        val size = sizeDp.bound(32f, 56f, 40f)
+        return copy(
+            sizeDp = size,
+            radiusDp = radiusDp.bound(0f, size / 2f, 12f),
+            iconSizeDp = iconSizeDp.bound(16f, 28f, 20f),
+        )
+    }
 }
 
 @Serializable
@@ -165,11 +184,12 @@ data class AppSkinOverrides(
     val embedded: AppSkinEmbedded? = null,
     val resources: AppSkinResources? = null,
     val groups: AppSkinGroups? = null,
+    val hero: AppSkinHero? = null,
 ) {
     fun applyTo(base: AppSkin) = AppSkin(typography ?: base.typography, shapes ?: base.shapes,
         spacing ?: base.spacing, motion ?: base.motion, motionTokens ?: base.motionTokens, palette ?: base.palette,
         topBar ?: base.topBar, drawer ?: base.drawer, cards ?: base.cards, embedded ?: base.embedded, resources ?: base.resources,
-        groups ?: base.groups).normalized()
+        groups ?: base.groups, hero ?: base.hero).normalized()
 
     /** Only edited groups become overrides; untouched groups continue following the selected skin. */
     fun withEdits(before: AppSkin, after: AppSkin): AppSkinOverrides = after.normalized().let { value -> copy(
@@ -185,11 +205,12 @@ data class AppSkinOverrides(
         embedded = if (before.embedded != value.embedded) value.embedded else embedded,
         resources = if (before.resources != value.resources) value.resources else resources,
         groups = if (before.groups != value.groups) value.groups else groups,
+        hero = if (before.hero != value.hero) value.hero else hero,
     ) }
 
     companion object {
         fun from(skin: AppSkin) = AppSkinOverrides(skin.typography, skin.shapes, skin.spacing, skin.motion, skin.motionTokens,
-            skin.palette, skin.topBar, skin.drawer, skin.cards, skin.embedded, skin.resources, skin.groups)
+            skin.palette, skin.topBar, skin.drawer, skin.cards, skin.embedded, skin.resources, skin.groups, skin.hero)
     }
 }
 

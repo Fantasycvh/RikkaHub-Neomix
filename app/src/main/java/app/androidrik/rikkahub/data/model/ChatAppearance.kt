@@ -88,9 +88,11 @@ data class AppearanceGradient(
     val colors: List<String> = listOf("#6750A4", "#D0BCFF"),
     val direction: GradientDirection = GradientDirection.DIAGONAL,
 ) {
-    fun normalized(): AppearanceGradient {
-        val valid = colors.filter { COLOR_HEX.matches(it) }.take(8)
-        return copy(colors = valid.takeIf { it.size >= 2 } ?: AppearanceGradient().colors)
+    fun normalized(): AppearanceGradient = normalizedOrNull() ?: copy(colors = AppearanceGradient().colors)
+
+    internal fun normalizedOrNull(): AppearanceGradient? {
+        val valid = colors.asSequence().filter(COLOR_HEX::matches).take(8).toList()
+        return if (valid.size >= 2) copy(colors = valid) else null
     }
 }
 
