@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -31,6 +30,7 @@ import me.rerere.hugeicons.stroke.Rocket01
 import me.rerere.hugeicons.stroke.Zap
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.pages.setting.SettingVM
@@ -69,32 +69,32 @@ fun ExtensionsPage() {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.QuickMessages) },
-                        leadingContent = { Icon(HugeIcons.Zap, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Zap, null) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_quick_messages)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_quick_messages_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Prompts) },
-                        leadingContent = { Icon(HugeIcons.Book03, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Book03, null) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_prompts)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_prompts_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Skills) },
-                        leadingContent = { Icon(HugeIcons.Puzzle, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Puzzle, null) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_agent_skills)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_agent_skills_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Workspaces) },
-                        leadingContent = { Icon(HugeIcons.Folder01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Folder01, null) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_workspace)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_workspace_desc)) },
                     )
                     if (settings.taskCenterEnabled) {
                         item(
                             onClick = { navController.navigate(Screen.TaskCenter) },
-                            leadingContent = { Icon(HugeIcons.Rocket01, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.Rocket01, null) },
                             headlineContent = { Text(stringResource(R.string.task_center_title)) },
                             supportingContent = { Text(stringResource(R.string.task_center_desc)) },
                         )
@@ -102,20 +102,20 @@ fun ExtensionsPage() {
                         // 任务中心开启后子代理运行/后台命令/定时任务统一进任务中心；旧列表仅回滚态可见
                         item(
                             onClick = { navController.navigate(Screen.AgentRuns) },
-                            leadingContent = { Icon(HugeIcons.Rocket01, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.Rocket01, null) },
                             headlineContent = { Text(stringResource(R.string.agent_runs_title)) },
                             supportingContent = { Text(stringResource(R.string.agent_runs_desc)) },
                         )
                     }
                     item(
                         onClick = { navController.navigate(Screen.SubagentPresets) },
-                        leadingContent = { Icon(HugeIcons.Robot01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Robot01, null) },
                         headlineContent = { Text(stringResource(R.string.subagent_page_title)) },
                         supportingContent = { Text(stringResource(R.string.subagent_page_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Plugins) },
-                        leadingContent = { Icon(HugeIcons.Package, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Package, null) },
                         headlineContent = { Text(stringResource(R.string.extensions_page_plugins)) },
                         supportingContent = { Text(stringResource(R.string.extensions_page_plugins_desc)) },
                     )

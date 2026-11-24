@@ -3423,4 +3423,6 @@
   <string name="conversation_multi_select_delete_confirm_title">刪除所選會話？</string>
   <string name="conversation_multi_select_delete_confirm_text">將刪除所選的 %1$d 個會話，此操作無法撤銷。</string>
   <string name="conversation_multi_select_deleted_toast">已刪除 %1$d 個會話</string>
+  <string name="setting_page_feature_shortcut_title">讓 AI 定時為你辦事</string>
+  <string name="setting_page_feature_shortcut_desc">按排程執行對話、整理記憶或執行自動化工作</string>
 </resources>

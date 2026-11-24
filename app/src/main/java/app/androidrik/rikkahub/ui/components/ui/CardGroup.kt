@@ -61,6 +61,7 @@ import app.androidrik.rikkahub.data.model.AppSkinGroupStyle
 import app.androidrik.rikkahub.data.model.AppSkinGroups
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.shapeForRadius
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 
 private val CardGroupCorner @Composable get() = LocalAppSkin.current.skin.shapes.cardGroupOuterDp.dp
@@ -227,7 +228,11 @@ fun CardGroupIcon(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.secondaryContainer,
     contentColor: Color = MaterialTheme.colorScheme.onSecondaryContainer,
+    contentDescription: String? = null,
 ) {
+    val shapes = LocalAppSkin.current.skin.shapes
+    val tile = shapes.iconTile
+    val shape = tile?.let { shapes.shapeForRadius(it.radiusDp) } ?: CircleShape
     val animatedContainerColor by animateColorAsState(
         targetValue = containerColor,
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
@@ -238,14 +243,14 @@ fun CardGroupIcon(
     )
     Box(
         modifier = modifier
-            .size(40.dp)
-            .background(animatedContainerColor, CircleShape),
+            .size((tile?.sizeDp ?: 40f).dp)
+            .background(animatedContainerColor, shape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
+            contentDescription = contentDescription,
+            modifier = Modifier.size((tile?.iconSizeDp ?: 20f).dp),
             tint = animatedContentColor,
         )
     }

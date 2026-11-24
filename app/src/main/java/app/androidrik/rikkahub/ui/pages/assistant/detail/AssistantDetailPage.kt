@@ -40,6 +40,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.UIAvatar
 import app.androidrik.rikkahub.ui.context.LocalNavController
@@ -103,21 +104,21 @@ fun AssistantDetailPage(id: String) {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.AssistantBasic(id)) },
-                        leadingContent = { Icon(HugeIcons.Settings03, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Settings03, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_basic_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_basic)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantPrompt(id)) },
-                        leadingContent = { Icon(HugeIcons.Message02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Message02, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_prompt_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_prompt)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantRequest(id)) },
-                        leadingContent = { Icon(HugeIcons.Code, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Code, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_request_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_request)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
@@ -132,28 +133,28 @@ fun AssistantDetailPage(id: String) {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.AssistantMcp(id)) },
-                        leadingContent = { Icon(HugeIcons.Wrench01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Wrench01, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_mcp_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_mcp)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantLocalTool(id)) },
-                        leadingContent = { Icon(HugeIcons.BookOpen01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.BookOpen01, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_local_tools_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_local_tools)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantImage(id)) },
-                        leadingContent = { Icon(HugeIcons.Image02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Image02, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_image_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_image)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.AssistantKnowledgeBase(id)) },
-                        leadingContent = { Icon(HugeIcons.Book02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Book02, null) },
                         supportingContent = { Text(stringResource(R.string.assistant_detail_kb_desc)) },
                         headlineContent = { Text(stringResource(R.string.assistant_page_tab_knowledge_base)) },
                         trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
@@ -174,14 +175,14 @@ fun AssistantDetailPage(id: String) {
                     ) {
                         item(
                             onClick = { navController.navigate(Screen.AssistantInjections(id)) },
-                            leadingContent = { Icon(HugeIcons.Puzzle, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.Puzzle, null) },
                             supportingContent = { Text(stringResource(R.string.assistant_detail_extensions_desc)) },
                             headlineContent = { Text(stringResource(R.string.assistant_page_tab_extensions)) },
                             trailingContent = { Icon(HugeIcons.ArrowRight01, null) },
                         )
                         item(
                             onClick = { navController.navigate(Screen.AssistantMemory(id)) },
-                            leadingContent = { Icon(HugeIcons.Brain02, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.Brain02, null) },
                             supportingContent = { Text(stringResource(R.string.assistant_detail_memory_desc)) },
                             headlineContent = { Text(stringResource(R.string.assistant_page_tab_memory)) },
                             trailingContent = { Icon(HugeIcons.ArrowRight01, null) },

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -26,6 +25,7 @@ import me.rerere.hugeicons.stroke.Sun01
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.CardGroupValueChip
 import app.androidrik.rikkahub.ui.theme.AppSkinRegistry
@@ -79,14 +79,14 @@ fun SettingPreferencesPage() {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesTheme) },
-                        leadingContent = { Icon(HugeIcons.Sun01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Sun01, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_theme)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_theme_desc)) },
                         trailingValue = { CardGroupValueChip(if (settings.dynamicColor) "动态色" else "固定主题") },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesNotification) },
-                        leadingContent = { Icon(HugeIcons.Notification01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Notification01, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_notification)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_notification_desc)) },
                         trailingValue = {
@@ -98,7 +98,7 @@ fun SettingPreferencesPage() {
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesGeneral) },
-                        leadingContent = { Icon(HugeIcons.Settings03, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Settings03, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_general)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_general_desc)) },
                         trailingValue = {
@@ -107,20 +107,20 @@ fun SettingPreferencesPage() {
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesUI) },
-                        leadingContent = { Icon(HugeIcons.PaintBoard, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.PaintBoard, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_ui)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_ui_desc)) },
                         trailingValue = { CardGroupValueChip(skinName) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesAppIdentity) },
-                        leadingContent = { Icon(HugeIcons.SmartPhone01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.SmartPhone01, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_app_identity)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_app_identity_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferencesNetwork) },
-                        leadingContent = { Icon(HugeIcons.GlobalSearch, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.GlobalSearch, null) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences_network)) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_network_desc)) },
                         trailingValue = {

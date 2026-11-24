@@ -22,6 +22,8 @@ import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.haze.GlassTopBarScaffold
 import app.androidrik.rikkahub.ui.components.haze.pageGlassTopBarColors
 import androidx.compose.material3.Text
+import app.androidrik.rikkahub.ui.components.ui.AppSkinHeroCard
+import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -80,6 +82,8 @@ import app.androidrik.rikkahub.ui.context.Navigator
 import app.androidrik.rikkahub.ui.hooks.rememberColorMode
 import app.androidrik.rikkahub.ui.theme.ColorMode
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.utils.openUrl
 import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
@@ -90,6 +94,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val navController = LocalNavController.current
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val showFeatureShortcut = LocalAppSkin.current.skin.hero.gradientFor(LocalDarkMode.current) != null
     val filesManager: FilesManager = koinInject()
     val localNetworkPermission = rememberLocalNetworkPermissionState()
     localNetworkPermission?.let { PermissionManager(it) }
@@ -123,6 +128,16 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     onClick = { navController.navigate(Screen.SettingGlobalSearch) },
                     modifier = Modifier.padding(horizontal = 8.dp),
                 )
+            }
+
+            if (showFeatureShortcut) {
+                item("featureShortcut") {
+                    SettingFeatureShortcut(
+                        taskCenterEnabled = settings.taskCenterEnabled,
+                        onNavigate = { navController.navigate(it) },
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                }
             }
 
             if (settings.isNotConfigured()) {
@@ -161,7 +176,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     title = { Text(stringResource(R.string.setting_page_general_settings)) },
                 ) {
                     item(
-                        leadingContent = { Icon(HugeIcons.Sun01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Sun01, null) },
                         trailingContent = {
                             SegmentedPill(
                                 options = ColorMode.entries,
@@ -182,19 +197,19 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingPreferences) },
-                        leadingContent = { Icon(HugeIcons.Settings03, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Settings03, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Assistant) },
-                        leadingContent = { Icon(HugeIcons.LookTop, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.LookTop, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_assistant_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_assistant)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Extensions) },
-                        leadingContent = { Icon(HugeIcons.Package, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Package, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_extensions_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_extensions)) },
                     )
@@ -208,31 +223,31 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.SettingModels) },
-                        leadingContent = { Icon(HugeIcons.AiMagic, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.AiMagic, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_default_model_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_default_model)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingProvider) },
-                        leadingContent = { Icon(HugeIcons.Brain02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Brain02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_providers_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_providers)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingMedia) },
-                        leadingContent = { Icon(HugeIcons.Image02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Image02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_media_and_speech_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_media_and_speech)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingSearch) },
-                        leadingContent = { Icon(HugeIcons.GlobalSearch, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.GlobalSearch, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_search_service_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_search_service)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingKnowledgeBase) },
-                        leadingContent = { Icon(HugeIcons.Book02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Book02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_kb_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_kb)) },
                     )
@@ -240,7 +255,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     if (!settings.taskCenterEnabled) {
                         item(
                             onClick = { navController.navigate(Screen.SettingScheduledTasks) },
-                            leadingContent = { Icon(HugeIcons.Time02, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.Time02, null) },
                             supportingContent = { Text(stringResource(R.string.setting_page_scheduled_tasks_desc)) },
                             headlineContent = { Text(stringResource(R.string.setting_page_scheduled_tasks)) },
                         )
@@ -262,25 +277,25 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.SettingMcp) },
-                        leadingContent = { Icon(HugeIcons.McpServer, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.McpServer, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_mcp)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingWeb) },
-                        leadingContent = { Icon(HugeIcons.ServerStack01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.ServerStack01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_web_server_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_web_server)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Backup) },
-                        leadingContent = { Icon(HugeIcons.Database02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Database02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_data_backup_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_data_backup)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingFiles) },
-                        leadingContent = { Icon(HugeIcons.ImageUpload, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.ImageUpload, null) },
                         supportingContent = {
                             if (storageState.first == -1) {
                                 Text(stringResource(R.string.calculating))
@@ -298,7 +313,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingStorage) },
-                        leadingContent = { Icon(HugeIcons.Package, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Package, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_storage_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_storage)) },
                     )
@@ -313,13 +328,13 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.SettingAbout) },
-                        leadingContent = { Icon(HugeIcons.Clapping01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Clapping01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_about_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_about)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Log) },
-                        leadingContent = { Icon(HugeIcons.Bookshelf01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Bookshelf01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_request_logs_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_request_logs)) },
                     )
@@ -327,6 +342,21 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             }
         }
     }
+}
+
+@Composable
+internal fun SettingFeatureShortcut(
+    taskCenterEnabled: Boolean,
+    onNavigate: (Screen) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    AppSkinHeroCard(
+        title = stringResource(R.string.setting_page_feature_shortcut_title),
+        description = stringResource(R.string.setting_page_feature_shortcut_desc),
+        icon = HugeIcons.Time02,
+        onClick = { onNavigate(if (taskCenterEnabled) Screen.TaskCenter else Screen.SettingScheduledTasks) },
+        modifier = modifier,
+    )
 }
 
 @Composable

@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.theme
 
+import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialExpressiveTheme
@@ -44,15 +45,17 @@ fun AppSkinTheme(resolved: ResolvedAppSkin, colorScheme: ColorScheme, content: @
     }
 }
 
-internal fun appSkinShapes(value: AppSkinShapes): Shapes = value.normalized().run {
-    val s: (Float) -> androidx.compose.foundation.shape.CornerBasedShape = {
+internal fun AppSkinShapes.shapeForRadius(radiusDp: Float): CornerBasedShape =
+    radiusDp.let {
         if (continuous) SmoothCornerShape(it.dp) else RoundedCornerShape(it.dp)
     }
-    Shapes(extraSmall = s(extraSmallDp), small = s(smallDp),
-        medium = s(mediumDp), large = s(largeDp), extraLarge = s(extraLargeDp),
-        largeIncreased = s(scaledCornerRadius(20f)),
-        extraLargeIncreased = s(scaledCornerRadius(32f)),
-        extraExtraLarge = s(scaledCornerRadius(48f)))
+
+internal fun appSkinShapes(value: AppSkinShapes): Shapes = value.normalized().run {
+    Shapes(extraSmall = shapeForRadius(extraSmallDp), small = shapeForRadius(smallDp),
+        medium = shapeForRadius(mediumDp), large = shapeForRadius(largeDp), extraLarge = shapeForRadius(extraLargeDp),
+        largeIncreased = shapeForRadius(scaledCornerRadius(20f)),
+        extraLargeIncreased = shapeForRadius(scaledCornerRadius(32f)),
+        extraExtraLarge = shapeForRadius(scaledCornerRadius(48f)))
 }
 
 internal fun appSkinTypography(base: Typography, tokens: AppSkinTypography, family: FontFamily?): Typography {

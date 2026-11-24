@@ -3437,5 +3437,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="conversation_move_result_moved">Moved %1$d conversations</string>
   <string name="conversation_move_result_skipped_suffix"> (%1$d already belong to this assistant)</string>
   <string name="conversation_move_result_noop">Selected conversations already belong to this assistant</string>
+  <string name="setting_page_feature_shortcut_title">Put AI to work on a schedule</string>
+  <string name="setting_page_feature_shortcut_desc">Schedule chats, memory cleanup, or automated tasks</string>
 </resources>
 

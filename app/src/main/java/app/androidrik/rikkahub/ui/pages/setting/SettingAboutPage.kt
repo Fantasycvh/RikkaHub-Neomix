@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -42,6 +41,7 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.easteregg.EmojiBurstHost
+import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalSettings
@@ -138,14 +138,14 @@ fun SettingAboutPage() {
                                 onClick = {},
                                 onLongClick = { navController.navigate(Screen.Debug) },
                             ),
-                            leadingContent = { Icon(HugeIcons.Code, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.Code, null) },
                             supportingContent = {
                                 Text("${BuildConfig.VERSION_NAME} / ${BuildConfig.VERSION_CODE}")
                             },
                             headlineContent = { Text(stringResource(R.string.about_page_version)) },
                         )
                         item(
-                            leadingContent = { Icon(HugeIcons.SmartPhone01, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.SmartPhone01, null) },
                             supportingContent = {
                                 Text("${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} / Android ${android.os.Build.VERSION.RELEASE} / SDK ${android.os.Build.VERSION.SDK_INT}")
                             },
@@ -160,13 +160,13 @@ fun SettingAboutPage() {
                     ) {
                         item(
                             onClick = { context.openUrl("https://github.com/Fantasycvh/RikkaHub-Neomix") },
-                            leadingContent = { Icon(HugeIcons.Github, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.Github, null) },
                             supportingContent = { Text("https://github.com/Fantasycvh/RikkaHub-Neomix") },
                             headlineContent = { Text(stringResource(R.string.about_page_github)) },
                         )
                         item(
                             onClick = { context.openUrl("https://github.com/Fantasycvh/RikkaHub-Neomix/blob/master/LICENSE") },
-                            leadingContent = { Icon(HugeIcons.File02, null) },
+                            leadingContent = { AppSkinListItemIcon(HugeIcons.File02, null) },
                             supportingContent = { Text("https://github.com/Fantasycvh/RikkaHub-Neomix/blob/master/LICENSE") },
                             headlineContent = { Text(stringResource(R.string.about_page_license)) },
                         )

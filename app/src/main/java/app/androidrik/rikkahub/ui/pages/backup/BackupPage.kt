@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.backup
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.theme.CustomColors
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -71,19 +71,19 @@ fun BackupPage() {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.BackupImportExport) },
-                        leadingContent = { Icon(HugeIcons.File01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.File01, null) },
                         headlineContent = { Text(stringResource(R.string.backup_page_import_export_title)) },
                         supportingContent = { Text(stringResource(R.string.backup_page_import_export_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.BackupWebDav) },
-                        leadingContent = { Icon(HugeIcons.Upload02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Upload02, null) },
                         headlineContent = { Text(stringResource(R.string.backup_page_webdav_backup)) },
                         supportingContent = { Text(stringResource(R.string.backup_page_webdav_desc)) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.BackupS3) },
-                        leadingContent = { Icon(HugeIcons.ServerStack01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.ServerStack01, null) },
                         headlineContent = { Text(stringResource(R.string.backup_page_s3_backup)) },
                         supportingContent = { Text(stringResource(R.string.backup_page_s3_desc)) },
                     )
@@ -97,7 +97,7 @@ fun BackupPage() {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.BackupReminder) },
-                        leadingContent = { Icon(HugeIcons.Notification01, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Notification01, null) },
                         headlineContent = { Text(stringResource(R.string.backup_page_reminder_title)) },
                         supportingContent = { Text(stringResource(R.string.backup_page_reminder_desc)) },
                     )
@@ -111,7 +111,7 @@ fun BackupPage() {
                 ) {
                     item(
                         onClick = { navController.navigate(Screen.BackupSnapshot) },
-                        leadingContent = { Icon(HugeIcons.Database02, null) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.Database02, null) },
                         headlineContent = { Text(stringResource(R.string.backup_page_snapshot_title)) },
                         supportingContent = { Text(stringResource(R.string.backup_page_snapshot_desc)) },
                     )

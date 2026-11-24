@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.ui.pages.setting.components
 
+import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -319,7 +320,7 @@ fun MediaGenerationProviderConfigure(
                 } else null,
                 headlineContent = { Text(stringResource(R.string.setting_media_page_add_model)) },
                 supportingContent = { Text(stringResource(R.string.setting_media_page_models_desc)) },
-                leadingContent = { Icon(HugeIcons.Add01, contentDescription = null) },
+                leadingContent = { AppSkinListItemIcon(HugeIcons.Add01, contentDescription = null) },
             )
         }
     }

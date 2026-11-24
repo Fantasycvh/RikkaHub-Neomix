@@ -4,7 +4,6 @@ import android.os.Build
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -13,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Network
 
@@ -32,7 +32,7 @@ fun LocalNetworkPermissionCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
     ) {
         ListItem(
-            leadingContent = { Icon(Lucide.Network, contentDescription = null) },
+            leadingContent = { AppSkinListItemIcon(Lucide.Network, contentDescription = null) },
             headlineContent = { Text(stringResource(R.string.permission_local_network)) },
             supportingContent = {
                 Text(stringResource(R.string.permission_local_network_desc))

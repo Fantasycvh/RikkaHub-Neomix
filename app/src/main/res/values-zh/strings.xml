@@ -3437,4 +3437,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="conversation_multi_select_delete_confirm_title">删除所选会话？</string>
   <string name="conversation_multi_select_delete_confirm_text">将删除所选的 %1$d 个会话，此操作无法撤销。</string>
   <string name="conversation_multi_select_deleted_toast">已删除 %1$d 个会话</string>
+  <string name="setting_page_feature_shortcut_title">让 AI 定时为你办事</string>
+  <string name="setting_page_feature_shortcut_desc">按计划运行对话、整理记忆或执行自动化任务</string>
 </resources>
