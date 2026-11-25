@@ -15,7 +15,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = "app.androidrik.rikkahub.longtextbaseline.debug"
-TEST_CLASS = "app.androidrik.rikkahub.perf.LongTextBaselineTest"
+TEST_CLASS = "app.androidrik.rikkahub.perf.LongTextBaselineTest#recordBaseline"
 
 
 def command(args, *, check=True):

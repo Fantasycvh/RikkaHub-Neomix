@@ -64,6 +64,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.Before
 import org.junit.After
@@ -283,6 +284,42 @@ class LongTextBaselineTest {
                     SystemClock.sleep(150)
                 }
             }
+        }
+    }
+
+    @Test fun recordSaltUiPerformance() {
+        val panel = arguments.getString("saltUiPanel")
+        assumeTrue("Select appskin or salt with -e saltUiPanel", panel != null)
+        require(panel == "appskin" || panel == "salt")
+        check(BuildConfig.APPLICATION_ID == "app.androidrik.rikkahub.longtextbaseline.debug")
+        val run = arguments.getString("reportRun", "manual").also {
+            require(it.matches(Regex("[a-zA-Z0-9_-]+")))
+        }
+        automation = instrumentation.getUiAutomation(android.app.UiAutomation.FLAG_DONT_USE_ACCESSIBILITY)
+        val output = File(context.filesDir, "saltui-performance/$run.json")
+
+        SaltUiPerformanceRun(instrumentation, automation, salt = panel == "salt").record(output) { activity ->
+            val current = Scene("prose", "", "scroll", false)
+            val text = "相同文本用于固定长会话样本。\n".repeat(10)
+            var parent: Uuid? = null
+            val nodes = List(7_000) { index ->
+                val message = if (index % 2 == 0) UIMessage.user("$index $text") else UIMessage.assistant("$index $text")
+                message.toMessageNode().copy(parentId = parent).also { parent = it.id }
+            }
+            current.conversation = current.conversation.copy(messageNodes = nodes, activeLeafNodeId = nodes.last().id)
+            assertEquals(nodes.size, current.conversation.currentMessages.size)
+            awaitDraw(activity.window) {
+                instrumentation.runOnMainSync { activity.setContent { MaterialTheme { Content(current) } } }
+            }
+            // Wait until the real ChatList has laid out the long path before exercising the handoff.
+            val deadline = SystemClock.uptimeMillis() + 15_000
+            while (current.list.layoutInfo.totalItemsCount < nodes.size) {
+                check(SystemClock.uptimeMillis() < deadline) { "7,000-node ChatList did not lay out" }
+                SystemClock.sleep(50)
+            }
+            // Show and scroll the already loaded conversation. The return timer starts after the swipe.
+            swipe(activity.window, up = false)
+            nodes.size
         }
     }
 

@@ -1,6 +1,6 @@
 # SaltUI 3.0.0 隔离 Spike：分组元项与开关形态验证
 
-> 状态：**方案稿，待拍板；未添加 SaltUI 依赖**
+> 状态：**Debug 对照页已实现。首轮验证见 §13。**
 > 日期：2026-11-24
 > 目标：在独立 debug fixture 中验证 SaltUI 的 `Item` / `ItemSwitcher` / `Switcher` 是否比现有 `CardGroup` 提供可感知收益，并同时验证主题、无障碍、动效、合规和包体边界。
 > 上游：[高级感皮肤设计稿](design-skins-batch3-premium-dark.md)、[UI 改造调研](design-ui-overhaul-research.md)
@@ -95,11 +95,10 @@ Kotlin/Compose 升级已在工作区完成，作为 SaltUI spike 的前置独立
 
 1. 一个 debug-only Compose A/B fixture；
 2. `Item`、`ItemSwitcher`、纯绘制 `Switcher`、`ItemDivider`；
-3. `LabelValue`、`PillButton` 仅放在“unstable API 观察区”，不参与生产推荐；
-4. 同一 `AppSkinTheme` 下的现有 `CardGroup` 与 SaltUI 并排对比；
-5. 本地 `rememberSaveable` 状态，不接 VM、DataStore、导航或真实设置；
-6. 语义树、点击次数、禁用态、RTL、200% 字体、深浅色和皮肤切换测试；
-7. 依赖图、HiddenApiBypass 调用路径、release 依赖排除、debug APK 差分和 FrameMetrics/PSS 记录；生产 R8 增量留待另行批准的测量构建。
+3. 同一 `AppSkinTheme` 内纵向排列现有 `CardGroup` 与 SaltUI，以完整行宽比较长文本与大字体；
+4. 本地 `rememberSaveable` 状态；
+5. 语义树、点击次数、禁用态、RTL、200% 字体、深浅色和皮肤切换测试；
+6. 依赖图、HiddenApiBypass 调用路径、Release 依赖排除和 Debug APK 差分。FrameMetrics/PSS 见后续验证矩阵。
 
 ### 5.2 不包含
 
@@ -127,7 +126,7 @@ Kotlin/Compose 升级已作为 SaltUI spike 的前置独立变更完成：
 
 ### S1：debug-only 依赖与宿主
 
-1. 在版本目录增加 `saltui = "3.0.0"` 和 `salt-ui` alias；
+1. 在版本目录增加 `saltUi = "3.0.0"` 和 `salt-ui` alias；
 2. 在 app 增加 `debugImplementation(libs.salt.ui)`；
 3. 复用 [SketchTestHostActivity.kt:18-36](../../../app/src/debug/java/app/androidrik/rikkahub/SketchTestHostActivity.kt#L18)，增加 intent extra `saltUiSpike` 分支；
 4. 不新增 Activity、route 或 production manifest 声明。
@@ -166,30 +165,30 @@ Kotlin/Compose 升级已作为 SaltUI spike 的前置独立变更完成：
 
 - `SaltConfigs.default(isDarkTheme, indication)`
 - `SaltDynamicColors(light = ..., dark = ...)`
-- `SaltColors.defaultLight(...)` / `defaultDark(...)`
+- 两套 `SaltColors.defaultLight(...)`，各自完整传入对应模式的 M3 颜色
 - `saltTextStyles(...)`
 - `SaltDimens.default(item, itemIcon, padding, subPadding)`
-- `SaltShapes.default(small, medium, large)`
-- `SaltTheme(..., material = SaltMaterial(type = MaterialType.None), content = ...)`
+- `SaltShapes(small, medium, large)`
+- `SaltTheme(..., content = ...)` 的稳定重载
 
-`SaltMaterial` / `MaterialType.None` 的精确构造以 3.0.0 源码和编译结果为准；若稳定重载无法关闭材质，则停止 spike，不通过复制全局默认主题绕过。
+对照页的祖先没有 `SaltTheme`。SaltUI 3.0.0 源码中，稳定重载沿用默认 `MaterialType.None`，该分支不会创建 `HazeState`。
 
 适配器边界：
 
 1. SaltUI 类型只能出现在 debug adapter 内；
 2. fixture 不直接读取 `SaltTheme.colors` 作为页面颜色权威；
 3. 不向 `LocalAppSkin` 或 `LocalMotionTokens` 写回；
-4. 系统“移除动画”开启时，SaltUI 固定动画不会自动归零，必须记录为差异，不得伪装成已适配。
+4. SaltUI 的固定时长独立于 AppSkin 动效令牌。Compose `Transition` 会读取 `MotionDurationScale`，系统设置的端到端效果单独验收。
 
 ### S3：A/B 内容
 
-fixture 分三区：
+两组使用相同文案和独立回调计数。
 
-1. **点击行**：现有 `CardGroup.item` vs SaltUI `Item`；
-2. **开关行**：现有 `Row.toggleable(Role.Switch)` + 非交互 Switch vs `ItemSwitcher`；
-3. **unstable 观察区**：`LabelValue`、`PillButton`，只验证编译、语义和布局，不作为采用候选。
+1. 点击行对照 `CardGroup.item` 与 `Item`。
+2. 开关行对照 `CardGroup.item` 上的 `Modifier.toggleable(Role.Switch)` 与 `ItemSwitcher`。两组都由整行提供唯一开关操作。
+3. 分隔线对照 `CardGroup` 的皮肤配置与 `ItemDivider` 的起始缩进。
 
-每个组件覆盖 enabled / disabled、单行与多行副文、长中文值、200% 字体、RTL。皮肤至少切换 default 与浅蓝，明暗模式分别验证。
+`LabelValue` 和 `PillButton` 留待单独观察。点击行与开关行包括普通和禁用状态，长中文副文用于比较默认／浅蓝、深浅色、200% 字体与 RTL 布局。
 
 ---
 
@@ -322,3 +321,55 @@ fixture 分三区：
 - [AndroidHiddenApiBypass](https://github.com/LSPosed/AndroidHiddenApiBypass)
 - [Android 非 SDK 接口限制](https://developer.android.com/guide/app-compatibility/restrictions-non-sdk-interfaces)
 - [Google Play dependenciesInfo](https://developer.android.com/build/dependencies#dependency_information_for_play_console)
+
+
+---
+
+## 13. 首轮实施记录（2026-11-25）
+
+- SaltUI 3.0.0 通过 Debug 依赖接入 `SketchTestHostActivity`。现有 AppSkin 组与 SaltUI 组共享主题，分别保存开关状态与事件计数。入口如下。
+  ```shell
+  adb shell am start -n app.androidrik.rikkahub.debug/app.androidrik.rikkahub.SketchTestHostActivity --ez saltUiSpike true
+  ```
+- 常规 Debug 构建和 app JVM 单测通过。arm64 Debug APK 从 **110,925,313 字节**增至 **112,248,176 字节**，增加 **1,322,863 字节**。该差值包含依赖与对照页。
+- Debug 运行时解析出 SaltUI 3.0.0 和传递依赖 HiddenApiBypass 6.1。Release 运行时依赖图没有这两个库。AndroidX Compose UI 为 1.12.1，Compose Multiplatform UI 为 1.12.2。
+- SaltUI 源码中，`RomUtil.getSystemProperty` 调用 HiddenApiBypass。`WindowInsets.safeMainCompat` 会按需检测 HyperOS。已核对的 SaltUI 主库与 core AAR 清单没有注册启动组件。
+- PJX110（API 35）独立包名下的四项 Compose 测试通过。它们覆盖单一点击节点、角色、48dp 触控、禁用态、RTL 下 200% 字体在两种皮肤和两种色彩模式中的副文布局，以及 Activity 重建后两组状态独立保留。
+- 测试时钟注入 `MotionDurationScale = 0` 后，Salt 开关在前四帧内达到最终图像。800/200/300ms 仍由 SaltUI 固定定义。
+- 上述四项定向测试通过同包测试宿主运行。补齐四个已有用例的 `messageFileRefDAO` 参数后，完整 AndroidTest 已通过编译与打包。
+- API 35 Debug 性能见 §14。TalkBack 实际播报、系统无障碍开关联动、API 31／33、对比度和 Release APK 内容待验证。
+
+---
+
+## 14. API 35 Debug 性能（2026-11-25）
+
+在 PJX110（Android 15／API 35）上测量默认浅色、100% 字体、实际 60 Hz，系统动画时长比例为 1。应用采用独立包名和 `LongTextBaselineRunner`。每次启动新进程只渲染一种面板，依次运行 AppSkin、SaltUI、SaltUI、AppSkin、AppSkin、SaltUI。每轮先预热 16 次，再以 75 ms 间隔注入 100 次触摸并核对回调数，最后保留 900 ms 采集末次动画。`FrameMetrics` 与 PSS 分别使用现有逐帧采集器和三轮 GC 后读数。
+
+| 项目 | AppSkin | SaltUI |
+|---|---:|---:|
+| 连续切换帧耗时 P50，三轮中位数 | 12.43 ms | 11.69 ms |
+| 连续切换帧耗时 P95，三轮中位数 | 24.22 ms | 22.89 ms |
+| 超过系统帧截止时间，三轮合计 | 192 / 1,217（15.8%） | 138 / 1,280（10.8%） |
+| 超过 32 ms 的帧数／最慢帧 | 1／41.93 ms | 1／33.24 ms |
+| 预热后 PSS，三轮中位数 | 197.06 MiB | 197.95 MiB |
+| 100 次切换后 PSS，三轮中位数 | 202.81 MiB | 203.38 MiB |
+| 每轮切换前后 PSS 增量的中位数 | +5.75 MiB | +5.47 MiB |
+| 7000 节点会话切回后首次 Compose 绘制，三轮中位数 | 94.13 ms | 102.25 ms |
+| 同一首绘指标的三轮范围 | 88.44–95.65 ms | 100.52–119.30 ms |
+
+六轮均完成 100 次实测切换，帧采集回调零丢失，系统事件日志未记录隔离包的 ANR 或崩溃，首尾热状态均为 0。两组切换 P95 均在既有 Debug 的 32 ms 预算内，且 SaltUI 本轮超出帧截止时间的比例较低。切换后的 SaltUI PSS 中位数高 0.57 MiB。
+
+会话回切使用真实 `ChatList` 和 7000 个内存构造的线性节点，完成布局和触摸滑动后重新挂载面板。SaltUI 在本机的三轮回切均比 AppSkin 慢，中位数差 8.12 ms。该计时包含旧内容退出和新面板的首次 Compose 绘制。本轮覆盖默认浅色、单机 Debug 样本。生产 R8 包体、冷启动和跨设备结果见生产准入条件。
+
+复现入口为 [LongTextBaselineTest.recordSaltUiPerformance](../../../app/src/androidTest/java/app/androidrik/rikkahub/perf/LongTextBaselineTest.kt)。标准构建使用 `-PlongTextBaseline=true :app:assembleDebug :app:assembleDebugAndroidTest`。本机测量复用同包 instrumentation，以解决设备对跨包 runner 的限制，实际 runner 为 `app.androidrik.rikkahub.longtextbaseline.debug/app.androidrik.rikkahub.perf.LongTextBaselineRunner`。跨包模式使用 `app.androidrik.rikkahub.longtextbaseline.debug.test` 作为 runner 所在包。
+
+```powershell
+$target = 'app.androidrik.rikkahub.longtextbaseline.debug'
+$runner = "$target/app.androidrik.rikkahub.perf.LongTextBaselineRunner"
+$test = 'app.androidrik.rikkahub.perf.LongTextBaselineTest#recordSaltUiPerformance'
+adb shell am force-stop $target
+adb shell am instrument -w -r -e class $test -e saltUiPanel appskin -e reportRun appskin-01 $runner
+adb exec-out run-as $target cat files/saltui-performance/appskin-01.json
+```
+
+以独立进程改用 `-e saltUiPanel salt`，并为每轮分配新的 `reportRun`；原始 JSON 保存了三个阶段的逐帧耗时、帧截止时间与 PSS 采样。
