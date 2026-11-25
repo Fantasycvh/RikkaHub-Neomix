@@ -22,6 +22,8 @@
 
 > **2026-11-18 新增 #16 OpenHands**：双仓克隆固定基准 `9590adf0a`（前端）+ `06f643ca4`（software-agent-sdk）正式评估，深度 源码（双仓逐文件）；聚焦上下文管理/净化，判定「架构同构互证不搬」，可借三件防线——压缩边界原子单元守卫（P2，入 §三 #19）、溢出反应式压缩兜底（P2，入 §三 #20）、结构化摘要模板（P3 记账）；本轮**只评不施**。原文 [`openhands.md`](references/other%20projects/openhands.md)。
 
+> **2026-11-25 新增 #17/#18 Cuplivo + Kelivo**：两者同源（Cuplivo 为 Kelivo 社区 fork），本轮围绕**备份 / 同步**单一域合并评估，故共用一份台账。判定为**源码级参照 + 已落地**：Cuplivo 提供局域网双向同步的协议形态（证书指纹身份、PIN 配对、对称确定性合并、内容寻址差集、续传预算），Kelivo 提供本地副本的产品口径（延迟检查、N+周+月留存、容量上限、整包备份模型）。本仓按 Android 平台与自身数据模型重写为 `data/sync/lan/` 与 `data/sync/localsnapshot/`，**未复制其 Dart 代码**。原文 [`cuplivo-kelivo.md`](references/other%20projects/cuplivo-kelivo.md)。
+
 **怎么读这份文档**：
 
 1. 要**做事** → 直接看 §三「落地顺序与状态」（唯一口径的当前状态）。
@@ -53,6 +55,8 @@
 | 14 | Miffan（Ayuilos/Miffan） | 同源 RikkaHub fork，划词翻译 / IM 模式 / 云电脑 | 源码 | 2026-10-31 | 跨应用划词翻译的**零权限正解**（PROCESS_TEXT 对话框 Activity）；本仓已有 90% 底层，缺口仅弹窗壳，半天级移植 | [miffan.md](references/other%20projects/miffan.md) |
 | 15 | dsh-Go（ccch1mneyyy/dsh-Go） | DeepSeek Harness 的 Android 客户端：Flutter + 纯 Dart DSH 客户端 + PRoot 里跑 DSH 引擎（本机 / SSH / 中继三档主机） | 文档+源码抽样 | 2026-11-06 | **不同架构、代码可移植 ≈ 0**；可借运行时安装事务与更新契约、危险操作分级 +「问 AI」、协议工程纪律；插件协议已在设计稿 §十一，不新增立项 | [dsh-go.md](references/other%20projects/dsh-go.md) |
 | 16 | OpenHands（OpenHands 主仓 + software-agent-sdk） | TS 前端 + Python SDK 的开源 Agent 宿主；本仓克隆专看**上下文管理 / 净化** | 源码（双仓） | 2026-11-18 | **架构同构互证不搬**（View/事件重放 ≈ 本仓检查点 + 稀疏加载）；可借三件防线：压缩边界原子单元守卫（P2）、溢出反应式压缩兜底（P2）、结构化摘要模板（P3） | [openhands.md](references/other%20projects/openhands.md) |
+| 17 | Cuplivo | Kelivo 社区 fork（Flutter 多端 LLM 客户端）；本仓只看**局域网同步**与本地副本 | 源码 | 2026-11-25 | **双向对称同步的整套形态**：证书指纹即身份、PIN/二维码配对、确定性合并计划（无方向性）、内容寻址差集、分段续传与预算；**已落地** `data/sync/lan/`，另补了会话墓碑与冲突分支 | [cuplivo-kelivo.md](references/other%20projects/cuplivo-kelivo.md) |
+| 18 | Kelivo | Flutter 多端 LLM 客户端（Cuplivo / SoLab 的上游） | 源码 | 2026-11-25 | **本地副本的产品口径**：resume 延迟检查、N 份 + 上周/上月留存、容量上限、整包备份模型；**已落地** `data/sync/localsnapshot/`（Android 侧改为 SAF 目录 + 加密 zip）。此前仅作「SoLab 底座」备注级跟踪，本轮升为正式台账源 | [cuplivo-kelivo.md](references/other%20projects/cuplivo-kelivo.md) |
 
 > **2026-11-03 增量**：14 个应用全部做了一轮新增提交评估（各文件末新增「2026-11-03 增量」节，Miffan 为其首轮增量）；本轮判定吸收 9 / 候选 19 / 已有等价 27 / 补记判据 11；**P1 八项已实现**（2026-11-03），其余未动。
 >

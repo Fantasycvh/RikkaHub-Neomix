@@ -89,6 +89,8 @@
 | 📦 **对话导入导出** | 自家格式 zip + 附件原字节往返（导入即换新 id）+ 统一导入器 + 导出留存区（TTL 自动清理）；支持导入 **DeepSeek 官方导出包**（前置判重：重复导入跳过已有会话、不重复落盘附件）与 **Chatbox v2 ZIP 备份** |
 | ⭐ **收藏管理增强** | 基础收藏继承上游，本项目增量：标签筛选/管理页、排序切换、双向侧滑撤销 |
 | 📂 **文件管理批量操作** | 文件管理与工作区文件支持多选：批量导入（SAF 多选）/ 批量删除 / 批量重命名（自动编号预览、祖先目录折叠）；导入分块复制可取消 + 临时文件原子落盘；删除磁盘失败不误删 DB 记录；失败逐项报告。WebDAV 默认远端路径改为 `neomix_backups` |
+| 📡 **局域网双向同步** | 两台设备同一局域网配对后双向收敛：自签证书 SHA-256 指纹即设备身份、PIN + 二维码配对；内容寻址差量传输（只传变了的会话与附件、分段续传）；`updateTime` 新者胜、并列按哈希定序防震荡，败者留冲突分支不丢内容；会话删除经墓碑传播（保留 30 天），附件删除仍走引用计数保护。两台 Android 15 实体设备验收（借鉴 Cuplivo，见「借鉴」） |
+| 🗄️ **本地自动备份** | 加密 zip 快照写入用户选定的 SAF 目录（卸载不丢）：冷启/resume 延迟检查、按天频率、保留 N 份 + 上周/上月各留一份、容量上限、内容无变化指纹跳过、失败指数退避（成功才提示）；「管理副本」页可恢复 / 删除 / 导出（借鉴 Kelivo，见「借鉴」） |
 
 **稳定性与安全**
 
@@ -164,6 +166,8 @@
 | **bigeye**（Aria-EQ） | [suanrongqieqiezi/bigeye](https://github.com/suanrongqieqiezi/bigeye) | **记忆分层注入的原型**：`_anchors` 的「身份锚点、极小配额、恒在场」是 **L1 的原型**，`recall()` 的五因子工作集（relevance 作乘数）是 **L2 的由来**——本仓把「天生恒在场 / 天生每轮变」这套分层**显式映射到注入位置**；`recall_guaranteed` 的**确定性通道 + 禁 AI 自填**被照抄为锚点的入选与提拔纪律（`MemoryRepository` / `MemoryEntity` 内注明了出处行号）；免衰减免淘汰对应其 `IMPORTANCE_PIN_THRESHOLD`。**反面教训**：其 `MAX_OBS_PER_PAGE` 配置项零引用、与注释矛盾，被本仓引为「配置项必须有测试钉住」的对照。另有一条**已落地**（2026-10-16）：其「探索/落地二分」的循环守卫 —— 补的正是本仓 `ToolCallLoopGuard` 抓不到的那个维度（「重复 ≠ 无进展」）。落成「规则提醒」：三条规则（打转自查 / 缺计划催规划 / 预算 ≥80% 催收尾）在**对话尾部**注入提醒（默认开、三档可配、不落库）。设计与取舍见 [`docs/design/completed/design-rule-engine.md`](docs/design/completed/design-rule-engine.md) |
 | **华灯**（rikkahub-sillytavern-android） | [MiaoWuNYA/rikkahub-sillytavern-android](https://github.com/MiaoWuNYA/rikkahub-sillytavern-android) | 工具输出「投影无损回环校验」原则、R8 序列化 keep 纪律等（另有一项 Jev 契约仍待评估） |
 | **SoLab** | [MT 论坛开源帖](https://bbs.binmt.cc/forum.php?mod=viewthread&tid=171659)（基于 Kelivo 二次开发；仓库地址见该帖） | 世界书 seed 三重迁移、工具调用失控护栏（LoopGuard + forget）的理念 |
+| **Cuplivo** | [cuplivo/cuplivo](https://github.com/cuplivo/cuplivo)（Kelivo 社区 fork） | **局域网同步的整套协议形态**（2026-11-25 落地）：自签证书 SHA-256 指纹即设备身份、PIN/二维码配对 + token 头、双方用同一套确定性规则各自算合并计划（无方向性、可收敛）、内容寻址 blob 只传差集、单次预算与断点续传、阶段化进度与同步报告。本仓落成 `data/sync/lan/`（AndroidKeyStore 自签证书 + JSSE 双向 TLS 服务端只绑局域网私有地址 + OkHttp 只 pin 证书指纹 + 纯函数 `planLanMerge`），并按本仓数据模型补了会话墓碑与冲突分支 |
+| **Kelivo** | [Chevey339/kelivo](https://github.com/Chevey339/kelivo) | **本地副本的产品口径**（2026-11-25 落地）：应用启动/恢复后延迟检查、按天频率、保留 N 份 + 上周/上月各留一份、容量上限、「成功不必打扰、失败必须告知」，以及「备份包 = 数据库快照 + 设置 + 资产目录」的整包模型。本仓按 Android 平台改写为 SAF 目录 + 加密 zip（留存槽位算法见 `LocalSnapshotRetentionPolicy`）。注：SoLab 亦为其二次开发 |
 | **senera** | [yuanplussfive/senera](https://github.com/yuanplussfive/senera) | MCP 工具 schema 动态分层加载（元工具桥、内容寻址缓存）的成熟参考实现 |
 | **MineChat** | [Mr060805/MineChat](https://github.com/Mr060805/MineChat) | RAG-as-tool 知识库检索移植、输入侧正则与动态宏（st 宏运行时） |
 | **agentd** | [hue913/agentd](https://github.com/hue913/agentd) | 经验记忆 + 信用记账（已接进记忆打分） |
