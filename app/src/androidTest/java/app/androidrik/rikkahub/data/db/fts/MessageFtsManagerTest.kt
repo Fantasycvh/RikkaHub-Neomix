@@ -162,6 +162,7 @@ class MessageFtsManagerTest {
             files,
             fts,
             database.compressionCheckpointDao(),
+            messageFileRefDAO = database.messageFileRefDao(),
         )
         val own = conversation("own", UIMessage.user("shared apple"))
         val other = conversation("other", UIMessage.user("shared banana")).copy(assistantId = Uuid.random())

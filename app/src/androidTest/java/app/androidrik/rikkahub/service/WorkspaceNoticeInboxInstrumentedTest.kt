@@ -225,8 +225,11 @@ class WorkspaceNoticeInboxInstrumentedTest {
         val isolated = object : ContextWrapper(context) { override fun getFilesDir() = files }
         val fileManager = FilesManager(isolated, FilesRepository(db.managedFileDao()), scope,
             SettingsStore(isolated, AppScope().apply { cancel() }, File(files, "settings.preferences_pb")))
-        val repo = ConversationRepository(db.conversationDao(), db.messageNodeDao(), db.favoriteDao(), db,
-            fileManager, MessageFtsManager(db), db.compressionCheckpointDao())
+        val repo = ConversationRepository(
+            db.conversationDao(), db.messageNodeDao(), db.favoriteDao(), db,
+            fileManager, MessageFtsManager(db), db.compressionCheckpointDao(),
+            messageFileRefDAO = db.messageFileRefDao(),
+        )
         val assistant = Assistant(workspaceId = Uuid.random())
         val eventId = Uuid.random().toString()
         val user = UIMessage.user("build")

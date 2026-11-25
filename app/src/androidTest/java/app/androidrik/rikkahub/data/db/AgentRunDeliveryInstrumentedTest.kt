@@ -285,8 +285,11 @@ class AgentRunDeliveryInstrumentedTest {
         try {
             val files = FilesManager(isolated, FilesRepository(db.managedFileDao()), scope,
                 SettingsStore(isolated, AppScope().apply { cancel() }, File(isolatedFiles, "settings.preferences_pb")))
-            val repo = ConversationRepository(db.conversationDao(), db.messageNodeDao(), db.favoriteDao(), db,
-                files, MessageFtsManager(db), db.compressionCheckpointDao())
+            val repo = ConversationRepository(
+                db.conversationDao(), db.messageNodeDao(), db.favoriteDao(), db,
+                files, MessageFtsManager(db), db.compressionCheckpointDao(),
+                messageFileRefDAO = db.messageFileRefDao(),
+            )
             val id = Uuid.random()
             val initial = Conversation.ofId(id, Uuid.random()).copy(messageNodes = listOf(UIMessage.user("original").toMessageNode()))
             repo.insertConversation(initial)

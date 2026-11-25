@@ -92,6 +92,7 @@ class Upstream31RealBackupTest {
                 val repository = ConversationRepository(
                     db.conversationDao(), db.messageNodeDao(), db.favoriteDao(), db,
                     GlobalContext.get().get<FilesManager>(), MessageFtsManager(db), db.compressionCheckpointDao(),
+                    messageFileRefDAO = db.messageFileRefDao(),
                 )
                 var loadedCheckpoints = 0
                 var configCount = 0
