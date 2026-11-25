@@ -195,6 +195,9 @@ interface ConversationDAO {
         activeLeafNodeId: String?,
     )
 
+    @Query("UPDATE conversationentity SET last_message_at = :timestamp, active_leaf_node_id = :leaf WHERE id = :id")
+    suspend fun setLanMessageMetadata(id: String, timestamp: Long?, leaf: String?)
+
     /**
      * 会话级「不使用记忆」的唯一写入点（与 [updatePinStatus] 同款：调用方算好新值、
      * 并负责同步内存态，两边用同一个值以免分叉）。

@@ -77,6 +77,8 @@ import app.androidrik.rikkahub.data.network.SocksCredentialRegistry
 import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
 import app.androidrik.rikkahub.data.sync.localsnapshot.LocalSnapshotService
 import app.androidrik.rikkahub.data.sync.lan.LanPairingService
+import app.androidrik.rikkahub.data.sync.lan.LanSyncData
+import app.androidrik.rikkahub.data.sync.lan.LanSyncService
 import app.androidrik.rikkahub.data.sync.webdav.WebDavSync
 import app.androidrik.search.SearchService
 import app.androidrik.rikkahub.data.sync.S3Sync
@@ -415,6 +417,11 @@ val dataSourceModule = module {
     single { LocalSnapshotService(get(), get(), get(), get(), get(), get()) }
 
     single { LanPairingService(get(), get(), get(), get()) }
+    single {
+        val chat = get<app.androidrik.rikkahub.service.ChatService>()
+        LanSyncData(get(), get(), get(), get(), get(), chat::isAnyTurnProcessing, chat::refreshLanConversations)
+    }
+    single { LanSyncService(get(), get(), get(), get()) }
 
     // 这里原本有一个指向 `https://api.rikka-ai.com`（上游作者自己的中转）的 Retrofit 与
     // `RikkaHubAPI`（**空接口**，全仓零调用）。那个内置供应商已从出厂默认移除 ⇒ 两者都是死代码，

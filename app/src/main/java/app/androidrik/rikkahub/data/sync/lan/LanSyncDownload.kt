@@ -1,10 +1,14 @@
 package app.androidrik.rikkahub.data.sync.lan
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.Closeable
 import java.io.File
@@ -17,11 +21,13 @@ import java.util.concurrent.TimeUnit
 
 private const val MANIFEST_PATH = "/v1/manifest"
 private const val OBJECT_PATH = "/v1/objects/"
-private const val MANIFEST_BYTES = 4L * 1024 * 1024
+internal const val LAN_MANIFEST_BYTES = 4L * 1024 * 1024
 private const val TOKEN_HEADER = "X-Rikka-Token"
 private const val PROTOCOL_HEADER = "X-Rikka-Protocol"
-private const val OBJECT_SIZE_HEADER = "X-Rikka-Object-Size"
+internal const val LAN_OBJECT_SIZE_HEADER = "X-Rikka-Object-Size"
 private val rangePattern = Regex("bytes=([0-9]{1,9})-([0-9]{1,9})")
+
+internal class LanSyncHttpException(val status: Int) : IOException("LAN peer returned HTTP $status")
 
 /** Serves a single captured inventory. The owner closes the listener at the end of the sync window. */
 internal class LanSyncDownloadServer(
@@ -31,13 +37,14 @@ internal class LanSyncDownloadServer(
     files: Map<String, File>,
     json: Json,
     private val tokenForPeer: suspend (String) -> String?,
+    private val uploads: LanSyncUploadSession? = null,
 ) : Closeable {
     private val inventory = (manifest.conversations + manifest.assistants).flatMap { listOf(it.sha256) + it.attachmentShas }
         .toSet().associateWith { digest -> requireNotNull(files[digest]) }
     private val manifestBody = json.encodeToString(manifest).encodeToByteArray()
     private val listener = run {
         manifest.validate(manifest.device.dbVersion, credentials.fingerprint)
-        require(manifestBody.size <= MANIFEST_BYTES && inventory.values.all { it.isFile && it.length() in 1..LAN_OBJECT_MAX_BYTES })
+        require(manifestBody.size <= LAN_MANIFEST_BYTES && inventory.values.all { it.isFile && it.length() in 1..LAN_OBJECT_MAX_BYTES })
         LanTlsServer(credentials, address)
     }
     val port: Int get() = listener.port
@@ -50,6 +57,13 @@ internal class LanSyncDownloadServer(
                 !MessageDigest.isEqual(supplied.encodeToByteArray(), expected.encodeToByteArray())
             ) return@request LanHttpResponse(403)
             if (request.headers[PROTOCOL_HEADER.lowercase()] != LAN_PROTOCOL.toString()) return@request LanHttpResponse(426)
+            if (uploads != null) {
+                if (request.method == "POST" && request.path == MANIFEST_PATH) return@request uploads.offer(fingerprint, request)
+                if (request.method == "POST" && request.path == LAN_APPLIED_PATH) return@request uploads.finish(request)
+                if (request.path.startsWith(LAN_INBOX_PATH)) {
+                    return@request uploads.receive(request.path.removePrefix(LAN_INBOX_PATH), request)
+                }
+            }
             if (request.contentLength != 0L) return@request LanHttpResponse(400)
             if (request.method == "GET" && request.path == MANIFEST_PATH) {
                 return@request LanHttpResponse.bytes(200, manifestBody, "application/json")
@@ -59,7 +73,7 @@ internal class LanSyncDownloadServer(
             val total = file.length()
             if (total !in 1..LAN_OBJECT_MAX_BYTES) return@request LanHttpResponse(404)
             if (request.method == "HEAD") {
-                return@request LanHttpResponse(200, headers = mapOf(OBJECT_SIZE_HEADER to total.toString()))
+                return@request LanHttpResponse(200, headers = mapOf(LAN_OBJECT_SIZE_HEADER to total.toString()))
             }
             if (request.method != "GET") return@request LanHttpResponse(405)
             val range = rangePattern.matchEntire(request.headers["range"].orEmpty()) ?: return@request LanHttpResponse(416)
@@ -102,31 +116,77 @@ internal class LanSyncDownloadClient(
         .followSslRedirects(false)
         .retryOnConnectionFailure(false)
         .connectTimeout(3, TimeUnit.SECONDS)
-        .callTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
         .build()
 
     suspend fun fetchManifest(dbVersion: Int): LanManifest = withContext(Dispatchers.IO) {
         execute(request(MANIFEST_PATH).get().build(), 200).use { response ->
-            val buffer = response.body.source()
-            if (buffer.request(MANIFEST_BYTES + 1)) throw IOException("LAN manifest exceeds size limit")
-            json.decodeFromString<LanManifest>(buffer.readUtf8()).also { it.validate(dbVersion, fingerprint) }
+            readJson<LanManifest>(response, LAN_MANIFEST_BYTES).also { it.validate(dbVersion, fingerprint) }
         }
+    }
+
+    suspend fun exchange(local: LanManifest): LanSyncOffer = withContext(Dispatchers.IO) {
+        val body = json.encodeToString(local).encodeToByteArray()
+        require(body.size <= LAN_MANIFEST_BYTES)
+        val offer = execute(request(MANIFEST_PATH).post(body.toRequestBody("application/json".toMediaType())).build(), 200)
+            .use { readJson<LanSyncOffer>(it, LAN_MANIFEST_BYTES + 512) }
+        offer.manifest.validate(local.device.dbVersion, fingerprint)
+        require(offer.plannedAt > 0)
+        offer
+    }
+
+    suspend fun push(
+        entries: List<LanManifestObject>,
+        files: Map<String, File>,
+        budgetBytes: Long = LAN_OBJECT_MAX_BYTES,
+    ): LanTransferResult = withContext(Dispatchers.IO) {
+        require(budgetBytes in 0..LAN_OBJECT_MAX_BYTES)
+        val sizes = lanObjectSizes(entries)
+        val remaining = linkedSetOf<String>()
+        var transferred = 0L
+        for ((digest, expectedSize) in sizes) {
+            currentCoroutineContext().ensureActive()
+            val file = requireNotNull(files[digest])
+            val total = file.length()
+            require(total in 1..LAN_OBJECT_MAX_BYTES && (expectedSize == null || total == expectedSize))
+            var offset = execute(request(LAN_INBOX_PATH + digest).header(LAN_OBJECT_SIZE_HEADER, total.toString())
+                .head().build(), 200).use(::uploadOffset)
+            if (offset !in 0..total) throw IOException("Invalid LAN upload offset")
+            while (offset < total && transferred < budgetBytes) {
+                val size = minOf(LAN_CHUNK_BYTES.toLong(), total - offset, budgetBytes - transferred).toInt()
+                val bytes = readLanFileRange(file, offset, size).use { it.readBytes() }
+                if (bytes.size != size) throw IOException("LAN upload source changed")
+                val next = execute(request(LAN_INBOX_PATH + digest).header("Content-Range", "bytes $offset-${offset + size - 1}/$total")
+                    .put(bytes.toRequestBody("application/octet-stream".toMediaType())).build(), 204).use(::uploadOffset)
+                if (next != offset + size) throw IOException("LAN upload offset changed")
+                offset = next
+                transferred += size
+            }
+            if (offset < total) remaining += digest
+        }
+        LanTransferResult(transferred, remaining)
+    }
+
+    suspend fun finish(): LanSyncReport = withContext(Dispatchers.IO) {
+        execute(request(LAN_APPLIED_PATH).post(ByteArray(0).toRequestBody()).build(), 200)
+            .use { readJson<LanSyncReport>(it, 2_048) }
     }
 
     suspend fun pull(
         entries: List<LanManifestObject>,
         target: LanObjectStore,
         budgetBytes: Long = LAN_OBJECT_MAX_BYTES,
+        localObjects: Map<String, File> = emptyMap(),
     ): LanTransferResult = withContext(Dispatchers.IO) {
         val sizes = mutableMapOf<String, Long>()
         receiveLanObjects(entries, target, budgetBytes, sourceSize = { digest ->
             execute(request(OBJECT_PATH + digest).head().build(), 200).use { response ->
-                val total = response.header(OBJECT_SIZE_HEADER)?.toLongOrNull()
+                val total = response.header(LAN_OBJECT_SIZE_HEADER)?.toLongOrNull()
                     ?: throw IOException("Missing LAN object size")
                 sizes[digest] = total
                 total
             }
-        }, readRange = { digest, start, size ->
+        }, localObjects = localObjects, readRange = { digest, start, size ->
             val end = start + size - 1
             val response = execute(request(OBJECT_PATH + digest).header("Range", "bytes=$start-$end").get().build(), 206)
             try {
@@ -147,10 +207,19 @@ internal class LanSyncDownloadClient(
         .header(PROTOCOL_HEADER, LAN_PROTOCOL.toString())
         .header("Accept-Encoding", "identity")
 
+    private fun uploadOffset(response: Response): Long = response.header(LAN_OFFSET_HEADER)?.toLongOrNull()
+        ?: throw IOException("Missing LAN upload offset")
+
+    private inline fun <reified T> readJson(response: Response, limit: Long): T {
+        val buffer = response.body.source()
+        if (buffer.request(limit + 1)) throw IOException("LAN response exceeds size limit")
+        return json.decodeFromString(buffer.readUtf8())
+    }
+
     private fun execute(request: Request, status: Int): Response {
         val response = client.newCall(request).execute()
         if (response.code == status) return response
         response.close()
-        throw IOException("LAN peer returned HTTP ${response.code}")
+        throw LanSyncHttpException(response.code)
     }
 }

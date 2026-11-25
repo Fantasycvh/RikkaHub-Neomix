@@ -31,6 +31,7 @@ import app.androidrik.rikkahub.ui.pages.backup.BackupSnapshotPage
 import app.androidrik.rikkahub.ui.pages.backup.LocalSnapshotsPage
 import app.androidrik.rikkahub.ui.pages.backup.LanPairingPage
 import app.androidrik.rikkahub.ui.pages.backup.LanPairingJoinPage
+import app.androidrik.rikkahub.ui.pages.backup.LanSyncPeerPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupWebDavPage
 import app.androidrik.rikkahub.ui.pages.chat.ChatPage
 import app.androidrik.rikkahub.ui.pages.debug.DebugPage
@@ -210,6 +211,10 @@ internal fun appEntryProvider(): (NavKey) -> NavEntry<NavKey> = entryProvider {
 
                     entry<Screen.LanPairJoin> {
     LanPairingJoinPage()
+                    }
+
+                    entry<Screen.LanSyncPeer> { peer ->
+                        LanSyncPeerPage(peer.fingerprint)
                     }
 
                     entry<Screen.ImageGen> {

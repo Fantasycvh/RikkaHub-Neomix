@@ -106,21 +106,23 @@ RikkaHub 也没有回收站（已 grep 确认）。双向同步必须新增墓�
 
 ```
 POST /v1/pair        {pin, protocol, deviceId, name}          → {token, deviceId, name}
-GET  /v1/manifest                                             → LanManifest
+POST /v1/manifest    LanManifest                              → {manifest, plannedAt}
+HEAD /v1/objects/{sha256}                                     → X-Rikka-Object-Size
 GET  /v1/objects/{sha256}          (支持 Range，断点续传)     → bytes
-PUT  /v1/objects/{sha256}          (内容寻址 → 天然幂等)      → 204
-POST /v1/applied     {keys[], tombstones[]}                   → {ok}
+HEAD /v1/inbox/{sha256}                                       → X-Rikka-Offset
+PUT  /v1/inbox/{sha256}            （Content-Range 分段上传）  → 204 + X-Rikka-Offset
+POST /v1/applied                                              → {added, updated, deleted, conflicts}
 ```
 
-所有已配对请求带 `X-Rikka-Token`；pair 端点只在配对窗口（2 分钟）内可用，PIN 错误 5 次锁定 60s。
+所有已配对请求带 `X-Rikka-Token` 和 `X-Rikka-Protocol`。配对窗口开放两分钟，PIN 错误五次锁定 60 秒。接收同步时选定一台已配对设备，页面在前台最多开放五分钟并显示本次地址。
 
 `LanManifest` 形状：
 
 ```json
 {
   "protocol": 1,
-  "device": {"id": "<certSha256>", "name": "...", "appVersionCode": 0,
-             "dbVersion": 0, "formatVersion": 3},
+  "device": {"id": "<certSha256>", "name": "...",
+             "dbVersion": 81, "formatVersion": 1},
   "conversations": [{"key": "conversation:<uuid>", "sha256": "...", "updateTime": 0,
                      "size": 0, "attachmentShas": ["..."]}],
   "assistants":    [{"key": "assistant:<uuid>", "sha256": "...", "updateTime": 0}],
@@ -140,8 +142,7 @@ POST /v1/applied     {keys[], tombstones[]}                   → {ok}
    的安全备份模型），会话败者额外把其 `messageNodes` 作为分支候选追加，不丢内容。
 3. 单方有、对方无、且无更晚墓碑 → 缺失方拉取（内容寻址去重，只传差集）。
 4. 单方有、对方有墓碑：`tombstone.deletedAt > object.updateTime` → 删除；否则保留（复活优先）。
-5. 墓碑保留 30 天后清（`LanTombstoneStore`，DataStore 或小表；不进 Room schema 的话用
-   PreferencesStore JSON，按项目惯例优先避免 DB 迁移）。
+5. 会话墓碑保留 30 天。Room v81 将墓碑与删除放在同一事务里，撤销删除会清除墓碑并将会话更新时间推进到删除时间之后。
 
 删除墓碑产生点：现有删除入口（会话批量删除、单会话删除、助手删除）在 `AppScope` 内追加写墓碑。
 按项目既有约定，附件删除前仍要做引用计数检查。
@@ -150,11 +151,10 @@ POST /v1/applied     {keys[], tombstones[]}                   → {ok}
 
 ```
 1 connecting  拨号（记忆端点逐个试，短超时），TLS 握手后校验 certSha256 pin
-2 exchanging  GET /v1/manifest 双向交换（initiator 拉 peer 清单；responder 在 hello 里回自己的）
-3 sending     按 plan 推 toPush（内容寻址 + 分块 + 失败重试；单次预算上限，超预算的留到下一次）
-4 receiving   拉 toPull
-5 applying    本地落库：新增 → DatabaseObjectMerge.mergeMissingConversationsLive；
-              冲突 → 新能力 upsertWithConflict；删除 → 现有删除链路（含附件引用计数）
+2 exchanging  发起方提交自己的清单，接收方返回冻结清单和用于双方规划的时间
+3 sending     上传对方需要的对象，包含用于保留冲突分支的版本和所引用附件
+4 receiving   下载本机需要的对象；两个方向按内容寻址并续传
+5 applying    接收方确认对象齐全后先提交，发起方收到回执后提交；各自使用 Room 事务
 6 report      写 lastSyncAt、展示摘要（新增/更新/删除/跳过/冲突）
 ```
 
@@ -239,4 +239,16 @@ Phase 2 需两台真机同局域网：配对 → 首次全量同步 → 各自�
 - Phase 1 已接入备份页。隔离 Android 15 真机通过手动备份、冷启动自动备份、留存清理和无授权目录退避。重启后的合并恢复保留本地测试会话，覆盖恢复用备份中的会话库替换本地库。
 - 本地快照支持整包密码加密。外层 ZIP 使用单个 WinZip AES-256 条目 `rikka-backup.zip` 保存完整的原始备份，恢复页解锁后沿用原有预检及合并／覆盖流程。普通 ZIP 仍可导入。Android 15 真机生成的副本已在隔离模拟器验证错误密码拒绝、正确密码解锁和覆盖恢复重启。
 - Phase 2A 的 `/v1/pair` 使用平台 `SSLServerSocket` 和 AndroidKeyStore 证书，客户端先校验证书指纹，再发送 PIN。配对页支持短时邀请码、二维码和设备列表。真机和同局域网桌面测试端验证了发起与接收，并覆盖错误 PIN、错误指纹、二维码导入和重复请求。Android 15 真机作为邀请方、Android 15 模拟器作为加入方，已验证扫码后两端均显示对方。
-- Phase 2B 和 2C 已实现清单校验、双向差异计算、墓碑优先级与过期规则、会话及附件的内容寻址、下载暂存和 Range 续传。清单的 LAN 对象格式版本独立于备份 ZIP 的格式版本。Android 15 模拟器的 HTTPS 仪器测试覆盖证书和令牌拒绝、版本拒绝、清单外对象拒绝，以及附件分段续传与去重。发起方提交清单与对象、Room 应用、持久墓碑、冲突分支、同步界面和两台实体 Android 的端到端验收仍待完成。
+- Phase 2B–2D 接入清单交换、双向对象传输、Room 应用、删除传播和冲突分支。已配对设备页可打开同步页，显示接收地址、传输阶段和双方结果。当前同步范围为会话和所引用的本地附件。若接收设备没有同 ID 的助手，会建立本地占位助手以保留会话归属。同步删除保留附件文件，供其他会话和恢复使用。
+- Android 15 真机和 Android 15 模拟器使用独立的 v80 测试库，经应用启动迁移到 v81 后完成扫码配对。首轮同步两端各新增一条带图片的会话，第二轮两边均为零变更、零冲突。退出进程后核对了两份 Room 数据库及双向图片字节，并确认收到的附件进入文件引用索引。同步写入保留发送端的末条消息时间和激活分支，重试时不会按设备时区重新计算时间。
+- 模拟器仪器测试覆盖两份 Room 库之间的上传中断续传、重复回执、冲突分支收敛、删除传播、共用附件保留和撤销删除。
+
+### 双实体设备验收（2026-11-25）
+
+- Android 15 的 PJX110 与 23076RA4BC 安装同一 ARM64 隔离版，两台设备的已安装 APK 与本地产物 SHA-256 一致。扫码后两端显示对方。两份独立 v80 测试库升级到 v81，双方各取得对端的会话和图片。交换发起端重复同步时，两边均为零变更、零冲突。
+- 两机分别修改各自的会话，两份修改均落库。同时修改同一会话后，两边各报告一处冲突，两份内容均可从各自的 Room 分支读取。
+- 两个附件共 66 MiB。接收端暂存约 6 MiB 时中止应用进程，重新开启接收后续传完成。两台设备上的两个附件均通过 SHA-256 检查。
+- 验收发现输入法可产生全角地址标点，地址解析兼容了该输入。传输可复用本机清单中的同哈希对象，应用前仍校验内容。清掉两端的传输暂存后，带有这 66 MiB 附件的会话在撤销删除后一次同步完成。
+- 从 Xiaomi 的历史页删除测试会话后，同步将删除传播到 OnePlus，两边均有对应墓碑。删除端到期清除了该会话独占的附件，两端仍可读取另一条会话所引用的共用附件，文件哈希一致。
+- Xiaomi 先用已配对身份读取 OnePlus 的 v81 清单，再发送声明 v82 的模拟清单，OnePlus 返回 HTTP 426。两台设备的数据库均为 v81。最终 JVM 回归为 3,784 项通过、2 项跳过，Xiaomi 上的 Android 仪器测试 4 项通过。
+- Android 17 局域网权限验收另行开展。

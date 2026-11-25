@@ -96,6 +96,9 @@ sealed interface Screen : NavKey {
     data object LanPairJoin : Screen
 
     @Serializable
+    data class LanSyncPeer(val fingerprint: String) : Screen
+
+    @Serializable
     data object ImageGen : Screen
 
     @Serializable

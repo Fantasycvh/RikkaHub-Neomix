@@ -8,15 +8,7 @@ import java.io.RandomAccessFile
 
 internal data class LanTransferResult(val transferredBytes: Long, val remainingObjects: Set<String>)
 
-/** Applies one side of the transfer plan to local staging. The sender exposes only its manifest's objects. */
-internal suspend fun receiveLanObjects(
-    entries: List<LanManifestObject>,
-    target: LanObjectStore,
-    budgetBytes: Long = LAN_OBJECT_MAX_BYTES,
-    sourceSize: suspend (String) -> Long,
-    readRange: suspend (digest: String, start: Long, size: Int) -> InputStream,
-): LanTransferResult {
-    require(budgetBytes >= 0)
+internal fun lanObjectSizes(entries: List<LanManifestObject>): Map<String, Long?> {
     val objects = linkedMapOf<String, Long?>()
     entries.forEach { entry ->
         entry.validate()
@@ -24,11 +16,26 @@ internal suspend fun receiveLanObjects(
         require(previousSize == null || previousSize == entry.size)
         entry.attachmentShas.forEach { objects.putIfAbsent(it, null) }
     }
+    return objects
+}
+
+/** Applies one side of the transfer plan to local staging. The sender exposes only its manifest's objects. */
+internal suspend fun receiveLanObjects(
+    entries: List<LanManifestObject>,
+    target: LanObjectStore,
+    budgetBytes: Long = LAN_OBJECT_MAX_BYTES,
+    sourceSize: suspend (String) -> Long,
+    localObjects: Map<String, File> = emptyMap(),
+    readRange: suspend (digest: String, start: Long, size: Int) -> InputStream,
+): LanTransferResult {
+    require(budgetBytes >= 0)
+    val objects = lanObjectSizes(entries)
     var transferred = 0L
     val remaining = linkedSetOf<String>()
     for ((digest, knownSize) in objects) {
         currentCoroutineContext().ensureActive()
-        val cached = target.completed(digest)
+        // The local inventory already hashed the file. Application rechecks its digest before writing any chat.
+        val cached = target.completed(digest) ?: localObjects[digest]?.takeIf(File::isFile)
         if (cached != null) {
             require(knownSize == null || cached.length() == knownSize)
             continue

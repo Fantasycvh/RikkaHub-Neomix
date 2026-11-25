@@ -3511,5 +3511,29 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="local_snapshot_remove_password">Save future backups without encryption</string>
   <string name="local_snapshot_repeat_password">Repeat password</string>
   <string name="local_snapshot_unlock">Unlock backup</string>
+  <string name="lan_sync_address">Peer address (IP:port)</string>
+  <string name="lan_sync_applying">Applying conversation changes…</string>
+  <string name="lan_sync_changed">The sync window or local data changed. Open a new receive window and try again.</string>
+  <string name="lan_sync_copy_address">Copy address</string>
+  <string name="lan_sync_downloading">Downloading conversations and attachments…</string>
+  <string name="lan_sync_exchanging">Comparing conversation lists…</string>
+  <string name="lan_sync_failed">Sync failed. Check the peer address, storage space and attachments, then try again.</string>
+  <string name="lan_sync_identity_error">Could not verify the paired device.</string>
+  <string name="lan_sync_imported_assistant">Synced assistant</string>
+  <string name="lan_sync_last">Last synced %1$s</string>
+  <string name="lan_sync_missing_peer">This device is no longer paired.</string>
+  <string name="lan_sync_no_address">Connect to a local Wi-Fi network to receive sync requests.</string>
+  <string name="lan_sync_now">Sync now</string>
+  <string name="lan_sync_open">LAN sync</string>
+  <string name="lan_sync_preparing">Preparing the local conversation list…</string>
+  <string name="lan_sync_receive">Allow sync requests</string>
+  <string name="lan_sync_receive_help">Open a receive window on one device, then enter its address on the other device.</string>
+  <string name="lan_sync_report">%1$s · %2$d added, %3$d updated, %4$d deleted, %5$d conflicts</string>
+  <string name="lan_sync_resume">Transfer paused. Open a new receive window on the peer and sync again to resume.</string>
+  <string name="lan_sync_summary">Sync conversations, attachments and deletions in both directions.</string>
+  <string name="lan_sync_this_device">This device</string>
+  <string name="lan_sync_uploading">Uploading conversations and attachments…</string>
+  <string name="lan_sync_version_error">The sync or database versions differ. Update both devices.</string>
+  <string name="lan_sync_waiting">Waiting for the paired device…</string>
 </resources>
 

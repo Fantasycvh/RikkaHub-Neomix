@@ -47,7 +47,7 @@ internal class LanPairingService(
     suspend fun fingerprint(): String = withContext(Dispatchers.IO) { LanIdentity.load().fingerprint }
 
     suspend fun start() = withContext(Dispatchers.IO) {
-        requirePermission()
+        requireLanPermission(app)
         lock.withLock {
             if (server != null) return@withLock
             val address = findPrivateAddress() ?: throw LanPairingException(LanPairingFailure.NO_ADDRESS)
@@ -87,7 +87,7 @@ internal class LanPairingService(
     suspend fun forget(fingerprint: String) = store.forgetLanPeer(fingerprint)
 
     suspend fun join(code: String) = withContext(Dispatchers.IO) {
-        requirePermission()
+        requireLanPermission(app)
         val invite = LanInvite.parse(code) ?: throw LanPairingException(LanPairingFailure.INVALID_CODE)
         val credentials = LanIdentity.load()
         if (credentials.fingerprint == invite.fingerprint) throw LanPairingException(LanPairingFailure.SELF)
@@ -119,11 +119,12 @@ internal class LanPairingService(
         }
     }
 
-    private fun requirePermission() {
-        if (Build.VERSION.SDK_INT >= 37 && app.checkSelfPermission(android.Manifest.permission.ACCESS_LOCAL_NETWORK) !=
-            android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) throw LanPairingException(LanPairingFailure.NOT_AUTHORIZED)
-    }
+}
+
+internal fun requireLanPermission(app: Application) {
+    if (Build.VERSION.SDK_INT >= 37 && app.checkSelfPermission(android.Manifest.permission.ACCESS_LOCAL_NETWORK) !=
+        android.content.pm.PackageManager.PERMISSION_GRANTED
+    ) throw LanPairingException(LanPairingFailure.NOT_AUTHORIZED)
 }
 
 internal fun requestLanPair(credentials: LanCredentials, invite: LanInvite, name: String, json: Json): LanPairResponse {

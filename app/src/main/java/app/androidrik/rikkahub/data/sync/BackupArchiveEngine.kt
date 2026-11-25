@@ -450,23 +450,32 @@ class BackupArchiveEngine(
      * 不可重入。失败只记 warning：恢复是用户已经选定的动作，保险丝失效不应当成为第二道墙。
      */
     private suspend fun createSafetyBackup() {
-        runCatching {
-            val dir = File(context.filesDir, FileFolders.SAFETY_BACKUP).apply { mkdirs() }
-            val staged = prepareBackupFileLocked(
-                items = listOf(BackupItem.DATABASE),
-                scope = BackupScope(), // 安全备份恒为全量设置
-                onProgress = {},
-            )
+        runCatching { writeSafetyBackup() }.onFailure {
+            if (it is kotlinx.coroutines.CancellationException) throw it
+            Log.w(TAG, "createSafetyBackup failed; continuing restore", it)
+        }
+    }
+
+    /** The caller holds the restore lock. LAN deletes leave attachment files in place for this archive. */
+    internal suspend fun writeSafetyBackup() {
+        val dir = File(context.filesDir, FileFolders.SAFETY_BACKUP).apply { mkdirs() }
+        val staged = prepareBackupFileLocked(listOf(BackupItem.DATABASE), BackupScope())
+        try {
             val target = File(dir, "safety_${staged.name}")
-            staged.copyTo(target, overwrite = true)
-            staged.delete()
-            dir.listFiles { f -> f.name.startsWith("safety_") }
+            val part = File.createTempFile("safety-", ".part", dir)
+            try {
+                staged.copyTo(part, overwrite = true)
+                check(part.renameTo(target)) { "Could not publish safety backup" }
+            } finally {
+                part.delete()
+            }
+            dir.listFiles { f -> f.name.startsWith("safety_") && f.extension == "zip" }
                 ?.sortedByDescending { it.name }
                 ?.drop(3)
                 ?.forEach { it.delete() }
             Log.i(TAG, "createSafetyBackup: ${target.name} (${target.length().fileSizeToString()})")
-        }.onFailure {
-            Log.w(TAG, "createSafetyBackup failed; continuing restore", it)
+        } finally {
+            staged.delete()
         }
     }
 

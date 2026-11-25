@@ -970,6 +970,18 @@ class SettingsStore(
         }
     }
 
+    internal suspend fun updateLanSyncStatus(peer: LanPeer, endpoint: String? = null, completedAt: Long? = null) {
+        dataStore.edit { preferences ->
+            preferences[LAN_PEERS] = JsonInstant.encodeToString(preferences.readLanPeers().map { current ->
+                if (current.certSha256 != peer.certSha256 || current.encryptedToken != peer.encryptedToken) current
+                else current.copy(
+                    lastEndpoints = (listOfNotNull(endpoint) + current.lastEndpoints).distinct().take(8),
+                    lastSyncAt = completedAt ?: current.lastSyncAt,
+                )
+            })
+        }
+    }
+
     private fun Preferences.readLanPeers(): List<LanPeer> =
         this[LAN_PEERS]?.let { JsonInstant.decodeFromString<List<LanPeer>>(it) }.orEmpty()
 

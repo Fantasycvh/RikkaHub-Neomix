@@ -17,6 +17,7 @@ import app.androidrik.rikkahub.data.db.fts.MessageSearchSort
 import app.androidrik.rikkahub.data.db.dao.CompressionCheckpointDAO
 import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
+import app.androidrik.rikkahub.data.db.dao.LanConversationTombstoneEntity
 import app.androidrik.rikkahub.data.favorite.NodeFavoriteAdapter
 import app.androidrik.rikkahub.data.db.dao.MessageNodeDAO
 import app.androidrik.rikkahub.data.db.dao.MessageFileRefDAO
@@ -42,11 +43,13 @@ import app.androidrik.rikkahub.data.model.prefixPruneCandidates
 import app.androidrik.rikkahub.data.model.hasLegacyToolPairAcrossPruneBoundary
 import app.androidrik.rikkahub.data.model.summaryAreaFingerprint
 import app.androidrik.rikkahub.data.model.selectedMessageIdOrNull
+import app.androidrik.rikkahub.data.model.healMissingParents
 import app.androidrik.rikkahub.data.model.NodeSummary
 import app.androidrik.rikkahub.data.model.NodeTreeInfo
 import android.net.Uri
 import android.util.Log
 import app.androidrik.rikkahub.utils.JsonInstant
+import java.time.Instant
 import kotlin.uuid.Uuid
 
 /** 压缩前缀物理清理的结果；[deletedIds] 为空且 [fingerprint] 为 null 表示「无需清理」。 */
@@ -555,7 +558,13 @@ class ConversationRepository(
 
     suspend fun insertConversation(conversation: Conversation) {
         database.withTransaction {
-            val entity = conversationToConversationEntity(conversation)
+            val id = conversation.id.toString()
+            val tombstones = database.lanConversationTombstoneDao()
+            val deletedAt = tombstones.time(id)
+            val restored = if (deletedAt != null && conversation.updateAt.toEpochMilli() <= deletedAt) {
+                conversation.copy(updateAt = Instant.ofEpochMilli(deletedAt + 1))
+            } else conversation
+            val entity = conversationToConversationEntity(restored)
             // 自定义顺序：新会话落在**所在档位的最前**（设计稿 §一.1）。
             // 自动模式（该档无位置值）不需要任何写入——新会话的 update_at 最新，本来就排最前；
             // 只有该档已物化时才需要分配 min-STEP（否则它会因 null 沉到已排序项之后）。
@@ -572,11 +581,56 @@ class ConversationRepository(
                 null
             }
             conversationDAO.insert(entity.copy(sortOrder = sortOrder))
-            saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
+            saveMessageNodes(id, conversation.messageNodes)
             // 撤销恢复/会话导入走这里：insertConversation = 全量保存语义，关联一并重建
             syncFileRefsOnSave(conversation, emptyList())
+            if (deletedAt != null) tombstones.clear(id)
         }
         messageFtsManager.indexConversation(conversation)
+    }
+
+    internal suspend fun applyLanConversation(incoming: Conversation, previous: Conversation?) {
+        val id = incoming.id.toString()
+        val tombstones = database.lanConversationTombstoneDao()
+        val deletedAt = tombstones.time(id)
+        require(deletedAt == null || incoming.updateAt.toEpochMilli() >= deletedAt)
+        if (deletedAt != null) tombstones.clear(id)
+        val incomingNodes = incoming.messageNodes.healMissingParents()
+        val receivedIds = incomingNodes.map { it.id }
+        receivedIds.map(Uuid::toString).chunked(500).forEach { chunk ->
+            require(messageNodeDAO.getNodesByIds(chunk).all { it.conversationId == id }) { "LAN node belongs to another conversation" }
+        }
+        val obsolete = previous?.messageNodes.orEmpty().map { it.id }.toSet() - receivedIds.toSet()
+        if (previous == null) {
+            insertConversation(incoming)
+        } else {
+            val replacement = incoming.copy(
+                folderId = previous.folderId.takeIf { previous.assistantId == incoming.assistantId },
+                workspaceCwd = previous.workspaceCwd,
+                modeInjectionIds = previous.modeInjectionIds,
+                lorebookIds = previous.lorebookIds,
+            )
+            obsolete.map(Uuid::toString).chunked(500).forEach { messageNodeDAO.deleteByIds(id, it) }
+            deleteNodeFavorites(incoming.id, obsolete)
+            updateConversation(replacement)
+        }
+        // Regular saves derive local message time and merge null fields. LAN receives a full snapshot.
+        conversationDAO.setLanMessageMetadata(id, incoming.lastMessageAt?.toEpochMilli(), incoming.activeLeafNodeId?.toString())
+        // The wire carries the full tree, including changed parents and deterministic order after a conflict.
+        messageNodeDAO.insertAll(incomingNodes.mapIndexed { index, node ->
+            MessageNodeEntity(node.id.toString(), id, index, JsonInstant.encodeToString(node.messages),
+                node.selectIndex, node.parentId?.toString(), node.selectedMessageIdOrNull)
+        })
+        messageFileRefDAO.deleteByConversation(id)
+        syncFileRefsOnSave(incoming, emptyList())
+        checkpointStore.deleteCompressionCheckpoints(incoming.id)
+        incoming.compressionSummaries.forEach { checkpointStore.addCompressionCheckpoint(it) }
+    }
+
+    internal suspend fun markLanDeletion(id: String, deletedAt: Long) {
+        val dao = database.lanConversationTombstoneDao()
+        dao.insert(LanConversationTombstoneEntity(id, deletedAt))
+        dao.advance(id, deletedAt)
     }
 
     /** 某档是否已进入自定义顺序（UI 与写入决策共用的判定）。 */
@@ -773,24 +827,28 @@ class ConversationRepository(
         }
     }
 
-    suspend fun deleteConversation(conversation: Conversation, deleteFiles: Boolean = true) {        // 获取完整的 Conversation（包含 messageNodes）以正确清理文件
+    suspend fun deleteConversation(conversation: Conversation, deleteFiles: Boolean = true) =
+        deleteConversation(conversation, deleteFiles, propagatedAt = null)
+
+    internal suspend fun deleteConversation(conversation: Conversation, deleteFiles: Boolean, propagatedAt: Long?) {
         val fullConversation = if (conversation.messageNodes.isEmpty()) {
             getConversationById(conversation.id) ?: conversation
         } else {
             conversation
         }
         val conversationId = conversation.id.toString()
-        messageFtsManager.deleteConversation(conversationId)
         database.withTransaction {
+            val present = conversationDAO.getConversationById(conversationId) ?: return@withTransaction
+            messageFtsManager.deleteConversation(conversationId)
             // 收藏表和会话没有外键，节点收藏要单独删（#2299 同构）
             favoriteDAO.deleteNodeFavoritesOfConversation(conversationId)
             // 文件→会话关联没有外键，随会话删除一并清（design-file-conversation-link.md §4.3）；
             // 撤销恢复走 insertConversation，关联会在那里重建
             messageFileRefDAO.deleteByConversation(conversationId)
             // message_node 会通过 CASCADE 自动删除
-            conversationDAO.delete(
-                conversationToConversationEntity(conversation)
-            )
+            conversationDAO.delete(present)
+            val deletedAt = propagatedAt ?: maxOf(System.currentTimeMillis(), present.updateAt + 1)
+            markLanDeletion(conversationId, deletedAt)
         }
         // 历史页撤销场景：deleteFiles=false 时保留附件文件，
         // 撤销窗口结束后由调用方清理（否则撤销恢复的对话附件会永久丢失）。

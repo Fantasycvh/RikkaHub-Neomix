@@ -148,8 +148,16 @@ internal fun LanPairingPage(service: LanPairingService = koinInject()) {
                 CardGroup(title = { Text(stringResource(R.string.lan_pair_devices)) }) {
                     peers.forEach { peer ->
                         item(
+                            onClick = if (!busy) ({ nav.navigate(Screen.LanSyncPeer(peer.certSha256)) }) else null,
                             headlineContent = { Text(peer.name) },
-                            supportingContent = { SelectionContainer { Text(peer.certSha256) } },
+                            supportingContent = {
+                                Column {
+                                    SelectionContainer { Text(peer.certSha256) }
+                                    TextButton(onClick = { nav.navigate(Screen.LanSyncPeer(peer.certSha256)) }, enabled = !busy) {
+                                        Text(stringResource(R.string.lan_sync_open))
+                                    }
+                                }
+                            },
                             trailingContent = {
                                 TextButton(onClick = { forget = peer }, enabled = !busy) {
                                     Text(stringResource(R.string.lan_pair_forget))

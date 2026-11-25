@@ -42,7 +42,7 @@ class LanPairingTlsInstrumentedTest {
             val manifest = LanManifest(LAN_PROTOCOL, LanManifestDevice(host.fingerprint, "Host", 10, LAN_FORMAT_VERSION),
                 conversations = listOf(entry))
             val files = mapOf(conversationSha to conversation, attachmentSha to attachment)
-            LanSyncDownloadServer(host, endpoint, manifest, files, Json, { fingerprint -> token.takeIf { client.fingerprint == fingerprint } })
+            LanSyncDownloadServer(host, endpoint, manifest, files, Json, tokenForPeer = { fingerprint -> token.takeIf { client.fingerprint == fingerprint } })
                 .use { server ->
                     val handler = launch(Dispatchers.IO) { server.serve() }
                     try {

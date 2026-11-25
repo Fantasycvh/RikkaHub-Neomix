@@ -510,6 +510,16 @@ class ChatService(
         session.getJob()?.isActive == true || session.processingStatus.value != null
     }
 
+    internal suspend fun refreshLanConversations(changed: Collection<Uuid>) {
+        for (id in changed) {
+            val session = sessions[id] ?: continue
+            if (session.isGenerating) continue
+            val refreshed = conversationRepo.getConversationById(id)
+                ?: Conversation.ofId(id = id, assistantId = session.state.value.assistantId)
+            if (!session.isGenerating) session.state.value = refreshed
+        }
+    }
+
     /**
      * 该会话**当前轮次**的后台任务归属令牌（P0.5 定时取消的 Job 归属判据）；无 session → null。
      *

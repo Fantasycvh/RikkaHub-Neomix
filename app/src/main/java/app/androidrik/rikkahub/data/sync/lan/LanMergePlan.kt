@@ -11,6 +11,13 @@ internal data class LanMergePlan(
 
 internal data class LanConflict(val winner: LanManifestObject, val loser: LanManifestObject)
 
+internal fun LanMergePlan.objectsFrom(manifest: LanManifest): List<LanManifestObject> {
+    val entries = (manifest.conversations + manifest.assistants).associateBy { it.key }
+    return (push + pull + conflicts.map { it.loser })
+        .filter { entries[it.key] == it }
+        .distinctBy { it.key }
+}
+
 /** Each side derives the same winners and deletion timestamps using its own local view first. */
 internal fun planLanMerge(local: LanManifest, remote: LanManifest, now: Long): LanMergePlan {
     local.validate(local.device.dbVersion, local.device.id)
@@ -30,7 +37,7 @@ internal fun planLanMerge(local: LanManifest, remote: LanManifest, now: Long): L
     for (key in (here.keys + there.keys + deletions.keys).sorted()) {
         val left = here[key]
         val right = there[key]
-        val mark = deletions[key]?.takeIf { it.deletedAt >= now - THIRTY_DAYS }
+        val mark = deletions[key]?.takeIf { it.deletedAt >= now - LAN_TOMBSTONE_RETENTION_MS }
         val winner = listOfNotNull(left, right).minWithOrNull(precedence)
         if (mark != null && (winner == null || mark.deletedAt > winner.updateTime)) {
             tombstones.add(mark)
@@ -49,4 +56,4 @@ internal fun planLanMerge(local: LanManifest, remote: LanManifest, now: Long): L
 }
 
 private val precedence = compareByDescending<LanManifestObject> { it.updateTime }.thenBy { it.sha256 }
-private const val THIRTY_DAYS = 30L * 24 * 60 * 60 * 1000
+internal const val LAN_TOMBSTONE_RETENTION_MS = 30L * 24 * 60 * 60 * 1000

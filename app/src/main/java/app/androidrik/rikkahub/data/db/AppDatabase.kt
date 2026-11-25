@@ -13,6 +13,8 @@ import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
 import app.androidrik.rikkahub.data.db.dao.FolderDAO
 import app.androidrik.rikkahub.data.db.dao.GenMediaDAO
 import app.androidrik.rikkahub.data.db.dao.KnowledgeBaseDAO
+import app.androidrik.rikkahub.data.db.dao.LanConversationTombstoneDAO
+import app.androidrik.rikkahub.data.db.dao.LanConversationTombstoneEntity
 import app.androidrik.rikkahub.data.db.dao.MemoryConsolidationDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryProposalDAO
 import app.androidrik.rikkahub.data.db.dao.MemoryReviewCursorDAO
@@ -98,8 +100,9 @@ import app.androidrik.rikkahub.utils.JsonInstant
         ScheduledTaskEntity::class,
         ScheduledTaskRunEntity::class,
         MessageFileRefEntity::class,
+        LanConversationTombstoneEntity::class,
     ],
-    version = 80,
+    version = 81,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -246,11 +249,14 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 79→80：文件→会话关联表 message_file_ref（design-file-conversation-link.md Phase B，
         // 纯新增表、无外键无回填——存量由运行时回填 Job 灌入，理由见实体 kdoc）。
         AutoMigration(from = 79, to = 80),
+        AutoMigration(from = 80, to = 81),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun conversationDao(): ConversationDAO
+
+    abstract fun lanConversationTombstoneDao(): LanConversationTombstoneDAO
 
     abstract fun memoryDao(): MemoryDAO
     abstract fun memoryFileDao(): MemoryFileDAO
@@ -308,7 +314,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 80
+        const val SCHEMA_VERSION = 81
     }
 }
 

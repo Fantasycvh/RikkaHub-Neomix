@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.data.sync.lan
 import app.androidrik.rikkahub.data.export.collectAttachmentUrls
 import app.androidrik.rikkahub.data.export.rewriteAttachmentUrls
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.model.healMissingParents
 import app.androidrik.rikkahub.utils.normalizeGeneratedImagePath
 import app.androidrik.rikkahub.utils.normalizeLocalFileUrl
 import kotlinx.coroutines.currentCoroutineContext
@@ -52,15 +53,18 @@ internal suspend fun captureLanConversation(conversation: Conversation, filesDir
         references[attachment.url] = attachment
         objects.putIfAbsent(digest, file)
     }
-    val wire = conversation.rewriteAttachmentUrls(mapping).copy(
+    val wire = conversation.rewriteAttachmentUrls(mapping).let { portable -> portable.copy(
+        messageNodes = portable.messageNodes.healMissingParents(),
         folderId = null,
         workspaceCwd = null,
         modeInjectionIds = emptySet(),
         lorebookIds = emptySet(),
         frozenAnchors = null,
         frozenFileAnchors = null,
+        exportDisplayConfig = null,
+        exportDisplayOverrides = emptyMap(),
         compressionSummaries = conversation.compressionSummaries.map { it.copy(id = 0) },
-    )
+    ) }
     val ordered = references.values.sortedBy { it.url }
     objectFile.writeText(json.encodeToString(LanConversationObject(wire, ordered)))
     val sha256 = hashLanFile(objectFile)
@@ -72,18 +76,27 @@ internal suspend fun captureLanConversation(conversation: Conversation, filesDir
 }
 
 /** Prepare a received conversation and its files for Room. This function never mutates the database. */
-internal suspend fun materializeLanConversation(entry: LanManifestObject, objects: LanObjectStore, filesDir: File, json: Json): Conversation {
+internal suspend fun materializeLanConversation(entry: LanManifestObject, objects: LanObjectStore, filesDir: File, json: Json): Conversation =
+    materializeLanConversation(entry, filesDir, json, objects::completed)
+
+internal suspend fun materializeLanConversation(
+    entry: LanManifestObject,
+    filesDir: File,
+    json: Json,
+    findObject: suspend (String) -> File?,
+): Conversation {
     entry.validate()
-    val source = requireNotNull(objects.completed(entry.sha256))
+    val source = requireNotNull(findObject(entry.sha256))
     check(source.length() == entry.size && hashLanFile(source) == entry.sha256) { "Invalid LAN conversation object" }
     val wire = json.decodeFromString<LanConversationObject>(source.readText())
     require(entry.key == "conversation:${wire.conversation.id}" && entry.updateTime == wire.conversation.updateAt.toEpochMilli())
+    validateLanConversation(wire.conversation)
     val refs = wire.attachments.associateBy { it.url }
     require(wire.attachments.size == refs.size && refs.keys == wire.conversation.collectAttachmentUrls().toSet())
     require(wire.attachments.map { it.digest }.toSet() == entry.attachmentShas.toSet())
     val approved = wire.attachments.associateWith { ref ->
         ref.validate()
-        val contents = requireNotNull(objects.completed(ref.digest))
+        val contents = requireNotNull(findObject(ref.digest))
         check(hashLanFile(contents) == ref.digest) { "Invalid LAN attachment" }
         contents
     }
@@ -125,4 +138,18 @@ internal suspend fun materializeLanConversation(entry: LanManifestObject, object
         ref.url to "file://${target.absolutePath.replace(File.separatorChar, '/')}"
     }
     return wire.conversation.rewriteAttachmentUrls(local)
+}
+
+private fun validateLanConversation(conversation: Conversation) {
+    require(conversation.folderId == null && conversation.workspaceCwd == null && conversation.frozenAnchors == null &&
+        conversation.frozenFileAnchors == null && conversation.modeInjectionIds.isEmpty() && conversation.lorebookIds.isEmpty() &&
+        conversation.exportDisplayConfig == null && conversation.exportDisplayOverrides.isEmpty())
+    val seen = hashSetOf<kotlin.uuid.Uuid>()
+    conversation.messageNodes.forEachIndexed { index, node ->
+        require(node.messages.isNotEmpty() && node.selectIndex in node.messages.indices)
+        require(if (index == 0) node.parentId == null else node.parentId in seen)
+        require(seen.add(node.id))
+    }
+    require(conversation.activeLeafNodeId == null || conversation.activeLeafNodeId in seen)
+    require(conversation.compressionSummaries.all { it.conversationId == conversation.id && it.id == 0L })
 }
