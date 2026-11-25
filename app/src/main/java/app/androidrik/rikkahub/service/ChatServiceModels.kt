@@ -10,6 +10,9 @@ import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isProviderSigned
 import app.androidrik.rikkahub.data.ai.ThinkingDegenerationGuard
 import app.androidrik.rikkahub.data.ai.WorkspaceTurnBudget
+import app.androidrik.rikkahub.data.ai.compression.COMPRESS_RETAIN_RATIO
+import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
+import app.androidrik.rikkahub.data.ai.compression.CompressionSavings
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
 import kotlin.uuid.Uuid
@@ -59,6 +62,43 @@ enum class InterruptReason(
         toolOutputError = "User skipped this step without providing a result.",
         toolStatus = "skipped",
     ),
+}
+
+/**
+ * 手动压缩后台任务的参数（design-manual-compress-background §4.1）。
+ *
+ * 窗口口径（windowTokens / followModel）仍由 [ChatVM][app.androidrik.rikkahub.ui.pages.chat.ChatVM]
+ * 按当前会话的助手/模型算好传入——与范围预览（#2294）同一口径，保证预览与执行切分一致；
+ * 任务本身跑在 ChatService 的 AppScope，与页面/VM 生命周期解耦。
+ */
+data class ManualCompressionParams(
+    val conversationId: Uuid,
+    val windowTokens: Int,
+    val additionalPrompt: String = "",
+    val targetTokens: Int = COMPRESS_TARGET_TOKENS,
+    val retainRatio: Double = COMPRESS_RETAIN_RATIO,
+    val keepRecentMessages: Int = 0,
+    /** 「跟随对话模型」时使用的模型（该会话实际的生成模型） */
+    val followModel: Model? = null,
+    val continueInNewWindow: Boolean = false,
+)
+
+/**
+ * 手动压缩后台任务的一次性事件（design-manual-compress-background §4.2）：
+ * 进度走 [ChatService.compressionStates]（可重放），完成/分支结果走这里（不可重放）。
+ */
+sealed interface CompressionEvent {
+    /** 压缩成功：发送窗口前后估算（OpenHands #4 轻量版），页面 toast */
+    data class SavedTokens(val conversationId: Uuid, val savings: CompressionSavings) : CompressionEvent
+
+    /** 「在新会话继续」fork 完成：页面在前台且仍是源会话 → 自动导航，否则 toast */
+    data class ForkReady(val fromId: Uuid, val forkId: Uuid) : CompressionEvent
+
+    /** fork 前置校验失败（压缩边界后无原文）：用户可理解的输入条件，toast 而非错误卡 */
+    data class ForkFailed(val conversationId: Uuid) : CompressionEvent
+
+    /** 压缩失败：错误卡照发；本事件只给「已离开该会话页」的场景兜底 toast */
+    data class Failed(val conversationId: Uuid) : CompressionEvent
 }
 
 /**

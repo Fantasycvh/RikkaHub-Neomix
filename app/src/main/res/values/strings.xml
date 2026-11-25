@@ -601,6 +601,14 @@
   <string name="chat_page_compress_stage_validating">Checking summary coverage…</string>
   <string name="chat_page_compress_stage_single_pass">Coverage is low, re-summarizing the whole history…</string>
   <string name="chat_page_compress_stage_fallback">Summaries failed the check, building a fallback checkpoint…</string>
+  <string name="chat_page_compress_stage_parsing">Parsing context…</string>
+  <string name="chat_page_compress_stage_summarizing">Generating summary…</string>
+  <string name="chat_page_compress_stage_writing">Writing checkpoint…</string>
+  <string name="chat_page_compress_background_running">Compressing in background…</string>
+  <string name="chat_page_compress_background_cancel">Cancel background compression</string>
+  <string name="chat_page_compress_background_done">Compression finished: estimated %1$d tokens saved (%2$d → %3$d)</string>
+  <string name="chat_page_compress_background_fork_ready">Compression result continued in a new conversation</string>
+  <string name="chat_page_compress_background_failed">Background compression failed</string>
   <string name="chat_page_compress_not_enough_messages">Not enough history to compress yet — keep chatting and try again later.</string>
   <string name="chat_page_compress_not_enough_messages_keep_recent">Not enough messages to compress — reduce the number of recent messages to keep.</string>
   <string name="chat_page_compress_target_tokens">Target Token Size</string>

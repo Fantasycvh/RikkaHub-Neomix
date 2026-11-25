@@ -4,17 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.SegmentedButton
@@ -23,7 +20,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -36,7 +32,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
@@ -46,22 +41,22 @@ import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
 import app.androidrik.rikkahub.data.ai.compression.CompressPreset
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.ai.compression.CompressionPreview
-import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
-import app.androidrik.rikkahub.data.ai.compression.CompressionProgressStage
 import app.androidrik.rikkahub.ui.components.ui.RabbitLoadingIndicator
 
 @Composable
 fun CompressContextDialog(
-    /** 压缩阶段进度（ChatVM 提供；自动/中途压缩不经过本对话框） */
-    progress: CompressionProgress? = null,
     onDismiss: () -> Unit,
+    /**
+     * 执行手动压缩：ChatService 后台任务（design-manual-compress-background）——
+     * 确认即返回并关闭弹窗，任务在聊天页输入框上方提示条反馈进度，不再弹窗内等待。
+     */
     onConfirm: (
         additionalPrompt: String,
         targetTokens: Int,
         retainRatio: Double,
         keepRecentMessages: Int,
         continueInNewWindow: Boolean,
-    ) -> Job,
+    ) -> Unit,
     /**
      * 阶段 2 的范围预览（#2294 主需求）：执行前先看「这次会压掉什么」。
      * 与执行共用同一段切分代码（ChatService.planCompressionWindow）；返回 null = 无可压缩内容。
@@ -86,11 +81,6 @@ fun CompressContextDialog(
     var keepRecentMessages by remember { mutableIntStateOf(0) }
     // 压缩后把整个窗口复制到新会话（旧会话保留）：长会话的过渡措施，默认关
     var continueInNewWindow by remember { mutableStateOf(false) }
-    var currentJob by remember { mutableStateOf<Job?>(null) }
-    val isLoading = currentJob?.isActive == true
-
-    // 两阶段（#2294 R1）：阶段 1 配置 → 「预览范围」拉切分预览 → 阶段 2 确认执行。
-    // 预览是快照，执行时 ChatService 按最新会话重切（同一段代码 + 同输入 ⇒ 常态一致）。
     var previewStage by remember { mutableStateOf(false) }
     var previewLoading by remember { mutableStateOf(false) }
     var preview by remember { mutableStateOf<CompressionPreview?>(null) }
@@ -113,21 +103,8 @@ fun CompressContextDialog(
         preview = null
     }
 
-    // Monitor job completion
-    LaunchedEffect(currentJob) {
-        currentJob?.join()
-        if (currentJob?.isCompleted == true && currentJob?.isCancelled == false) {
-            onDismiss()
-        }
-        currentJob = null
-    }
-
     AlertDialog(
-        onDismissRequest = {
-            if (!isLoading) {
-                onDismiss()
-            }
-        },
+        onDismissRequest = onDismiss,
         title = {
             Text(stringResource(R.string.chat_page_compress_context_title))
         },
@@ -141,30 +118,7 @@ fun CompressContextDialog(
                     .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (isLoading) {
-                    // Loading state：显示阶段进度，避免长时间只转圈、用户以为卡死
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RabbitLoadingIndicator(
-                                modifier = Modifier.size(32.dp)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(compressStageText(progress))
-                        }
-                        if (progress?.stage == CompressionProgressStage.CHUNK && progress.total > 1) {
-                            LinearProgressIndicator(
-                                progress = { progress.current.toFloat() / progress.total },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        } else {
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        }
-                    }
-                } else if (previewStage) {
+                if (previewStage) {
                     // 阶段 2：范围预览确认（#2294 R1 主需求）
                     CompressionPreviewContent(
                         loading = previewLoading,
@@ -256,25 +210,20 @@ fun CompressContextDialog(
             }
         },
         confirmButton = {
-            if (isLoading) {
-                TextButton(onClick = {
-                    currentJob?.cancel()
-                    currentJob = null
-                }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            } else if (previewStage) {
-                // 无可压缩（preview == null）时禁用执行——预览层已说明原因
+            if (previewStage) {
+                // 无可压缩（preview == null）时禁用执行——预览层已说明原因。
+                // 确认即关（后台化）：任务转 ChatService 后台，进度在聊天页提示条反馈
                 TextButton(
                     enabled = preview != null,
                     onClick = {
-                        currentJob = onConfirm(
+                        onConfirm(
                             additionalPrompt,
                             selectedTokens,
                             selectedRetainPercent / 100.0,
                             keepRecentMessages,
                             continueInNewWindow,
                         )
+                        onDismiss()
                     },
                 ) {
                     Text(stringResource(R.string.chat_page_compress_execute_action))
@@ -287,32 +236,17 @@ fun CompressContextDialog(
             }
         },
         dismissButton = {
-            if (!isLoading) {
-                if (previewStage) {
-                    TextButton(onClick = { backToConfig() }) {
-                        Text(stringResource(R.string.chat_page_compress_back_action))
-                    }
-                } else {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.cancel))
-                    }
+            if (previewStage) {
+                TextButton(onClick = { backToConfig() }) {
+                    Text(stringResource(R.string.chat_page_compress_back_action))
+                }
+            } else {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.cancel))
                 }
             }
         }
     )
-}
-
-@Composable
-private fun compressStageText(progress: CompressionProgress?): String = when (progress?.stage) {
-    CompressionProgressStage.CHUNK -> stringResource(
-        R.string.chat_page_compress_stage_chunk,
-        progress.current,
-        progress.total,
-    )
-    CompressionProgressStage.VALIDATING -> stringResource(R.string.chat_page_compress_stage_validating)
-    CompressionProgressStage.SINGLE_PASS -> stringResource(R.string.chat_page_compress_stage_single_pass)
-    CompressionProgressStage.FALLBACK -> stringResource(R.string.chat_page_compress_stage_fallback)
-    CompressionProgressStage.PREPARING, null -> stringResource(R.string.chat_page_compress_stage_preparing)
 }
 
 /**

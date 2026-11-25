@@ -250,6 +250,21 @@ class ChatService(
     /** 每会话的后台预压缩任务（自动压缩提前化；与发送路径的自动压缩串行） */
     private val preCompressJobs = ConcurrentHashMap<Uuid, Job>()
 
+    /**
+     * 手动压缩的后台任务注册与进度状态（design-manual-compress-background §4.1）。
+     * 任务跑在 [appScope]，与页面/VM 生命周期解耦。**有意不复用 [auxJobs]**：auxJobs.cancelAll
+     * 在新生成前清场（同槽位语义），而压缩与生成是不同槽位——压缩期间照常聊天、不排队
+     * 不禁发送（§4.4 竞态分析），不能被发送路径误杀。同会话重复发起 = cancel-and-replace 单飞。
+     */
+    private val manualCompressRegistry = ManualCompressionRegistry()
+
+    /** 手动压缩的阶段进度（按会话 id 映射；聊天页提示条据此渲染，§4.2） */
+    val compressionStates: StateFlow<Map<Uuid, CompressionProgress>> = manualCompressRegistry.states
+
+    /** 手动压缩的一次性事件（完成 toast / fork 结果 / 失败兜底） */
+    private val _compressionEvents = MutableSharedFlow<CompressionEvent>(extraBufferCapacity = 8)
+    val compressionEvents: SharedFlow<CompressionEvent> = _compressionEvents.asSharedFlow()
+
     /** 同一会话的压缩串行化：后台预压缩与手动/自动压缩不会并发改写检查点 */
     private val compressionMutexes = ConcurrentHashMap<Uuid, Mutex>()
     private val _sessionsVersion = MutableStateFlow(0L)
@@ -3122,6 +3137,91 @@ class ChatService(
         }
         preCompressJobs[conversationId] = job
         job.start()
+    }
+
+    // ---- 手动压缩后台化（design-manual-compress-background §4.1）----
+
+    /**
+     * 发起手动压缩：确认即返回（弹窗关闭），任务在 [appScope] 后台执行。
+     *
+     * 单飞语义（与「停止→重发」同约定）：同会话重复发起时**取消旧任务、以新参数起新任务**；
+     * 任务结束（完成/取消/失败）由 [ManualCompressionRegistry] 自动注销并清理进度状态。
+     */
+    fun startManualCompression(params: ManualCompressionParams) {
+        // 幂等（§4.1）：同会话同参数且任务在飞 → 不重复起任务
+        if (manualCompressRegistry.isDuplicateOfActive(params.conversationId, params)) return
+        lateinit var job: Job
+        job = appScope.launch(start = CoroutineStart.LAZY) {
+            runManualCompression(params) { progress ->
+                manualCompressRegistry.updateProgress(params.conversationId, job, progress)
+            }
+        }
+        manualCompressRegistry.replace(params.conversationId, job, params)
+        job.start()
+    }
+
+    /** 取消后台压缩任务并收起进度状态（提示条取消按钮） */
+    fun cancelManualCompression(conversationId: Uuid) {
+        manualCompressRegistry.cancel(conversationId)
+    }
+
+    /** 手动压缩任务体：原 VM.handleCompressContext 的执行/fork/报错逻辑平移（§4.5） */
+    private suspend fun runManualCompression(
+        params: ManualCompressionParams,
+        onProgress: (CompressionProgress) -> Unit,
+    ) {
+        val result = compressToCheckpoint(
+            conversationId = params.conversationId,
+            windowTokens = params.windowTokens,
+            additionalPrompt = params.additionalPrompt,
+            targetTokens = params.targetTokens,
+            retainRatio = params.retainRatio,
+            keepRecentMessages = params.keepRecentMessages,
+            followModel = params.followModel,
+            onProgress = onProgress,
+            // 完成报告（OpenHands #4 轻量版）：手动压缩转 toast（页面收集事件）
+            onSavings = { savings ->
+                _compressionEvents.tryEmit(CompressionEvent.SavedTokens(params.conversationId, savings))
+            },
+        )
+        result
+            .onSuccess { checkpoint ->
+                if (checkpoint == null) {
+                    // 历史尚不足以切分（非错误）——明确提示，避免用户以为点击无效
+                    val message = context.getString(
+                        if (params.keepRecentMessages > 0) {
+                            R.string.chat_page_compress_not_enough_messages_keep_recent
+                        } else {
+                            R.string.chat_page_compress_not_enough_messages
+                        }
+                    )
+                    addError(
+                        IllegalStateException(message),
+                        conversationId = params.conversationId,
+                        title = context.getString(R.string.error_title_compress_conversation),
+                    )
+                } else if (params.continueInNewWindow) {
+                    // 过渡措施：压缩窗口整体复制到新会话，旧会话保留为归档。
+                    // fork 结果走事件（§4.5）：页面在前台且仍是源会话 → 自动导航，否则 toast
+                    val fork = forkConversationFromCompressionWindow(params.conversationId)
+                    if (fork != null) {
+                        _compressionEvents.tryEmit(CompressionEvent.ForkReady(params.conversationId, fork.id))
+                    } else {
+                        _compressionEvents.tryEmit(CompressionEvent.ForkFailed(params.conversationId))
+                    }
+                }
+            }
+            .onFailure {
+                // 取消（单飞顶掉/用户取消）不算失败，原样上抛让协程正常结束
+                if (it is CancellationException) throw it
+                Log.w(TAG, "manual compress failed for ${params.conversationId}", it)
+                addError(
+                    it,
+                    conversationId = params.conversationId,
+                    title = context.getString(R.string.error_title_compress_conversation),
+                )
+                _compressionEvents.tryEmit(CompressionEvent.Failed(params.conversationId))
+            }
     }
 
     // ---- 对话状态更新 ----

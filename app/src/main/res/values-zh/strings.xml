@@ -638,6 +638,14 @@
   <string name="chat_page_compress_stage_validating">正在校验摘要覆盖率…</string>
   <string name="chat_page_compress_stage_single_pass">覆盖率不足，正在整篇重摘…</string>
   <string name="chat_page_compress_stage_fallback">自动摘要未通过校验，正在生成兜底摘要…</string>
+  <string name="chat_page_compress_stage_parsing">正在解析上下文…</string>
+  <string name="chat_page_compress_stage_summarizing">正在生成摘要…</string>
+  <string name="chat_page_compress_stage_writing">正在写回检查点…</string>
+  <string name="chat_page_compress_background_running">后台压缩中…</string>
+  <string name="chat_page_compress_background_cancel">取消后台压缩</string>
+  <string name="chat_page_compress_background_done">压缩完成：估算节省 %1$d token（%2$d → %3$d）</string>
+  <string name="chat_page_compress_background_fork_ready">压缩结果已在新会话继续</string>
+  <string name="chat_page_compress_background_failed">后台压缩失败</string>
   <string name="chat_page_compress_not_enough_messages">历史还不够长，暂无可压缩内容——继续对话后再试。</string>
   <string name="chat_page_compress_not_enough_messages_keep_recent">可压缩的消息不足——请减少保留的最近消息数。</string>
   <string name="chat_page_compress_target_tokens">目标Token大小</string>

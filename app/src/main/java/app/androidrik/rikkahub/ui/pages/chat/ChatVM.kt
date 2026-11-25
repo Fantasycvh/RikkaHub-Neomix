@@ -13,8 +13,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -49,11 +47,12 @@ import app.androidrik.rikkahub.data.repository.FavoriteRepository
 import app.androidrik.rikkahub.service.AssistantMoveResult
 import app.androidrik.rikkahub.service.ChatError
 import app.androidrik.rikkahub.service.ChatService
+import app.androidrik.rikkahub.service.CompressionEvent
 import app.androidrik.rikkahub.service.InterruptReason
 import app.androidrik.rikkahub.data.ai.PromptInspection
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
 import app.androidrik.rikkahub.data.ai.compression.CompressionPreview
-import app.androidrik.rikkahub.data.ai.compression.CompressionSavings
+import app.androidrik.rikkahub.service.ManualCompressionParams
 import app.androidrik.rikkahub.ui.pages.promptinspect.buildPromptInspectionLabels
 import app.androidrik.rikkahub.service.MessageQueueState
 import app.androidrik.rikkahub.service.QueuedMessage
@@ -163,10 +162,6 @@ class ChatVM(
 
     // 生成完成
     val generationDoneFlow: SharedFlow<Uuid> = chatService.generationDoneFlow
-
-    /** 「压缩后开新会话」前置校验失败：属于用户可理解的输入条件，不写入聊天错误卡。 */
-    private val _compressNewWindowFailure = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-    val compressNewWindowFailure: SharedFlow<Unit> = _compressNewWindowFailure
 
     // MCP管理器
     val mcpManager = chatService.mcpManager
@@ -351,22 +346,15 @@ class ChatVM(
         }
     }
 
-    /** 手动压缩完成报告（#4 轻量版）：前后窗口估算，页面据此 toast（OpenHands #4 轻量版） */
-    private val _compressionSavings = MutableSharedFlow<CompressionSavings>(extraBufferCapacity = 1)
-    val compressionSavings: SharedFlow<CompressionSavings> = _compressionSavings.asSharedFlow()
+    /** 手动压缩阶段进度（ChatService 状态提升，design-manual-compress-background §4.2）；
+     *  页面按当前会话 id 过滤渲染提示条。未压缩时该会话无条目。 */
+    val compressionStates: StateFlow<Map<Uuid, CompressionProgress>> = chatService.compressionStates
 
-    /** 「压缩后在新会话继续」的目标会话 id（消费后置空，避免重组重复导航）。 */
-    private val _continueInNewWindowConversation = MutableStateFlow<Uuid?>(null)
-    val continueInNewWindowConversation: StateFlow<Uuid?> =
-        _continueInNewWindowConversation.asStateFlow()
+    /** 手动压缩一次性事件：完成 toast / fork 结果 / 失败兜底 */
+    val compressionEvents: SharedFlow<CompressionEvent> = chatService.compressionEvents
 
-    fun consumeContinueInNewWindowConversation() {
-        _continueInNewWindowConversation.value = null
-    }
-
-    /** 手动压缩的阶段进度（对话框展示）；未压缩时为 null */
-    private val _compressProgress = MutableStateFlow<CompressionProgress?>(null)
-    val compressProgress: StateFlow<CompressionProgress?> = _compressProgress.asStateFlow()
+    /** 提示条取消按钮：取消当前会话的后台压缩任务 */
+    fun cancelManualCompression() = chatService.cancelManualCompression(_conversationId)
 
     /**
      * 手动压缩的范围预览（#2294 R1）：对话框阶段 2 调用，只读、不执行。
@@ -391,21 +379,24 @@ class ChatVM(
         )
     }
 
+    /**
+     * 手动压缩：迁入 ChatService 后台任务（design-manual-compress-background §4.1）。
+     * VM 只按与 [previewCompression] 同一窗口口径算好参数后转发——任务跑在
+     * ChatService 的 AppScope，切走页面/VM 释放不再中断压缩；确认即返回（弹窗立即关闭）。
+     */
     fun handleCompressContext(
         additionalPrompt: String,
         targetTokens: Int,
         retainRatio: Double,
         keepRecentMessages: Int = 0,
         continueInNewWindow: Boolean = false,
-    ): Job {
-        val job = viewModelScope.launch {
-            // 检查点式压缩：切分由 token 驱动的保留比例决定（对齐 design-auto-compaction §4.1）；
-            // keepRecentMessages > 0 时作为「保留最近 N 条」的下限
-            val currentSettings = settings.value
-            val model = currentChatModel.value
-            val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
-                ?: DEFAULT_CONTEXT_LENGTH
-            val result = chatService.compressToCheckpoint(
+    ) {
+        val currentSettings = settings.value
+        val model = currentChatModel.value
+        val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
+            ?: DEFAULT_CONTEXT_LENGTH
+        chatService.startManualCompression(
+            ManualCompressionParams(
                 conversationId = _conversationId,
                 windowTokens = windowTokens,
                 additionalPrompt = additionalPrompt,
@@ -414,45 +405,9 @@ class ChatVM(
                 keepRecentMessages = keepRecentMessages,
                 // 「跟随对话模型」时使用当前对话模型
                 followModel = model,
-                onProgress = { _compressProgress.value = it },
-                onSavings = { _compressionSavings.tryEmit(it) },
+                continueInNewWindow = continueInNewWindow,
             )
-            result
-                .onSuccess { checkpoint ->
-                    if (checkpoint == null) {
-                        // 历史尚不足以切分（非错误）——明确提示，避免用户以为点击无效
-                        val message = context.getString(
-                            if (keepRecentMessages > 0) {
-                                R.string.chat_page_compress_not_enough_messages_keep_recent
-                            } else {
-                                R.string.chat_page_compress_not_enough_messages
-                            }
-                        )
-                        chatService.addError(
-                            IllegalStateException(message),
-                            conversationId = _conversationId,
-                            title = context.getString(R.string.error_title_compress_conversation),
-                        )
-                    } else if (continueInNewWindow) {
-                        // 过渡措施：压缩窗口整体复制到新会话，旧会话保留为归档
-                        val fork = chatService.forkConversationFromCompressionWindow(_conversationId)
-                        if (fork != null) {
-                            _continueInNewWindowConversation.value = fork.id
-                        } else {
-                            _compressNewWindowFailure.tryEmit(Unit)
-                        }
-                    }
-                }
-                .onFailure {
-                    chatService.addError(
-                        it,
-                        conversationId = _conversationId,
-                        title = context.getString(R.string.error_title_compress_conversation),
-                    )
-                }
-        }
-        job.invokeOnCompletion { _compressProgress.value = null }
-        return job
+        )
     }
 
     /**

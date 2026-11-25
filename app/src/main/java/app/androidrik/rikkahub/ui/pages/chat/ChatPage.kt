@@ -14,9 +14,12 @@ import app.androidrik.rikkahub.data.ai.computeContextCapacity
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
 import app.androidrik.rikkahub.data.ai.ContextCapacity
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
+import app.androidrik.rikkahub.data.ai.compression.CompressionProgressStage
+import app.androidrik.rikkahub.service.CompressionEvent
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
@@ -50,6 +53,8 @@ import app.androidrik.rikkahub.data.task.TaskVisibility
 import app.androidrik.rikkahub.ui.pages.taskcenter.ConversationTasksSheet
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.ListTree
+import com.composables.icons.lucide.Shrink
+import com.composables.icons.lucide.X
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
@@ -169,6 +174,63 @@ internal fun rejectMessageEditWhileGenerating(
     return true
 }
 
+/**
+ * 手动压缩后台化提示条（design-manual-compress-background §4.3）：常驻输入框上方，
+ * 阶段文案三档 + 取消按钮，无进度条。只渲染**当前会话**的进度（调用方按会话 id 过滤），
+ * 不参与消息列表滚动；无任务时不渲染。
+ */
+@Composable
+private fun CompressBackgroundBar(
+    progress: CompressionProgress?,
+    onCancel: () -> Unit,
+) {
+    val current = progress ?: return
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Icon(
+                Lucide.Shrink,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                // 通用前缀 + 三档阶段文案（§6）：解析上下文 → 生成摘要 → 写回检查点
+                text = stringResource(R.string.chat_page_compress_background_running) +
+                    " · " + compressBackgroundStageText(current),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onCancel) {
+                Icon(
+                    Lucide.X,
+                    contentDescription = stringResource(R.string.chat_page_compress_background_cancel),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+/** [CompressionProgressStage] → 三档文案映射（§4.3）：校验/兜底并入末档「写回检查点」 */
+@Composable
+private fun compressBackgroundStageText(progress: CompressionProgress): String = when (progress.stage) {
+    CompressionProgressStage.PREPARING -> stringResource(R.string.chat_page_compress_stage_parsing)
+    CompressionProgressStage.CHUNK, CompressionProgressStage.SINGLE_PASS ->
+        stringResource(R.string.chat_page_compress_stage_summarizing)
+    CompressionProgressStage.VALIDATING, CompressionProgressStage.FALLBACK ->
+        stringResource(R.string.chat_page_compress_stage_writing)
+}
+
 @Composable
 fun ChatPage(
     id: Uuid,
@@ -200,36 +262,52 @@ fun ChatPage(
     val voiceState by vm.voiceSession.state.collectAsStateWithLifecycle()
     val startVoiceMode = rememberVoiceModeStarter(vm, setting)
 
-    // 「压缩后在新会话继续」：新会话建好后替换当前会话页（返回仍回列表，不回到旧长会话）
-    val continueInNewWindowConversation by vm.continueInNewWindowConversation.collectAsStateWithLifecycle()
-    val compressProgress by vm.compressProgress.collectAsStateWithLifecycle()
-    LaunchedEffect(continueInNewWindowConversation) {
-        val newId = continueInNewWindowConversation ?: return@LaunchedEffect
-        vm.consumeContinueInNewWindowConversation()
-        navController.navigate(Screen.Chat(id = newId.toString())) {
-            popUpToScreen = Screen.Chat(id = id.toString())
-            popUpToInclusive = true
-        }
-    }
-
-    // 前置校验失败（如压缩边界后无原文）用 toast 提示，不写入聊天区错误卡
+    // 手动压缩后台化（design-manual-compress-background §4.2）：事件（完成 toast / fork 结果 /
+    // 失败兜底）在本页一次性消费；阶段进度在 ChatPageContent 内收集渲染提示条
     val compressFailureToaster = LocalToaster.current
     val compressFailureResources = LocalResources.current
     LaunchedEffect(vm) {
-        vm.compressNewWindowFailure.collect {
-            compressFailureToaster.show(
-                compressFailureResources.getString(R.string.chat_page_compress_new_window_failed),
-                type = ToastType.Error,
-            )
-        }
-        // 压缩完成报告（OpenHands #4 轻量版）：手动压缩完成后报前后估算（同口径估算器，
-        // 一律标「估算」）。文案暂硬编码中文——与脱敏开关同批补 i18n。
-        vm.compressionSavings.collect { savings ->
-            compressFailureToaster.show(
-                message = "已压缩：估算节省 ${savings.savedTokens} token" +
-                    "（${savings.beforeTokens} → ${savings.afterTokens}）",
-                type = ToastType.Success,
-            )
+        vm.compressionEvents.collect { event ->
+            when (event) {
+                is CompressionEvent.SavedTokens -> compressFailureToaster.show(
+                    message = compressFailureResources.getString(
+                        R.string.chat_page_compress_background_done,
+                        event.savings.savedTokens,
+                        event.savings.beforeTokens,
+                        event.savings.afterTokens,
+                    ),
+                    type = ToastType.Success,
+                )
+
+                is CompressionEvent.ForkReady ->
+                    if (event.fromId == id) {
+                        // 仍是源会话页：fork 目标替换当前页（返回仍回列表，不回到旧长会话）
+                        navController.navigate(Screen.Chat(id = event.forkId.toString())) {
+                            popUpToScreen = Screen.Chat(id = id.toString())
+                            popUpToInclusive = true
+                        }
+                    } else {
+                        // 已离开源会话：仅提示，新会话在会话列表可见
+                        compressFailureToaster.show(
+                            compressFailureResources.getString(R.string.chat_page_compress_background_fork_ready),
+                            type = ToastType.Success,
+                        )
+                    }
+
+                is CompressionEvent.ForkFailed -> compressFailureToaster.show(
+                    compressFailureResources.getString(R.string.chat_page_compress_new_window_failed),
+                    type = ToastType.Error,
+                )
+
+                is CompressionEvent.Failed ->
+                    // 源会话页上错误卡已可见，不重复 toast；离开场景用 toast 兜底
+                    if (event.conversationId != id) {
+                        compressFailureToaster.show(
+                            compressFailureResources.getString(R.string.chat_page_compress_background_failed),
+                            type = ToastType.Error,
+                        )
+                    }
+            }
         }
     }
 
@@ -407,7 +485,6 @@ fun ChatPage(
                     drawerGlassState = drawerGlassState,
                     conversation = conversation,
                     contextUsage = contextUsage,
-                    compressProgress = compressProgress,
                     drawerOpen = false,
                     onOpenDrawer = {},
                     navController = navController,
@@ -449,7 +526,6 @@ fun ChatPage(
                         drawerGlassState = drawerGlassState,
                         conversation = conversation,
                         contextUsage = contextUsage,
-                        compressProgress = compressProgress,
                         drawerOpen = drawerOpen,
                         onOpenDrawer = { drawerOpen = true },
                         navController = navController,
@@ -482,7 +558,6 @@ private fun ChatPageContent(
     drawerGlassState: HazeState,
     conversation: Conversation,
     contextUsage: ContextUsage,
-    compressProgress: CompressionProgress?,
     drawerOpen: Boolean,
     onOpenDrawer: () -> Unit,
     navController: Navigator,
@@ -507,6 +582,8 @@ private fun ChatPageContent(
     // 树面板的轻量树信息（稀疏会话）；全量会话为空列表，面板按内存节点渲染
     val treeNodes by vm.treeNodes.collectAsStateWithLifecycle()
     val switchingBranch by vm.switchingBranch.collectAsStateWithLifecycle()
+    // 手动压缩阶段进度（design-manual-compress-background §4.2）：按当前会话 id 过滤渲染提示条
+    val compressionStates by vm.compressionStates.collectAsStateWithLifecycle()
     // 树面板点选后保持打开、显示切换进度，切换完成再收起并定位
     var pendingTreeSwitchNodeId by remember { mutableStateOf<Uuid?>(null) }
 
@@ -700,6 +777,12 @@ private fun ChatPageContent(
                     message.parts.any { it is UIMessagePart.Tool && it.isPending }
                 }
                 PlanBar(todos = planTodos)
+                // 手动压缩后台化提示条（design-manual-compress-background §4.3）：常驻输入区上方，
+                // 只显示当前会话的进度（按 id 过滤，多会话不串台），不参与消息列表滚动
+                CompressBackgroundBar(
+                    progress = compressionStates[conversation.id],
+                    onCancel = { vm.cancelManualCompression() },
+                )
                 ChatInput(
                     state = inputState,
                     loading = loadingJob != null,
@@ -1010,7 +1093,6 @@ private fun ChatPageContent(
         // 压缩参数对话框：入口有两个（+ 菜单与容量面板），故渲染在页面级
         if (showCompressDialog) {
             CompressContextDialog(
-                progress = compressProgress,
                 onDismiss = { showCompressDialog = false },
                 onConfirm = { additionalPrompt, targetTokens, retainRatio, keepRecentMessages, continueInNewWindow ->
                     vm.handleCompressContext(
