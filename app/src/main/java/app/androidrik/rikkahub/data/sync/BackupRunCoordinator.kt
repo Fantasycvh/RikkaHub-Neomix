@@ -42,6 +42,7 @@ enum class BackupRunKind {
     SNAPSHOT_RESTORE,
     SNAPSHOT_GC,
     SNAPSHOT_EXPORT,
+    LOCAL_SNAPSHOT,
 }
 
 /** 正在进行的长任务（UI 据此显示「任务进行中」与进度；通知栏同步）。 */
@@ -93,8 +94,14 @@ class BackupRunCoordinator(
      * 调用方被取消（页面销毁）只会让本 `await` 返回取消异常；任务继续执行到结束并更新通知栏。
      */
     suspend fun <T> await(kind: BackupRunKind, block: suspend (report: (BackupProgress) -> Unit) -> T): T {
-        val deferred = start(kind, block)
+        val deferred = checkNotNull(start(kind, block)) { "已有备份任务正在进行" }
         return deferred.await()
+    }
+
+    internal suspend fun awaitIfIdle(kind: BackupRunKind, block: suspend (report: (BackupProgress) -> Unit) -> Unit): Boolean {
+        val deferred = start(kind, block) ?: return false
+        deferred.await()
+        return true
     }
 
     /** 通知栏「取消」。没有任务时是 no-op。 */
@@ -133,9 +140,9 @@ class BackupRunCoordinator(
         }
     }
 
-    private fun <T> start(kind: BackupRunKind, block: suspend (report: (BackupProgress) -> Unit) -> T): Deferred<T> {
+    private fun <T> start(kind: BackupRunKind, block: suspend (report: (BackupProgress) -> Unit) -> T): Deferred<T>? {
         synchronized(lock) {
-            check(!running) { "已有备份任务正在进行" }
+            if (running) return null
             running = true
             val runId = nextId.incrementAndGet()
             val startedAt = System.currentTimeMillis()
@@ -165,10 +172,10 @@ class BackupRunCoordinator(
                     throw throwable
                 } finally {
                     withContext(NonCancellable) {
-                        _state.value = null
                         synchronized(lock) {
                             running = false
                             if (current === selfJob) current = null
+                            _state.value = null
                         }
                         if (foreground) BackupForegroundService.release(context)
                         notifyCompat(buildFinishedNotification(kind, failure, cancelled))
@@ -251,6 +258,7 @@ class BackupRunCoordinator(
         BackupRunKind.SNAPSHOT_RESTORE -> "正在恢复备份快照"
         BackupRunKind.SNAPSHOT_GC -> "正在回收未引用对象"
         BackupRunKind.SNAPSHOT_EXPORT -> "正在导出快照"
+        BackupRunKind.LOCAL_SNAPSHOT -> context.getString(R.string.local_snapshot_title)
     }
 
     private fun finishedTextFor(kind: BackupRunKind): String = when (kind) {
@@ -260,6 +268,7 @@ class BackupRunCoordinator(
         BackupRunKind.SNAPSHOT_PLAN -> "扫描完成，回到应用确认备份"
         BackupRunKind.SNAPSHOT_GC -> "回收完成"
         BackupRunKind.SNAPSHOT_EXPORT -> "快照导出完成"
+        BackupRunKind.LOCAL_SNAPSHOT -> context.getString(R.string.local_snapshot_saved)
     }
 
     private fun progressText(progress: BackupProgress?): String {

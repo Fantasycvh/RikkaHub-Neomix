@@ -451,6 +451,7 @@ class RikkaHubApp : Application() {
      * **主线程调用**（MemoryConsolidationRuntime 注册 ProcessLifecycleOwner 观察者的约束）。
      */
     private fun postReadyInit() {
+        get<app.androidrik.rikkahub.data.sync.localsnapshot.LocalSnapshotService>().registerSchedule()
         // QuickJS native 库预热（#9）：从 onCreate 主线程移到 Ready 之后的后台线程。
         // Ready 之后没有路径依赖它「立即」就绪——eval_javascript 使用点会幂等补齐，JS 插件
         // 与自定义 JS 搜索都在聊天开始后才用；失败只记日志不拦启动（QuickJsInit 不置位，

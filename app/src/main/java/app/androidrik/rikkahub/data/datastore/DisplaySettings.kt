@@ -352,6 +352,16 @@ data class BackupReminderConfig(
     val lastBackupTime: Long = 0L,
 )
 
+@Serializable
+data class LocalSnapshotConfig(
+    val enabled: Boolean = false,
+    val treeUri: String? = null,
+    val intervalDays: Int = 1,
+    val keepRecent: Int = 3,
+    val capacityBytes: Long = 0,
+    val encryptedPassword: String? = null,
+)
+
 /** 全局代理类型（两层代理设计 §一）。 */
 @Serializable
 enum class ProxyType { NONE, HTTP, SOCKS5 }

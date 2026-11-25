@@ -212,3 +212,31 @@ python scripts/audit_ime_trap.py
 
 Phase 2 需两台真机同局域网：配对 → 首次全量同步 → 各自改一条会话再同步（双向收敛）→ 删除一条
 会话再同步（对端消失，附件不被误删）→ 断网重连续传 → 一端升 `dbVersion` 后同步被拒绝。
+
+## 实施准备（2026-11-25）
+
+当前基线通过 `:app:compileDebugKotlin`、305 项备份相关 JVM 单测和 IME 审计（A／A′ 均为 0）。ADB 当前连接一台 Android 15 真机，可用于 Phase 1；Phase 2 同步验收需要第二台设备，Android 17 权限分支另需相应系统版本。
+
+### Phase 1 首批改动
+
+1. 接入 `LocalSnapshotConfig`、独立运行态和留存纯函数，先覆盖留存与触发门控的边界用例。目录 URI 和运行态属于本机，走 `BackupPortability` 时保留本机值；更换目录后重新判断首次备份。达不到容量上限时，建议先保住受保护副本并显示超额。
+2. 走 `BackupRunCoordinator` 和 `BackupArchiveEngine` 完成一次手动备份，再接入自动调度。SAF 写入先用临时文件，完整写入并核验后再发布为正式文件名；留存在发布后执行。取消、同秒文件名冲突和授权撤销均需保住已有副本。增量仓库也可能使用同一树 URI，解绑时需保留其他功能仍使用的授权。
+3. 接入备份页、恢复入口和三语文案。恢复沿用现有预检、合并／覆盖选择和重启收尾。自动调度在延迟结束后复核真实设置已加载、应用还在前台；协调器正忙时延后，失败退避只计算实际运行失败。真机使用 `-PbackupIsolatedTests=true` 构建隔离包，验证失败副本不会触发留存清理，并实际恢复一次合并和一次覆盖。
+
+### 开工时需要处理的实现差异
+
+- `BackupArchiveWriter` 生成普通 ZIP，当前备份入口没有整包加密选项。若首期要求跨安装恢复加密副本，需先定加密格式与解锁方式。现有 ZIP 的读取和恢复兼容性纳入回归。
+- Room 会话更新时间列是 `update_at`。标题和建议有单列更新路径，助手编辑也会维持原数量，附件、设置和工作区改动同样可能不改变会话聚合值。门控应按 `backupItems`／`backupScope` 判断已覆盖的变化；对无法可靠判定的内容，到期应实际备份，避免长期漏备。取消、失败、跳过均不更新 `lastSuccessAt`。
+
+### Phase 2 开始前的验证
+
+- 本仓的 Ktor CIO 3.5.1 会拒绝 HTTPS connector。2A 先验证能在 Android 上使用 AndroidKeyStore 私钥进行 TLS 握手的服务端实现，并复用现有 `ACCESS_LOCAL_NETWORK` 权限入口，覆盖拒绝和撤销。首次配对须从可信的同屏信息预先取得服务端指纹，并在发出 PIN 前核验；双方设备身份也要绑定到各自证书。[Ktor 3.5.1 源码](https://github.com/ktorio/ktor/blob/3.5.1/ktor-server/ktor-server-cio/common/src/io/ktor/server/cio/CIOApplicationEngine.kt#L191-L213) · [Android 局域网权限](https://developer.android.com/privacy-and-security/local-network-permission)
+- 冻结线协议前补齐发起方如何提交清单、响应方何时应用、超限后如何续传与确认。助手当前没有可用于冲突排序的更新时间，需先定义持久化版本及已有数据的初始值。
+- 落库前验证墓碑与实际删除可恢复地提交，覆盖历史页撤销删除，以及助手删除引发的会话级联。补测重复同步同一冲突不会反复生成分支。现有 `mergeMissingConversationsLive` 在事务提交后才查外键，局域网应用路径需在提交前完成完整性检查，并验证 Room 观察者、FTS 与附件引用能看到更新。
+
+### 实施进度
+
+- Phase 1 已接入备份页。隔离 Android 15 真机通过手动备份、冷启动自动备份、留存清理和无授权目录退避。重启后的合并恢复保留本地测试会话，覆盖恢复用备份中的会话库替换本地库。
+- 本地快照支持整包密码加密。外层 ZIP 使用单个 WinZip AES-256 条目 `rikka-backup.zip` 保存完整的原始备份，恢复页解锁后沿用原有预检及合并／覆盖流程。普通 ZIP 仍可导入。Android 15 真机生成的副本已在隔离模拟器验证错误密码拒绝、正确密码解锁和覆盖恢复重启。
+- Phase 2A 的 `/v1/pair` 使用平台 `SSLServerSocket` 和 AndroidKeyStore 证书，客户端先校验证书指纹，再发送 PIN。配对页支持短时邀请码、二维码和设备列表。真机和同局域网桌面测试端验证了发起与接收，并覆盖错误 PIN、错误指纹、二维码导入和重复请求。Android 15 真机作为邀请方、Android 15 模拟器作为加入方，已验证扫码后两端均显示对方。
+- Phase 2B 和 2C 已实现清单校验、双向差异计算、墓碑优先级与过期规则、会话及附件的内容寻址、下载暂存和 Range 续传。清单的 LAN 对象格式版本独立于备份 ZIP 的格式版本。Android 15 模拟器的 HTTPS 仪器测试覆盖证书和令牌拒绝、版本拒绝、清单外对象拒绝，以及附件分段续传与去重。发起方提交清单与对象、Room 应用、持久墓碑、冲突分支、同步界面和两台实体 Android 的端到端验收仍待完成。

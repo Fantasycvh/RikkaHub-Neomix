@@ -250,6 +250,8 @@ dependencies {
     // okhttp
     implementation(libs.okhttp)
     implementation(libs.okhttp.sse)
+    implementation(libs.zxing.core)
+    implementation(libs.zip4j)
     implementation(libs.retrofit)
     implementation(libs.retrofit.serialization.json)
 

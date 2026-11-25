@@ -28,6 +28,9 @@ import app.androidrik.rikkahub.ui.pages.backup.BackupPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupReminderPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupS3Page
 import app.androidrik.rikkahub.ui.pages.backup.BackupSnapshotPage
+import app.androidrik.rikkahub.ui.pages.backup.LocalSnapshotsPage
+import app.androidrik.rikkahub.ui.pages.backup.LanPairingPage
+import app.androidrik.rikkahub.ui.pages.backup.LanPairingJoinPage
 import app.androidrik.rikkahub.ui.pages.backup.BackupWebDavPage
 import app.androidrik.rikkahub.ui.pages.chat.ChatPage
 import app.androidrik.rikkahub.ui.pages.debug.DebugPage
@@ -195,6 +198,18 @@ internal fun appEntryProvider(): (NavKey) -> NavEntry<NavKey> = entryProvider {
 
                     entry<Screen.BackupSnapshot> {
     BackupSnapshotPage()
+                    }
+
+                    entry<Screen.LocalSnapshots> {
+    LocalSnapshotsPage()
+                    }
+
+                    entry<Screen.LanSync> {
+    LanPairingPage()
+                    }
+
+                    entry<Screen.LanPairJoin> {
+    LanPairingJoinPage()
                     }
 
                     entry<Screen.ImageGen> {

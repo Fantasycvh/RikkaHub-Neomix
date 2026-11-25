@@ -255,6 +255,7 @@ data class Settings(
      */
     val lorebookInjectBudgetTokens: Int = DEFAULT_LOREBOOK_BUDGET_TOKENS,
     val backupReminderConfig: BackupReminderConfig = BackupReminderConfig(),
+    val localSnapshotConfig: LocalSnapshotConfig = LocalSnapshotConfig(),
     /** 全局代理（provider 未自配时兜底；默认 NONE = 不启用） */
     val globalProxy: GlobalProxySetting = GlobalProxySetting(),
     val retrySetting: RetrySetting = RetrySetting(),

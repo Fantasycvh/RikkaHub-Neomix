@@ -21,6 +21,11 @@ import java.util.zip.ZipOutputStream
 
 private const val TAG = "BackupArchive"
 
+internal fun encodeBackupSettings(json: Json, settings: Settings, scope: BackupScope): String =
+    BackupContentFilter.filterSettingsJson(json.encodeToJsonElement(settings).jsonObject, scope)
+        .let(BackupPortability::portable)
+        .toString()
+
 /** Writes the standard backup format without owning SettingsStore or Room. */
 internal class BackupArchiveWriter(
     private val context: Context,
@@ -70,13 +75,7 @@ internal class BackupArchiveWriter(
                 // settings.json 恒含（首个 section；manifest 记其 SHA-256 供恢复侧校验）。
                 // scope 排除的类别在 JSON 键级剔除（BackupContentFilter），恢复侧据此回填本机值；
                 // 设备态字段（launchCount 等）再经 BackupPortability 剥离——备份只描述用户数据。
-                val settingsContent = BackupContentFilter
-                    .filterSettingsJson(
-                        settings = json.encodeToJsonElement(readSettings()).jsonObject,
-                        scope = scope,
-                    )
-                    .let(BackupPortability::portable)
-                    .toString()
+                val settingsContent = encodeBackupSettings(json, readSettings(), scope)
                 val settingsRaw = settingsContent.toByteArray(Charsets.UTF_8)
                 addVirtualFileToZip(
                     zipOut = zipOut,

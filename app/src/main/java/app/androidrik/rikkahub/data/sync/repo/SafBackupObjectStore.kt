@@ -82,6 +82,10 @@ internal class AndroidBackupDocumentAccess(private val resolver: ContentResolver
     override fun read(id: String) = requireNotNull(resolver.openInputStream(uri(id))) { "Cannot read backup file" }
     override fun write(id: String) = requireNotNull(resolver.openOutputStream(uri(id), "wt")) { "Cannot write backup file" }
     override fun delete(id: String) { check(DocumentsContract.deleteDocument(resolver, uri(id))) { "Cannot delete snapshot file" } }
+
+    fun rename(id: String, name: String): String = DocumentsContract.getDocumentId(
+        requireNotNull(DocumentsContract.renameDocument(resolver, uri(id), name)) { "Cannot publish backup file" },
+    )
 }
 
 internal class SafBackupObjectStore(private val access: BackupDocumentAccess, override val destinationId: String) : BackupObjectStore {

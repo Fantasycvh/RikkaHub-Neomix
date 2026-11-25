@@ -87,6 +87,15 @@ sealed interface Screen : NavKey {
     data object BackupSnapshot : Screen
 
     @Serializable
+    data object LocalSnapshots : Screen
+
+    @Serializable
+    data object LanSync : Screen
+
+    @Serializable
+    data object LanPairJoin : Screen
+
+    @Serializable
     data object ImageGen : Screen
 
     @Serializable

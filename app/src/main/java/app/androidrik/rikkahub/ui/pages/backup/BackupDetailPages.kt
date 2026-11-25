@@ -31,7 +31,7 @@ import org.koin.androidx.compose.koinViewModel
  * 进程级 coordinator，所以离开/返回页面不会丢进度；列表与设置仍由 SettingsStore 共享。
  */
 @Composable
-private fun BackupDetailScaffold(
+internal fun BackupDetailScaffold(
     title: String,
     content: @Composable () -> Unit,
 ) {

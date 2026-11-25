@@ -13,6 +13,8 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import app.androidrik.rikkahub.data.sync.localsnapshot.LocalSnapshotState
+import app.androidrik.rikkahub.data.sync.lan.LanPeer
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -427,6 +429,9 @@ class SettingsStore(
 
         // 备份提醒
         val BACKUP_REMINDER_CONFIG = stringPreferencesKey("backup_reminder_config")
+        val LOCAL_SNAPSHOT_CONFIG = stringPreferencesKey("local_snapshot_config")
+        val LOCAL_SNAPSHOT_STATE = stringPreferencesKey("local_snapshot_state")
+        val LAN_PEERS = stringPreferencesKey("lan_peers_v1")
 
         // 统计
         val LAUNCH_COUNT = intPreferencesKey("launch_count")
@@ -686,6 +691,9 @@ class SettingsStore(
                     backupReminderConfig = preferences[BACKUP_REMINDER_CONFIG]?.let {
                         JsonInstant.decodeFromString(it)
                     } ?: BackupReminderConfig(),
+                    localSnapshotConfig = preferences[LOCAL_SNAPSHOT_CONFIG]?.let {
+                        JsonInstant.decodeFromString<LocalSnapshotConfig>(it)
+                    } ?: LocalSnapshotConfig(),
                     // 存量安装无 TOTAL pref：回填为本机计数（升级后统计口径连续，无需迁移脚本）
                     launchCount = preferences[LAUNCH_COUNT] ?: 0,
                     totalLaunchCount = maxOf(
@@ -936,6 +944,35 @@ class SettingsStore(
         .distinctUntilChanged()
         .toMutableStateFlow(scope, Settings.dummy())
 
+    internal val localSnapshotState = dataStore.data.map { preferences ->
+        preferences[LOCAL_SNAPSHOT_STATE]?.let { JsonInstant.decodeFromString<LocalSnapshotState>(it) }
+            ?: LocalSnapshotState()
+    }.distinctUntilChanged()
+
+    internal suspend fun saveLocalSnapshotState(state: LocalSnapshotState) {
+        dataStore.edit { it[LOCAL_SNAPSHOT_STATE] = JsonInstant.encodeToString(state) }
+    }
+
+    internal val lanPeers = dataStore.data.map { it.readLanPeers() }.distinctUntilChanged()
+
+    internal suspend fun saveLanPeer(peer: LanPeer) {
+        dataStore.edit { preferences ->
+            val previous = preferences.readLanPeers().associateBy { it.certSha256 }
+            val endpoints = (peer.lastEndpoints + previous[peer.certSha256]?.lastEndpoints.orEmpty()).distinct().take(8)
+            preferences[LAN_PEERS] = JsonInstant.encodeToString(previous.values.filterNot { it.certSha256 == peer.certSha256 } +
+                peer.copy(lastEndpoints = endpoints))
+        }
+    }
+
+    internal suspend fun forgetLanPeer(fingerprint: String) {
+        dataStore.edit { preferences ->
+            preferences[LAN_PEERS] = JsonInstant.encodeToString(preferences.readLanPeers().filterNot { it.certSha256 == fingerprint })
+        }
+    }
+
+    private fun Preferences.readLanPeers(): List<LanPeer> =
+        this[LAN_PEERS]?.let { JsonInstant.decodeFromString<List<LanPeer>>(it) }.orEmpty()
+
     /**
      * 启动次数 +1，**只原子地改一个 key**。
      *
@@ -1104,6 +1141,7 @@ class SettingsStore(
             preferences[MEMORY_INJECT_BUDGET_TOKENS] = settings.memoryInjectBudgetTokens
             preferences[LOREBOOK_INJECT_BUDGET_TOKENS] = settings.lorebookInjectBudgetTokens
             preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
+            preferences[LOCAL_SNAPSHOT_CONFIG] = JsonInstant.encodeToString(settings.localSnapshotConfig)
             // 防回退：整份快照可能早于 incrementLaunchCount()，取盘内现值与新值的较大者
             preferences[LAUNCH_COUNT] = maxOf(settings.launchCount, preferences[LAUNCH_COUNT] ?: 0)
             // 累计口径同理防回退（恢复可能带来更大的值，见 BackupPortability max 合并）

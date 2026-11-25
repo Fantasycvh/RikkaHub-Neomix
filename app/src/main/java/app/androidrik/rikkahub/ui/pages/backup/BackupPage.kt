@@ -30,6 +30,8 @@ import me.rerere.hugeicons.stroke.Notification01
 import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Upload02
 import app.androidrik.rikkahub.utils.plus
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Network
 
 /**
  * 数据备份入口页（二级）：只列「有哪些备份方式」，点进去才是具体功能页（三级）。
@@ -95,6 +97,18 @@ fun BackupPage() {
                     modifier = Modifier.padding(horizontal = 8.dp),
                     title = { Text(stringResource(R.string.backup_page_section_automation)) },
                 ) {
+                    item(
+                        onClick = { navController.navigate(Screen.LocalSnapshots) },
+                        leadingContent = { AppSkinListItemIcon(HugeIcons.File01, null) },
+                        headlineContent = { Text(stringResource(R.string.local_snapshot_title)) },
+                        supportingContent = { Text(stringResource(R.string.local_snapshot_description)) },
+                    )
+                    item(
+                        onClick = { navController.navigate(Screen.LanSync) },
+                        leadingContent = { AppSkinListItemIcon(Lucide.Network, null) },
+                        headlineContent = { Text(stringResource(R.string.lan_pair_title)) },
+                        supportingContent = { Text(stringResource(R.string.lan_pair_description)) },
+                    )
                     item(
                         onClick = { navController.navigate(Screen.BackupReminder) },
                         leadingContent = { AppSkinListItemIcon(HugeIcons.Notification01, null) },

@@ -22,7 +22,7 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 internal object BackupPortability {
     /** 整键设备态：打包时剔除，恢复时一律保留本机值。 */
-    private val DEVICE_STATE_KEYS = setOf("launchCount", "importedSources")
+    private val DEVICE_STATE_KEYS = setOf("launchCount", "importedSources", "localSnapshotConfig")
 
     /**
      * 可合并设备态：**打包保留、恢复侧与本地值取 max**（幂等）。
