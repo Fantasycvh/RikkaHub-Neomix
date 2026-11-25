@@ -337,7 +337,7 @@ Kotlin/Compose 升级已作为 SaltUI spike 的前置独立变更完成：
 - PJX110（API 35）独立包名下的四项 Compose 测试通过。它们覆盖单一点击节点、角色、48dp 触控、禁用态、RTL 下 200% 字体在两种皮肤和两种色彩模式中的副文布局，以及 Activity 重建后两组状态独立保留。
 - 测试时钟注入 `MotionDurationScale = 0` 后，Salt 开关在前四帧内达到最终图像。800/200/300ms 仍由 SaltUI 固定定义。
 - 上述四项定向测试通过同包测试宿主运行。补齐四个已有用例的 `messageFileRefDAO` 参数后，完整 AndroidTest 已通过编译与打包。
-- API 35 Debug 性能见 §14。TalkBack 实际播报、系统无障碍开关联动、API 31／33、对比度和 Release APK 内容待验证。
+- API 35 Debug 性能见 §14。对比度、系统动画和 Release 产物检查见 §15。
 
 ---
 
@@ -373,3 +373,36 @@ adb exec-out run-as $target cat files/saltui-performance/appskin-01.json
 ```
 
 以独立进程改用 `-e saltUiPanel salt`，并为每轮分配新的 `reportRun`；原始 JSON 保存了三个阶段的逐帧耗时、帧截止时间与 PSS 采样。
+
+---
+
+## 15. 发布包隔离、对比度和系统动画（2026-11-25）
+
+### Release 产物
+
+本地生成并检查了 arm64、x86_64、通用 APK 和 Release AAB。三个 APK 的 v2 签名验证均通过。四份产物的 DEX 和清单均无 SaltUI、HiddenApiBypass 或 `SketchTestHostActivity` 标记，Release R8 的原始类名映射也无对应项。同批 Debug APK 检出了这些标记。Release AAB 含 Play 依赖元数据 `BUNDLE-METADATA/com.android.tools.build.libraries/dependencies.pb`。
+
+缓存中的已发布 POM 均标记 Apache-2.0，涵盖 SaltUI 3.0.0 的 UI、core、adaptive-window、Haze 2.0.1 主库，以及 HiddenApiBypass 6.1。三个项目对应的发行标签均有 Apache-2.0 LICENSE，仓库根目录无单列 NOTICE。检查的 AAR 和内嵌 `classes.jar` 未找到单列 LICENSE 或 NOTICE。[SaltUI 3.0.0 LICENSE](https://github.com/Moriafly/SaltUI/blob/3.0.0/LICENSE) · [Haze 2.0.1 LICENSE](https://github.com/chrisbanes/haze/blob/2.0.1/LICENSE) · [HiddenApiBypass v6.1 LICENSE](https://github.com/LSPosed/AndroidHiddenApiBypass/blob/v6.1/LICENSE)
+
+### 真机对比度
+
+在 PJX110（API 35）上读取 Debug 对照页稳态截图的实色像素，按 sRGB 相对亮度计算对比度。标题和副文按 4.5:1 验收，可用开关的视觉状态按 3:1 验收。[Android 文字对比度](https://developer.android.com/guide/topics/ui/accessibility/apps#color-contrast) · [WCAG 非文字对比度](https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html)
+
+| 配色 | 标题／底色 | 副文／底色 | 关态轨道／底色 | 关态圆环／轨道 | 开态轨道／底色 | 开态标记／轨道 |
+|---|---:|---:|---:|---:|---:|---:|
+| 默认浅色 | 16.39 | 8.91 | 1.17 | 1.23 | 6.19 | 6.49 |
+| 默认深色 | 8.87 | 6.73 | 1.25 | 1.42 | 6.75 | 7.71 |
+| 浅蓝浅色 | 16.23 | 8.91 | 1.18 | 1.24 | 6.10 | 6.44 |
+| 浅蓝深色 | 8.92 | 6.75 | 1.25 | 1.43 | 6.75 | 7.72 |
+
+四种配色的文字与开态通过。可用开关的关态均低于 3:1，暂未达到生产准入条件。SaltUI 3.0.0 的 `Switcher` 把关态轨道固定为 `subText.copy(alpha = 0.1f)`，公开 `ItemSwitcher` 接口没有独立关态配色参数。[SaltUI 3.0.0 Android 源码包](https://repo.maven.apache.org/maven2/io/github/moriafly/salt-ui-android/3.0.0/salt-ui-android-3.0.0-sources.jar)
+
+### 系统动画
+
+在同一台真机的隔离 Debug Activity 中，经 Android 的全局 `animator_duration_scale` 分别设为 1 和 0，通过真实触摸切换同一开关。比例为 1 时，连续采到三个与最终态不同的图像。比例为 0 时，首个采样已与最终态一致。ADB 截图记录采样区间，零时长的帧级行为由 §13 的 Compose 测试覆盖。测量结束恢复并复查原值 `1.00`。[Android 全局动画时长设置](https://developer.android.com/reference/android/provider/Settings.Global#ANIMATOR_DURATION_SCALE)
+
+### API 31／33 兼容性
+
+使用 Pixel 6 配置的 AOSP x86_64 模拟器。Android 12（API 31，镜像 r05）和 Android 13（API 33，镜像 r02）均通过 `SaltUiSpikeTest` 的四项用例，使用独立包名和 `LongTextBaselineRunner`。用例覆盖行点击与开关语义、禁用态、两种皮肤在深浅色及 RTL 下的 200% 字体、Activity 重建，以及测试时钟注入零动画时长。API 31／33 的物理设备验收仍待对应设备。
+
+TalkBack 实际播报按本轮要求暂缓。
