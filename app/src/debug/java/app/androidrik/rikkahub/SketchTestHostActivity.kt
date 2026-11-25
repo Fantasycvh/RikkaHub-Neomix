@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import app.androidrik.rikkahub.saltui.SaltUiSpikePreview
 
 /**
  * debug 变体里的空 Activity，只作为 Compose instrumented 测试
@@ -30,8 +31,9 @@ open class SketchTestHostActivity : ComponentActivity() {
                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
             )
         }
-        if (intent.getBooleanExtra("appearancePreview", false)) {
-            setContent { ChatAppearancePreview() }
+        when {
+            intent.getBooleanExtra("saltUiSpike", false) -> setContent { SaltUiSpikePreview() }
+            intent.getBooleanExtra("appearancePreview", false) -> setContent { ChatAppearancePreview() }
         }
     }
 }

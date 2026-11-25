@@ -361,6 +361,7 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.androidx.room.testing)
+    debugImplementation(libs.salt.ui)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     // Phone Use 虚拟屏（Shizuku UserService）：release 也提供，见 proguard-rules.pro 的 keep 约束

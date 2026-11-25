@@ -15,6 +15,7 @@ activityCompose = "1.13.0"
 documentFile = "1.0.1"
 composeBom = "2026.09.00"
 composeMultiplatform = "1.12.2"
+saltUi = "3.0.0"
 material3 = "1.5.0-rc01"
 media3 = "1.10.1"
 metadataExtractor = "2.22.0"
@@ -70,6 +71,7 @@ snakeyaml = "2.6"
 ink = "1.1.0-alpha10"
 
 [libraries]
+salt-ui = { module = "io.github.moriafly:salt-ui", version.ref = "saltUi" }
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-compose-gradle-plugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
