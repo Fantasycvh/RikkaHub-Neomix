@@ -1,180 +1,214 @@
-# 备份体系改造：移除增量备份 + 本地自动备份（一期）+ 局域网同步（二期设计）
+# 备份体系改造（修订版）：保留增量备份 + 双向对称局域网同步 + 本地自动备份
 
 ## Context
 
-当前项目 RikkaHub-Neomix 有一套增量备份功能（实验入口「快照备份」），用户决定将其整体移除，
-以两条更简单、经过验证的路径替代数据安全能力：
+上一版方案（`586664c48`）主张移除增量备份，再用 cuplivo 的对称协议从零做局域网同步。
+本版按用户决策修订：**保留增量备份**，局域网同步走 **cuplivo 式的真双向对称**。
 
-1. **本地自动备份**（一期）：借鉴 kelivo/cuplivo 的「本地副本」模式——应用启动/恢复后延迟检查、
-   自动频率（每日/每 N 天）、保留份数 + 上周/上月各留一份、容量上限、复用 `BackupArchiveEngine`
-   全量打包。参照实现：`F:\build\projects\kelivo\lib\core\services\backup\local_folder_backup.dart`、
-   `F:\build\projects\cuplivo\lib\core\services\backup\local_snapshot_retention.dart` 与
-   `local_snapshot_scheduler.dart`。
-2. **局域网同步**（二期，本次只做设计稿）：借鉴 cuplivo 的 LAN sync——HTTPS 自签证书 + SHA-256
-   指纹绑定 + PIN 配对 + 对称合并，最小实体集（会话含分支树 + 引用附件 + 助手），协议带版本号。
+保留增量备份的理由（已核对代码）：它已经提供了双向同步最贵的两块底座——
 
-交付节奏：**分两期**。一期 = 1A 移除 + 1B 本地自动备份；二期 = 局域网同步（另开实现周期）。
+- [BackupObjectStore.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/data/sync/repo/BackupObjectStore.kt#L23-L79)：
+  `listChildren/stat/statFresh/missingKeysFresh/get/put/delete/ensureDir` + `destinationId`，
+  已有 SAF / WebDAV / S3 三个实现。
+- [BackupSnapshotManifest.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/data/sync/repo/BackupSnapshotManifest.kt#L40-L105)：
+  内容寻址 `v3/objects/<sha256>`、清单 `v3/snapshots/<id>.json.gz`、完成标记 `<id>.complete.json`、
+  `deviceId/dbVersion/formatVersion`，以及 P2 稳定逻辑键 `conversation:<uuid>`（会话没变就不重传）。
 
-## 核验后的删除边界（重要修正）
+代价（一并接受）：仓库层是备份域最复杂的一块（Engine/Service + 4 个 object store 实现 + Packing +
+Codec + 6 个测试），需要长期维护；FTS 重建链必须保留。
 
-- **必须保留**：`DatabaseObjectCapture.kt` / `DatabaseObjectMerge.kt` / `DatabaseObjectProtocol.kt`
-  —— `BackupArchiveEngine.kt:612/643/652/765` 的恢复合并路径依赖它们（已核验）。
-- **FTS 重建链整链是增量附属物，可删**：`FtsRebuildPending` 唯一生产者是
-  `IncrementalBackupService.kt:293`；消费链 `RikkaHubApp.rebuildSearchIndexIfPending()/retry…` →
-  `SearchIndexRebuildBanner` → `RouteActivity.kt:88,264` → `SearchIndexRebuildSignal` →
-  `SnapshotBackupTab.kt:64`。
-- **增量专属可删**：`BackupObjectStore.kt`、`RemoteBackupObjectStores.kt`（S3/WebDAV 对象存储适配
-  器，WebDavTab/S3Tab 走独立 `WebDavSync`/`S3Sync` 全量引擎）、`SnapshotPacking.kt`、
-  `SnapshotObjectCodec.kt`、`BackupSnapshotManifest.kt`、`BackupSnapshotCapture.kt`。
+## 不做的事（相对上一版的差异）
+
+原方案的以下删除动作**全部取消**，原样保留：
+
+- `data/sync/repo/` 下 `IncrementalBackupEngine / IncrementalBackupService / SafBackupObjectStore /
+  BackupObjectStore / RemoteBackupObjectStores / SnapshotPacking / SnapshotObjectCodec /
+  BackupSnapshotManifest / BackupSnapshotCapture / FtsRebuildPending`
+- FTS 重建链：`RikkaHubApp.rebuildSearchIndexIfPending()/retrySearchIndexRebuild()` →
+  `SearchIndexRebuildBanner` → `RouteActivity` → `SearchIndexRebuildSignal` → `SnapshotBackupTab`
+- `SnapshotBackupTab.kt` / `Screen.BackupSnapshot` / `BackupDetailPages.BackupSnapshotPage` 路由
+- `BackupVM` 的 snapshot 状态与方法、`BackupRunCoordinator` 的 `SNAPSHOT_*` kind、
+  `DataSourceModule:407-411` 的 `IncrementalBackupService` 注册
+- `FileFolders.BACKUP_INDEX` 常量与 `BackupFolderRegistry` 的豁免 spec
+- `backup_page_section_experimental` / `backup_page_snapshot_title/desc`（三 locale）
+- 全部增量相关测试（`IncrementalBackupEngineTest` 等 7 个 unit + 3 个 androidTest）
+
+唯一可选的文案调整（不阻塞）：把入口卡从「实验功能」区块移到「备份管理」，措辞从"实验"改为
+「快照仓库」。留作后续产品决定。
 
 ---
 
-## Phase 1A：移除增量备份
+# Phase 1：本地自动备份（kelivo「本地副本」式）
 
-### 1A.1 删除与接线清理（SafeDelete 顺序）
+与增量仓库**并列共存**，职责不同：本地副本=防丢（全量 zip + 保留 N 份）；快照仓库=去重/跨设备传输。
 
-**第 1 步 — UI 叶子**
-- 删 [SnapshotBackupTab.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/ui/pages/backup/tabs/SnapshotBackupTab.kt) 整文件
-- 删 [BackupDetailPages.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/ui/pages/backup/BackupDetailPages.kt) 中 `BackupSnapshotPage`（约 95-101 行）及其 import
-- [BackupPage.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/ui/pages/backup/BackupPage.kt) 删 `backupExperimental` 卡片（107-119 行，已核验）与 `HugeIcons.Database02` import
-- [Screen.kt:87](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/Screen.kt) 删 `Screen.BackupSnapshot`
-- [AppNavHost.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/AppNavHost.kt) 删 import + 路由 entry（约 196-198 行）
-- 删 `ui/pages/backup/components/SearchIndexRebuildBanner.kt`
-- [RouteActivity.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/RouteActivity.kt):88（import）与 :264（解开 banner 包裹，保留 `RestoreRestartGate`）
+## 决策（沿用已确认结论）
 
-**第 2 步 — BackupVM 瘦身**
-[BackupVM.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/ui/pages/backup/BackupVM.kt)：
-删构造参数 `incrementalBackup`（78 行）、repo 包 import（62 行）、状态
-`snapshotDestination/localBackupTarget/snapshots/snapshotBusy/Error/Notice/Plan/Retention`
-（90-98 行）与 `snapshotSchemaVersion`（110 行）、方法 `snapshotTask/loadSnapshots/
-selectSnapshotRetention/selectSnapshotDestination/attachBackupFolder/detachBackupFolder/
-prepareSnapshot/cancelSnapshotPlan/commitSnapshot/restoreSnapshot/garbageCollectSnapshots/
-exportSnapshot/deleteSnapshot/refreshSnapshots`（112-295 行，已抽样核验行号）及 `onCleared` 注释。
-WebDAV/S3/导入导出成员全部保留。
+| 决策点 | 结论 |
+|---|---|
+| 存储位置 | SAF 用户选定目录（`ACTION_OPEN_DOCUMENT_TREE` + persistable permission，拒绝本应用 workspace）。卸载不丢；授权失效时 UI 提示且自动备份跳过并记失败 |
+| 触发模型 | 应用内 resume 延迟检查：冷启延迟 8s、resume 延迟 3s、最小检查间隔 1 分钟；`RikkaHubApp` 注册 `ActivityLifecycleCallbacks`，协程跑 AppScope。不引入 WorkManager |
+| 命名 | `local_backup_yyyyMMdd_HHmmss.zip`（本地时区），文件名即排序依据，无索引文件 |
+| 留存 | 纯函数 `LocalSnapshotRetentionPolicy`：最近 N 份（默认 3，1-10）+ 1 个 weekly 槽（满 7 天最新）+ 1 个 monthly 槽（满 30 天最新）；**最新一份非空副本永不删**；容量上限（0=不限）从最旧删起、保护集不越界 |
+| 打包/恢复 | 复用 `BackupArchiveEngine` 全量打包（尊重 `backupItems/backupScope` + 加密 tile）；恢复复用 `BackupVM.restoreFromLocalFile`（merge/overwrite 原样） |
+| 变更门控 | 指纹 = conversations `COUNT+MAX(update_time)` + assistants `COUNT`；一致则跳过且不推进 lastSuccessAt |
+| 失败退避 | 失败始终提示；连续失败 1/2/4/8/16h 指数退避 |
+| 设置 | `DisplaySettings.kt` 紧邻 `BackupReminderConfig`（349-353 行）新增 `@Serializable LocalSnapshotConfig`；运行态 `LocalSnapshotState` 存 PreferencesStore 独立 key；写入一律字段级 `settingsStore.update { it.copy(...) }` |
+| 执行通道 | 新增 `BackupRunKind.LOCAL_SNAPSHOT` 进 `BackupRunCoordinator`（复用 FGS + 进度通知 + 单任务互斥） |
 
-**第 3 步 — BackupRunCoordinator 瘦身**
-[BackupRunCoordinator.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/data/sync/BackupRunCoordinator.kt)：
-删 `BackupSnapshotPlan` import、`_pendingPlan/pendingPlan/storePlan/clearPlan/closePlanAsync`（83-134 行）、
-`PLAN_TTL`（284 行）；`BackupRunKind` 删 `SNAPSHOT_PLAN/COMMIT/RESTORE/GC/EXPORT`（40-44 行）并同步
-`titleFor`/`finishedTextFor` 分支；androidTest `BackupRunCoordinatorTest.kt` 同步改。
+## 新增代码
 
-**第 4 步 — DI**：[DataSourceModule.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/di/DataSourceModule.kt):407-411 删 `IncrementalBackupService` single 注册。
+- `data/sync/localsnapshot/LocalSnapshotRetentionPolicy.kt`（纯函数）
+- `data/sync/localsnapshot/LocalSnapshotService.kt`（SAF attach/detach + 打包 + 留存 + 指纹门控）
+- `ui/pages/backup/LocalSnapshotsPage.kt` + `Screen.LocalSnapshots` + `AppNavHost` entry
+- `BackupPage.kt` 新增「自动备份」section（开关/频率/保留份数/容量上限/结果提示/占用/立即备份/管理副本）
+- DI 注册、`local_snapshot_*` 三语字符串、单测（留存纯函数 + 门控）
 
-**第 5 步 — repo 包核心删除**（整删以下文件）
-`IncrementalBackupEngine.kt`、`IncrementalBackupService.kt`（内含 `BackupDestination/LocalBackupTarget/
-SnapshotRetentionConfig/DEFAULT_SNAPSHOT_RETENTION`）、`SafBackupObjectStore.kt`（内含
-`AndroidBackupDocumentAccess/CountingBackupDocumentAccess`）、`BackupObjectStore.kt`、
-`RemoteBackupObjectStores.kt`、`SnapshotPacking.kt`、`SnapshotObjectCodec.kt`、
-`BackupSnapshotManifest.kt`、`BackupSnapshotCapture.kt`、`FtsRebuildPending.kt`。
-**保留** `DatabaseObjectCapture/Merge/Protocol` 三件套。
+---
 
-**第 6 步 — FTS 重建链收尾**
-- [RikkaHubApp.kt](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/RikkaHubApp.kt)：删 import（41 行）、`rebuildSearchIndexIfPending()`（295-317）、`retrySearchIndexRebuild()`（319-325）及调用点（287）
-- 删 `data/db/fts/SearchIndexRebuildSignal(.kt)` + 对应单测
-- `ConversationRepository.rebuildAllIndexes` 无调用方则顺手删
+# Phase 2：双向对称局域网同步（cuplivo 模式）
 
-**第 7 步 — 目录常量与注册表**
-- [FilesManager.kt:968-975](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/data/files/FilesManager.kt) 删 `FileFolders.BACKUP_INDEX`
-- [BackupFolderRegistry.kt:106-110](file:///f:/build/projects/RikkaHub-Neomix/app/src/main/java/app/androidrik/rikkahub/data/sync/BackupFolderRegistry.kt) 删 BACKUP_INDEX 豁免 spec（`BackupCoverageTest` 反射比对全集，两边同步改）
+## 2.1 复用边界
 
-**第 8 步 — 字符串（3 locale 同步）**
-`values/strings.xml:301,305-306`、`values-zh/strings.xml:310,314-315`、`values-zh-rTW/strings.xml:310,314-315`：
-删 `backup_page_section_experimental`、`backup_page_snapshot_title/desc`。
+| 环节 | 复用现有实现 |
+|---|---|
+| 对象身份 | `conversation:<uuid>` 稳定逻辑键 + sha256 内容寻址 |
+| 捕获 | `BackupSnapshotCapture` / `DatabaseObjectCapture.captureConversationsOnly` |
+| 落库 | `DatabaseObjectMerge.mergeMissingConversationsLive`（新增路径） |
+| 范围 | `BackupScope` / `BackupItem` |
+| 加密 | 现有加密 tile |
+| 进度/互斥/FGS | `BackupRunCoordinator` + `BackupForegroundService` |
+| 服务端引擎 | `ktor-server-cio`（`gradle/libs.versions.toml:196` 已有，web 模块 `Entry.kt` 是现成用法） |
 
-**第 9 步 — 测试清理**
-- unit 删：`IncrementalBackupEngineTest/IncrementalBackupRetentionTest/IncrementalDatabaseBackupTest/
-  SnapshotPackingTest/SafBackupObjectStoreTest/BackupSnapshotCaptureTest/FtsRebuildPendingTest`
-- unit 留：`DatabaseObjectProtocolTest` 及其余 data/sync 测试（BackupCoverageTest、
-  BackupScopeGranularityTest 等护栏）
-- androidTest 删：`IncrementalStorageInstrumentedTest/IncrementalPerformanceMeasurement/FixtureBackupServer`
-- androidTest 留：`DatabaseObject*InstrumentedTest` 三件
+**不能复用的一处**：`DatabaseObjectMerge` 只有"缺失即插入"的加性语义，**没有删除传播**。
+RikkaHub 也没有回收站（已 grep 确认）。双向同步必须新增墓碑机制（见 2.4）。
 
-### 1A.2 陈旧状态目录清理（升级首启，fail-open）
+## 2.2 新增模块 `data/sync/lan/`
 
-`RikkaHubApp.boot()` 早期（`PendingRestoreStore.rollbackIfUnconfirmed` 之前的第 0 步位置）加：
-`runCatching { File(filesDir, "backup_index").deleteRecursively(); File(cacheDir, "incremental_backup").deleteRecursively() }`。
-纯文件状态、无 Room/DataStore 迁移；目录不存在时为 no-op，幂等且不拦启动。
+- `LanIdentity.kt`：首次启动生成密钥对 + 自签证书（AndroidKeyStore），`certSha256` 即设备身份；
+  `deviceId` 沿用仓库 manifest 的 `deviceId` 字段，若为空则以 `certSha256` 补齐。
+- `LanSyncServer.kt`：Ktor CIO，**只绑定局域网私有地址**（枚举 `NetworkInterface`，取 site-local IPv4），
+  端口默认随机（配对时告知），可配置固定端口。
+- `LanSyncClient.kt`：OkHttp + 自定义 `X509TrustManager`，**只信 peer registry 中 pin 的 SHA-256 指纹**，
+  不信任系统 CA；连接超时按 cuplivo 的经验值（LAN dial 短超时、传输长超时）。
+- `LanPeerRegistry.kt`：DataStore JSON，记录 `{name, lastEndpoints[≤8], certSha256, token, lastSyncAt,
+  protocolVersion}`。
+- `LanManifest.kt` / `LanManifestCodec.kt`：线协议模型与序列化。
+- `LanMergePlan.kt`：**纯函数**，输入双方 manifest，输出 `toPush / toPull / toDelete / conflicts`。
+- `LanMergeApply.kt`：把 plan 落到数据库（新增走现有 merge，冲突/删除走新增能力）。
+- `LanPairingController.kt`：PIN + 二维码。
+- UI：`ui/pages/settings/SyncPage.kt`（本机指纹卡 + peer 卡列表 + 添加设备 + 每 peer「立即同步」），
+  peer 卡显示阶段与结果（对齐 cuplivo 的阶段枚举）。
 
-### 1A.3 验证
+## 2.3 协议 v1
+
+统一信封带 `protocol: 1`；对方 `protocol` 更高 → 拒绝并提示升级（不做降级）。
+
+```
+POST /v1/pair        {pin, protocol, deviceId, name}          → {token, deviceId, name}
+GET  /v1/manifest                                             → LanManifest
+GET  /v1/objects/{sha256}          (支持 Range，断点续传)     → bytes
+PUT  /v1/objects/{sha256}          (内容寻址 → 天然幂等)      → 204
+POST /v1/applied     {keys[], tombstones[]}                   → {ok}
+```
+
+所有已配对请求带 `X-Rikka-Token`；pair 端点只在配对窗口（2 分钟）内可用，PIN 错误 5 次锁定 60s。
+
+`LanManifest` 形状：
+
+```json
+{
+  "protocol": 1,
+  "device": {"id": "<certSha256>", "name": "...", "appVersionCode": 0,
+             "dbVersion": 0, "formatVersion": 3},
+  "conversations": [{"key": "conversation:<uuid>", "sha256": "...", "updateTime": 0,
+                     "size": 0, "attachmentShas": ["..."]}],
+  "assistants":    [{"key": "assistant:<uuid>", "sha256": "...", "updateTime": 0}],
+  "tombstones":    [{"key": "conversation:<uuid>", "deletedAt": 0}]
+}
+```
+
+`dbVersion` / `formatVersion` 不一致 → 拒绝同步并提示先升级（避免跨 schema 合并）。
+
+## 2.4 合并规则（确定性、无方向性）
+
+规则对称，双方用同一函数、同一输入各自 plan，结果互补（cuplivo `sync_merge.dart` 的原则）：
+
+1. 双方都有、`sha256` 相同 → 跳过。
+2. 双方都有、`sha256` 不同 → 比较 `updateTime`，新者胜；**相等则比 sha256 字典序较小者胜**
+   （消抖，避免双方同时改写导致来回震荡）。败者写入「冲突留存」（复用 `RecoveryBackupExporter`
+   的安全备份模型），会话败者额外把其 `messageNodes` 作为分支候选追加，不丢内容。
+3. 单方有、对方无、且无更晚墓碑 → 缺失方拉取（内容寻址去重，只传差集）。
+4. 单方有、对方有墓碑：`tombstone.deletedAt > object.updateTime` → 删除；否则保留（复活优先）。
+5. 墓碑保留 30 天后清（`LanTombstoneStore`，DataStore 或小表；不进 Room schema 的话用
+   PreferencesStore JSON，按项目惯例优先避免 DB 迁移）。
+
+删除墓碑产生点：现有删除入口（会话批量删除、单会话删除、助手删除）在 `AppScope` 内追加写墓碑。
+按项目既有约定，附件删除前仍要做引用计数检查。
+
+## 2.5 传输与应用流程
+
+```
+1 connecting  拨号（记忆端点逐个试，短超时），TLS 握手后校验 certSha256 pin
+2 exchanging  GET /v1/manifest 双向交换（initiator 拉 peer 清单；responder 在 hello 里回自己的）
+3 sending     按 plan 推 toPush（内容寻址 + 分块 + 失败重试；单次预算上限，超预算的留到下一次）
+4 receiving   拉 toPull
+5 applying    本地落库：新增 → DatabaseObjectMerge.mergeMissingConversationsLive；
+              冲突 → 新能力 upsertWithConflict；删除 → 现有删除链路（含附件引用计数）
+6 report      写 lastSyncAt、展示摘要（新增/更新/删除/跳过/冲突）
+```
+
+附件：随会话对象引用传输，落 `files/upload`、`images` 等现有目录并保留 mtime；传输后校验 sha256。
+字节预算：单次会话上限（例如 64 MB），超出则记录并在下一次续传，避免长任务被 Doze 打断。
+
+## 2.6 安全不变量
+
+- 证书 pin 先于任何业务 API；未配对设备无法访问任何端点。
+- token 只经配对通道（PIN + 二维码同屏验证）交换，不出现在日志。
+- 服务端只 bind 私有地址，不监听 `0.0.0.0`。
+- 所有附件入本地前校验 sha256。
+- 合并幂等：重复同步零副作用（内容寻址 + 墓碑单调）。
+- 删除/覆盖前先落安全备份（沿用 `RecoveryBackupExporter`）。
+
+## 2.7 风险与取舍
+
+| 风险 | 处置 |
+|---|---|
+| 长传输被 Doze/后台限制 | 复用 `BackupForegroundService` + `BackupRunCoordinator` 的 FGS 与通知；单次预算 + 续传 |
+| 无 mDNS，IP 变化 | MVP 手输 `IP:port` + 记忆端点列表（≤8）；mDNS/NsdManager 留作后续 |
+| 证书轮换 / 重装 | 视为新设备，需重新配对；文档与 UI 明确提示 |
+| 双方同时改同一会话 | `updateTime` + sha256 字典序 tiebreak；败者留冲突备份与分支候选 |
+| 跨 schema 合并 | `dbVersion/formatVersion` 不一致直接拒绝 |
+| Ktor server 常驻开销 | 仅同步页/同步期间启动 server，空闲 5 分钟后自动停止（可配置常驻） |
+| 移除离线设备的数据 | 不做强制删除；墓碑只从对端收到的删除事件内产生 |
+
+## 2.8 首期数据范围（最小集）
+
+会话（含分支树）+ 被引用附件 + 助手。设置、供应商、技能、世界书等**不同步**（设备个性配置），
+留待后续按 family 扩展（对齐 cuplivo 的 family registry 思路）。
+
+---
+
+# 执行顺序
+
+1. **Phase 1**：`LocalSnapshotConfig/State` → 留存纯函数 + 单测 → `LocalSnapshotService` + DI →
+   调度器 + `BackupRunKind.LOCAL_SNAPSHOT` → UI + 三语字符串 → 编译 + `python scripts/audit_ime_trap.py`
+   + 真机验证（立即备份/自动触发/留存清理/授权失效/双模式恢复）
+2. **Phase 2A**：`LanIdentity` + `LanSyncServer`（仅 `/v1/pair`）+ `LanPeerRegistry` + 配对 UI，
+   两台设备能配对成功
+3. **Phase 2B**：`LanManifest` + `LanMergePlan`（纯函数）+ 单测（对称收敛、并列时不震荡、墓碑四种组合）
+4. **Phase 2C**：`LanSyncClient` + 对象传输（Range/重试）+ `LanMergeApply`（含冲突 upsert 与墓碑删除）
+5. **Phase 2D**：同步页 + peer 卡 + 阶段进度 + 报告摘要 + 三语字符串
+6. **Phase 2E**：双机真机验证矩阵（新增/更新/冲突/删除传播/断网重连/跨版本拒绝）
+
+# 验证
 
 ```powershell
 .\gradlew.bat :app:compileDebugKotlin
 .\gradlew.bat :app:testDebugUnitTest --tests "app.androidrik.rikkahub.data.sync.*"
 .\gradlew.bat :app:testDebugUnitTest
+python scripts/audit_ime_trap.py
 ```
-人工：备份页无「实验功能」卡片；WebDAV/S3/导入导出/备份提醒四页无回归；首启后 backup_index 与
-incremental_backup 目录被清。
 
----
-
-## Phase 1B：本地自动备份（kelivo「本地副本」式）
-
-### 已定决策
-
-| 决策点 | 结论 | 理由 |
-|---|---|---|
-| 存储位置 | **SAF 用户选定目录** | 卸载不丢；复用原 `attachLocal` 的 SAF 授权流程（`ACTION_OPEN_DOCUMENT_TREE` + persistable permission，拒绝选本应用 workspace）；零 `FileFolders`/`BackupFolderRegistry` 联动。授权失效时 UI 显示「权限丢失」、自动备份跳过并记失败 |
-| 触发模型 | **应用内 resume 延迟检查** | 照搬 cuplivo `local_snapshot_scheduler.dart`：冷启延迟 8s、resume 延迟 3s、最小检查间隔 1 分钟；`RikkaHubApp` 注册 `ActivityLifecycleCallbacks`，协程跑 AppScope；无 FGS/Doze 问题。WorkManager 兜底留作后续增强 |
-| 命名 | `local_backup_yyyyMMdd_HHmmss.zip`（本地时区） | 文件名时间戳即留存排序依据，无索引文件、无账目漂移 |
-| 留存算法 | 纯函数 `LocalSnapshotRetentionPolicy`（新包 `data/sync/localsnapshot/`） | 最近 N 份（默认 3，1-10）+1 weekly 槽（满 7 天最新）+1 monthly 槽（满 30 天最新）；**最新一份非空副本永不删**；容量上限（0=不限）从最旧开始删、保护集不越界 |
-| 打包/恢复 | 复用 `BackupArchiveEngine` 全量打包（尊重 `backupItems/backupScope` + 加密 tile）；恢复复用 `BackupVM.restoreFromLocalFile`（merge/overwrite 原样） | 与 `WebDavSync.prepareBackupFile` 路径同构 |
-| 变更门控 | 指纹 = conversations `COUNT+MAX(update_time)` + assistants `COUNT`；一致则跳过（跳过不推进 lastSuccessAt） | cuplivo `recordUnchanged` 语义，避免真实变更推迟一个周期 |
-| 失败退避 | 失败始终提示（toast + coordinator 通知）；连续失败 1/2/4/8/16h 指数退避 | 防磁盘满时每次 resume 空转 |
-| 设置持久化 | `DisplaySettings.kt` 紧邻 `BackupReminderConfig`（349-353 行）新增 `@Serializable LocalSnapshotConfig(enabled, intervalDays=1, keepRecent=3, keepWeekly=true, keepMonthly=true, maximumTotalBytes=0, announceResult=false)`；运行态 `LocalSnapshotState`（lastSuccessAt/fingerprint/failureStreak）存 PreferencesStore 独立 JSON key | 字段级 `settingsStore.update { it.copy(...) }` transform，禁止整对象写（AGENTS 规范） |
-| 执行通道 | 新 `BackupRunKind.LOCAL_SNAPSHOT` 进 `BackupRunCoordinator` | 复用前台服务/进度通知/单任务互斥，防与手动备份并发 |
-
-### 新增代码
-
-- `data/sync/localsnapshot/LocalSnapshotRetentionPolicy.kt`（纯函数）+ `LocalSnapshotRetentionPolicyTest`
-  （槽位/保护/容量/「空副本不挤掉非空」用例）+ `LocalSnapshotGateTest`（指纹不变跳过、间隔未到跳过、退避推进）+ 文件名↔时间戳解析测试
-- `data/sync/localsnapshot/LocalSnapshotService.kt`：SAF attach/detach（自 IncrementalBackupService 搬迁
-  约 40 行授权逻辑）+ 打包写临时文件 → 流式拷贝进 SAF → 删临时；指纹门控；留存执行
-- `ui/pages/backup/LocalSnapshotsPage.kt` + `Screen.LocalSnapshots` + AppNavHost entry：副本列表
-  （时间/大小/是否含内容；恢复走 `RestoreConfirmDialog`、删除、导出）；lazy item key 用**文件名**
-- `BackupPage.kt`：以「自动备份」section 替换原「实验功能」section（开关/频率/保留份数/容量上限/
-  结果提示/占用显示/立即备份/管理副本入口）；选项选择用 ModalBottomSheet（AGENTS TextField Host Rules）
-- DI：`DataSourceModule` 注册 `LocalSnapshotService`
-- i18n：`local_snapshot_*` 前缀一组 key，en/zh/zh-rTW 三语同步
-
-### 验证
-
-编译 + 全量单测 + `python scripts/audit_ime_trap.py`（新增 UI 过审计）+ 真机：立即备份、自动触发、
-留存清理（造 5 份旧副本验证 N+周+月）、授权失效提示、恢复 merge/overwrite 双模式。
-
----
-
-## Phase 2：局域网同步（设计稿，另开实现周期）
-
-包布局 `data/sync/lan/`：
-
-- `LanIdentity.kt`：每安装生成密钥对 + 自签证书；`certSha256` 即设备身份
-- `LanSyncServer.kt`：Ktor embedded HTTPS，仅监听局域网接口；`POST /v1/pair`、`GET /v1/manifest`、
-  `POST /v1/objects`、`GET /v1/objects/{key}`；统一 `X-Rikka-Token` 头
-- `LanPeerRegistry.kt`：DataStore JSON 记录 peer（名称/host:port/certSha256/token/lastSyncAt）
-- `LanSyncClient.kt`：OkHttp + 自定义 TrustManager，只信 pin 的 SHA-256 指纹
-- `LanManifest.kt`：会话指纹 `{id, updateTime, nodeCount, contentHash, attachments[]}`；信封带
-  `version: 1`，更高版本拒绝合并
-- `LanMerge.kt`：对话粒度对称合并——双方换 manifest → 对方有本地无直接插入 → 双有且不一致新者胜
-  （旧版内容保留为分支候选 messageNode，复用 MessageNode 树）→ 缺失对象走 blob 传输；落库复用
-  `DatabaseObjectMerge.mergeMissingConversationsLive`（Phase 1A 保留它的原因之一）
-- 配对：6 位 PIN + 二维码（`{host, port, certSha256, token, version}`）双确认入 registry
-- 数据范围（MVP）：会话含分支树 + 被引用附件（files/upload、images）+ 助手；设置不进同步
-- UI：备份页新增「局域网同步」入口 → 同步页（本机指纹卡 + peer 卡列表 + 添加设备扫码/手输
-  IP:port + 每 peer「立即同步」）；MVP 不做 mDNS
-
-安全不变量：证书 pin 先于任何 API；token 仅经配对通道交换；附件传输前校验哈希；合并幂等；
-被覆盖数据先走 `RecoveryBackupExporter` 安全备份。
-
-开放风险：长传输需前台服务（复用 BackupForegroundService 模式）+ Doze 压速；无 mDNS 时 IP 变动
-需重配对；证书轮换 = 重新配对；Ktor server 常驻内存/电量需实测。
-
----
-
-## 执行顺序
-
-1. 1A 第 1-3 步（UI/VM/Coordinator）→ 编译（repo 包还在，应过）
-2. 1A 第 4-6 步（DI + repo 核心 + FTS 链）→ 再编译（引用残留在此暴露）
-3. 1A 第 7-9 步（常量/注册表/字符串/测试）→ 单测 + 全量单测 + 首启清理验证
-4. 1B：Settings 字段 → 留存纯函数 + 单测 → Service + DI → 调度器 + coordinator kind → UI + 3 locale
-   → 编译 + audit_ime_trap + 全量单测 + 真机验证
-5. Phase 2：独立周期另起，按设计稿落地
+Phase 2 需两台真机同局域网：配对 → 首次全量同步 → 各自改一条会话再同步（双向收敛）→ 删除一条
+会话再同步（对端消失，附件不被误删）→ 断网重连续传 → 一端升 `dbVersion` 后同步被拒绝。
