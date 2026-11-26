@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.pages.subagent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -344,6 +345,7 @@ private fun PresetEditorDialog(
         text = {
             Column(
                 modifier = Modifier
+                    .imePadding()
                     .heightIn(max = 520.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),

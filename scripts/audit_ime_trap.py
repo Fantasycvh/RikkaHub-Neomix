@@ -47,7 +47,17 @@ ASYNC_ROOTS = {
     'server', 'task', 'memory', 'file', 'subagent', 'model', 'workspace', 'current',
 }
 VALUE_ARG = re.compile(r'\bvalue\s*=\s*([A-Za-z_][A-Za-z0-9_]*)')
+VALUE_EXPR = re.compile(r'\bvalue\s*=\s*([^,\n]+)')
 WRITE_BACK = re.compile(r'\b(?:onUpdate|updateSettings|vm\.update|update)\s*\(|\bcopy\s*\(')
+# F 类：value = 直接放格式化/转串/拼接结果且带 onValueChange（排除 TextFieldState 桥接 .text.toString()）
+FORMAT_ECHO_EXPR = re.compile(r'\.toString\(\)|format[A-Z]\w*\(|joinToString\(')
+STATE_BRIDGE_EXPR = re.compile(r'\b\w*State\.text\.toString\(\)')
+# G 类：var <text> by remember(<value>) { mutableStateOf(...) } 伪本地缓冲
+PSEUDO_BUFFER_HEAD_RE = re.compile(
+    r'\bvar\s+([A-Za-z_][A-Za-z0-9_]*)\s+by\s+remember\s*\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)\s*'
+    r'\{\s*mutableStateOf\s*\('
+)
+SAFE_RESET_KEY_RE = re.compile(r'(?:^|\.)(?:id|init|key|items|slot|index)$|^\s*Unit\s*$')
 
 
 def match_brace(c: str, i: int) -> int:
@@ -119,8 +129,23 @@ def scan(root: str) -> tuple[list, list, list, list, list, list]:
                 for h in HASH_KEY.finditer(args):
                     hash_hits.append((p, line_of(c, open_at + h.start())))
 
+            # 预计算当前文件内所有 Lazy* 容器区间，确保 A' 只命中真正位于 Lazy* 内的 item，
+            # 不会把非 Lazy 页面（如纯 Column + CardGroup { advancedGroup { item { ... } } }）误报为 Lazy item。
+            lazy_spans = []
+            for m in LAZY_DECL.finditer(c):
+                k = m.end() - 1
+                if c[k] != '{':
+                    k = c.find('{', m.end())
+                    if k == -1:
+                        continue
+                end = match_brace(c, k)
+                if end != -1:
+                    lazy_spans.append((k, end))
+
             # A'/B：真 lazy item（排除 CardGroup 的 Column DSL）块内出现 TextField
             for m in LAZY_ITEMS.finditer(c):
+                if not any(s < m.start() < e for s, e in lazy_spans):
+                    continue
                 seg = c[m.start():m.start() + 300]
                 if m.group(1) in ('items', 'itemsIndexed'):
                     is_lazy = True
@@ -211,6 +236,58 @@ def scan(root: str) -> tuple[list, list, list, list, list, list]:
     return hash_hits, item_hits, nested_warns, dialog_warns, inset_warns, echo_warns
 
 
+def scan_value_echo_traps(root: str) -> tuple[list, list]:
+    """补充扫描 F/G 类写穿/格式化回灌陷阱（避免 audit_ime_trap 盲区回归）：
+    - F：TextField 的 value= 直接绑定 .toString()/formatXxx()/joinToString()（非 TextFieldState 桥接）
+    - G：var text by remember(value) { mutableStateOf(...) } 伪本地缓冲（以值而非实体 id 为 key）
+    """
+    format_warns, pseudo_buf_warns = [], []
+    for dp, _, fns in os.walk(os.path.join(root, "app", "src", "main")):
+        for fn in fns:
+            if not fn.endswith(".kt"):
+                continue
+            p = os.path.join(dp, fn).replace("\\", "/")
+            c = open(p, encoding="utf-8", errors="ignore").read()
+            if not TF.search(c):
+                continue
+
+            for m in TF.finditer(c):
+                open_at = c.find('(', m.end())
+                if open_at == -1:
+                    continue
+                close_at = match_paren(c, open_at)
+                if close_at == -1:
+                    continue
+                args = c[open_at:close_at]
+                if 'onValueChange' not in args:
+                    continue
+                vm = VALUE_EXPR.search(args)
+                if not vm:
+                    continue
+                expr = vm.group(1).strip()
+                if STATE_BRIDGE_EXPR.search(expr):
+                    continue
+                if FORMAT_ECHO_EXPR.search(expr):
+                    format_warns.append((p, line_of(c, m.start())))
+
+            for m in PSEUDO_BUFFER_HEAD_RE.finditer(c):
+                var_name, key_expr = m.group(1), m.group(2).strip()
+                if SAFE_RESET_KEY_RE.search(key_expr):
+                    continue
+                open_at = m.end() - 1
+                close_at = match_paren(c, open_at)
+                if close_at == -1:
+                    continue
+                init_expr = c[open_at + 1:close_at].strip()
+                # 仅关心被作为 TextField value 的文本缓冲（init 与 key 同源）
+                if key_expr not in init_expr:
+                    continue
+                if re.search(rf'\bvalue\s*=\s*{re.escape(var_name)}\b', c[close_at:close_at + 2000]):
+                    pseudo_buf_warns.append((p, line_of(c, m.start())))
+
+    return format_warns, pseudo_buf_warns
+
+
 def load_a_prime_allowances(root: str) -> dict:
     """读取 A' 类存量豁免（path → count）。文件不存在则无豁免。"""
     path = os.path.join(root, "scripts", "ime_trap_exceptions.json")
@@ -244,6 +321,7 @@ def split_a_prime(root: str, item_hits: list) -> tuple[list, list]:
 def main() -> int:
     root = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     hash_hits, item_hits, nested_warns, dialog_warns, inset_warns, echo_warns = scan(root)
+    format_warns, pseudo_buf_warns = scan_value_echo_traps(root)
     item_blocking, item_exempted = split_a_prime(root, item_hits)
     rel = lambda hits: [(os.path.relpath(p, root).replace("\\", "/"), ln) for p, ln in hits]
 
@@ -275,11 +353,20 @@ def main() -> int:
         print("[E] TextField value 直连异步持久态且每字符写回（改 rememberPersistedTextFieldState，不阻断）：")
         for p, ln in rel(echo_warns):
             print(f"  {p}:{ln}")
+    if format_warns:
+        print("[F] TextField value 直连格式化/toString/joinToString（输入中易改写或清空，改本地权威缓冲，不阻断）：")
+        for p, ln in rel(format_warns):
+            print(f"  {p}:{ln}")
+    if pseudo_buf_warns:
+        print("[G] remember(value) 伪本地缓冲（回声会重置活跃编辑态，改 rememberSyncedPersistedTextFieldState，不阻断）：")
+        for p, ln in rel(pseudo_buf_warns):
+            print(f"  {p}:{ln}")
 
     print(
         f"\nA={len(hash_hits)}  A'={len(item_blocking)}（豁免 {len(item_exempted)}）  "
         f"B(告警)={len(nested_warns)}  C(告警)={len(dialog_warns)}  "
-        f"D(告警)={len(inset_warns)}  E(告警)={len(echo_warns)}"
+        f"D(告警)={len(inset_warns)}  E(告警)={len(echo_warns)}  "
+        f"F(告警)={len(format_warns)}  G(告警)={len(pseudo_buf_warns)}"
     )
     return 1 if (hash_hits or item_blocking) else 0
 

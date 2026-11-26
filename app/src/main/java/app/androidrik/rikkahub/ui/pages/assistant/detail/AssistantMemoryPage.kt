@@ -408,7 +408,9 @@ internal fun AssistantMemoryContent(
             title = { Text(proposal.detailTitle()) },
             text = {
                 Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .imePadding()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     // 全文，不截断——这正是这个弹层存在的理由
@@ -475,7 +477,9 @@ internal fun AssistantMemoryContent(
             },
             text = {
                 Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    modifier = Modifier
+                        .imePadding()
+                        .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

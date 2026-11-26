@@ -85,6 +85,23 @@ fun Fixture() {
         # 但 CardGroup 的 item(...) 不应被当成 lazy item 额外计数。
         self.assertEqual(len(item_hits), 1)
 
+    def test_card_group_item_outside_lazy_column_is_clean(self):
+        self.source_file("""
+fun Fixture() {
+    Column(modifier = Modifier.imePadding().verticalScroll(rememberScrollState())) {
+        CardGroup {
+            advancedGroup(title = "高级", expanded = true, onToggle = {}) {
+                item {
+                    OutlinedTextField(value = "x", onValueChange = {})
+                }
+            }
+        }
+    }
+}
+""")
+        _, item_hits, *_ = self.scan()
+        self.assertEqual(item_hits, [])
+
     def test_a_prime_allowance_only_exempts_known_files(self):
         self.source_file("""
 fun Fixture() {
@@ -189,6 +206,45 @@ fun Fixture() {
 """)
         *_, echo_warns = self.scan()
         self.assertEqual(echo_warns, [])
+
+    # ---- F / G：格式化直绑与 remember(value) 伪缓冲 ----
+    def test_formatted_value_direct_binding_is_flagged(self):
+        self.source_file("""
+fun Fixture(model: Model, onChange: (Model) -> Unit) {
+    OutlinedTextField(
+        value = model.customContextLength?.let { formatContextLength(it) } ?: "",
+        onValueChange = { onChange(model.copy(customContextLength = parseContextLengthInput(it))) },
+    )
+}
+""")
+        format_warns, pseudo_buf_warns = audit.scan_value_echo_traps(str(self.root))
+        self.assertEqual(len(format_warns), 1)
+        self.assertEqual(pseudo_buf_warns, [])
+
+    def test_state_bridge_to_string_is_not_flagged_as_format_echo(self):
+        self.source_file("""
+fun Fixture(scriptState: TextFieldState) {
+    OutlinedTextField(
+        value = scriptState.text.toString(),
+        onValueChange = { scriptState.setTextAndPlaceCursorAtEnd(it) },
+    )
+}
+""")
+        format_warns, _ = audit.scan_value_echo_traps(str(self.root))
+        self.assertEqual(format_warns, [])
+
+    def test_remember_value_pseudo_buffer_is_flagged_but_entity_id_key_is_clean(self):
+        self.source_file("""
+fun Fixture(value: Int, entity: Entity, onCommit: (Int) -> Unit) {
+    var badText by remember(value) { mutableStateOf(value.toString()) }
+    OutlinedTextField(value = badText, onValueChange = { badText = it; it.toIntOrNull()?.let(onCommit) })
+
+    var goodText by remember(entity.id) { mutableStateOf(entity.count.toString()) }
+    OutlinedTextField(value = goodText, onValueChange = { goodText = it })
+}
+""")
+        _, pseudo_buf_warns = audit.scan_value_echo_traps(str(self.root))
+        self.assertEqual(len(pseudo_buf_warns), 1)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.ui.components.files
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
@@ -47,7 +48,10 @@ fun BatchRenameDialog(
         title = { Text(if (single) stringResource(R.string.common_rename) else stringResource(R.string.batch_rename_title_batch, items.size)) },
         text = {
             Column(
-                modifier = Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .imePadding()
+                    .heightIn(max = 440.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(if (single) stringResource(R.string.batch_rename_hint_single) else stringResource(R.string.batch_rename_hint_batch))
