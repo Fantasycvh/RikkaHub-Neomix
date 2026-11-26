@@ -8,6 +8,7 @@ import app.androidrik.rikkahub.ui.components.ui.AppTextField as TextField
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,13 +24,21 @@ fun <T : Number> OutlinedNumberInput(
     label: String = "",
     colors: TextFieldColors = OutlinedTextFieldDefaults.colors()
 ) {
-    var textFieldValue by remember(value) { mutableStateOf(value.toString()) }
+    var lastCommitted by remember { mutableStateOf(value) }
+    var textFieldValue by remember { mutableStateOf(value.toString()) }
+    LaunchedEffect(value) {
+        if (value != lastCommitted) {
+            lastCommitted = value
+            val formatted = value.toString()
+            if (textFieldValue != formatted) textFieldValue = formatted
+        }
+    }
     AppOutlinedTextField(
         modifier = modifier,
         value = textFieldValue,
         onValueChange = { newValue ->
             textFieldValue = newValue
-            if (textFieldValue.isValidNumberInput()) {
+            if (newValue.isValidNumberInput()) {
                 try {
                     @Suppress("UNCHECKED_CAST")
                     val newVal = when (value) {
@@ -38,6 +47,7 @@ fun <T : Number> OutlinedNumberInput(
                         is Double -> newValue.toDouble() as T
                         else -> throw IllegalArgumentException("Unsupported number type")
                     }
+                    lastCommitted = newVal
                     onValueChange(newVal)
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -59,14 +69,22 @@ fun <T : Number> NumberInput(
     label: String = "",
     colors: TextFieldColors = TextFieldDefaults.colors()
 ) {
-    var textFieldValue by remember(value) { mutableStateOf(value.toString()) }
+    var lastCommitted by remember { mutableStateOf(value) }
+    var textFieldValue by remember { mutableStateOf(value.toString()) }
+    LaunchedEffect(value) {
+        if (value != lastCommitted) {
+            lastCommitted = value
+            val formatted = value.toString()
+            if (textFieldValue != formatted) textFieldValue = formatted
+        }
+    }
     TextField(
         shape = appSkinInputShape(),
         modifier = modifier,
         value = textFieldValue,
         onValueChange = { newValue ->
             textFieldValue = newValue
-            if (textFieldValue.isValidNumberInput()) {
+            if (newValue.isValidNumberInput()) {
                 try {
                     @Suppress("UNCHECKED_CAST")
                     val newVal = when (value) {
@@ -75,6 +93,7 @@ fun <T : Number> NumberInput(
                         is Double -> newValue.toDouble() as T
                         else -> throw IllegalArgumentException("Unsupported number type")
                     }
+                    lastCommitted = newVal
                     onValueChange(newVal)
                 } catch (e: Exception) {
                     e.printStackTrace()

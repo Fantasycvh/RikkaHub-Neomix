@@ -117,7 +117,15 @@ internal fun LorebookBudgetCard(
     budgetTokens: Int,
     onBudgetChange: (Int) -> Unit,
 ) {
-    var text by remember(budgetTokens) { mutableStateOf(budgetTokens.toString()) }
+    var lastCommitted by remember { mutableStateOf(budgetTokens) }
+    var text by remember { mutableStateOf(budgetTokens.toString()) }
+    LaunchedEffect(budgetTokens) {
+        if (budgetTokens != lastCommitted) {
+            lastCommitted = budgetTokens
+            val formatted = budgetTokens.toString()
+            if (text != formatted) text = formatted
+        }
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -142,12 +150,17 @@ internal fun LorebookBudgetCard(
                     text = input
                     // 空输入 = 0（不限制）；非法输入不落库，避免把设置改成意外值
                     if (input.isBlank()) {
+                        lastCommitted = 0
                         onBudgetChange(0)
                     } else {
-                        input.toIntOrNull()?.takeIf { it >= 0 }?.let(onBudgetChange)
+                        input.trim().toIntOrNull()?.takeIf { it >= 0 }?.let { valid ->
+                            lastCommitted = valid
+                            onBudgetChange(valid)
+                        }
                     }
                 },
                 label = { Text(stringResource(R.string.prompt_page_lorebook_budget_label)) },
+                isError = text.isNotBlank() && text.trim().toIntOrNull()?.let { it < 0 } != false,
                 supportingText = {
                     Text(
                         if (budgetTokens <= 0) {
@@ -466,7 +479,12 @@ internal fun LorebookEditDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.prompt_page_edit_lorebook)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .imePadding()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 OutlinedTextField(
                     value = book.name,
                     onValueChange = { onEdit(book.copy(name = it)) },
@@ -845,13 +863,17 @@ internal fun RegexInjectionEditDialog(
                     }
                 )
 
+                var priorityText by remember(entry.id) { mutableStateOf(entry.priority.toString()) }
                 OutlinedTextField(
-                    value = entry.priority.toString(),
-                    onValueChange = {
-                        it.toIntOrNull()?.let { p -> onEdit(entry.copy(priority = p)) }
+                    value = priorityText,
+                    onValueChange = { input ->
+                        priorityText = input
+                        input.trim().toIntOrNull()?.let { p -> onEdit(entry.copy(priority = p)) }
                     },
+                    isError = priorityText.trim().toIntOrNull() == null,
                     label = { Text(stringResource(R.string.prompt_page_priority_label)) },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
@@ -865,13 +887,17 @@ internal fun RegexInjectionEditDialog(
                 )
 
                 AnimatedVisibility(visible = entry.position == InjectionPosition.AT_DEPTH) {
+                    var injectDepthText by remember(entry.id) { mutableStateOf(entry.injectDepth.toString()) }
                     OutlinedTextField(
-                        value = entry.injectDepth.toString(),
-                        onValueChange = {
-                            it.toIntOrNull()?.let { d -> onEdit(entry.copy(injectDepth = d)) }
+                        value = injectDepthText,
+                        onValueChange = { input ->
+                            injectDepthText = input
+                            input.trim().toIntOrNull()?.let { d -> onEdit(entry.copy(injectDepth = d)) }
                         },
+                        isError = injectDepthText.trim().toIntOrNull() == null,
                         label = { Text(stringResource(R.string.prompt_page_inject_depth)) },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
@@ -968,47 +994,63 @@ internal fun RegexInjectionEditDialog(
                     }
                 )
 
+                var scanDepthText by remember(entry.id) { mutableStateOf(entry.scanDepth.toString()) }
                 OutlinedTextField(
-                    value = entry.scanDepth.toString(),
-                    onValueChange = {
-                        it.toIntOrNull()?.let { d -> onEdit(entry.copy(scanDepth = d)) }
+                    value = scanDepthText,
+                    onValueChange = { input ->
+                        scanDepthText = input
+                        input.trim().toIntOrNull()?.let { d -> onEdit(entry.copy(scanDepth = d)) }
                     },
+                    isError = scanDepthText.trim().toIntOrNull() == null,
                     label = { Text(stringResource(R.string.prompt_page_scan_depth)) },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
                 // 触发时序（NMoi D307-D308）：sticky/cooldown/delay 按消息条数判定，0 = 关
+                var stickyText by remember(entry.id) { mutableStateOf(entry.sticky.toString()) }
                 OutlinedTextField(
-                    value = entry.sticky.toString(),
-                    onValueChange = {
-                        it.toIntOrNull()?.let { d -> onEdit(entry.copy(sticky = d)) }
+                    value = stickyText,
+                    onValueChange = { input ->
+                        stickyText = input
+                        input.trim().toIntOrNull()?.let { d -> onEdit(entry.copy(sticky = d)) }
                     },
+                    isError = stickyText.trim().toIntOrNull() == null,
                     label = { Text(stringResource(R.string.prompt_page_sticky)) },
                     supportingText = { Text(stringResource(R.string.prompt_page_sticky_desc)) },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
+                var cooldownText by remember(entry.id) { mutableStateOf(entry.cooldown.toString()) }
                 OutlinedTextField(
-                    value = entry.cooldown.toString(),
-                    onValueChange = {
-                        it.toIntOrNull()?.let { d -> onEdit(entry.copy(cooldown = d)) }
+                    value = cooldownText,
+                    onValueChange = { input ->
+                        cooldownText = input
+                        input.trim().toIntOrNull()?.let { d -> onEdit(entry.copy(cooldown = d)) }
                     },
+                    isError = cooldownText.trim().toIntOrNull() == null,
                     label = { Text(stringResource(R.string.prompt_page_cooldown)) },
                     supportingText = { Text(stringResource(R.string.prompt_page_cooldown_desc)) },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
+                var delayText by remember(entry.id) { mutableStateOf(entry.delay.toString()) }
                 OutlinedTextField(
-                    value = entry.delay.toString(),
-                    onValueChange = {
-                        it.toIntOrNull()?.let { d -> onEdit(entry.copy(delay = d)) }
+                    value = delayText,
+                    onValueChange = { input ->
+                        delayText = input
+                        input.trim().toIntOrNull()?.let { d -> onEdit(entry.copy(delay = d)) }
                     },
+                    isError = delayText.trim().toIntOrNull() == null,
                     label = { Text(stringResource(R.string.prompt_page_delay)) },
                     supportingText = { Text(stringResource(R.string.prompt_page_delay_desc)) },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 

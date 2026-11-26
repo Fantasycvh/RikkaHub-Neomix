@@ -1231,6 +1231,15 @@ private fun NumberParam(
     maxDigits: Int = 3,
     special: Pair<Long, String>? = null,
 ) {
+    var lastCommitted by remember { mutableStateOf(value) }
+    var text by remember { mutableStateOf(value?.toString().orEmpty()) }
+    LaunchedEffect(value) {
+        if (value != lastCommitted) {
+            lastCommitted = value
+            val formatted = value?.toString().orEmpty()
+            if (text != formatted) text = formatted
+        }
+    }
     FormItem(label = { Text(label) }) {
         if (presets.isNotEmpty()) {
             PresetChips(
@@ -1242,16 +1251,19 @@ private fun NumberParam(
             )
         }
         OutlinedTextField(
-            value = value?.toString().orEmpty(),
-            onValueChange = { text ->
-                val input = text.trim()
+            value = text,
+            onValueChange = { raw ->
+                text = raw
+                val input = raw.trim()
                 val number = if (special != null && input.startsWith("-")) {
-                    // 已经是特殊取值时内容变短，说明是在删除
                     special.first.takeUnless { value == it && input.length < it.toString().length }
                 } else {
                     input.filter(Char::isDigit).take(maxDigits).toLongOrNull()?.takeIf { allowZero || it > 0 }
                 }
-                onValueChange(number)
+                if (input.isEmpty() || number != null) {
+                    lastCommitted = number
+                    onValueChange(number)
+                }
             },
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(default?.toString() ?: stringResource(R.string.media_creation_page_param_default)) },

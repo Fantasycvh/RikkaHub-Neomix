@@ -370,7 +370,9 @@ internal fun AddModelButton(
     parentProvider: ProviderSetting,
     onUpdateProvider: (ProviderSetting) -> Unit
 ) {
-    val dialogState = useEditState<Model> { onAddModel(it.copy(displayName = it.displayName.trim())) }
+    val dialogState = useEditState<Model> {
+        onAddModel(it.copy(modelId = it.modelId.trim(), displayName = it.displayName.trim()))
+    }
     val scope = rememberCoroutineScope()
 
     Row(

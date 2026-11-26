@@ -59,9 +59,11 @@ private fun LegacyReasoningOverrideFields(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                var effortText by remember { mutableStateOf(override?.effort.orEmpty()) }
                 OutlinedTextField(
-                    value = override?.effort.orEmpty(),
+                    value = effortText,
                     onValueChange = { text ->
+                        effortText = text
                         val effort = text.trim().ifBlank { null }
                         onUpdate(
                             if (effort == null && override?.budgetTokens == null && override?.presets.isNullOrEmpty()) null
@@ -73,11 +75,19 @@ private fun LegacyReasoningOverrideFields(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                var budgetText by remember { mutableStateOf(override?.budgetTokens?.toString().orEmpty()) }
+                val budgetInvalid = budgetText.isNotBlank() && budgetText.trim().toIntOrNull()?.let { it < 0 } != false
                 OutlinedTextField(
-                    value = override?.budgetTokens?.toString().orEmpty(),
+                    value = budgetText,
                     onValueChange = { input ->
-                        // 只放行数字；清空 = 回落跟随默认。0 是合法值（部分私部署用它关预算）
-                        val budget = input.filter { it.isDigit() }.takeIf { it.isNotBlank() }?.toIntOrNull()
+                        budgetText = input
+                        // 清空 = 回落跟随默认；仅合法非负整数提交。0 是合法值（部分私部署用它关预算）
+                        val trimmed = input.trim()
+                        val budget = if (trimmed.isEmpty()) {
+                            null
+                        } else {
+                            trimmed.toIntOrNull()?.takeIf { it >= 0 } ?: return@OutlinedTextField
+                        }
                         onUpdate(
                             if (override?.effort == null && budget == null && override?.presets.isNullOrEmpty()) null
                             else (override ?: ReasoningOverride()).copy(budgetTokens = budget)
@@ -85,6 +95,7 @@ private fun LegacyReasoningOverrideFields(
                     },
                     label = { Text(stringResource(R.string.setting_provider_page_reasoning_override_budget)) },
                     placeholder = { Text(stringResource(R.string.setting_provider_page_reasoning_override_follow)) },
+                    isError = budgetInvalid,
                     supportingText = {
                         Text(
                             text = stringResource(R.string.setting_provider_page_reasoning_override_budget_hint),
@@ -199,14 +210,26 @@ private fun ReasoningPresetFields(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            var presetBudgetText by remember(preset.id) {
+                mutableStateOf(preset.budgetTokens?.toString().orEmpty())
+            }
+            val presetBudgetInvalid = presetBudgetText.isNotBlank() &&
+                presetBudgetText.trim().toIntOrNull()?.let { it < 0 } != false
             OutlinedTextField(
-                value = preset.budgetTokens?.toString().orEmpty(),
+                value = presetBudgetText,
                 onValueChange = { input ->
-                    if (input.isEmpty() || (input.all { it.isDigit() } && input.toIntOrNull() != null)) {
-                        onUpdate(preset.copy(budgetTokens = input.toIntOrNull()))
+                    presetBudgetText = input
+                    val trimmed = input.trim()
+                    if (trimmed.isEmpty()) {
+                        onUpdate(preset.copy(budgetTokens = null))
+                    } else {
+                        trimmed.toIntOrNull()?.takeIf { it >= 0 }?.let {
+                            onUpdate(preset.copy(budgetTokens = it))
+                        }
                     }
                 },
                 label = { Text("Token 预算（留空使用内置映射）") },
+                isError = presetBudgetInvalid,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),

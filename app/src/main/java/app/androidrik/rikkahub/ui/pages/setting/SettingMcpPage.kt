@@ -789,8 +789,8 @@ private fun McpCommonOptionsConfigure(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 config.commonOptions.headers.forEachIndexed { index, header ->
-                    var headerName by remember(header.first) { mutableStateOf(header.first) }
-                    var headerValue by remember(header.second) { mutableStateOf(header.second) }
+                    var headerName by remember(index, config.commonOptions.headers.size) { mutableStateOf(header.first) }
+                    var headerValue by remember(index, config.commonOptions.headers.size) { mutableStateOf(header.second) }
                     var headerValueVisible by rememberSaveable { mutableStateOf(false) }
 
                     Row(

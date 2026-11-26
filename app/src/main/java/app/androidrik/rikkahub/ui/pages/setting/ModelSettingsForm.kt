@@ -152,7 +152,7 @@ internal fun ModelSettingsForm(
                             value = model.modelId,
                             onValueChange = {
                                 if (!isEdit) {
-                                    setModelId(it.trim())
+                                    setModelId(it)
                                 }
                             },
                             label = { Text(stringResource(R.string.setting_provider_page_model_id)) },
@@ -179,12 +179,26 @@ internal fun ModelSettingsForm(
                             }
                         )
 
-                        // 上下文窗口（token 数）：留空=跟随模型内置/全局默认；支持 "256k"/"1M" 格式
+                        // 上下文窗口（token 数）：留空=跟随模型内置/全局默认；支持 "256k"/"1M" 格式。
+                        // 本地权威文本缓冲（按 model.id 初始化）：避免输入 "1280"/"1.5M"/"256k" 过程中被
+                        // formatContextLength 实时重格式化或因中间态解析返回 null 而整框清空。
+                        var contextLengthText by remember(model.id) {
+                            mutableStateOf(model.customContextLength?.let { formatContextLength(it) } ?: "")
+                        }
+                        val contextLengthInvalid = contextLengthText.isNotBlank() &&
+                            parseContextLengthInput(contextLengthText) == null
                         OutlinedTextField(
-                            value = model.customContextLength?.let { formatContextLength(it) } ?: "",
+                            value = contextLengthText,
                             onValueChange = { input ->
-                                val parsed = parseContextLengthInput(input)
-                                onModelChange(model.copy(customContextLength = parsed))
+                                contextLengthText = input
+                                val trimmed = input.trim()
+                                if (trimmed.isEmpty()) {
+                                    onModelChange(model.copy(customContextLength = null))
+                                } else {
+                                    parseContextLengthInput(trimmed)?.let { parsed ->
+                                        onModelChange(model.copy(customContextLength = parsed))
+                                    }
+                                }
                             },
                             label = { Text(stringResource(R.string.setting_provider_page_context_length)) },
                             modifier = Modifier.fillMaxWidth(),
@@ -197,6 +211,7 @@ internal fun ModelSettingsForm(
                                     )
                                 )
                             },
+                            isError = contextLengthInvalid,
                             supportingText = {
                                 Text(
                                     text = stringResource(R.string.setting_provider_page_context_length_hint),

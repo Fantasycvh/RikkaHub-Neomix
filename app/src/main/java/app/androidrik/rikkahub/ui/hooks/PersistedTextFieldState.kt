@@ -4,6 +4,7 @@ import androidx.compose.foundation.text.input.OutputTransformation
 import androidx.compose.foundation.text.input.TextFieldBuffer
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -99,6 +100,84 @@ private fun PersistedTextFieldState(
         onDispose {
             val text = state.text.toString()
             if (text != lastCommitted) commit(text)
+        }
+    }
+
+    return state
+}
+
+/**
+ * 同 [rememberPersistedTextFieldState]，但支持**受控外部回填**（例如同一设置项旁有滑杆、预设芯片
+ * 或清除按钮会改写同一个底层值）：
+ * - 自己提交出去的值经 DataStore/VM 回流时，`externalValue == lastCommitted` → **忽略回声**，
+ *   绝不打断活跃 IME 或重置光标；
+ * - 真正来自其他控件的变更（`externalValue != lastCommitted`）才先比较后
+ *   `setTextAndPlaceCursorAtEnd` 回填本地编辑态；
+ * - 非法中间态（[parse] 返回 `null`）只留在本地，不落库也不覆盖 `lastCommitted`。
+ */
+@Composable
+fun <T> rememberSyncedPersistedTextFieldState(
+    externalValue: T,
+    format: (T) -> String,
+    parse: (String) -> T?,
+    onCommit: (T) -> Unit,
+    debounceMillis: Long = PERSISTED_TEXT_COMMIT_DEBOUNCE_MS,
+    resetKey: Any? = Unit,
+): TextFieldState = key(resetKey) {
+    SyncedPersistedTextFieldState(
+        externalValue = externalValue,
+        format = format,
+        parse = parse,
+        onCommit = onCommit,
+        debounceMillis = debounceMillis,
+    )
+}
+
+@Composable
+private fun <T> SyncedPersistedTextFieldState(
+    externalValue: T,
+    format: (T) -> String,
+    parse: (String) -> T?,
+    onCommit: (T) -> Unit,
+    debounceMillis: Long,
+): TextFieldState {
+    val state = rememberTextFieldState(format(externalValue))
+    val latestFormat by rememberUpdatedState(format)
+    val latestParse by rememberUpdatedState(parse)
+    val latestCommit by rememberUpdatedState(onCommit)
+    var lastCommitted by remember { mutableStateOf(externalValue) }
+
+    // 外部程序化更新（如滑杆/预设/清除按钮）：忽略自己提交回来的回声，仅当外部值真正偏离时才回填。
+    LaunchedEffect(externalValue) {
+        if (externalValue != lastCommitted) {
+            lastCommitted = externalValue
+            val formatted = latestFormat(externalValue)
+            if (state.text.toString() != formatted) {
+                state.setTextAndPlaceCursorAtEnd(formatted)
+            }
+        }
+    }
+
+    LaunchedEffect(state) {
+        snapshotFlow { state.text.toString() }
+            .drop(1)
+            .collectLatest { text ->
+                if (debounceMillis > 0) delay(debounceMillis)
+                val parsed = latestParse(text)
+                if (parsed != null && parsed != lastCommitted) {
+                    lastCommitted = parsed
+                    latestCommit(parsed)
+                }
+            }
+    }
+
+    DisposableEffect(state) {
+        onDispose {
+            val parsed = latestParse(state.text.toString())
+            if (parsed != null && parsed != lastCommitted) {
+                lastCommitted = parsed
+                latestCommit(parsed)
+            }
         }
     }
 

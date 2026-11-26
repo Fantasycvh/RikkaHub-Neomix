@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -472,6 +473,7 @@ internal fun ModeInjectionEditSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.9f)
+                .imePadding()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -504,13 +506,17 @@ internal fun ModeInjectionEditSheet(
                     }
                 )
 
+                var priorityText by remember(injection.id) { mutableStateOf(injection.priority.toString()) }
                 OutlinedTextField(
-                    value = injection.priority.toString(),
-                    onValueChange = {
-                        it.toIntOrNull()?.let { p -> onEdit(injection.copy(priority = p)) }
+                    value = priorityText,
+                    onValueChange = { input ->
+                        priorityText = input
+                        input.trim().toIntOrNull()?.let { p -> onEdit(injection.copy(priority = p)) }
                     },
+                    isError = priorityText.trim().toIntOrNull() == null,
                     label = { Text(stringResource(R.string.prompt_page_priority_label)) },
                     modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
@@ -524,13 +530,17 @@ internal fun ModeInjectionEditSheet(
                 )
 
                 AnimatedVisibility(visible = injection.position == InjectionPosition.AT_DEPTH) {
+                    var injectDepthText by remember(injection.id) { mutableStateOf(injection.injectDepth.toString()) }
                     OutlinedTextField(
-                        value = injection.injectDepth.toString(),
-                        onValueChange = {
-                            it.toIntOrNull()?.let { d -> onEdit(injection.copy(injectDepth = d)) }
+                        value = injectDepthText,
+                        onValueChange = { input ->
+                            injectDepthText = input
+                            input.trim().toIntOrNull()?.let { d -> onEdit(injection.copy(injectDepth = d)) }
                         },
+                        isError = injectDepthText.trim().toIntOrNull() == null,
                         label = { Text(stringResource(R.string.prompt_page_inject_depth)) },
                         modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }

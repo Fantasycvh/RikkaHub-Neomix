@@ -49,6 +49,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -512,6 +513,7 @@ private fun CustomThemeEditSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
         ) {
@@ -942,10 +944,16 @@ private fun RoleSlotRow(
     fallbackColor: Color,
     onValueChange: (String?) -> Unit,
 ) {
-    // 本地编辑态：按键先落本地、解析成功才提交（commit-only-valid）——若直接拿 DataStore
-    // 回环的受控值喂 TextField，异步写-回流滞后于 IME，逐字符被回退、光标漂移（真机实测）。
-    // remember(value)：模型变化（提交成功/清除）时本地随之归位；非法中间态只留本地不动模型。
-    var text by remember(value) { mutableStateOf(value ?: "") }
+    // 本地权威编辑态：屏蔽自身提交产生的异步回声，仅外部清空/切换时同步回填。
+    var lastCommitted by remember { mutableStateOf(value) }
+    var text by remember { mutableStateOf(value ?: "") }
+    LaunchedEffect(value) {
+        if (value != lastCommitted) {
+            lastCommitted = value
+            val formatted = value ?: ""
+            if (text != formatted) text = formatted
+        }
+    }
     val parsed = text.toComposeColorOrNull()
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -968,8 +976,14 @@ private fun RoleSlotRow(
             onValueChange = { input ->
                 text = input
                 when {
-                    input.isBlank() -> onValueChange(null)
-                    input.toComposeColorOrNull() != null -> onValueChange(input)
+                    input.isBlank() -> {
+                        lastCommitted = null
+                        onValueChange(null)
+                    }
+                    input.toComposeColorOrNull() != null -> {
+                        lastCommitted = input
+                        onValueChange(input)
+                    }
                     // 非法中间态：仅本地显示错误样式，不动已提交值
                 }
             },

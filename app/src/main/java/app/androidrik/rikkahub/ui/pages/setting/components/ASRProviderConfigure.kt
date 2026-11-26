@@ -3,11 +3,16 @@ package app.androidrik.rikkahub.ui.pages.setting.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -24,7 +29,9 @@ fun ASRProviderConfigure(
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = modifier.verticalScroll(rememberScrollState())
+        modifier = modifier
+            .imePadding()
+            .verticalScroll(rememberScrollState())
     ) {
         FormItem(
             label = { Text(stringResource(R.string.setting_asr_configure_provider_type)) },
@@ -518,10 +525,12 @@ private fun StepASRConfiguration(
         label = { Text(stringResource(R.string.setting_asr_configure_step_hotwords)) },
         description = { Text(stringResource(R.string.setting_asr_configure_step_hotwords_desc)) }
     ) {
+        // 本地缓冲文本：避免直接绑 hotwords.joinToString(",") 导致刚敲的逗号/空格被立刻吃掉
+        var hotwordsText by remember(setting.id) { mutableStateOf(setting.hotwords.joinToString(", ")) }
         OutlinedTextField(
-            // 用逗号分隔展示, 输入时按逗号 split 回 List
-            value = setting.hotwords.joinToString(","),
+            value = hotwordsText,
             onValueChange = { text ->
+                hotwordsText = text
                 val list = text.split(",")
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
