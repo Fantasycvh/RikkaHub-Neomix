@@ -3543,4 +3543,6 @@
   <string name="setting_page_summary_backup_auto_snapshot">自動快照</string>
   <string name="setting_page_summary_backup_reminder">提醒已開</string>
   <string name="setting_page_summary_backup_manual">手動</string>
+  <string name="tool_ui_memory_before">原內容</string>
+  <string name="tool_ui_memory_after">改為</string>
 </resources>

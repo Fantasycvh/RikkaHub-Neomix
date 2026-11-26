@@ -3557,5 +3557,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_summary_backup_auto_snapshot">Auto snapshot</string>
   <string name="setting_page_summary_backup_reminder">Reminder on</string>
   <string name="setting_page_summary_backup_manual">Manual</string>
+  <string name="tool_ui_memory_before">Before</string>
+  <string name="tool_ui_memory_after">After</string>
 </resources>
 

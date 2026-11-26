@@ -3557,4 +3557,6 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_summary_backup_auto_snapshot">自动快照</string>
   <string name="setting_page_summary_backup_reminder">提醒已开</string>
   <string name="setting_page_summary_backup_manual">手动</string>
+  <string name="tool_ui_memory_before">原内容</string>
+  <string name="tool_ui_memory_after">改为</string>
 </resources>

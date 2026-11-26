@@ -97,6 +97,20 @@ import java.time.format.DateTimeFormatter
 import app.androidrik.rikkahub.utils.getStringContent
 
 /**
+ * 解析记忆工具待展示的内容：执行结果优先，待审批（执行前）回落到调用入参 `content`，
+ * 避免用户在审批 `create`/`edit` 前看不到即将写入的内容。
+ */
+internal fun resolveMemoryToolProposedContent(
+    action: String?,
+    arguments: JsonElement?,
+    content: JsonElement?,
+): String? {
+    if (action != "create" && action != "edit") return null
+    return content.getStringContent("content")?.takeIf { it.isNotBlank() }
+        ?: arguments.getStringContent("content")?.takeIf { it.isNotBlank() }
+}
+
+/**
  * 记忆工具: 按 action 区分标题/图标, 摘要显示记忆内容, 详情附带删除按钮
  */
 object MemoryToolUI : ToolUIRenderer {
@@ -124,7 +138,8 @@ object MemoryToolUI : ToolUIRenderer {
 
     override fun hasSummary(context: ToolUIContext): Boolean =
         when (action(context)) {
-            ACTION_CREATE, ACTION_EDIT -> context.content.getStringContent("content") != null
+            ACTION_CREATE, ACTION_EDIT ->
+                resolveMemoryToolProposedContent(action(context), context.arguments, context.content) != null
             // delete：输出里没有内容，但审批时（执行前）可按 id 查到将被删除的记忆
             ACTION_DELETE -> true
             else -> false
@@ -132,24 +147,12 @@ object MemoryToolUI : ToolUIRenderer {
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        when (action(context)) {
+        val currentAction = action(context)
+        when (currentAction) {
             ACTION_DELETE -> {
                 // 审批执行前按 id 查库展示目标；执行后（已删除）自然查不到 → 不显示。
                 // 无此展示则用户只能盲批「删除记忆」，审批失去意义（见 roadmap 记忆工具审批）。
-                val memoryRepo: MemoryRepository = koinInject()
-                val memoryId = context.arguments.getStringContent("id")
-                val memoryStoreId = context.memoryStoreId
-                val expectedRevision = context.arguments.getStringContent("expected_revision")?.toLongOrNull()
-                // Preview never rebinds an old request to the latest content. Execution uses the
-                // original persisted expected_revision as well, so approval cannot bypass CAS.
-                val target by key(memoryStoreId, memoryId, expectedRevision) {
-                    produceState<AssistantMemory?>(initialValue = null) {
-                        value = if (memoryStoreId != null && memoryId != null && expectedRevision != null) {
-                            memoryRepo.getMemoryInStore(memoryStoreId, memoryId)
-                                ?.takeIf { it.revision == expectedRevision }
-                        } else null
-                    }
-                }
+                val target = rememberMemoryApprovalTarget(context)
                 if (target == null) {
                     Text("Target unavailable or revision changed; read it again before deleting.")
                 }
@@ -164,8 +167,53 @@ object MemoryToolUI : ToolUIRenderer {
                 }
             }
 
+            ACTION_EDIT -> {
+                val proposed = resolveMemoryToolProposedContent(currentAction, context.arguments, context.content)
+                if (!context.tool.isExecuted) {
+                    // 审批执行前补齐原内容对比：避免用户盲批覆盖已有记忆（复用 CAS expected_revision 护栏）
+                    val target = rememberMemoryApprovalTarget(context)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (target != null) {
+                            Text(
+                                text = "${stringResource(R.string.tool_ui_memory_before)}: ${target.content}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        } else {
+                            Text(
+                                text = "Target unavailable or revision changed; read it again before editing.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        proposed?.let { nextContent ->
+                            Text(
+                                text = "${stringResource(R.string.tool_ui_memory_after)}: $nextContent",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                } else {
+                    proposed?.let { memoryContent ->
+                        Text(
+                            text = memoryContent,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.shimmer(isLoading = context.loading),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
             else -> {
-                context.content.getStringContent("content")?.let { memoryContent ->
+                resolveMemoryToolProposedContent(currentAction, context.arguments, context.content)?.let { memoryContent ->
                     Text(
                         text = memoryContent,
                         style = MaterialTheme.typography.labelSmall,
@@ -177,6 +225,25 @@ object MemoryToolUI : ToolUIRenderer {
                 }
             }
         }
+    }
+
+    @Composable
+    private fun rememberMemoryApprovalTarget(context: ToolUIContext): AssistantMemory? {
+        val memoryRepo: MemoryRepository = koinInject()
+        val memoryId = context.arguments.getStringContent("id")
+        val memoryStoreId = context.memoryStoreId
+        val expectedRevision = context.arguments.getStringContent("expected_revision")?.toLongOrNull()
+        // Preview never rebinds an old request to the latest content. Execution uses the
+        // original persisted expected_revision as well, so approval cannot bypass CAS.
+        val target by key(memoryStoreId, memoryId, expectedRevision) {
+            produceState<AssistantMemory?>(initialValue = null) {
+                value = if (memoryStoreId != null && memoryId != null && expectedRevision != null) {
+                    memoryRepo.getMemoryInStore(memoryStoreId, memoryId)
+                        ?.takeIf { it.revision == expectedRevision }
+                } else null
+            }
+        }
+        return target
     }
 
     @Composable
