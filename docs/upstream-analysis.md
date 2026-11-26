@@ -2124,6 +2124,26 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 
 昨日待复核项（#2375/#2376/#2377/#2379）无新进展。
 
+## 2026-11-25 同步（`2435dbdf4..1fb091529`，7 新提交；BiliPai → v0.10.2）
+
+上游 mediagen/压缩/图片 OOM 批。7 条中 2 条高相关候选、2 条小候选、1 条部分已有等价、2 条观察/等价。
+
+| 提交 | 实质 | 判定 |
+|---|---|---|
+| `f37f66b31` | **降低发送图片像素上限并在 OOM 时提示**（#2365）：多张原图 base64 请求体上百 MB 序列化 OOM；历史图片每轮重发导致该会话后续请求全部失败；`OutOfMemoryError` 不是 Exception 只落 AppScope 打日志，界面无任何提示 | **部分已有等价**。本仓 [AttachmentLimits.kt](../ai/src/main/java/app/androidrik/ai/util/AttachmentLimits.kt#L14) 上限已是 8MP（低于上游旧 16MP）且 [FileEncoder.kt](../ai/src/main/java/app/androidrik/ai/util/FileEncoder.kt#L204-L223) 已有 2 的幂次采样。**缺口**：① 发送链无 `OutOfMemoryError` 兜底——上游新增 catch 转界面错误提示，本仓仅 SafeMode/RecoveryExport 有；② 上限 8MP vs 上游新 4MP，多图 base64 体积可再降。**候选 P3**（补 catch + 议降上限） |
+| `7f11a5f15` | **手动压缩上下文改为对话中后台进行**（Closes #2337）：`compressConversation` 只启动任务不等结果，失败报对话错误；弹窗确认即关，聊天页显示压缩中提示，停止生成可取消 | **候选 P2（需方案讨论）**。本仓手动压缩是弹窗等待 + 分阶段进度反馈（项目约定），上游反其道弹窗即关。两条路线：A. 采纳上游后台化，进度反馈移到聊天页提示条；B. 保留弹窗进度。方向需定夺后再实施 |
+| `eb417de21` | 通知设置新增忽略电池优化入口 | 已有等价（本仓定时任务页已有检测+跳转，入口位置不同；上游放设置通知项） |
+| `cc8735431` | ASR 录音时保持屏幕常亮 | **候选 P3** 小改（本仓 speech 录音页对照加 FLAG_KEEP_SCREEN_ON） |
+| `e258d9de2` | mediagen generate/watch 默认轮询间隔 15s→5s | **候选 P3** 常量级（本仓 mediagen 同构） |
+| `22b3473db` | mediagen 新增 APIMart 提供商（GPT-Image / MiniMax H3） | 观察（新增提供商，无用户诉求不跟） |
+| `1fb091529` | 连接测试使用「模型的」提供商重写配置（多 key/模型级覆写时测试走错配置） | **待复核 P3**：本仓连接测试链是否同构支持模型级覆写 |
+
+### 上游 issues 扫描
+
+gh API 本轮 TLS 超时（3 次），无法全量扫描。从提交引用确认：**#2337**（压缩弹窗阻塞）已由 `7f11a5f15` 关闭；**#2365**（发图 OOM）大概率由 `f37f66b31` 关闭（待下次扫描确认）。昨日待复核项（#2375/#2376/#2377/#2379）与 #2382/#2383 无新提交触及。
+
+> 借鉴克隆：BiliPai 15 提交 → v0.10.2（门控层零触及）见 [bilipai.md](references/other%20projects/bilipai.md) 2026-11-25 节。kelivo 同步至 `78dd1784`（45+ 提交创作大版本：图片/视频生成工作台整合进聊天、sidebar 重做、#1518 minimap 搜索性能、**#1539 大会话级联删除补 DB 索引**——与本仓长会话物理清理/附件删除链对照的判据，观察级）。评估记账（2026-11-26：主线路径无吸收主体，恢复语义实弹对照等 3 判据 + 2 观察）见 [cuplivo-kelivo.md](references/other%20projects/cuplivo-kelivo.md) §五。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md
