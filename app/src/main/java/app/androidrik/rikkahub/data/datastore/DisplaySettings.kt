@@ -187,6 +187,28 @@ enum class PhoneUseTargetMode {
     @SerialName("virtual") VIRTUAL,
 }
 
+/**
+ * 流式回复的自动滚动模式（#2371 三态）：
+ * - [BOTTOM]：跟随贴底（历史默认行为）
+ * - [ANCHOR_START]：新回复开始时把回复首条滚到视口顶部后放手（ChatGPT/Gemini 式）
+ * - [NONE]：完全不自动滚动
+ */
+@Serializable
+enum class ChatListScrollMode {
+    @SerialName("bottom") BOTTOM,
+    @SerialName("anchor_start") ANCHOR_START,
+    @SerialName("none") NONE,
+}
+
+/**
+ * `enableAutoScroll`（boolean）→ [ChatListScrollMode] 的读时迁移：旧 false 映射 [NONE]，
+ * 迁移过的旧字段冻结为 true 不再由 UI 写回。套用在所有 `decodeFromString<DisplaySetting>`
+ * 处（PreferencesStore 读取 / 版本迁移 / 备份导入重写）。
+ */
+fun DisplaySetting.migrateScrollMode(): DisplaySetting = if (
+    chatListScrollMode == ChatListScrollMode.BOTTOM && !enableAutoScroll
+) copy(chatListScrollMode = ChatListScrollMode.NONE) else this
+
 @Serializable
 data class DisplaySetting(
     val chatAppearanceDetails: ChatAppearanceDetails = ChatAppearanceDetails(),
@@ -265,6 +287,12 @@ data class DisplaySetting(
     val pasteLongTextThreshold: Int = 1000,
     val sendOnEnter: Boolean = false,
     val enableAutoScroll: Boolean = true,
+    /**
+     * 流式回复滚动模式（#2371 三态，取代 `enableAutoScroll` 的 boolean 开关）。
+     * 旧字段保留作迁移源：见 [migrateScrollMode]——旧 `enableAutoScroll=false` 读时
+     * 迁移为 [ChatListScrollMode.NONE]，此后旧字段冻结不再写回用户改动。
+     */
+    val chatListScrollMode: ChatListScrollMode = ChatListScrollMode.BOTTOM,
     /** Animate content height while generating; old settings retain the existing behavior. */
     val enableGenerationSizeAnimation: Boolean = true,
     /** Standard-layout long messages can put parser-safe units in the chat list, including streaming. */

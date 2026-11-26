@@ -610,6 +610,7 @@ class SettingsStore(
                     developerMode = preferences[DEVELOPER_MODE] == true,
                     displaySetting = JsonInstant.decodeFromString<DisplaySetting>(
                         preferences[DISPLAY_SETTING] ?: "{}")
+                        .migrateScrollMode()
                         // 标记未落 = 升级首读窗口，兜底派生（与 migrateChatLinkOnce 写回同一结果）；
                         // 标记已落 = 运行期，覆写槽残留值不再参与判定（否则绑定态被永久误判解绑）
                         .let { if (preferences[CHAT_LINK_MIGRATION_DONE] == true) it else it.migrateChatLink() },
@@ -884,7 +885,7 @@ class SettingsStore(
                 val preferences = dataStore.data.first()
                 if (preferences[CHAT_LINK_MIGRATION_DONE] == true) return
                 val migrated = JsonInstant.decodeFromString<DisplaySetting>(
-                    preferences[DISPLAY_SETTING] ?: "{}").migrateChatLink()
+                    preferences[DISPLAY_SETTING] ?: "{}").migrateScrollMode().migrateChatLink()
                 dataStore.edit {
                     it[DISPLAY_SETTING] = JsonInstant.encodeToString(migrated)
                     it[CHAT_LINK_MIGRATION_DONE] = true
@@ -1250,7 +1251,7 @@ class SettingsStore(
                 // 用户头像
                 preferences[DISPLAY_SETTING]?.let { raw ->
                     runCatching {
-                        val display = JsonInstant.decodeFromString<DisplaySetting>(raw)
+                        val display = JsonInstant.decodeFromString<DisplaySetting>(raw).migrateScrollMode()
                         val img = display.userAvatar as? Avatar.Image
                         val newUrl = img?.let { urlMap[it.url] }
                         if (newUrl != null) {

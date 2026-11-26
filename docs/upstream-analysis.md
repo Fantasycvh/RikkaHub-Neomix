@@ -2108,7 +2108,7 @@ part 展开后置。随机调度独立实施，子代理默认不续跑；旧随
 - **#2376**（模型页自定义 body 的 tools 字段覆盖助手本地工具）→ 本仓支持自定义 body，**待复核**合并语义。
 - **#2377**（长时间 Phone Use 后崩溃）→ **待复核**，与 `b7cf74ddc` 候选一起排查 PhoneUse 稳定性。
 - **#2379**（删除记忆 md 后做梦无法再生成）→ 本仓做梦/记忆同构，**待复核**删除路径的状态机。
-- **#2371**（流式回复锚定开头的第三种滚动模式）→ 增强**候选 P3**，与现有滚动锚点行为并列。
+- **#2371**（流式回复锚定开头的第三种滚动模式）→ 已实施（2026-11-26）：`DisplaySetting.chatListScrollMode` 三态（bottom/anchor_start/none）+ `migrateScrollMode()` 读时迁移（旧 `enableAutoScroll=false` → NONE，三处 decode 点套用），ChatList 锚定分支（loading 起手把回复首条滚至视口顶后放手，拖动中放弃）+ 设置页 SegmentedPill 三态 + strings 三语言。
 - **#2378**（按 Telegram forum topic 拆分会话，closed 未实施）→ 不跟。
 
 > 借鉴克隆：BiliPai 增量见 [bilipai.md](references/other%20projects/bilipai.md) 2026-11-23 节。kelivo 本轮顺手同步至 `fe41aaf5`（v1.3.7），非常设借鉴集（文档无基线），暂不评估；若要跟踪需先立项。

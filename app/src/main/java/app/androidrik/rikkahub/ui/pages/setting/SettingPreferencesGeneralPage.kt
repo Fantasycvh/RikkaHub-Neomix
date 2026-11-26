@@ -49,6 +49,7 @@ import app.androidrik.rikkahub.ui.components.ui.OutlinedNumberInput
 import androidx.compose.foundation.layout.width
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.BackgroundEffectType
+import app.androidrik.rikkahub.data.datastore.ChatListScrollMode
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.datastore.LiquidGlassReadabilityMode
 import app.androidrik.rikkahub.data.datastore.TopBarChromeStyle
@@ -158,18 +159,27 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             },
                         )
                     }
-                    item(
+                    formItem(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_enable_auto_scroll_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_enable_auto_scroll_desc)) },
-                        trailingContent = {
-                            Switch(
-                                checked = displaySetting.enableAutoScroll,
-                                onCheckedChange = {
-                                    updateDisplaySetting(displaySetting.copy(enableAutoScroll = it))
+                    ) {
+                        SegmentedPill(
+                            options = ChatListScrollMode.entries,
+                            selectedOption = displaySetting.chatListScrollMode,
+                            onOptionSelected = { mode ->
+                                // enableAutoScroll 同步冻结为 true：旧 boolean 已是迁移源
+                                // （migrateScrollMode），显式选择后不再被旧值二次解释
+                                updateDisplaySetting(displaySetting.copy(chatListScrollMode = mode, enableAutoScroll = true))
+                            },
+                            optionToString = { mode ->
+                                when (mode) {
+                                    ChatListScrollMode.BOTTOM -> stringResource(R.string.setting_display_page_auto_scroll_mode_bottom)
+                                    ChatListScrollMode.ANCHOR_START -> stringResource(R.string.setting_display_page_auto_scroll_mode_anchor_start)
+                                    ChatListScrollMode.NONE -> stringResource(R.string.setting_display_page_auto_scroll_mode_none)
                                 }
-                            )
-                        },
-                    )
+                            },
+                        )
+                    }
                     item(
                         headlineContent = { Text("生成时动效") },
                         supportingContent = {
