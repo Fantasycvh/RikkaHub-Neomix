@@ -167,8 +167,8 @@ internal fun SchemeNameDialog(
             // 单字段也走滚动+imePadding：AlertDialog 窗口不与 IME 协调（AGENTS.md TextField Host Rules）
             Column(
                 modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .imePadding(),
+                    .imePadding()
+                    .verticalScroll(rememberScrollState()),
             ) {
                 OutlinedTextField(
                     value = name,
@@ -540,8 +540,8 @@ fun ExportDisplaySchemeSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
                 .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

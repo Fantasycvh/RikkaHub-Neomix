@@ -114,8 +114,8 @@ fun CompressContextDialog(
             // 无法滚入视口（d50d7aeaf 同款机制的现症）；内容需整体可滚 + 抬到键盘上方。
             Column(
                 modifier = Modifier
-                    .verticalScroll(rememberScrollState())
-                    .imePadding(),
+                    .imePadding()
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 if (previewStage) {

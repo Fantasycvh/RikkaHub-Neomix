@@ -595,9 +595,9 @@ private fun McpCommonOptionsConfigure(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .imePadding()
             .padding(16.dp)
-            .verticalScroll(rememberScrollState())
-            .imePadding(),
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // 启用/禁用开关

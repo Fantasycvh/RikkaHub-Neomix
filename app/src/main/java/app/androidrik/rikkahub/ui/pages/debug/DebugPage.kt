@@ -266,8 +266,8 @@ private fun MainPage(vm: DebugVM) {
     Column(
         modifier = Modifier
             .padding(8.dp)
-            .verticalScroll(rememberScrollState())
-            .imePadding(),
+            .imePadding()
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         var avatar: Avatar by remember { mutableStateOf(Avatar.Emoji("😎")) }
