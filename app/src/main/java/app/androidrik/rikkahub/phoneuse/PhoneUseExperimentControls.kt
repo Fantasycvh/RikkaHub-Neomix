@@ -80,7 +80,7 @@ internal fun PhoneUseExperimentPreview(onStopped: () -> Unit) {
                 Text("Screen window")
             }
             TextButton(onClick = {
-                target.close()
+                target.close(PhoneUseDisplayCloseReason.USER_STOP)
                 onStopped()
             }) { Text("Stop virtual display") }
         }

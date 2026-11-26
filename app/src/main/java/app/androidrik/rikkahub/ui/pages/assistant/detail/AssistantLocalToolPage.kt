@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
 import app.androidrik.rikkahub.R
@@ -63,6 +64,7 @@ import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.rikkahub.phoneuse.PhoneUseExperimentSetting
 import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
 import app.androidrik.rikkahub.phoneuse.isFloatingChatWindowOn
+import app.androidrik.rikkahub.phoneuse.isPhoneUseCheckedInSystem
 import app.androidrik.rikkahub.service.ChatService
 import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
@@ -126,6 +128,13 @@ private fun AssistantLocalToolContent(
     val settingsStore: SettingsStore = koinInject()
     val phoneUseManager: PhoneUseManager = koinInject()
     val phoneUseServiceOn = phoneUseManager.controller.collectAsStateWithLifecycle().value != null
+    // 系统设置里勾选着但服务没连上：被系统停掉了，要关掉重开。从系统设置回来时重新读
+    var phoneUseCheckedInSystem by remember { mutableStateOf(isPhoneUseCheckedInSystem(context)) }
+    LifecycleResumeEffect(Unit) {
+        phoneUseCheckedInSystem = isPhoneUseCheckedInSystem(context)
+        onPauseOrDispose {}
+    }
+    val phoneUseServiceStopped = !phoneUseServiceOn && phoneUseCheckedInSystem
     val settings by settingsStore.settingsFlow.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
     var showPhoneUseBlockedApps by remember { mutableStateOf(false) }
@@ -136,6 +145,8 @@ private fun AssistantLocalToolContent(
         stringResource(R.string.assistant_page_local_tools_phone_use_floating_window_required)
     val enablePhoneUseServiceText =
         stringResource(R.string.assistant_page_local_tools_phone_use_enable_service)
+    val restartPhoneUseServiceText =
+        stringResource(R.string.assistant_page_local_tools_phone_use_restart_service)
 
     val calendarPermissionState = rememberPermissionState(
         permissions = setOf(
@@ -166,7 +177,10 @@ private fun AssistantLocalToolContent(
         }
         // 无障碍服务还没开时带用户去系统设置，开关照常打开，开完服务就能用
         if (enabled && option == LocalToolOption.PhoneUse && !phoneUseServiceOn) {
-            toaster.show(message = enablePhoneUseServiceText, type = ToastType.Warning)
+            toaster.show(
+                message = if (phoneUseServiceStopped) restartPhoneUseServiceText else enablePhoneUseServiceText,
+                type = ToastType.Warning,
+            )
             context.openAccessibilitySettings()
         }
         if (enabled && option == LocalToolOption.ScreenTime && !context.hasUsageStatsPermission()) {
@@ -341,7 +355,13 @@ private fun AssistantLocalToolContent(
                             // 开了工具但服务没开时模型调用会直接报错，在这里说明原因
                             if (phoneUseEnabled && !phoneUseServiceOn) {
                                 Text(
-                                    text = stringResource(R.string.assistant_page_local_tools_phone_use_service_off),
+                                    text = stringResource(
+                                        if (phoneUseServiceStopped) {
+                                            R.string.assistant_page_local_tools_phone_use_service_stopped
+                                        } else {
+                                            R.string.assistant_page_local_tools_phone_use_service_off
+                                        }
+                                    ),
                                     color = MaterialTheme.colorScheme.error,
                                 )
                             }

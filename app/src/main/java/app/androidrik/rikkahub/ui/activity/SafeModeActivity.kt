@@ -89,6 +89,7 @@ class SafeModeActivity : ComponentActivity() {
         setContent {
             GateTheme {
                 val export: RecoveryExportViewModel = viewModel()
+                val importVm: RecoveryImportViewModel = viewModel()
                 var settings by remember { mutableStateOf<Settings?>(null) }
                 var showAssistantPicker by remember { mutableStateOf(false) }
                 var largeFields by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
@@ -97,7 +98,7 @@ class SafeModeActivity : ComponentActivity() {
                 var repairFailed by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
                 val context = LocalContext.current
-                val controlsEnabled = !export.busy && !repairing
+                val controlsEnabled = !export.busy && !importVm.importing && !importVm.restoreStaged && !repairing
 
                 LaunchedEffect(repairing) {
                     if (!repairing) {
@@ -125,7 +126,8 @@ class SafeModeActivity : ComponentActivity() {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        RecoveryExportActions(export, enabled = !repairing)
+                        RecoveryExportActions(export, enabled = !repairing && !importVm.importing && !importVm.restoreStaged)
+                        RecoveryImportActions(importVm, enabled = !repairing && !export.busy)
 
                         settings?.let { loaded ->
                             Text(

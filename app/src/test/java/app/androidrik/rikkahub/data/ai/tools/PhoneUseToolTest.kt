@@ -14,10 +14,15 @@ import app.androidrik.rikkahub.phoneuse.PhoneController
 import app.androidrik.rikkahub.phoneuse.PhoneElement
 import app.androidrik.rikkahub.phoneuse.PhoneKey
 import app.androidrik.rikkahub.phoneuse.PhoneScreen
+import app.androidrik.rikkahub.phoneuse.PhoneUseDisplayCloseReason
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplay
 import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
+import app.androidrik.rikkahub.phoneuse.isAccessibilityServiceListed
+import app.androidrik.rikkahub.phoneuse.shouldNotifyUser
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -37,6 +42,7 @@ class PhoneUseToolTest {
     private val controller = FakeController(manager)
     private var selfInForeground = false
     private var floatingWindowOn = true
+    private var checkedInSystem = false
     private var targetMode = PhoneUseTargetMode.AUTO
     private val savedScreenshots = mutableListOf<ByteArray>()
     private val tool: Tool = buildPhoneUseTool(
@@ -47,6 +53,7 @@ class PhoneUseToolTest {
             "file:///screenshot.jpg"
         },
         isFloatingWindowOn = { floatingWindowOn },
+        isCheckedInSystem = { checkedInSystem },
         isSelfInForeground = { selfInForeground },
         targetMode = { targetMode },
     )
@@ -83,6 +90,47 @@ class PhoneUseToolTest {
     fun `fails with guidance when the accessibility service is off`() = runTest {
         val error = runCatching { call { put("action", "observe") } }.exceptionOrNull()
         assertTrue(error!!.message!!.contains("not enabled"))
+    }
+
+    @Test
+    fun `explains a service stopped by the system while still checked in settings`() = runTest {
+        checkedInSystem = true
+        val error = runCatching { call { put("action", "observe") } }.exceptionOrNull()
+        assertTrue(error!!.message!!.contains("turn it off and on again"))
+    }
+
+    @Test
+    fun `waits for a service that is still connecting`() = runTest {
+        checkedInSystem = true
+        launch {
+            delay(500)
+            manager.attach(controller)
+        }
+        assertTrue(call { put("action", "observe") }.isNotEmpty())
+    }
+
+    @Test
+    fun `parses enabled accessibility services in both full and shorthand component formats`() {
+        val pkg = "app.androidrik.rikkahub"
+        val cls = "app.androidrik.rikkahub.phoneuse.PhoneUseAccessibilityService"
+        assertFalse(isAccessibilityServiceListed(null, pkg, cls))
+        assertFalse(isAccessibilityServiceListed("", pkg, cls))
+        assertFalse(isAccessibilityServiceListed("com.other/.AccessibilityService", pkg, cls))
+        assertTrue(isAccessibilityServiceListed("$pkg/$cls", pkg, cls))
+        assertTrue(isAccessibilityServiceListed("com.other/.Svc:$pkg/.phoneuse.PhoneUseAccessibilityService", pkg, cls))
+        assertFalse(isAccessibilityServiceListed("app.androidrik.rikkahub.debug/$cls", pkg, cls))
+    }
+
+    @Test
+    fun `virtual display close notification policy stays silent on user or lock closes`() {
+        assertTrue(PhoneUseDisplayCloseReason.SHIZUKU_DIED.shouldNotifyUser())
+        assertTrue(PhoneUseDisplayCloseReason.SERVICE_DISCONNECTED.shouldNotifyUser())
+        assertTrue(PhoneUseDisplayCloseReason.DISPLAY_REMOVED.shouldNotifyUser())
+        assertFalse(PhoneUseDisplayCloseReason.USER_STOP.shouldNotifyUser())
+        assertFalse(PhoneUseDisplayCloseReason.DEVICE_LOCKED.shouldNotifyUser())
+        assertFalse(PhoneUseDisplayCloseReason.A11Y_DISCONNECTED.shouldNotifyUser())
+        assertFalse(PhoneUseDisplayCloseReason.STARTUP_FAILED.shouldNotifyUser())
+        assertFalse(PhoneUseDisplayCloseReason.APP_INITIATED.shouldNotifyUser())
     }
 
     @Test
@@ -558,7 +606,7 @@ class PhoneUseToolTest {
         override fun listRecent(): List<PhoneApp> = controller.listRecent()
         override val previewFrames = MutableStateFlow<ImageBitmap?>(null)
         override fun setPreviewActive(active: Boolean) {}
-        override fun close() = PhoneUseVirtualDisplays.detach(this)
+        override fun close(reason: PhoneUseDisplayCloseReason) = PhoneUseVirtualDisplays.detach(this)
     }
 
     private class FakeController(

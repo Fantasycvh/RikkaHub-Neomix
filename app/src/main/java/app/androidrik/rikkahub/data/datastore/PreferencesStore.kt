@@ -290,6 +290,156 @@ class SettingsStore(
     private val updateMutex = Mutex()
 
     companion object {
+        internal fun writeSettingsToPreferences(
+            preferences: androidx.datastore.preferences.core.MutablePreferences,
+            settings: Settings,
+            corrected: Settings = settings,
+        ) {
+            preferences[DYNAMIC_COLOR] = settings.dynamicColor
+            preferences[DYNAMIC_COLOR_SEED] = settings.dynamicColorSeedColor?.toString() ?: ""
+            preferences[THEME_ID] = settings.themeId
+            preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
+            preferences[DEVELOPER_MODE] = settings.developerMode
+            preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(settings.displaySetting)
+            preferences[AVATAR_FRAME_SCHEMES] = JsonInstant.encodeToString(settings.avatarFrameSchemes)
+            preferences[COT_STYLE_SCHEMES] = JsonInstant.encodeToString(settings.cotStyleSchemes)
+
+            preferences[CATALOG_AUTO_REFRESH] = settings.catalogAutoRefresh
+            preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(corrected.favoriteModels)
+            preferences[SELECT_MODEL] = settings.chatModelId.toString()
+            settings.fallbackChatModelId?.let {
+                preferences[FALLBACK_CHAT_MODEL] = it.toString()
+            } ?: preferences.remove(FALLBACK_CHAT_MODEL)
+            settings.fastModelId?.let {
+                preferences[FAST_MODEL] = it.toString()
+            } ?: preferences.remove(FAST_MODEL)
+            preferences[MEMORY_EXTRACTION] = JsonInstant.encodeToString(settings.memoryExtraction)
+            settings.memoryConsolidationModelId?.let {
+                preferences[MEMORY_CONSOLIDATION_MODEL] = it.toString()
+            } ?: preferences.remove(MEMORY_CONSOLIDATION_MODEL)
+            settings.memoryConsolidationReasoningLevel?.let {
+                preferences[MEMORY_CONSOLIDATION_REASONING] = JsonInstant.encodeToString(it)
+            } ?: preferences.remove(MEMORY_CONSOLIDATION_REASONING)
+            preferences[MEMORY_CONSOLIDATION_PROMPT] = settings.memoryConsolidationPrompt
+            settings.titleModelId?.let {
+                preferences[TITLE_MODEL] = it.toString()
+            } ?: preferences.remove(TITLE_MODEL)
+            preferences[TRANSLATE_MODEL] = settings.translateModeId.toString()
+            preferences[ENABLE_SUGGESTION] = settings.enableSuggestion
+            preferences[ENABLE_AUTO_TITLE] = settings.enableAutoTitle
+            settings.suggestionModelId?.let {
+                preferences[SUGGESTION_MODEL] = it.toString()
+            } ?: preferences.remove(SUGGESTION_MODEL)
+            preferences[IMAGE_GENERATION_MODEL] = settings.imageGenerationModelId.toString()
+            preferences[TITLE_PROMPT] = settings.titlePrompt
+            preferences[TRANSLATION_PROMPT] = settings.translatePrompt
+            preferences[TRANSLATE_THINKING_BUDGET] = settings.translateThinkingBudget
+            preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
+            preferences[OCR_MODEL] = settings.ocrModelId.toString()
+            preferences[OCR_PROMPT] = settings.ocrPrompt
+            preferences[OCR_BACKEND] = settings.ocrBackend.name
+            settings.ocrDeepSeekProviderId?.let {
+                preferences[OCR_DEEPSEEK_PROVIDER_ID] = it.toString()
+            } ?: preferences.remove(OCR_DEEPSEEK_PROVIDER_ID)
+            preferences[OCR_DEEPSEEK_BASE_URL] = settings.ocrDeepSeekBaseUrl
+            preferences[OCR_DEEPSEEK_PURPOSE] = settings.ocrDeepSeekPurpose.name
+            preferences[OCR_DEEPSEEK_INCLUDE_LAYOUT] = settings.ocrDeepSeekIncludeLayout
+            preferences[OCR_DEEPSEEK_MAX_PAGES] = settings.ocrDeepSeekMaxPages
+            preferences[COMPRESS_MODEL] = settings.compressModelId?.toString() ?: ""
+            preferences[COMPRESS_PROMPT] = settings.compressPrompt
+
+            preferences[PROVIDERS] = JsonInstant.encodeToString(corrected.providers)
+            preferences.writeRemovedIds(REMOVED_BUILTIN_PROVIDERS, settings.removedBuiltInProviderIds)
+            preferences.writeRemovedIds(REMOVED_ASSISTANTS, corrected.removedAssistantIds)
+            preferences[LEGACY_DEFAULT_ASSISTANT_MERGED] = corrected.legacyDefaultAssistantMerged
+            preferences.writeRemovedIds(REMOVED_TTS_PROVIDERS, settings.removedTtsProviderIds)
+            preferences[RETRY_SETTING] = JsonInstant.encodeToString(settings.retrySetting)
+
+            preferences[ASSISTANTS] = JsonInstant.encodeToString(corrected.assistants)
+            preferences[SELECT_ASSISTANT] = corrected.assistantId.toString()
+            preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
+            preferences[FAVORITE_TAGS] = JsonInstant.encodeToString(settings.favoriteTags)
+
+            preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
+            preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
+            preferences[SEARCH_SELECTED] = sanitizeSearchServiceSelected(settings.searchServiceSelected, settings.searchServices.size)
+
+            preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
+            preferences[MCP_DYNAMIC_SCHEMA_LOADING] = settings.mcpDynamicSchemaLoading
+            preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
+            preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
+            preferences[UPLOAD_S3_CONFIG] = JsonInstant.encodeToString(settings.uploadS3Config)
+            preferences[BACKUP_ITEMS] = JsonInstant.encodeToString(settings.backupItems)
+            preferences[MEDIA_GENERATION_PROVIDERS] =
+                JsonInstant.encodeToString(settings.mediaGenerationProviders)
+            preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
+            settings.selectedTTSProviderId?.let {
+                preferences[SELECTED_TTS_PROVIDER] = it.toString()
+            } ?: preferences.remove(SELECTED_TTS_PROVIDER)
+            preferences[DEFAULT_TTS_PLAYBACK_SPEED] = settings.defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f)
+            preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders)
+            settings.selectedASRProviderId?.let {
+                preferences[SELECTED_ASR_PROVIDER] = it.toString()
+            } ?: preferences.remove(SELECTED_ASR_PROVIDER)
+            preferences[PROMPT_PRESETS] = JsonInstant.encodeToString(settings.promptPresets)
+            preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
+            preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
+            preferences[WEB_SERVER_ENABLED] = settings.webServerEnabled
+            preferences[WEB_SERVER_PORT] = settings.webServerPort
+            // 安全策略：Web 鉴权恒开，不落盘 false（读路径也会强制纠正）。
+            preferences[WEB_SERVER_JWT_ENABLED] = true
+            preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
+            preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
+            preferences[MEMORY_INJECT_BUDGET_TOKENS] = settings.memoryInjectBudgetTokens
+            preferences[LOREBOOK_INJECT_BUDGET_TOKENS] = settings.lorebookInjectBudgetTokens
+            preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
+            preferences[LOCAL_SNAPSHOT_CONFIG] = JsonInstant.encodeToString(settings.localSnapshotConfig)
+            // 防回退：整份快照可能早于 incrementLaunchCount()，取盘内现值与新值的较大者
+            preferences[LAUNCH_COUNT] = maxOf(settings.launchCount, preferences[LAUNCH_COUNT] ?: 0)
+            // 累计口径同理防回退（恢复可能带来更大的值，见 BackupPortability max 合并）
+            preferences[TOTAL_LAUNCH_COUNT] = maxOf(
+                settings.totalLaunchCount,
+                preferences[TOTAL_LAUNCH_COUNT] ?: 0,
+            )
+            settings.contextLengthOverride?.let {
+                preferences[CONTEXT_LENGTH_OVERRIDE] = it
+            } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
+            preferences[AUTO_COMPRESS_ENABLED] = settings.autoCompressEnabled
+            preferences[CONTEXT_IMAGE_LIMIT] = settings.contextImageLimit
+            preferences[LOOP_GUARD_SENSITIVITY] = settings.loopGuardSensitivity
+            preferences[LOOP_GUARD_REPEAT_LIMIT] = settings.loopGuardRepeatLimit.coerceIn(0, 20)
+            preferences[RULE_REMINDER_ENABLED] = settings.ruleReminderEnabled
+            preferences[RULE_REMINDER_SENSITIVITY] = settings.ruleReminderSensitivity
+            preferences[WORKSPACE_TURN_BUDGET_CHARS] = settings.workspaceTurnBudgetChars
+            preferences[WORKSPACE_TURN_MAX_STEPS] = settings.workspaceTurnMaxSteps
+            preferences[PHONE_USE_TURN_MAX_STEPS] = settings.phoneUseTurnMaxSteps
+            preferences[SUBAGENT_MAX_CONCURRENT_RUNS] = settings.subagentMaxConcurrentRuns
+            preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES] = settings.workspaceTaskMaxDurationMinutes
+            preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent
+            preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
+            preferences[EXPORT_RETENTION_DAYS] = settings.exportRetentionDays
+            preferences[EXPORT_DISPLAY_CONFIG] = JsonInstant.encodeToString(settings.exportDisplayConfig)
+            preferences[EXPORT_DISPLAY_SCHEMES] = JsonInstant.encodeToString(settings.exportDisplaySchemes)
+            preferences[EXPORT_REDACT_ENABLED] = settings.exportRedactEnabled
+            preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
+            preferences[PRUNE_COMPRESSED_PREFIX] = settings.pruneCompressedPrefix
+            preferences[COMPRESS_PRESETS] = JsonInstant.encodeToString(settings.compressPresets)
+            preferences[IMPORTED_SOURCES] = JsonInstant.encodeToString(settings.importedSources)
+            preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled
+            preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
+            preferences[USAGE_DISPLAY_MODE] = settings.usageDisplayMode.name
+            preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
+            preferences[NOTICE_CARRIER] = settings.noticeCarrier.storageValue
+            preferences[ENABLE_BACKGROUND_SUBAGENT] = settings.enableBackgroundSubagent
+            preferences[WORKSPACE_TASK_NOTICE_ENABLED] = settings.workspaceTaskNoticeEnabled
+            preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
+            preferences[TASK_CENTER_ENABLED] = settings.taskCenterEnabled
+            preferences[NAMESPACED_NOTIFICATIONS] = settings.namespacedNotifications
+            preferences[DYNAMIC_RUN_GATE] = settings.dynamicRunGate
+            preferences[KILL_SHELL_TASKS_ON_RUN_CANCEL] = settings.killShellTasksOnRunCancel
+            preferences[SCHEDULED_HEADLESS_ENABLED] = settings.scheduledHeadlessEnabled
+            preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
+        }
         // 版本号
         val VERSION = intPreferencesKey("data_version")
 
@@ -1061,150 +1211,7 @@ class SettingsStore(
             favoriteModels = normalizeFavoriteModelIds(settings.favoriteModels, settings.providers),
         )
         dataStore.edit { preferences ->
-            preferences[DYNAMIC_COLOR] = settings.dynamicColor
-            preferences[DYNAMIC_COLOR_SEED] = settings.dynamicColorSeedColor?.toString() ?: ""
-            preferences[THEME_ID] = settings.themeId
-            preferences[CUSTOM_THEMES] = JsonInstant.encodeToString(settings.customThemes)
-            preferences[DEVELOPER_MODE] = settings.developerMode
-            preferences[DISPLAY_SETTING] = JsonInstant.encodeToString(settings.displaySetting)
-            preferences[AVATAR_FRAME_SCHEMES] = JsonInstant.encodeToString(settings.avatarFrameSchemes)
-            preferences[COT_STYLE_SCHEMES] = JsonInstant.encodeToString(settings.cotStyleSchemes)
-
-            preferences[CATALOG_AUTO_REFRESH] = settings.catalogAutoRefresh
-            preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(corrected.favoriteModels)
-            preferences[SELECT_MODEL] = settings.chatModelId.toString()
-            settings.fallbackChatModelId?.let {
-                preferences[FALLBACK_CHAT_MODEL] = it.toString()
-            } ?: preferences.remove(FALLBACK_CHAT_MODEL)
-            settings.fastModelId?.let {
-                preferences[FAST_MODEL] = it.toString()
-            } ?: preferences.remove(FAST_MODEL)
-            preferences[MEMORY_EXTRACTION] = JsonInstant.encodeToString(settings.memoryExtraction)
-            settings.memoryConsolidationModelId?.let {
-                preferences[MEMORY_CONSOLIDATION_MODEL] = it.toString()
-            } ?: preferences.remove(MEMORY_CONSOLIDATION_MODEL)
-            settings.memoryConsolidationReasoningLevel?.let {
-                preferences[MEMORY_CONSOLIDATION_REASONING] = JsonInstant.encodeToString(it)
-            } ?: preferences.remove(MEMORY_CONSOLIDATION_REASONING)
-            preferences[MEMORY_CONSOLIDATION_PROMPT] = settings.memoryConsolidationPrompt
-            settings.titleModelId?.let {
-                preferences[TITLE_MODEL] = it.toString()
-            } ?: preferences.remove(TITLE_MODEL)
-            preferences[TRANSLATE_MODEL] = settings.translateModeId.toString()
-            preferences[ENABLE_SUGGESTION] = settings.enableSuggestion
-            preferences[ENABLE_AUTO_TITLE] = settings.enableAutoTitle
-            settings.suggestionModelId?.let {
-                preferences[SUGGESTION_MODEL] = it.toString()
-            } ?: preferences.remove(SUGGESTION_MODEL)
-            preferences[IMAGE_GENERATION_MODEL] = settings.imageGenerationModelId.toString()
-            preferences[TITLE_PROMPT] = settings.titlePrompt
-            preferences[TRANSLATION_PROMPT] = settings.translatePrompt
-            preferences[TRANSLATE_THINKING_BUDGET] = settings.translateThinkingBudget
-            preferences[SUGGESTION_PROMPT] = settings.suggestionPrompt
-            preferences[OCR_MODEL] = settings.ocrModelId.toString()
-            preferences[OCR_PROMPT] = settings.ocrPrompt
-            preferences[OCR_BACKEND] = settings.ocrBackend.name
-            settings.ocrDeepSeekProviderId?.let {
-                preferences[OCR_DEEPSEEK_PROVIDER_ID] = it.toString()
-            } ?: preferences.remove(OCR_DEEPSEEK_PROVIDER_ID)
-            preferences[OCR_DEEPSEEK_BASE_URL] = settings.ocrDeepSeekBaseUrl
-            preferences[OCR_DEEPSEEK_PURPOSE] = settings.ocrDeepSeekPurpose.name
-            preferences[OCR_DEEPSEEK_INCLUDE_LAYOUT] = settings.ocrDeepSeekIncludeLayout
-            preferences[OCR_DEEPSEEK_MAX_PAGES] = settings.ocrDeepSeekMaxPages
-            preferences[COMPRESS_MODEL] = settings.compressModelId?.toString() ?: ""
-            preferences[COMPRESS_PROMPT] = settings.compressPrompt
-
-            preferences[PROVIDERS] = JsonInstant.encodeToString(corrected.providers)
-            preferences.writeRemovedIds(REMOVED_BUILTIN_PROVIDERS, settings.removedBuiltInProviderIds)
-            preferences.writeRemovedIds(REMOVED_ASSISTANTS, corrected.removedAssistantIds)
-            preferences[LEGACY_DEFAULT_ASSISTANT_MERGED] = corrected.legacyDefaultAssistantMerged
-            preferences.writeRemovedIds(REMOVED_TTS_PROVIDERS, settings.removedTtsProviderIds)
-            preferences[RETRY_SETTING] = JsonInstant.encodeToString(settings.retrySetting)
-
-            preferences[ASSISTANTS] = JsonInstant.encodeToString(corrected.assistants)
-            preferences[SELECT_ASSISTANT] = corrected.assistantId.toString()
-            preferences[ASSISTANT_TAGS] = JsonInstant.encodeToString(settings.assistantTags)
-            preferences[FAVORITE_TAGS] = JsonInstant.encodeToString(settings.favoriteTags)
-
-            preferences[SEARCH_SERVICES] = JsonInstant.encodeToString(settings.searchServices)
-            preferences[SEARCH_COMMON] = JsonInstant.encodeToString(settings.searchCommonOptions)
-            preferences[SEARCH_SELECTED] = sanitizeSearchServiceSelected(settings.searchServiceSelected, settings.searchServices.size)
-
-            preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
-            preferences[MCP_DYNAMIC_SCHEMA_LOADING] = settings.mcpDynamicSchemaLoading
-            preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
-            preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
-            preferences[UPLOAD_S3_CONFIG] = JsonInstant.encodeToString(settings.uploadS3Config)
-            preferences[BACKUP_ITEMS] = JsonInstant.encodeToString(settings.backupItems)
-            preferences[MEDIA_GENERATION_PROVIDERS] =
-                JsonInstant.encodeToString(settings.mediaGenerationProviders)
-            preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
-            settings.selectedTTSProviderId?.let {
-                preferences[SELECTED_TTS_PROVIDER] = it.toString()
-            } ?: preferences.remove(SELECTED_TTS_PROVIDER)
-            preferences[DEFAULT_TTS_PLAYBACK_SPEED] = settings.defaultTTSPlaybackSpeed.coerceIn(0.5f, 2.0f)
-            preferences[ASR_PROVIDERS] = JsonInstant.encodeToString(settings.asrProviders)
-            settings.selectedASRProviderId?.let {
-                preferences[SELECTED_ASR_PROVIDER] = it.toString()
-            } ?: preferences.remove(SELECTED_ASR_PROVIDER)
-            preferences[PROMPT_PRESETS] = JsonInstant.encodeToString(settings.promptPresets)
-            preferences[LOREBOOKS] = JsonInstant.encodeToString(settings.lorebooks)
-            preferences[QUICK_MESSAGES] = JsonInstant.encodeToString(settings.quickMessages)
-            preferences[WEB_SERVER_ENABLED] = settings.webServerEnabled
-            preferences[WEB_SERVER_PORT] = settings.webServerPort
-            // 安全策略：Web 鉴权恒开，不落盘 false（读路径也会强制纠正）。
-            preferences[WEB_SERVER_JWT_ENABLED] = true
-            preferences[WEB_SERVER_ACCESS_PASSWORD] = settings.webServerAccessPassword
-            preferences[WEB_SERVER_LOCALHOST_ONLY] = settings.webServerLocalhostOnly
-            preferences[MEMORY_INJECT_BUDGET_TOKENS] = settings.memoryInjectBudgetTokens
-            preferences[LOREBOOK_INJECT_BUDGET_TOKENS] = settings.lorebookInjectBudgetTokens
-            preferences[BACKUP_REMINDER_CONFIG] = JsonInstant.encodeToString(settings.backupReminderConfig)
-            preferences[LOCAL_SNAPSHOT_CONFIG] = JsonInstant.encodeToString(settings.localSnapshotConfig)
-            // 防回退：整份快照可能早于 incrementLaunchCount()，取盘内现值与新值的较大者
-            preferences[LAUNCH_COUNT] = maxOf(settings.launchCount, preferences[LAUNCH_COUNT] ?: 0)
-            // 累计口径同理防回退（恢复可能带来更大的值，见 BackupPortability max 合并）
-            preferences[TOTAL_LAUNCH_COUNT] = maxOf(
-                settings.totalLaunchCount,
-                preferences[TOTAL_LAUNCH_COUNT] ?: 0,
-            )
-            settings.contextLengthOverride?.let {
-                preferences[CONTEXT_LENGTH_OVERRIDE] = it
-            } ?: preferences.remove(CONTEXT_LENGTH_OVERRIDE)
-            preferences[AUTO_COMPRESS_ENABLED] = settings.autoCompressEnabled
-            preferences[CONTEXT_IMAGE_LIMIT] = settings.contextImageLimit
-            preferences[LOOP_GUARD_SENSITIVITY] = settings.loopGuardSensitivity
-            preferences[LOOP_GUARD_REPEAT_LIMIT] = settings.loopGuardRepeatLimit.coerceIn(0, 20)
-            preferences[RULE_REMINDER_ENABLED] = settings.ruleReminderEnabled
-            preferences[RULE_REMINDER_SENSITIVITY] = settings.ruleReminderSensitivity
-            preferences[WORKSPACE_TURN_BUDGET_CHARS] = settings.workspaceTurnBudgetChars
-            preferences[WORKSPACE_TURN_MAX_STEPS] = settings.workspaceTurnMaxSteps
-            preferences[PHONE_USE_TURN_MAX_STEPS] = settings.phoneUseTurnMaxSteps
-            preferences[SUBAGENT_MAX_CONCURRENT_RUNS] = settings.subagentMaxConcurrentRuns
-            preferences[WORKSPACE_TASK_MAX_DURATION_MINUTES] = settings.workspaceTaskMaxDurationMinutes
-            preferences[AUTO_COMPRESS_THRESHOLD_PERCENT] = settings.autoCompressThresholdPercent
-            preferences[AUTO_COMPRESS_RETAIN_PERCENT] = settings.autoCompressRetainPercent
-            preferences[EXPORT_RETENTION_DAYS] = settings.exportRetentionDays
-            preferences[EXPORT_DISPLAY_CONFIG] = JsonInstant.encodeToString(settings.exportDisplayConfig)
-            preferences[EXPORT_DISPLAY_SCHEMES] = JsonInstant.encodeToString(settings.exportDisplaySchemes)
-            preferences[EXPORT_REDACT_ENABLED] = settings.exportRedactEnabled
-            preferences[AUTO_COMPRESS_TARGET_TOKENS] = settings.autoCompressTargetTokens
-            preferences[PRUNE_COMPRESSED_PREFIX] = settings.pruneCompressedPrefix
-            preferences[COMPRESS_PRESETS] = JsonInstant.encodeToString(settings.compressPresets)
-            preferences[IMPORTED_SOURCES] = JsonInstant.encodeToString(settings.importedSources)
-            preferences[LOG_TO_FILE_ENABLED] = settings.logToFileEnabled
-            preferences[GLOBAL_PROXY] = JsonInstant.encodeToString(settings.globalProxy)
-            preferences[USAGE_DISPLAY_MODE] = settings.usageDisplayMode.name
-            preferences[RECORD_REQUESTS_ENABLED] = settings.recordRequestsEnabled
-            preferences[NOTICE_CARRIER] = settings.noticeCarrier.storageValue
-            preferences[ENABLE_BACKGROUND_SUBAGENT] = settings.enableBackgroundSubagent
-            preferences[WORKSPACE_TASK_NOTICE_ENABLED] = settings.workspaceTaskNoticeEnabled
-            preferences[ENABLE_SUBAGENT_DISPATCH] = settings.enableSubagentDispatch
-            preferences[TASK_CENTER_ENABLED] = settings.taskCenterEnabled
-            preferences[NAMESPACED_NOTIFICATIONS] = settings.namespacedNotifications
-            preferences[DYNAMIC_RUN_GATE] = settings.dynamicRunGate
-            preferences[KILL_SHELL_TASKS_ON_RUN_CANCEL] = settings.killShellTasksOnRunCancel
-            preferences[SCHEDULED_HEADLESS_ENABLED] = settings.scheduledHeadlessEnabled
-            preferences[SUBAGENT_PRESETS] = JsonInstant.encodeToString(settings.subagentPresets)
+            writeSettingsToPreferences(preferences, settings, corrected)
         }
         // 落盘成功后再广播内存态：edit 抛异常（序列化失败等）时内存与磁盘不分叉
         settingsFlow.value = corrected

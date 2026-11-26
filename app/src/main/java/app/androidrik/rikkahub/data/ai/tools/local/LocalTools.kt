@@ -11,6 +11,7 @@ import app.androidrik.rikkahub.data.files.FileFolders
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.rikkahub.phoneuse.isFloatingChatWindowOn
+import app.androidrik.rikkahub.phoneuse.isPhoneUseCheckedInSystem
 import app.androidrik.tts.provider.TTSManager
 
 class LocalTools(
@@ -46,6 +47,7 @@ class LocalTools(
             ownPackageName = context.packageName,
             manager = phoneUseManager,
             isFloatingWindowOn = { isFloatingChatWindowOn(context, settingsStore.settingsFlow.value) },
+            isCheckedInSystem = { isPhoneUseCheckedInSystem(context) },
             isDeviceLocked = {
                 context.getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
                     !context.getSystemService(PowerManager::class.java).isInteractive

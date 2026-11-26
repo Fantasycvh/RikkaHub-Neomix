@@ -99,6 +99,7 @@ const val CHAT_COMPLETED_NOTIFICATION_CHANNEL_ID = "chat_completed"
 const val CHAT_LIVE_UPDATE_NOTIFICATION_CHANNEL_ID = "chat_live_update"
 const val WEB_SERVER_NOTIFICATION_CHANNEL_ID = "web_server"
 const val KEEP_ALIVE_NOTIFICATION_CHANNEL_ID = "keep_alive"
+const val PHONE_USE_DISPLAY_NOTIFICATION_CHANNEL_ID = "phone_use_display"
 const val MEDIA_CREATION_NOTIFICATION_CHANNEL_ID = "media_creation"
 
 /**
@@ -969,6 +970,14 @@ class RikkaHubApp : Application() {
             .setShowBadge(false)
             .build()
         notificationManager.createNotificationChannel(keepAliveChannel)
+
+        val phoneUseDisplayChannel = NotificationChannelCompat
+            .Builder(PHONE_USE_DISPLAY_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+            .setName(getString(R.string.notification_channel_phone_use_display))
+            .setVibrationEnabled(false)
+            .setShowBadge(false)
+            .build()
+        notificationManager.createNotificationChannel(phoneUseDisplayChannel)
 
         val mediaCreationChannel = NotificationChannelCompat
             .Builder(MEDIA_CREATION_NOTIFICATION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)

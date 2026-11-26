@@ -9,6 +9,33 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 
+/** 虚拟屏关闭原因：区分用户/锁屏等静默路径与 Shizuku 死亡等需要通知用户的异常路径。 */
+internal enum class PhoneUseDisplayCloseReason {
+    USER_STOP,
+    DEVICE_LOCKED,
+    A11Y_DISCONNECTED,
+    SHIZUKU_DIED,
+    SERVICE_DISCONNECTED,
+    DISPLAY_REMOVED,
+    STARTUP_FAILED,
+    APP_INITIATED,
+}
+
+/** 仅非用户主动、非锁屏、非无障碍解绑的异常中断需要发一次性通知，避免打扰。 */
+internal fun PhoneUseDisplayCloseReason.shouldNotifyUser(): Boolean = when (this) {
+    PhoneUseDisplayCloseReason.SHIZUKU_DIED,
+    PhoneUseDisplayCloseReason.SERVICE_DISCONNECTED,
+    PhoneUseDisplayCloseReason.DISPLAY_REMOVED,
+    -> true
+
+    PhoneUseDisplayCloseReason.USER_STOP,
+    PhoneUseDisplayCloseReason.DEVICE_LOCKED,
+    PhoneUseDisplayCloseReason.A11Y_DISCONNECTED,
+    PhoneUseDisplayCloseReason.STARTUP_FAILED,
+    PhoneUseDisplayCloseReason.APP_INITIATED,
+    -> false
+}
+
 /** A user-started display, identified by its lifetime as well as Android's numeric display ID. */
 internal interface PhoneUseVirtualDisplay {
     val id: Int
@@ -21,7 +48,7 @@ internal interface PhoneUseVirtualDisplay {
     /** Apps whose tasks are currently listed on this display (`am stack list`), most recent first. */
     fun listRecent(): List<PhoneApp>
 
-    fun close()
+    fun close(reason: PhoneUseDisplayCloseReason = PhoneUseDisplayCloseReason.USER_STOP)
 
     /** Latest frame for the live preview; only produced while [setPreviewActive] is on. */
     val previewFrames: StateFlow<ImageBitmap?>

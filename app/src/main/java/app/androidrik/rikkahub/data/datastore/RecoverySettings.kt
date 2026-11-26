@@ -78,6 +78,31 @@ internal class RecoverySettings(private val context: Context) {
         }
     }
 
+    /**
+     * 安全模式导入恢复时读取当前设置（供保留设备态字段与排除类别回填）；
+     * 若现存设置已损坏或超大解码失败，退回干净默认设置，不阻断恢复覆盖。
+     */
+    suspend fun readForRestoreOrDefault(): Settings =
+        runCatching { readForBackup() }.getOrElse { Settings.dummy().copy(init = false) }
+
+    /**
+     * 安全模式导入恢复时把恢复后的设置直接写入 DataStore（无需启动 Koin / Room）。
+     * 与 [SettingsStore.update] 共用 [SettingsStore.writeSettingsToPreferences]，保证键集一致。
+     */
+    suspend fun writeRestored(settings: Settings) {
+        require(!settings.init) { "Backup contains uninitialized settings" }
+        val corrected = settings.copy(
+            webServerJwtEnabled = true,
+            providers = settings.providers.ensureCatalogSessions(),
+            favoriteModels = normalizeFavoriteModelIds(settings.favoriteModels, settings.providers),
+        )
+        withStore(recoverySettingsFile(context)) { store ->
+            store.edit { preferences ->
+                SettingsStore.writeSettingsToPreferences(preferences, settings, corrected)
+            }
+        }
+    }
+
     private suspend fun <T> withStore(
         file: File,
         migrations: List<DataMigration<Preferences>> = emptyList(),

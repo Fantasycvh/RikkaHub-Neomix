@@ -3551,4 +3551,17 @@
   <string name="chat_status_dock_collapse">收合</string>
   <string name="chat_input_placeholder_pending_interaction">等待確認或回答，輸入可略過並傳送…</string>
   <string name="chat_retain_tasks_and_send">保留任務並立即傳送</string>
+  <string name="assistant_page_local_tools_phone_use_service_stopped">無障礙服務已被系統停止，但系統設定裡仍顯示開啟（部分手機在最近任務中劃掉應用後會這樣）。請將此開關關閉再開啟以進入設定，然後把「Neomix Phone Use」關閉再重新開啟。在最近任務中鎖定 Neomix 並允許自啟動，可以避免再次發生。</string>
+  <string name="assistant_page_local_tools_phone_use_restart_service">請在無障礙設定中將「Neomix Phone Use」關閉再重新開啟</string>
+  <string name="notification_channel_phone_use_display">Phone Use 虛擬螢幕</string>
+  <string name="notification_phone_use_display_running">虛擬螢幕執行中</string>
+  <string name="notification_phone_use_display_desc">AI 正在虛擬螢幕上操作 · 點擊返回應用</string>
+  <string name="notification_phone_use_display_stop">停止虛擬螢幕</string>
+  <string name="notification_phone_use_display_closed_title">虛擬螢幕已關閉</string>
+  <string name="notification_phone_use_display_closed_shizuku">Shizuku 已停止，可從 Shizuku 重新啟動後重試。</string>
+  <string name="notification_phone_use_display_closed_removed">虛擬螢幕已被系統移除。</string>
+  <string name="safe_mode_import_backup">匯入備份</string>
+  <string name="safe_mode_import_overwrite_confirm">匯入此備份將覆蓋現有設定、聊天記錄和附件，並在完成後自動重啟應用生效。是否繼續？</string>
+  <string name="safe_mode_import_backup_failed">匯入失敗：%1$s</string>
+  <string name="safe_mode_import_invalid_archive">所選檔案不是有效的 Neomix/RikkaHub 備份包。</string>
 </resources>

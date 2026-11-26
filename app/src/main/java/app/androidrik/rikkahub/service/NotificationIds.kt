@@ -56,6 +56,8 @@ object NotificationIds {
      */
     private val RESERVED_NOTIFICATION_IDS = setOf(
         CHAT_GENERATION_DONE, // ChatNotificationManager 生成完成通知（固定 1）
+        2005, // PhoneUseDisplayForegroundService 前台保活通知
+        2006, // PhoneUseDisplayForegroundService 异常关闭一次性通知
         40000, // ScheduledTaskRunService 前台服务通知
         40010, // ScheduledTaskSweeper 前台服务通知（P0.5 与 40000 错开）
     )

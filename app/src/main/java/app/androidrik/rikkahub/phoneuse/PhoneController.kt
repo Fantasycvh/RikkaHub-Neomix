@@ -106,6 +106,46 @@ fun isFloatingChatWindowOn(context: Context, settings: Settings): Boolean =
     settings.displaySetting.enableFloatingChatWindow && android.provider.Settings.canDrawOverlays(context)
 
 /**
+ * 解析系统无障碍设置中的 `ENABLED_ACCESSIBILITY_SERVICES` 字符串（冒号分隔），兼容完整类名与
+ * 简写类名（`pkg/.sub.Service`）。纯函数，供单测直接覆盖。
+ */
+internal fun isAccessibilityServiceListed(
+    enabledServices: String?,
+    packageName: String,
+    className: String,
+): Boolean {
+    if (enabledServices.isNullOrBlank()) return false
+    val expectedFull = "$packageName/$className"
+    val expectedShort = if (className.startsWith("$packageName.")) {
+        "$packageName/${className.removePrefix(packageName)}"
+    } else {
+        null
+    }
+    return enabledServices.split(':').any { raw ->
+        val entry = raw.trim()
+        entry == expectedFull || (expectedShort != null && entry == expectedShort)
+    }
+}
+
+/**
+ * 系统无障碍设置里是否勾选了 Phone Use。勾选了不代表服务在运行：
+ * ColorOS 等系统在最近任务里划掉应用后会停掉服务，设置里却仍显示开启，也不会再自动绑定，只能让用户关掉重开。
+ */
+fun isPhoneUseCheckedInSystem(context: Context): Boolean {
+    val enabled = runCatching {
+        android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+        )
+    }.getOrNull()
+    return isAccessibilityServiceListed(
+        enabledServices = enabled,
+        packageName = context.packageName,
+        className = PhoneUseAccessibilityService::class.java.name,
+    )
+}
+
+/**
  * 无障碍服务连接后把自己登记在这里，工具和设置页从这里拿。
  *
  * 并发约束（本仓可能有多个会话同时生成）：
@@ -207,7 +247,7 @@ class PhoneUseManager {
 
     fun detach(controller: PhoneController) {
         if (_controller.compareAndSet(controller, null)) {
-            PhoneUseVirtualDisplays.current.value?.close()
+            PhoneUseVirtualDisplays.current.value?.close(PhoneUseDisplayCloseReason.A11Y_DISCONNECTED)
         }
         invalidateScreenCache()
     }

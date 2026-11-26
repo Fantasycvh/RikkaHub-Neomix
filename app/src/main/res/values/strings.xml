@@ -3565,5 +3565,18 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="chat_status_dock_collapse">Collapse</string>
   <string name="chat_input_placeholder_pending_interaction">Awaiting confirmation — type to skip &amp; send…</string>
   <string name="chat_retain_tasks_and_send">Keep tasks &amp; send now</string>
+  <string name="assistant_page_local_tools_phone_use_service_stopped">The system has stopped the accessibility service, although system settings still show it as on (some phones do this after the app is swiped away from recent apps). Turn this switch off and on again to open settings, then turn \"Neomix Phone Use\" off and on there. Locking Neomix in recent apps and allowing auto-start helps keep it from happening again.</string>
+  <string name="assistant_page_local_tools_phone_use_restart_service">Turn \"Neomix Phone Use\" off and on again in accessibility settings</string>
+  <string name="notification_channel_phone_use_display">Phone Use virtual display</string>
+  <string name="notification_phone_use_display_running">Virtual display running</string>
+  <string name="notification_phone_use_display_desc">AI is operating on the virtual display · Tap to return</string>
+  <string name="notification_phone_use_display_stop">Stop virtual display</string>
+  <string name="notification_phone_use_display_closed_title">Virtual display closed</string>
+  <string name="notification_phone_use_display_closed_shizuku">Shizuku stopped. Restart Shizuku and try again.</string>
+  <string name="notification_phone_use_display_closed_removed">The virtual display was removed by the system.</string>
+  <string name="safe_mode_import_backup">Import Backup</string>
+  <string name="safe_mode_import_overwrite_confirm">Importing this backup will overwrite existing settings, chat history, and attachments, then restart the app to apply. Continue?</string>
+  <string name="safe_mode_import_backup_failed">Import failed: %1$s</string>
+  <string name="safe_mode_import_invalid_archive">Selected file is not a valid Neomix/RikkaHub backup archive.</string>
 </resources>
 

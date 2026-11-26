@@ -5,6 +5,8 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
@@ -27,6 +29,7 @@ import app.androidrik.rikkahub.phoneuse.PhoneElement
 import app.androidrik.rikkahub.phoneuse.PhoneKey
 import app.androidrik.rikkahub.phoneuse.PhoneScreen
 import app.androidrik.rikkahub.phoneuse.PhoneUseManager
+import app.androidrik.rikkahub.phoneuse.PhoneUseDisplayCloseReason
 import app.androidrik.rikkahub.phoneuse.PhoneUseDisplayTarget
 import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplay
 import app.androidrik.rikkahub.phoneuse.PhoneUseVirtualDisplays
@@ -48,6 +51,8 @@ private const val LONG_PRESS_MS = 700L
 private const val SWIPE_MS = 350L
 private const val SCREENSHOT_MAX_SIDE = 1568
 private const val MAX_LISTED_APPS = 120
+// 应用刚被拉起时系统还在绑定无障碍服务，稍等一下再判定服务没在运行
+private const val SERVICE_CONNECT_WAIT_MS = 2000L
 
 /**
  * 已知会阻止读屏/截图的**受限应用**（应用自身的保护配置，不是系统权限）。
@@ -112,12 +117,14 @@ internal fun phoneUseActionNeedsApproval(input: JsonElement): Boolean {
 
 /**
  * [saveScreenshot] 把 JPEG 存成聊天文件并返回地址；[isSelfInForeground] 判断本应用是否在前台，单测里替换。
+ * [isCheckedInSystem] 是系统无障碍设置里有没有勾选，用来区分「没开」和「开了但被系统停掉」。
  */
 internal fun buildPhoneUseTool(
     ownPackageName: String,
     manager: PhoneUseManager,
     saveScreenshot: (ByteArray) -> String,
     isFloatingWindowOn: () -> Boolean,
+    isCheckedInSystem: () -> Boolean = { false },
     isSelfInForeground: suspend () -> Boolean = ::isAppInForeground,
     isDeviceLocked: () -> Boolean = { false },
     /** 用户附加黑名单（包名）；内置支付/银行表不可移除 */
@@ -130,6 +137,7 @@ internal fun buildPhoneUseTool(
         manager,
         saveScreenshot,
         isFloatingWindowOn,
+        isCheckedInSystem,
         isSelfInForeground,
         isDeviceLocked,
         userBlockedPackages,
@@ -227,6 +235,7 @@ private class PhoneUseSession(
     private val manager: PhoneUseManager,
     private val saveScreenshot: (ByteArray) -> String,
     private val isFloatingWindowOn: () -> Boolean,
+    private val isCheckedInSystem: () -> Boolean,
     private val isSelfInForeground: suspend () -> Boolean,
     private val isDeviceLocked: () -> Boolean,
     private val userBlockedPackages: () -> Set<String>,
@@ -238,6 +247,18 @@ private class PhoneUseSession(
     // 模型手上那份元素列表对应的屏幕：与 lastScreen 分开——后者只用于编号换算，
     // 而差分压缩只在「模型确实见过全量列表」时才敢回“没变化”
     private var lastDescribedScreen: PhoneScreen? = null
+
+    private suspend fun awaitController(): PhoneController {
+        check(isCheckedInSystem()) {
+            "Phone Use is not enabled. Ask the user to turn on \"Neomix Phone Use\" in the system accessibility settings."
+        }
+        return withTimeoutOrNull(SERVICE_CONNECT_WAIT_MS) { manager.controller.filterNotNull().first() } ?: error(
+            "\"Neomix Phone Use\" is on in the system accessibility settings, but the system has stopped the service " +
+                "(some phones do this when the app is swiped away from recent apps) and will not restart it by itself. " +
+                "Ask the user to turn it off and on again in the accessibility settings. To keep it from happening again, " +
+                "they can lock Neomix in recent apps and allow it to auto-start."
+        )
+    }
 
     suspend fun execute(params: JsonObject): List<UIMessagePart> {
         val displayTarget = currentCoroutineContext()[PhoneUseDisplayTarget]
@@ -263,20 +284,18 @@ private class PhoneUseSession(
             lastEpoch = epoch
         }
         // 开启工具时已经要求过，这里防的是之后又把悬浮窗或它的权限关掉
-        check(isFloatingWindowOn().also { if (!it) display?.close() }) {
+        check(isFloatingWindowOn().also { if (!it) display?.close(PhoneUseDisplayCloseReason.APP_INITIATED) }) {
             "The background floating window is turned off, so the user cannot watch or stop you. " +
                 "Ask them to turn it on in Settings > Notifications (and grant the overlay permission) first."
         }
-        check((!isDeviceLocked()).also { if (!it) display?.close() }) {
+        check((!isDeviceLocked()).also { if (!it) display?.close(PhoneUseDisplayCloseReason.DEVICE_LOCKED) }) {
             "The phone is locked or the screen is off. Ask the user to unlock it and try again."
         }
         // 「实体手机」模式故意忽略运行中的虚拟屏：跳过屏变更守卫，其余模式照旧防飘移
         if (displayTarget?.mode != PhoneUseTargetMode.DEVICE) {
             PhoneUseVirtualDisplays.checkTarget(display)
         }
-        val controller = display?.controller ?: manager.controller.value ?: error(
-            "Phone Use is not enabled. Ask the user to turn on \"Neomix Phone Use\" in the system accessibility settings."
-        )
+        val controller = display?.controller ?: manager.controller.value ?: awaitController()
         return when (val action = params.string("action") ?: error("action is required")) {
             "list_apps" -> {
                 val blocked = blockedPackages()

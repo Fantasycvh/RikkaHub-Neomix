@@ -323,6 +323,16 @@
         android:value="Keep AI chat generation running while the app is in the background" />
     </service>
 
+    <service
+      android:name=".phoneuse.PhoneUseDisplayForegroundService"
+      android:exported="false"
+      android:stopWithTask="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="phone_use_display" />
+    </service>
+
     <!-- 媒体生成（dataSync）：任务本身由 Koin 单例 MediaCreationService 持有，本服务只把进程留在前台 -->
     <service
       android:name=".service.MediaCreationForegroundService"

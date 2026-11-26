@@ -44,6 +44,8 @@ import kotlin.coroutines.resumeWithException
 
 private const val SHIZUKU_PERMISSION_REQUEST = 314
 private const val DEVICE_STATE_CHECK_INTERVAL_MS = 500L
+// 每 4 个 500ms tick（2 秒）主动 ping Shizuku 兜底，防止 OnBinderDeadListener 延迟或丢失
+private const val SHIZUKU_PING_EVERY_TICKS = 4
 private const val PREVIEW_FRAME_INTERVAL_MS = 100L
 private val startMutex = Mutex()
 private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -69,7 +71,7 @@ internal suspend fun startPhoneUseDisplay(context: Context) = startMutex.withLoc
             "Timed out starting the Shizuku display service."
         }
     } catch (error: Throwable) {
-        display.close()
+        display.close(PhoneUseDisplayCloseReason.STARTUP_FAILED)
         throw error
     }
 }
@@ -129,12 +131,12 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
     override var apps: List<PhoneApp> = emptyList()
         private set
 
-    private val serverDied = Shizuku.OnBinderDeadListener { close() }
+    private val serverDied = Shizuku.OnBinderDeadListener { close(PhoneUseDisplayCloseReason.SHIZUKU_DIED) }
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = Unit
         override fun onDisplayChanged(displayId: Int) = Unit
         override fun onDisplayRemoved(displayId: Int) {
-            if (displayId == id) close()
+            if (displayId == id) close(PhoneUseDisplayCloseReason.DISPLAY_REMOVED)
         }
     }
     suspend fun start(factory: PhoneUseDisplayControllerFactory) = withContext(Dispatchers.Main.immediate) {
@@ -182,10 +184,23 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
         controller = factory.forDisplay(this@PhoneUseDisplayExperiment)
         check(PhoneUseVirtualDisplays.attach(this@PhoneUseDisplayExperiment)) { "A Phone Use virtual display is already active." }
         PhoneUseDisplayOverlay.show(context)
-        // Check the primary display directly because some ROMs delay the screen-off broadcast.
+        PhoneUseDisplayForegroundService.start(context)
+        // Check the primary display directly because some ROMs delay the screen-off broadcast,
+        // and ping Shizuku every 2s as a watchdog fallback if OnBinderDeadListener is delayed.
         deviceMonitor = cleanupScope.launch {
-            while (canUseDisplay()) delay(DEVICE_STATE_CHECK_INTERVAL_MS)
-            close()
+            var ticks = 0
+            while (true) {
+                if (!canUseDisplay()) {
+                    close(PhoneUseDisplayCloseReason.DEVICE_LOCKED)
+                    return@launch
+                }
+                if (ticks % SHIZUKU_PING_EVERY_TICKS == 0 && !runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+                    close(PhoneUseDisplayCloseReason.SHIZUKU_DIED)
+                    return@launch
+                }
+                ticks++
+                delay(DEVICE_STATE_CHECK_INTERVAL_MS)
+            }
         }
     }
 
@@ -209,7 +224,7 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
             }
 
             override fun onServiceDisconnected(name: ComponentName) {
-                close()
+                close(PhoneUseDisplayCloseReason.SERVICE_DISCONNECTED)
                 if (continuation.isActive) continuation.resumeWithException(IllegalStateException("Shizuku disconnected."))
             }
         }
@@ -267,8 +282,13 @@ private class PhoneUseDisplayExperiment(private val context: Context) : PhoneUse
         return checkNotNull(service)
     }
 
-    override fun close() {
+    override fun close(reason: PhoneUseDisplayCloseReason) {
         if (!closed.compareAndSet(false, true)) return
+        // FGS 停止放最前，不依赖后续任何 binder 调用
+        PhoneUseDisplayForegroundService.stop(context)
+        if (reason.shouldNotifyUser()) {
+            PhoneUseDisplayForegroundService.notifyClosedUnexpectedly(context, reason)
+        }
         previewClients = 0
         previewActive = false
         _previewFrames.value = null
