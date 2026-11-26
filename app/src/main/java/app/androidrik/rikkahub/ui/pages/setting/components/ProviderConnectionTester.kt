@@ -48,6 +48,7 @@ import app.androidrik.ai.ui.UIMessagePart
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Connect
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.ui.components.ai.ModelSelector
 import app.androidrik.rikkahub.ui.theme.extendColors
 import app.androidrik.rikkahub.utils.UiState
@@ -139,8 +140,12 @@ fun ProviderConnectionTester(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (model == null) return@TextButton
-                        val provider = providerManager.getProviderByType(internalProvider)
+                        val testModel = model ?: return@TextButton
+                        // 上游 #2356（1fb091529）：和聊天一致——模型设置了提供商重写
+                        // （providerOverwrite：API Key、Base URL 等）时，测试也用重写后的
+                        // 配置发请求，否则重写配置在这里永远测不到真实生效情况
+                        val providerSetting = testModel.findProvider(listOf(internalProvider)) ?: internalProvider
+                        val provider = providerManager.getProviderByType(providerSetting)
                         resetStates()
                         // ⚠️ 三个测试都必须显式传 `reasoningLevel = AUTO`，别删（上游 #2141）。
                         // `TextGenerationParams.reasoningLevel` 的默认值是 **OFF**（Provider.kt），而 OFF 会被
@@ -152,12 +157,12 @@ fun ProviderConnectionTester(
                                 runCatching {
                                     nonStreamingState = UiState.Loading
                                     val result = provider.generateText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = providerSetting,
                                         messages = listOf(UIMessage.system("You are a helpful assistant"), UIMessage.user("hello")),
                                         params = TextGenerationParams(
-                                            model = model!!,
-                                            customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies,
+                                            model = testModel,
+                                            customHeaders = testModel.customHeaders,
+                                            customBody = testModel.customBodies,
                                             reasoningLevel = ReasoningLevel.AUTO
                                         )
                                     )
@@ -171,12 +176,12 @@ fun ProviderConnectionTester(
                                 runCatching {
                                     streamingState = UiState.Loading
                                     val flow = provider.streamText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = providerSetting,
                                         messages = listOf(UIMessage.system("You are a helpful assistant"), UIMessage.user("hello")),
                                         params = TextGenerationParams(
-                                            model = model!!,
-                                            customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies,
+                                            model = testModel,
+                                            customHeaders = testModel.customHeaders,
+                                            customBody = testModel.customBodies,
                                             reasoningLevel = ReasoningLevel.AUTO
                                         )
                                     )
@@ -195,13 +200,13 @@ fun ProviderConnectionTester(
                                         execute = { emptyList() }
                                     )
                                     val generation = provider.generateText(
-                                        providerSetting = internalProvider,
+                                        providerSetting = providerSetting,
                                         messages = listOf(UIMessage.system("You are a helpful assistant"), UIMessage.user("Use the get_current_time tool.")),
                                         params = TextGenerationParams(
-                                            model = model!!,
+                                            model = testModel,
                                             tools = listOf(testTool),
-                                            customHeaders = model!!.customHeaders,
-                                            customBody = model!!.customBodies,
+                                            customHeaders = testModel.customHeaders,
+                                            customBody = testModel.customBodies,
                                             reasoningLevel = ReasoningLevel.AUTO
                                         )
                                     )

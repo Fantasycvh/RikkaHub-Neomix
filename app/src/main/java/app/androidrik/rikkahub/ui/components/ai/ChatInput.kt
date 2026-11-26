@@ -707,8 +707,14 @@ fun ChatInput(
                                     shape = buttonShape,
                                     color = containerColor,
                                     content = {})
-                                if (showStop) {
+                                // 录音中熄屏会截断语音输入（上游 #2344 / cc8735431）；两种情况
+                                // 共用一个 KeepScreenOn——KeepScreenOn 是 DisposableEffect
+                                // add/clear flag，各放一个的话先结束的那个会在 onDispose
+                                // 清掉后挂上的亮屏标记
+                                if (showStop || asrState.isRecording) {
                                     KeepScreenOn()
+                                }
+                                if (showStop) {
                                     Icon(
                                         imageVector = HugeIcons.Cancel01,
                                         contentDescription = stringResource(R.string.stop),
