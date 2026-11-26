@@ -734,6 +734,7 @@
   <string name="error_title_compress_conversation">Conversation compression failed</string>
   <string name="error_title_generate_title">Auto title generation failed</string>
   <string name="error_title_generation">Message generation failed</string>
+  <string name="error_generation_oom">Out of memory while building the request. The conversation likely contains too many or too large images; remove some of them or start a new conversation.</string>
   <string name="error_title_operation">Operation failed</string>
   <string name="error_title_regenerate_message">Message regeneration failed</string>
   <string name="error_title_send_message">Message send failed</string>

@@ -768,6 +768,7 @@
   <string name="error_title_compress_conversation">對話壓縮失敗</string>
   <string name="error_title_generate_title">自動產生標題失敗</string>
   <string name="error_title_generation">訊息產生失敗</string>
+  <string name="error_generation_oom">組裝請求時記憶體不足。會話裡可能包含過多或過大的圖片，請移除部分圖片或開新會話。</string>
   <string name="error_title_operation">操作失敗</string>
   <string name="error_title_regenerate_message">訊息重新產生失敗</string>
   <string name="error_title_send_message">訊息傳送失敗</string>

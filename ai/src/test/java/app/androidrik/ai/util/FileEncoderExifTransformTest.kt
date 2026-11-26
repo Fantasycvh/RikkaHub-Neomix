@@ -1,6 +1,7 @@
 package app.androidrik.ai.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FileEncoderExifTransformTest {
@@ -24,40 +25,54 @@ class FileEncoderExifTransformTest {
         assertEquals(ExifTransformType.NONE, mapExifOrientationToTransform(-1))
     }
 
+    // ---- calculateImageTargetSize（上游 #2365 / f37f66b31 移植）----
+
     @Test
     fun `long screenshots should keep original resolution when under pixel budget`() {
-        val sampleSize = calculateImageInSampleSize(
+        val target = calculateImageTargetSize(
             width = 1272,
             height = 2800,
-            maxDimension = 10_000,
-            maxPixels = 16_000_000L
+            maxDimension = AttachmentLimits.IMAGE_MAX_DIMENSION,
+            maxPixels = AttachmentLimits.IMAGE_MAX_PIXELS
         )
 
-        assertEquals(1, sampleSize)
+        assertEquals(ImageSize(1272, 2800), target)
     }
 
     @Test
-    fun `very large images should still be downsampled by pixel budget`() {
-        val sampleSize = calculateImageInSampleSize(
-            width = 5000,
-            height = 5000,
-            maxDimension = 10_000,
-            maxPixels = 16_000_000L
+    fun `large photos should be scaled down to pixel budget`() {
+        val target = calculateImageTargetSize(
+            width = 4000,
+            height = 3000,
+            maxDimension = AttachmentLimits.IMAGE_MAX_DIMENSION,
+            maxPixels = AttachmentLimits.IMAGE_MAX_PIXELS
         )
 
-        assertEquals(2, sampleSize)
+        assertTrue(target.width.toLong() * target.height <= AttachmentLimits.IMAGE_MAX_PIXELS)
+        // 只按需缩小，不会因为 2 的幂次采样缩过头
+        assertTrue(target.width.toLong() * target.height > 3_900_000L)
+        assertEquals(4.0 / 3.0, target.width.toDouble() / target.height, 0.01)
     }
 
     @Test
-    fun `extremely long images should still be downsampled by max dimension`() {
-        val sampleSize = calculateImageInSampleSize(
-            width = 1200,
+    fun `extremely long images should still be scaled down by max dimension`() {
+        val target = calculateImageTargetSize(
+            width = 100,
             height = 20_000,
-            maxDimension = 10_000,
-            maxPixels = 16_000_000L
+            maxDimension = AttachmentLimits.IMAGE_MAX_DIMENSION,
+            maxPixels = AttachmentLimits.IMAGE_MAX_PIXELS
         )
 
-        assertEquals(2, sampleSize)
+        assertEquals(ImageSize(20, AttachmentLimits.IMAGE_MAX_DIMENSION), target)
+    }
+
+    @Test
+    fun `sample size should not go below target size`() {
+        // 4000x3000 缩到约 2309x1732：采样 2 会变成 2000x1500，比目标还小，只能采样 1
+        assertEquals(1, calculateImageInSampleSize(4000, 3000, targetWidth = 2309, targetHeight = 1732))
+        // 8000x6000 采样 2 后 4000x3000 仍大于目标，采样 4 后 2000x1500 小于目标
+        assertEquals(2, calculateImageInSampleSize(8000, 6000, targetWidth = 2309, targetHeight = 1732))
+        assertEquals(1, calculateImageInSampleSize(1272, 2800, targetWidth = 1272, targetHeight = 2800))
     }
 
     companion object {

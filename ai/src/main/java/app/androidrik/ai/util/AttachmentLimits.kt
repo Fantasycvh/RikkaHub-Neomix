@@ -11,7 +11,9 @@ object AttachmentLimits {
     const val MAX_ATTACHMENT_BYTES = 100L * 1024 * 1024
     const val MAX_IMAGE_BYTES = 5L * 1024 * 1024
     const val IMAGE_MAX_DIMENSION = 4096
-    const val IMAGE_MAX_PIXELS = 8_000_000L
+    // 上游 #2365（f37f66b31）：主流提供商收到图片后也会缩到 1~2K，再大只放大请求体；
+    // 多张原图一起发时 JSON 可达上百 MB 而 OOM。只按总像素限制而不限长边，长截图保持原宽度
+    const val IMAGE_MAX_PIXELS = 4_000_000L
 
     fun requireSize(bytes: Long, limit: Long = MAX_ATTACHMENT_BYTES) {
         if (bytes > limit) throw AttachmentLimitException("Attachment exceeds ${limit / 1024 / 1024} MiB limit")

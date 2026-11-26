@@ -10,6 +10,8 @@ import androidx.core.net.toUri
 import app.androidrik.ai.ui.UIMessagePart
 import java.io.ByteArrayOutputStream
 import java.io.File
+import kotlin.math.max
+import kotlin.math.sqrt
 
 private val supportedTypes = setOf(
     "image/jpeg",
@@ -216,16 +218,33 @@ private fun File.compressAndEncode(
     }
     BitmapFactory.decodeFile(absolutePath, options)
 
-    options.inSampleSize = calculateImageInSampleSize(
+    // 上游 #2365（f37f66b31）两段式解码：先算精确目标尺寸，再用不越过目标的 2 幂次
+    // 采样省解码内存，最后 createScaledBitmap 补齐到目标——避免只按 2 幂采样时
+    // 「缩过头」（比如目标 2309 宽被采到 2000）
+    val target = calculateImageTargetSize(
         width = options.outWidth,
         height = options.outHeight,
         maxDimension = maxDimension,
         maxPixels = maxPixels
     )
+    options.inSampleSize = calculateImageInSampleSize(
+        width = options.outWidth,
+        height = options.outHeight,
+        targetWidth = target.width,
+        targetHeight = target.height
+    )
     options.inJustDecodeBounds = false
 
-    val bitmap = BitmapFactory.decodeFile(absolutePath, options)
+    val decoded = BitmapFactory.decodeFile(absolutePath, options)
         ?: throw IllegalArgumentException("Failed to decode image: $absolutePath")
+    // 采样后尺寸可能和 outWidth/outHeight 的整除结果差一两像素，以实际解码结果为准
+    val bitmap = if (decoded.width > target.width || decoded.height > target.height) {
+        Bitmap.createScaledBitmap(decoded, target.width, target.height, true).also {
+            if (it !== decoded) decoded.recycle()
+        }
+    } else {
+        decoded
+    }
     val normalizedBitmap = normalizeByExif(bitmap)
 
     return try {
@@ -305,20 +324,39 @@ private fun File.encodeToBase64Streaming(maxBytes: Long = AttachmentLimits.MAX_A
     return byteArrayOutputStream.toString(Charsets.ISO_8859_1.name())
 }
 
-internal fun calculateImageInSampleSize(
+internal data class ImageSize(val width: Int, val height: Int)
+
+/** 等比缩放到长边不超过 [maxDimension]、总像素不超过 [maxPixels]，已在限制内时保持原尺寸 */
+internal fun calculateImageTargetSize(
     width: Int,
     height: Int,
     maxDimension: Int,
     maxPixels: Long
+): ImageSize {
+    if (width <= 0 || height <= 0) return ImageSize(width, height)
+
+    val pixelScale = sqrt(maxPixels.toDouble() / (width.toLong() * height))
+    val dimensionScale = maxDimension.toDouble() / max(width, height)
+    val scale = minOf(1.0, pixelScale, dimensionScale)
+    if (scale >= 1.0) return ImageSize(width, height)
+
+    return ImageSize(
+        width = (width * scale).toInt().coerceAtLeast(1),
+        height = (height * scale).toInt().coerceAtLeast(1)
+    )
+}
+
+/** 不让采样后的尺寸小于目标尺寸的最大 2 的幂次采样率 */
+internal fun calculateImageInSampleSize(
+    width: Int,
+    height: Int,
+    targetWidth: Int,
+    targetHeight: Int
 ): Int {
     if (width <= 0 || height <= 0) return 1
 
     var inSampleSize = 1
-    while (
-        (height / inSampleSize) > maxDimension ||
-        (width / inSampleSize) > maxDimension ||
-        (width.toLong() / inSampleSize) * (height.toLong() / inSampleSize) > maxPixels
-    ) {
+    while (width / (inSampleSize * 2) >= targetWidth && height / (inSampleSize * 2) >= targetHeight) {
         inSampleSize *= 2
     }
     return inSampleSize

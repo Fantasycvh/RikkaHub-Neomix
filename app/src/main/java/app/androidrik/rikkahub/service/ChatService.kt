@@ -2312,6 +2312,22 @@ class ChatService(
                 return@onFailure
             }
 
+            if (it is OutOfMemoryError) {
+                // 上游 #2365（f37f66b31）：组装请求体时一次性分配上百 MB（多张大图的 base64）
+                // 会 OOM。裸 OOM 栈对用户无意义；且本方法正常返回后 invokeOnCompletion 会继续
+                // 派发队列里的下一条消息，下一轮再 OOM——先暂停队列止损。抛出后那块大分配
+                // 已随栈展开释放，进程可以继续运行。
+                sessions[conversationId]?.messageQueue?.pause()
+                addError(
+                    IllegalStateException(context.getString(R.string.error_generation_oom), it),
+                    conversationId,
+                    title = context.getString(R.string.error_title_generation),
+                )
+                Logging.log(TAG, "handleMessageComplete: out of memory")
+                Logging.log(TAG, it.stackTraceToString())
+                return@onFailure
+            }
+
             it.printStackTrace()
             addError(it, conversationId, title = context.getString(R.string.error_title_generation))
             Logging.log(TAG, "handleMessageComplete: $it")

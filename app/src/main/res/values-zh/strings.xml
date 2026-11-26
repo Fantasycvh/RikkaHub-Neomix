@@ -771,6 +771,7 @@
   <string name="error_title_compress_conversation">对话压缩失败</string>
   <string name="error_title_generate_title">自动生成标题失败</string>
   <string name="error_title_generation">消息生成失败</string>
+  <string name="error_generation_oom">组装请求时内存不足。会话里可能包含过多或过大的图片，请移除部分图片或开新会话。</string>
   <string name="error_title_operation">操作失败</string>
   <string name="error_title_regenerate_message">消息重新生成失败</string>
   <string name="error_title_send_message">消息发送失败</string>
