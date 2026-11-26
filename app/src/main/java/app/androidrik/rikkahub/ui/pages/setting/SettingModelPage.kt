@@ -185,6 +185,39 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
         }
         item {
             Column {
+                CardGroup(title = { Text("对话后记忆归纳") }) {
+                    item(
+                        headlineContent = { Text("空闲两分钟后归纳") },
+                        supportingContent = { Text("每个会话独立提取新记忆，可与定期做梦同时启用。沿用助手的整理开关和审批设置。") },
+                        trailingContent = {
+                            Switch(settings.memoryExtraction.enabled, { enabled ->
+                                vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(enabled = enabled)) }
+                            })
+                        },
+                    )
+                    if (settings.memoryExtraction.enabled) {
+                        item {
+                            ModelSettingItem(
+                                title = "归纳模型",
+                                description = "未指定时跟随最后一轮回复的实际模型",
+                                modelId = settings.memoryExtraction.modelId,
+                                providers = settings.providers,
+                                emptyText = "跟随最后一轮模型",
+                                onSelect = { model -> vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(modelId = model.id)) } },
+                                onClear = { vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(modelId = null)) } },
+                            )
+                        }
+                        item(
+                            headlineContent = { Text("尝试复用 Prompt Cache") },
+                            supportingContent = { Text("实验功能，跟随模型时可复用 OpenAI 兼容请求的前缀。缓存不可用时使用增量归纳，实际命中量见用量统计。") },
+                            trailingContent = {
+                                Switch(settings.memoryExtraction.reusePromptCache, { enabled ->
+                                    vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(reusePromptCache = enabled)) }
+                                })
+                            },
+                        )
+                    }
+                }
                 ModelSettingItem(
                     title = stringResource(R.string.setting_model_page_memory_consolidation_model),
                     description = stringResource(R.string.setting_model_page_memory_consolidation_model_desc),

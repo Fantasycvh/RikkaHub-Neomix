@@ -37,6 +37,68 @@ class MemoryConsolidationSchedulerTest {
     private val chat = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
     private val otherChat = Conversation(assistantId = Uuid.random(), messageNodes = emptyList())
 
+    @Test
+    fun `extraction and scheduled review coexist and keep conversations separate`() = runTest {
+        val worker = FakeWorker().apply { pending[chat.id] = 1; pending[otherChat.id] = 1 }
+        val scheduler = MemoryConsolidationScheduler(
+            scope = backgroundScope, worker = worker,
+            config = { MemoryTriggerConfig(mode = MemoryTriggerMode.DAILY) },
+            extractionConfig = { MemoryExtractionConfig(enabled = true) },
+            loadConversation = { id -> listOf(chat, otherChat).firstOrNull { it.id == id } },
+        )
+        scheduler.onTurnFinished(chat)
+        runCurrent()
+        advanceTimeBy(60_000)
+        scheduler.onTurnFinished(otherChat)
+        runCurrent()
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(listOf(Call(setOf(chat.id), false)), worker.calls)
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(Call(setOf(otherChat.id), false), worker.calls.last())
+        scheduler.runScheduled(memoryId)
+        assertEquals(Call(emptySet(), true), worker.calls.last())
+    }
+
+    @Test
+    fun `new user content invalidates waiting extraction`() = runTest {
+        val worker = FakeWorker().apply { pending[chat.id] = 1 }
+        var latest = chat
+        val scheduler = MemoryConsolidationScheduler(
+            scope = backgroundScope, worker = worker,
+            extractionConfig = { MemoryExtractionConfig(enabled = true) },
+            loadConversation = { latest },
+        )
+        scheduler.onTurnFinished(chat)
+        runCurrent()
+        latest = chat.copy(messageNodes = listOf(app.androidrik.rikkahub.data.model.MessageNode(
+            messages = listOf(app.androidrik.ai.ui.UIMessage.user("new user turn")),
+        )))
+        advanceTimeBy(120_000)
+        runCurrent()
+        assertTrue(worker.calls.isEmpty())
+    }
+
+    @Test
+    fun `pending approvals block extraction without consuming evidence`() = runTest {
+        val worker = FakeWorker().apply {
+            pending[chat.id] = 1
+            storedProposals[memoryId] = mutableListOf(MemoryConsolidationProposal("create", content = "pending", id = 1))
+        }
+        val scheduler = MemoryConsolidationScheduler(
+            scope = backgroundScope, worker = worker,
+            extractionConfig = { MemoryExtractionConfig(enabled = true) },
+            loadConversation = { chat },
+        )
+        scheduler.onTurnFinished(chat)
+        runCurrent()
+        advanceTimeBy(120_000)
+        runCurrent()
+        assertTrue(worker.calls.isEmpty())
+        assertEquals(1, worker.pending[chat.id])
+    }
+
     private data class Call(val conversationIds: Set<Uuid>, val fullReview: Boolean)
 
     /** 扮演 worker（数据库 + 模型）：[pending] 是还没整理的轮数，整理成功后清掉 */
@@ -70,6 +132,12 @@ class MemoryConsolidationSchedulerTest {
 
         override suspend fun pendingOf(conversation: Conversation) =
             pending[conversation.id]?.let { item(conversation.id, it) }
+
+        override suspend fun pendingForExtraction(conversation: Conversation) = pendingOf(conversation)
+        override suspend fun extract(conversation: Conversation) =
+            consolidate(memoryIdOf[conversation.id] ?: memoryId, setOf(conversation.id), false)
+        override suspend fun reviewScheduled(memoryId: String, conversationIds: Set<Uuid>) =
+            consolidate(memoryId, conversationIds, true)
 
         override suspend fun memoryIdsWithUpdates() =
             pending.map { (id, turns) -> item(id, turns).memoryId }.distinct()

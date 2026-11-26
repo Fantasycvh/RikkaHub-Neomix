@@ -102,6 +102,13 @@ class MemoryConsolidationRepository(
      * 基线之后确实有新轮次。前三道是"要不要"，第四道是"有没有东西整理"——
      * 后者的失败必须返回 null 而不是 0 轮，否则调度器会把"没东西整理"记成一次成功的整理。
      */
+    suspend fun pendingForExtraction(conversation: Conversation): PendingMemoryConversation? {
+        val cfg = config()
+        val assistant = assistants().firstOrNull { it.id == conversation.assistantId } ?: return null
+        if (!assistant.memoryConsolidationEnabled() || !assistant.inTriggerScope(cfg)) return null
+        return pendingOfIgnoringInterval(conversation, assistant, cfg = cfg.copy(mode = app.androidrik.rikkahub.data.ai.MemoryTriggerMode.IDLE))
+    }
+
     suspend fun pendingOf(conversation: Conversation): PendingMemoryConversation? {
         val cfg = config()
         val assistant = assistants().firstOrNull { it.id == conversation.assistantId } ?: return null
@@ -217,8 +224,8 @@ class MemoryConsolidationRepository(
      * 但迁移/恢复旧库会让它撒谎），真正算数的是消息时间；精算为 0 的会话直接丢掉，不写进度行
      * （写了就把还没整理的内容标记成整理过了）。
      */
-    suspend fun findPending(memoryId: String, path: TriggerPath = TriggerPath.AUTO): List<PendingMemoryConversation> {
-        val cfg = config()
+    suspend fun findPending(memoryId: String, path: TriggerPath = TriggerPath.AUTO, configOverride: MemoryTriggerConfig? = null): List<PendingMemoryConversation> {
+        val cfg = configOverride ?: config()
         val assistants = assistants()
         val fileStore = memoryId.fileConsolidationStoreId()
         val participants = assistants.filter {

@@ -181,6 +181,85 @@ class MemoryConsolidatorTest {
     }
 
     @Test
+    fun `extraction stages candidates then honors create approval`() = runBlocking {
+        for (approval in listOf(false, true)) {
+            agent.requests.clear()
+            proposalStore.rows.clear()
+            proposalStore.applied.clear()
+            val assistant = assistant(createApproval = approval)
+            val chat = conversation(assistant, 2)
+            conversations[chat.id] = chat
+            agent.outcome = MemoryConsolidationOutcome(0,
+                listOf(MemoryConsolidationProposal("create", content = "a new fact")))
+            val worker = consolidator(listOf(assistant), configure = {
+                it.copy(memoryExtraction = MemoryExtractionConfig(enabled = true))
+            })
+            val run = requireNotNull(worker.extract(chat))
+            assertTrue(agent.requests.single().proposeOnly)
+            assertEquals(if (approval) 0 else 1, run.changedMemories)
+            assertEquals(if (approval) 1 else 0, run.proposals.size)
+            assertEquals(millis(2), dao.progress[chat.id.toString()])
+        }
+    }
+
+    @Test
+    fun `extraction persistence failure keeps candidates and evidence retryable`() = runBlocking {
+        val assistant = assistant()
+        val chat = conversation(assistant, 2)
+        conversations[chat.id] = chat
+        agent.outcome = MemoryConsolidationOutcome(0,
+            listOf(MemoryConsolidationProposal("create", content = "new fact")))
+        proposalStore.failure = IllegalStateException("storage failed")
+        val worker = consolidator(listOf(assistant), configure = {
+            it.copy(memoryExtraction = MemoryExtractionConfig(enabled = true))
+        })
+        try {
+            worker.extract(chat)
+            org.junit.Assert.fail("storage failure must propagate")
+        } catch (_: IllegalStateException) {
+            assertTrue(dao.progress.isEmpty())
+            assertTrue(proposalStore.rows.isEmpty())
+            assertTrue(proposalStore.applied.isEmpty())
+        }
+    }
+
+    @Test
+    fun `extraction follows actual reply model and leaves review cursor alone`() = runBlocking {
+        val assistant = assistant()
+        val actual = Model(id = Uuid.random(), displayName = "fallback reply model")
+        val worker = consolidator(listOf(assistant), configure = { settings ->
+            settings.copy(
+                providers = listOf(provider().let { it.copy(models = it.models + actual) }),
+                memoryExtraction = MemoryExtractionConfig(enabled = true),
+                memoryConsolidationModelId = modelId,
+            )
+        })
+        val original = conversation(assistant, 2)
+        val reply = UIMessage(role = MessageRole.ASSISTANT, modelId = actual.id,
+            parts = listOf(UIMessagePart.Text("reply")), createdAt = stamp(3))
+        val chat = original.copy(messageNodes = original.messageNodes + MessageNode(messages = listOf(reply)))
+        val newer = UIMessage(role = MessageRole.USER, createdAt = stamp(4), parts = listOf(UIMessagePart.Text("not part of this extraction")))
+        conversations[chat.id] = chat.copy(messageNodes = chat.messageNodes + MessageNode(messages = listOf(newer)))
+        worker.extract(chat)
+        val request = agent.requests.single()
+        assertFalse(request.transcript.contains("not part of this extraction"))
+        assertEquals(actual.id, request.model.id)
+        assertEquals(chat.id, request.extractionConversation?.id)
+        assertTrue(request.evidenceIds.contains(reply.id))
+        assertTrue(cursorDAO.rows.isEmpty())
+        assertEquals(millis(3), dao.progress[chat.id.toString()])
+    }
+
+    @Test
+    fun `scheduled review runs without new conversation and uses automatic budget`() = runBlocking {
+        val assistant = assistant()
+        val worker = consolidator(listOf(assistant))
+        worker.reviewScheduled(assistant.id.toString(), emptySet())
+        assertEquals(MemoryConsolidator.MAX_AUTO_STEPS, agent.requests.single().maxSteps)
+        assertTrue(agent.requests.single().transcript.isBlank())
+    }
+
+    @Test
     fun `dedicated model takes priority for automatic and manual consolidation`() = runBlocking {
         val assistant = assistant().copy(chatModelId = modelId)
         val dedicated = Model(id = Uuid.random(), displayName = "dream")

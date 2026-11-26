@@ -51,6 +51,7 @@ internal object BackupContentFilter {
         "translateModeId",
         "compressModelId",
         "memoryConsolidationModelId",
+        "memoryExtraction",
         "retrySetting",
         "globalProxy",
     )

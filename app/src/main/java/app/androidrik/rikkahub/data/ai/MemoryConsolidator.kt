@@ -16,6 +16,7 @@ import app.androidrik.rikkahub.data.repository.MemoryTransactionRunner
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.data.repository.MemoryProposalApplyResult
 import kotlin.uuid.Uuid
+import kotlinx.datetime.toInstant
 
 /**
  * 做梦（V3）的 worker：实现 [MemoryConsolidationWorker] 契约。
@@ -66,6 +67,28 @@ class MemoryConsolidator(
     override suspend fun pendingOf(conversation: Conversation): PendingMemoryConversation? =
         repository.pendingOf(conversation)
 
+    override suspend fun extractionMemoryIds(): Set<String> {
+        val settings = settings()
+        return settings.assistants.filter { it.memoryConsolidationEnabled() && it.inTriggerScope(settings.memoryTriggerConfig) }
+            .mapTo(hashSetOf()) { it.consolidationMemoryId() }
+    }
+
+    override suspend fun extractionCandidates(memoryId: String) = repository.findPending(
+        memoryId, TriggerPath.SCHEDULED, settings().memoryTriggerConfig.copy(mode = MemoryTriggerMode.IDLE),
+    )
+
+    override suspend fun pendingForExtraction(conversation: Conversation) = repository.pendingForExtraction(conversation)
+
+    override suspend fun extract(conversation: Conversation): MemoryConsolidationRun? {
+        if (!settings().memoryExtraction.enabled) return null
+        val item = repository.pendingForExtraction(conversation) ?: return null
+        if (proposals.pending(item.memoryId).isNotEmpty()) return null
+        return consolidateInternal(item.memoryId, setOf(conversation.id), false, extraction = conversation)
+    }
+
+    override suspend fun reviewScheduled(memoryId: String, conversationIds: Set<Uuid>) =
+        consolidateInternal(memoryId, conversationIds, fullReview = true, manual = false)
+
     override suspend fun memoryIdsWithUpdates(): List<String> = repository.memoryIdsWithUpdates()
 
     override suspend fun findPending(memoryId: String, path: TriggerPath): List<PendingMemoryConversation> =
@@ -91,22 +114,32 @@ class MemoryConsolidator(
         memoryId: String,
         conversationIds: Set<Uuid>,
         fullReview: Boolean,
+    ): MemoryConsolidationRun? = consolidateInternal(memoryId, conversationIds, fullReview)
+
+    private suspend fun consolidateInternal(
+        memoryId: String,
+        conversationIds: Set<Uuid>,
+        fullReview: Boolean,
+        manual: Boolean = fullReview,
+        extraction: Conversation? = null,
     ): MemoryConsolidationRun? {
         val settings = settings()
         val fileStore = memoryId.fileConsolidationStoreId()
         val participants = settings.assistants.filter { it.consolidationMemoryId() == memoryId }
         if (fileStore != null) {
-            return consolidateFiles(settings, memoryId, fileStore, participants, conversationIds, fullReview)
+            return consolidateFiles(settings, memoryId, fileStore, participants, conversationIds, fullReview, manual, extraction)
         }
         if (participants.isEmpty()) return null
         if (!fullReview && conversationIds.isEmpty()) return null
 
         val participantIds = participants.mapTo(hashSetOf()) { it.id }
-        val conversations = conversationIds.mapNotNull { id -> repository.loadConversation(id) }
+        val conversations = conversationIds.mapNotNull { id ->
+            if (extraction?.id == id) extraction else repository.loadConversation(id)
+        }
             .filter { it.assistantId in participantIds && !it.memoryDisabled }
         if (conversations.isEmpty() && !fullReview) return null
-        val baselines = conversations.associate { it.id to repository.baselineOf(it, manual = fullReview) }
-        val transcript = buildConsolidationTranscript(conversations, baselines, storeId = memoryId)
+        val baselines = conversations.associate { it.id to repository.baselineOf(it, manual = manual) }
+        val transcript = buildConsolidationTranscript(conversations, baselines, storeId = memoryId, selectedOnly = extraction != null)
 
         if (transcript.text.isBlank() && !fullReview) {
             // 有轮次但没有可整理的**正文**（例如整轮只有思考/工具结果）：把水位推过去。
@@ -117,7 +150,13 @@ class MemoryConsolidator(
             return null
         }
 
-        val model = settings.findModelById(settings.memoryConsolidationModelId)
+        val extractionModelId = extraction?.let {
+            settings.memoryExtraction.modelId ?: it.currentMessages.lastOrNull { message ->
+                message.role == app.androidrik.ai.core.MessageRole.ASSISTANT
+            }?.modelId
+        }
+        val model = settings.findModelById(extractionModelId)
+            ?: settings.findModelById(settings.memoryConsolidationModelId)
             ?: settings.findModelById(settings.fastModelId)
             ?: settings.findModelById(participants.first().chatModelId)
         if (model == null) {
@@ -137,7 +176,7 @@ class MemoryConsolidator(
         // 分页 + 游标是「全量复核」唯一的做法：每轮推进一页，走完一轮从头再来。
         // 手动复核的页预算**按模型窗口放开**（用户 2026-10-16 定：上限 512K、输入占 60%），
         // 于是「全量」通常一轮走完；自动路径仍是 4K（它的本职是处理新轮次）。
-        val libraryBudget = if (fullReview) {
+        val libraryBudget = if (manual) {
             manualLibraryBudget(model.effectiveContextLength())
         } else {
             DEFAULT_LIBRARY_TOKENS
@@ -160,6 +199,7 @@ class MemoryConsolidator(
         val enabledParticipants = participants.filter { it.memoryConsolidationEnabled() }
         val allowKindChange = enabledParticipants.isNotEmpty() &&
             enabledParticipants.all { it.memoryConsolidationReclassify }
+        val approvalRequired = participants.any { it.memoryModifyApproval || it.memoryCreateApproval }
         val outcome = agent.run(
             MemoryConsolidationRequest(
                 settings = settings,
@@ -175,10 +215,16 @@ class MemoryConsolidator(
                 // 确实要看，走 `memory_tool action=search` / `read`（那两条路本来就在）。
                 calibrationTable = buildMemoryCalibrationTable(page.records),
                 transcript = transcript.text,
-                maxSteps = if (fullReview) MAX_MANUAL_STEPS else MAX_AUTO_STEPS,
+                maxSteps = if (manual) MAX_MANUAL_STEPS else MAX_AUTO_STEPS,
+                extractionConversation = extraction,
+                evidenceIds = extraction?.currentMessages?.filter { message ->
+                    val timestamp = message.createdAt.toInstant(kotlinx.datetime.TimeZone.currentSystemDefault()).toEpochMilliseconds()
+                    val consumed = transcript.consumed.firstOrNull { it.conversationId == extraction.id }
+                    timestamp > (baselines[extraction.id] ?: 0L) && consumed != null && timestamp <= consumed.watermark
+                }?.mapTo(hashSetOf()) { it.id }.orEmpty(),
                 // 审批开着（任一相关开关）⇒ 整轮只提案：后台没有用户可等，而"直接拒绝"会丢掉
                 // 模型原本想改的内容（见 docs/design/design-memory-consolidation.md §7.2）
-                proposeOnly = participants.any { it.memoryModifyApproval || it.memoryCreateApproval },
+                proposeOnly = extraction != null || approvalRequired,
                 allowKindChange = allowKindChange,
             )
         )
@@ -188,10 +234,30 @@ class MemoryConsolidator(
         // Direct-write mode already commits tool mutations during agent.run; those changes cannot
         // be rolled back here if generation or this final commit fails (not run-level exactly-once). Nested proposal writes join
         // this same Room transaction; failures propagate to the scheduler (no in-memory fallback).
+        val latestSettings = if (extraction != null) this.settings() else settings
+        if (extraction != null) {
+            check(latestSettings.memoryExtraction.enabled && latestSettings.assistants.any {
+                it.id == extraction.assistantId && it.consolidationMemoryId() == memoryId &&
+                    it.memoryConsolidationEnabled() && it.inTriggerScope(latestSettings.memoryTriggerConfig)
+            }) { "Memory extraction settings changed during generation" }
+        }
+        val needsApproval = approvalRequired || latestSettings.assistants
+            .filter { it.consolidationMemoryId() == memoryId }
+            .any { it.memoryModifyApproval || it.memoryCreateApproval }
+        var appliedChanges = outcome.appliedChanges
         val persistedProposals = transactions.run {
             proposals.savePending(memoryId, outcome.proposals)
+            val saved = proposals.pending(memoryId)
+            // Extraction stages all creates, so a failed candidate cannot leave partial writes behind.
+            if (extraction != null && !needsApproval && saved.isNotEmpty()) {
+                val result = proposals.apply(memoryId, saved.mapTo(hashSetOf()) { it.id })
+                check(result.applied == saved.size && result.stale == 0 && result.blocked == 0) {
+                    "Memory extraction could not atomically apply all candidates"
+                }
+                appliedChanges += result.applied
+            }
             transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark) }
-            // Automatic extraction must not consume the user-owned full-library review cursor.
+            // Library reviews advance pagination; conversation extraction leaves it unchanged.
             if (fullReview) {
                 repository.setReviewCursor(memoryId, page.nextCursor)
             }
@@ -202,7 +268,7 @@ class MemoryConsolidator(
             finishedAt = now(),
             conversationIds = conversationIds,
             fullReview = fullReview,
-            changedMemories = outcome.appliedChanges,
+            changedMemories = appliedChanges,
             proposals = persistedProposals,
             libraryReviewed = page.to,
             libraryTotal = page.total,
@@ -217,10 +283,12 @@ class MemoryConsolidator(
         participants: List<Assistant>,
         conversationIds: Set<Uuid>,
         fullReview: Boolean,
+        manual: Boolean,
+        extraction: Conversation?,
     ): MemoryConsolidationRun? {
         val active = participants.filter { assistant ->
             assistant.inTriggerScope(settings.memoryTriggerConfig) &&
-                if (fullReview) assistant.enabled && assistant.enableMemory else assistant.memoryConsolidationEnabled()
+                if (manual) assistant.enabled && assistant.enableMemory else assistant.memoryConsolidationEnabled()
         }.associateBy { it.id }
         if (active.isEmpty() || (!fullReview && conversationIds.isEmpty()) || proposals.pending(memoryId).isNotEmpty()) {
             return null
@@ -228,9 +296,9 @@ class MemoryConsolidator(
         val conversations = conversationIds.mapNotNull { repository.loadConversation(it) }
             .filter { it.assistantId in active && !it.memoryDisabled }
         val baselines = conversations.associate {
-            it.id to repository.baselineOf(it, active.getValue(it.assistantId), ignoreSince = fullReview)
+            it.id to repository.baselineOf(it, active.getValue(it.assistantId), ignoreSince = manual)
         }
-        val transcript = buildConsolidationTranscript(conversations, baselines, storeId = memoryId)
+        val transcript = buildConsolidationTranscript(conversations, baselines, storeId = memoryId, selectedOnly = extraction != null)
         if (!fullReview && transcript.text.isBlank()) {
             transactions.run {
                 transcript.consumed.forEach { repository.markConsolidated(it.conversationId, it.watermark, memoryId) }
@@ -243,7 +311,7 @@ class MemoryConsolidator(
         if (catalog.isEmpty() && transcript.text.isBlank()) {
             return MemoryConsolidationRun(memoryId, now(), emptySet(), fullReview, libraryPageDone = true)
         }
-        val modelIds = listOf(settings.memoryConsolidationModelId, settings.fastModelId) +
+        val modelIds = listOf(extraction?.let { settings.memoryExtraction.modelId ?: it.currentMessages.lastOrNull()?.modelId }, settings.memoryConsolidationModelId, settings.fastModelId) +
             active.values.map { it.chatModelId } + settings.chatModelId
         val model = modelIds.asSequence().distinct().mapNotNull { settings.findModelById(it) }
             .firstOrNull { ModelAbility.TOOL in it.abilities }

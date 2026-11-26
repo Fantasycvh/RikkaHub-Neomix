@@ -5,6 +5,7 @@ import app.androidrik.ai.ui.isExternalNotice
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.AssistantMemory
+import app.androidrik.rikkahub.data.model.pathNodes
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MemoryKind
 import java.time.Instant
@@ -17,6 +18,15 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 import kotlin.uuid.Uuid
+
+/** Extraction emits candidate data; tool-oriented library-review instructions belong to dreaming. */
+internal const val MEMORY_EXTRACTION_INSTRUCTION = """
+Extract explicit durable facts stated by the user: stable preferences, personal facts, ongoing projects,
+and commitments. A lasting preference such as coffee taste is useful memory. Exclude guesses,
+assistant claims, roleplay, secrets and temporary instructions. Use profile for stable preferences,
+topic for projects/knowledge, and task for commitments. Your JSON is candidate data for the host to
+validate and save.
+"""
 
 /** 一次整理最多塞进模型的「新轮次」正文预算（token，估算口径同全仓）。 */
 internal const val DEFAULT_TRANSCRIPT_TOKENS = 6_000
@@ -344,6 +354,7 @@ internal fun buildConsolidationTranscript(
     baselines: Map<Uuid, Long>,
     budgetTokens: Int = DEFAULT_TRANSCRIPT_TOKENS,
     storeId: String? = null,
+    selectedOnly: Boolean = false,
 ): ConsolidationTranscript {
     val builder = StringBuilder()
     val consumed = mutableListOf<ConsumedTurns>()
@@ -354,8 +365,12 @@ internal fun buildConsolidationTranscript(
     conversations.forEach { conversation ->
         val baseline = baselines[conversation.id] ?: 0L
         // 一轮 = 基线之后的那些消息（节点里只要有新消息，整轮就算这一轮的）
-        val turns = conversation.messageNodes
-            .map { node -> node.messages.filter { it.belongsToConsolidationLibrary(storeId) && it.createdAt.millis() > baseline } }
+        val selectedIds = if (selectedOnly) conversation.currentMessages.mapTo(hashSetOf()) { it.id } else emptySet()
+        val nodes = if (selectedOnly) conversation.pathNodes() else conversation.messageNodes
+        val turns = nodes
+            .map { node -> node.messages.filter {
+                (!selectedOnly || it.id in selectedIds) && it.belongsToConsolidationLibrary(storeId) && it.createdAt.millis() > baseline
+            } }
             .filter { it.isNotEmpty() }
         if (turns.isEmpty()) return@forEach
 

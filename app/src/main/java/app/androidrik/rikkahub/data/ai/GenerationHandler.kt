@@ -358,6 +358,30 @@ class GenerationHandler(
 ) {
     // 批次 10 拆出的翻译生成器（translateText 公开签名不变，委托过去；ChatService 调用面不动）
     private val translationGenerator = TranslationGenerator(context, providerManager, usageRecorder)
+    private val extractionPrefixes = MemoryExtractionPrefixes()
+
+    /** Reuse the post-transform request without rerunning dynamic prompt assembly. */
+    suspend fun extractFromWarmPrefix(request: MemoryConsolidationRequest, instruction: String): String? {
+        val conversation = request.extractionConversation ?: return null
+        val config = request.settings.memoryExtraction
+        if (!config.enabled || !config.reusePromptCache || config.modelId != null) return null
+        val answer = conversation.currentMessages.lastOrNull() ?: return null
+        val prefix = extractionPrefixes.takeEligible(conversation.id.toString(), answer, request.evidenceIds) ?: return null
+        val provider = prefix.params.model.findProvider(request.settings.providers) ?: return null
+        if (provider != prefix.provider) return null
+        val params = prefix.params.copy(
+            // Keep tool definitions and their ordering. The model produces data only.
+            customBody = prefix.params.customBody + app.androidrik.common.http.CustomBody("tool_choice", kotlinx.serialization.json.JsonPrimitive("none")),
+        )
+        val result = usageRecorder.wrap(providerManager.getProviderByType(provider),
+            UsageTag(UsageSource.MEMORY, conversation.assistantId, conversation.id)).generateText(
+            providerSetting = provider,
+            messages = prefix.messages + answer + UIMessage.user(instruction),
+            params = params,
+        )
+        check(!result.message.finishIncomplete && result.message.getTools().isEmpty()) { "Memory extraction did not finish with text" }
+        return result.message.toText()
+    }
     /**
      * @param messages 会话**全量**消息（与 messageNodes 对齐），既是回写基线，也是发送上下文的来源
      * @param compressionWindow 压缩发送窗口的**可重算**描述（检查点 + 边界下标）；null = 无压缩，
@@ -1751,6 +1775,15 @@ class GenerationHandler(
             },
             sessionId = sessionId,
         )
+        if (settings.memoryExtraction.enabled && settings.memoryExtraction.reusePromptCache &&
+            sessionId != null && provider is ProviderSetting.OpenAI &&
+            params.customBody.all { it.key in setOf("enable_thinking", "thinking_budget", "reasoning_effort") } &&
+            !memoryDisabled && assistant.enableMemory
+        ) {
+            extractionPrefixes.capture(sessionId, MemoryExtractionPrefixes.Prefix(
+                provider, params, requestMessages.toList(), null, System.currentTimeMillis(),
+            ))
+        }
         if (stream) {
             withGenerationRetry(
                 context,
@@ -1929,6 +1962,13 @@ class GenerationHandler(
                     onUpdateMessages(messages, false)
                     throw e
                 }
+            }
+        }
+        // A new turn may append its assistant only when the first response arrives.
+        // Bind after success so failed/cancelled requests never become extraction evidence.
+        sessionId?.let { id ->
+            messages.lastOrNull()?.takeIf { it.role == MessageRole.ASSISTANT && !it.finishIncomplete }?.let {
+                extractionPrefixes.bindReply(id, it.id)
             }
         }
     }

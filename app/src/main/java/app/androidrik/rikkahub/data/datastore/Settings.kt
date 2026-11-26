@@ -107,6 +107,7 @@ data class Settings(
     val fastModelId: Uuid? = null, // 快速模型（标题/建议等后台任务的兜底）；null = 未配置
     /** 做梦（记忆整理）专用模型；未配置时依次回落到快速模型、助手聊天模型。 */
     val memoryConsolidationModelId: Uuid? = null,
+    val memoryExtraction: app.androidrik.rikkahub.data.ai.MemoryExtractionConfig = app.androidrik.rikkahub.data.ai.MemoryExtractionConfig(),
     /**
      * 整理任务的推理强度（上游 72d419171 增量移植）；null = 跟随默认（AUTO，原行为）。
      * 对整理实际用上的那个模型生效（做梦模型或回落链上的模型）。

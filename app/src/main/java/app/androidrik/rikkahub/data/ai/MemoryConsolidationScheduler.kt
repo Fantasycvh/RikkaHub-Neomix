@@ -235,7 +235,15 @@ interface MemoryConsolidationWorker {
      * 所以这个区分不能省，否则限流形同虚设。
      */
     suspend fun findPending(memoryId: String, path: TriggerPath = TriggerPath.AUTO): List<PendingMemoryConversation>
-    /** 把 [conversation] 现有的内容都算作整理过；之后新增的轮次才会被整理（分叉时用） */
+    /** Eligible libraries for the independent conversation-extraction queue. */
+    suspend fun extractionMemoryIds(): Set<String> = emptySet()
+    suspend fun extractionCandidates(memoryId: String): List<PendingMemoryConversation> = emptyList()
+    suspend fun pendingForExtraction(conversation: Conversation): PendingMemoryConversation? = null
+    suspend fun extract(conversation: Conversation): MemoryConsolidationRun? = null
+    suspend fun reviewScheduled(memoryId: String, conversationIds: Set<Uuid>): MemoryConsolidationRun? =
+        consolidate(memoryId, conversationIds, fullReview = false)
+
+    /** 把 [conversation] 现有内容算作整理过，分叉时使用。 */
     suspend fun markConsolidated(conversation: Conversation)
 
     /**
@@ -304,6 +312,8 @@ class MemoryConsolidationScheduler(
      * 不缓存——读它是一次内存级的 DataStore 流取值，不构成触发路径的热点。
      */
     private val config: suspend () -> MemoryTriggerConfig = { MemoryTriggerConfig() },
+    private val extractionConfig: suspend () -> MemoryExtractionConfig = { MemoryExtractionConfig() },
+    private val loadConversation: suspend (Uuid) -> Conversation? = { null },
 ) {
 
     /**
@@ -317,6 +327,7 @@ class MemoryConsolidationScheduler(
     /** memoryId -> (conversationId -> 待整理轮数) */
     private val pending = mutableMapOf<String, Map<Uuid, Int>>()
     private val timers = mutableMapOf<String, Job>()
+    private val extractionTimers = mutableMapOf<Uuid, Job>()
     private val runLocks = mutableMapOf<String, Mutex>()
 
     /** 上次整理失败、之后还没有新轮次的记忆库（失败后不自动重试，见 [run]） */
@@ -382,7 +393,13 @@ class MemoryConsolidationScheduler(
     private suspend fun resumeAfterReview(memoryId: String) {
         if (hasUnhandledProposals(memoryId)) return
         updateStatus(memoryId) { it.copy(waitingForReview = false) }
-        runAutomatically(memoryId)
+        if (extractionConfig().enabled) resumeExtractions(memoryId) else runAutomatically(memoryId)
+    }
+
+    private suspend fun resumeExtractions(memoryId: String) {
+        for (candidate in worker.extractionCandidates(memoryId)) {
+            loadConversation(candidate.conversationId)?.let { scheduleExtraction(it) }
+        }
     }
 
     /** 一轮对话结束：按当前模式分派触发（模式语义见类 doc） */
@@ -393,6 +410,10 @@ class MemoryConsolidationScheduler(
         scope.launch {
             var handedOver = false
             try {
+                if (extractionConfig().enabled) {
+                    handedOver = scheduleExtraction(conversation, hold)
+                    return@launch
+                }
                 val cfg = config()
                 val item = worker.pendingOf(conversation) ?: return@launch
                 // 墙钟模式只标状态不触发（互斥的严格执行）；内存里的 pending 仍供状态面板展示
@@ -423,6 +444,51 @@ class MemoryConsolidationScheduler(
         }
     }
 
+    private suspend fun scheduleExtraction(conversation: Conversation, waitingHold: AutoCloseable? = null): Boolean {
+        val item = worker.pendingForExtraction(conversation) ?: return false
+        val timer = scope.launch(start = CoroutineStart.LAZY) {
+            delay(120_000L)
+            if (!extractionConfig().enabled) return@launch
+            synchronized(lock) { runLocks.getOrPut(item.memoryId) { Mutex() } }.withLock {
+                val latest = loadConversation(conversation.id) ?: return@withLock
+                if (latest.currentMessages != conversation.currentMessages) return@withLock
+                if (worker.pendingProposals(item.memoryId).isNotEmpty()) return@withLock
+                val hold = keepAlive.acquire()
+                updateStatus(item.memoryId) { it.copy(running = true) }
+                try {
+                    val result = try {
+                        worker.extract(latest)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        MemoryConsolidationRun(item.memoryId, System.currentTimeMillis(), setOf(latest.id), false, error = e.message)
+                    }
+                    result?.let { run ->
+                        updateStatus(item.memoryId) {
+                            it.copy(
+                                lastRun = run,
+                                suggestions = run.proposals,
+                                suggestionsAt = run.finishedAt,
+                                waitingForReview = run.proposals.isNotEmpty(),
+                            )
+                        }
+                        _automaticRuns.emit(run)
+                    }
+                } finally {
+                    updateStatus(item.memoryId) { it.copy(running = false) }
+                    hold.close()
+                }
+            }
+        }
+        timer.invokeOnCompletion {
+            waitingHold?.close()
+            synchronized(lock) { if (extractionTimers[conversation.id] === timer) extractionTimers.remove(conversation.id) }
+        }
+        synchronized(lock) { extractionTimers.put(conversation.id, timer) }?.cancel()
+        timer.start()
+        return true
+    }
+
     /** [fork] 是从另一个对话分叉出来的：复制过来的轮次由原对话负责整理，这里不再整理一遍 */
     suspend fun onConversationForked(fork: Conversation) {
         worker.markConsolidated(fork)
@@ -443,9 +509,10 @@ class MemoryConsolidationScheduler(
 
     /** 应用启动时补上进程被杀前没来得及整理的对话 */
     suspend fun resumePending() {
+        if (extractionConfig().enabled) worker.extractionMemoryIds().forEach { resumeExtractions(it) }
         // 墙钟模式互斥：不补漏、不计时（闹钟凭配置里的 nextRunAt 自会重排，P1）；
         // 待决策建议的恢复不受模式影响（界面要靠它回到「有建议待处理」的状态）
-        if (!config().mode.isWallClock) {
+        if (!extractionConfig().enabled && !config().mode.isWallClock) {
             // 每个记忆库各查各的：一起查再截断的话，对话少的记忆库会被对话多的挤掉
             worker.memoryIdsWithUpdates().forEach { memoryId ->
                 if (mergePending(memoryId, worker.findPending(memoryId))) restartTimer(memoryId)
@@ -481,13 +548,14 @@ class MemoryConsolidationScheduler(
     private fun launchRun(memoryId: String) {
         scope.launch {
             // 墙钟模式互斥（决议 #2）：事件驱动的入口不触发——只有闹钟到点与手动「整理一下」可用
-            if (config().mode.isWallClock) return@launch
+            if (extractionConfig().enabled || config().mode.isWallClock) return@launch
             runAutomatically(memoryId)
         }
     }
 
     private suspend fun runAutomatically(memoryId: String) {
         cancelTimer(memoryId)
+        if (extractionConfig().enabled) return
         // **有未处理的建议就先别自动整理**（2026-10-16 真机后加的闸门）。
         //
         // 两条理由，任一都足够：
@@ -547,7 +615,8 @@ class MemoryConsolidationScheduler(
                 if (!fullReview && path == TriggerPath.AUTO && memoryId in failed) return null
                 pending[memoryId]?.keys.orEmpty()
             }
-            if (ids.isEmpty() && !fullReview) return null
+            val scheduledReview = path == TriggerPath.SCHEDULED && extractionConfig().enabled
+            if (ids.isEmpty() && !fullReview && !scheduledReview) return null
 
             updateStatus(memoryId) { it.copy(running = true) }
             var run: MemoryConsolidationRun? = null
@@ -561,7 +630,7 @@ class MemoryConsolidationScheduler(
                         updateStatus(memoryId) { it.copy(waitingForReview = true) }
                         return null
                     }
-                    worker.consolidate(memoryId, ids, fullReview)
+                    if (scheduledReview) worker.reviewScheduled(memoryId, ids) else worker.consolidate(memoryId, ids, fullReview)
                 } catch (e: CancellationException) {
                     // 取消（进程要走了/用户停掉）不是「整理失败」：不记 failed，否则下次启动会被拦住
                     throw e

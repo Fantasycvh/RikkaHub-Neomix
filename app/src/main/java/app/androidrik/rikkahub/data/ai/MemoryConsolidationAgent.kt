@@ -40,6 +40,8 @@ data class MemoryConsolidationRequest(
     val refusedChanges: List<String> = emptyList(),
     /** Exact full-text page snapshot rendered to the model, never refreshed while proposals are saved. */
     val initialRevisions: Map<String, Long> = emptyMap(),
+    val extractionConversation: app.androidrik.rikkahub.data.model.Conversation? = null,
+    val evidenceIds: Set<kotlin.uuid.Uuid> = emptySet(),
 )
 
 data class MemoryConsolidationOutcome(

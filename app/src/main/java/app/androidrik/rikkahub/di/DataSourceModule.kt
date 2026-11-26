@@ -494,6 +494,8 @@ val dataSourceModule = module {
             isAppVisible = { foreground.isForeground },
             // 触发方式配置每次事件现读（改了立刻生效，见 MemoryTriggerConfig 的 kdoc）
             config = { settingsStore.settingsFlow.first().memoryTriggerConfig },
+            extractionConfig = { settingsStore.settingsFlow.first().memoryExtraction },
+            loadConversation = { id -> get<ConversationRepository>().getConversationById(id) },
         )
     }
 

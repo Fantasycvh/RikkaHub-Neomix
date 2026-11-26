@@ -311,6 +311,7 @@ class SettingsStore(
         val SELECT_MODEL = stringPreferencesKey("chat_model")
         val FALLBACK_CHAT_MODEL = stringPreferencesKey("fallback_chat_model")
         val FAST_MODEL = stringPreferencesKey("fast_model")
+        val MEMORY_EXTRACTION = stringPreferencesKey("memory_extraction")
         val MEMORY_CONSOLIDATION_MODEL = stringPreferencesKey("memory_consolidation_model")
         val MEMORY_CONSOLIDATION_REASONING = stringPreferencesKey("memory_consolidation_reasoning")
         val MEMORY_CONSOLIDATION_PROMPT = stringPreferencesKey("memory_consolidation_prompt")
@@ -548,6 +549,9 @@ class SettingsStore(
                     fastModelId = preferences[FAST_MODEL]?.let { Uuid.parse(it) }
                         // 旧版本「未配置」会落成 AUTO 哨兵（无清除入口时代的默认值），视为未配置
                         ?.takeIf { it != DEFAULT_AUTO_MODEL_ID },
+                    memoryExtraction = preferences[MEMORY_EXTRACTION]?.let {
+                        runCatching { JsonInstant.decodeFromString<app.androidrik.rikkahub.data.ai.MemoryExtractionConfig>(it) }.getOrNull()
+                    } ?: app.androidrik.rikkahub.data.ai.MemoryExtractionConfig(),
                     memoryConsolidationModelId = preferences[MEMORY_CONSOLIDATION_MODEL]?.let { Uuid.parse(it) },
                     memoryConsolidationReasoningLevel = preferences[MEMORY_CONSOLIDATION_REASONING]
                         ?.takeIf { it.isNotBlank() }
@@ -1075,6 +1079,7 @@ class SettingsStore(
             settings.fastModelId?.let {
                 preferences[FAST_MODEL] = it.toString()
             } ?: preferences.remove(FAST_MODEL)
+            preferences[MEMORY_EXTRACTION] = JsonInstant.encodeToString(settings.memoryExtraction)
             settings.memoryConsolidationModelId?.let {
                 preferences[MEMORY_CONSOLIDATION_MODEL] = it.toString()
             } ?: preferences.remove(MEMORY_CONSOLIDATION_MODEL)
