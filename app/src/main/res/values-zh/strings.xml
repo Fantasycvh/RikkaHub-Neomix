@@ -3559,4 +3559,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_summary_backup_manual">手动</string>
   <string name="tool_ui_memory_before">原内容</string>
   <string name="tool_ui_memory_after">改为</string>
+  <string name="chat_status_dock_pending_title">有 %1$d 项等待确认或回答</string>
+  <string name="chat_status_dock_pending_view">查看</string>
+  <string name="chat_status_dock_more">+%1$d</string>
+  <string name="chat_status_dock_collapse">收起</string>
+  <string name="chat_input_placeholder_pending_interaction">等待确认或回答，输入可跳过并发送…</string>
+  <string name="chat_retain_tasks_and_send">保留任务并立即发送</string>
 </resources>

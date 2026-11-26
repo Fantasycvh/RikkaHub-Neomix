@@ -772,16 +772,33 @@ private fun ChatPageContent(
             bottomBar = {
                 Column {
                 // AI 反问/工具审批待答（design-ask-user-interrupt）：待答时生成已结束、
-                // isGenerating=false，但用户同样需要打断出口与队列滞留提示
-                val hasPendingInteraction = conversation.currentMessages.any { message ->
-                    message.parts.any { it is UIMessagePart.Tool && it.isPending }
+                // isGenerating=false，但用户同样需要打断出口、定位入口与队列滞留提示
+                val (pendingInteractionCount, pendingInteractionNodeId) = remember(conversation) {
+                    findPendingInteractionSummary(conversation)
                 }
-                PlanBar(todos = planTodos)
-                // 手动压缩后台化提示条（design-manual-compress-background §4.3）：常驻输入区上方，
-                // 只显示当前会话的进度（按 id 过滤，多会话不串台），不参与消息列表滚动
-                CompressBackgroundBar(
-                    progress = compressionStates[conversation.id],
-                    onCancel = { vm.cancelManualCompression() },
+                val hasPendingInteraction = pendingInteractionCount > 0
+                val statusDockModel = remember(
+                    pendingInteractionCount,
+                    pendingInteractionNodeId,
+                    compressionStates[conversation.id],
+                    planTodos,
+                ) {
+                    resolveChatStatusDock(
+                        pendingInteractionCount = pendingInteractionCount,
+                        pendingTargetNodeId = pendingInteractionNodeId,
+                        compressionProgress = compressionStates[conversation.id],
+                        todos = planTodos,
+                    )
+                }
+                ChatStatusDock(
+                    model = statusDockModel,
+                    onJumpToPending = { targetNodeId ->
+                        chatListScrollController.scrollToMessage(targetNodeId)
+                    },
+                    onCancelCompression = { vm.cancelManualCompression() },
+                    renderCompressionBar = { progress, onCancel ->
+                        CompressBackgroundBar(progress = progress, onCancel = onCancel)
+                    },
                 )
                 ChatInput(
                     state = inputState,
@@ -1020,6 +1037,18 @@ private fun ChatPageContent(
                 onClickSuggestion = { suggestion ->
                     inputState.editingMessage = null
                     inputState.setMessageText(suggestion)
+                },
+                onLongClickSuggestion = { suggestion ->
+                    if (currentChatModel == null) {
+                        toaster.show(
+                            resources.getString(R.string.media_creation_page_select_model_first),
+                            type = ToastType.Error,
+                        )
+                    } else if (suggestion.isNotBlank()) {
+                        inputState.editingMessage = null
+                        vm.handleMessageSend(listOf(UIMessagePart.Text(suggestion)))
+                        chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
+                    }
                 },
                 onTranslate = { message, locale ->
                     vm.translateMessage(message, locale)

@@ -3545,4 +3545,10 @@
   <string name="setting_page_summary_backup_manual">手動</string>
   <string name="tool_ui_memory_before">原內容</string>
   <string name="tool_ui_memory_after">改為</string>
+  <string name="chat_status_dock_pending_title">有 %1$d 項等待確認或回答</string>
+  <string name="chat_status_dock_pending_view">查看</string>
+  <string name="chat_status_dock_more">+%1$d</string>
+  <string name="chat_status_dock_collapse">收合</string>
+  <string name="chat_input_placeholder_pending_interaction">等待確認或回答，輸入可略過並傳送…</string>
+  <string name="chat_retain_tasks_and_send">保留任務並立即傳送</string>
 </resources>

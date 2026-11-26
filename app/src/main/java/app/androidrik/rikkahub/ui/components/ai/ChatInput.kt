@@ -76,6 +76,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -537,6 +538,8 @@ fun ChatInput(
                         state = state,
                         completionProviders = completionProviders,
                         onSendMessage = { sendMessage() },
+                        hasPendingInteraction = hasPendingInteraction,
+                        imeVisible = imeVisible,
                         showEditKeepFollowing = showEditKeepFollowing,
                         editKeepFollowing = editKeepFollowing,
                         onEditKeepFollowingChange = onEditKeepFollowingChange,
@@ -550,7 +553,7 @@ fun ChatInput(
                                 keyboardController?.hide()
                                 onRetainTasksSendClick()
                             },
-                        ) { Text("保留任务并立即发送") }
+                        ) { Text(stringResource(R.string.chat_retain_tasks_and_send)) }
                     }
 
                     Row(
@@ -760,11 +763,23 @@ private fun ActionIconButton(
     }
 }
 
+/**
+ * 按窗口高度与键盘态动态推导输入栏最大行数（范围 2..6）：
+ * 横屏/小屏/分屏时自动收紧避免顶满视口，大屏竖屏允许最多 6 行编辑长提示词。
+ */
+internal fun resolveComposerMaxLines(windowHeightDp: Int, imeVisible: Boolean): Int {
+    if (windowHeightDp <= 0) return 5
+    val budgetDp = if (imeVisible) windowHeightDp * 0.14f else windowHeightDp * 0.18f
+    return (budgetDp / 22f).roundToInt().coerceIn(2, 6)
+}
+
 @Composable
 private fun TextInputRow(
     state: ChatInputState,
     completionProviders: List<ChatCompletionProvider>,
     onSendMessage: () -> Unit,
+    hasPendingInteraction: Boolean = false,
+    imeVisible: Boolean = false,
     showEditKeepFollowing: Boolean = false,
     editKeepFollowing: Boolean = true,
     onEditKeepFollowingChange: (Boolean) -> Unit = {},
@@ -926,6 +941,10 @@ private fun TextInputRow(
                 restoreInputFocus = false
             }
         }
+        val configuration = LocalConfiguration.current
+        val maxInputLines = remember(configuration.screenHeightDp, imeVisible) {
+            resolveComposerMaxLines(configuration.screenHeightDp, imeVisible)
+        }
         // Both hosts share TextFieldState, but only one may observe/layout it at a time.
         // Keep each host's scroll state outside this branch so switching does not reset it.
         if (!isFullScreen) TextField(
@@ -942,9 +961,19 @@ private fun TextInputRow(
                 },
             shape = MaterialTheme.shapes.largeIncreased,
             placeholder = {
-                Text(stringResource(R.string.chat_input_placeholder))
+                Text(
+                    stringResource(
+                        if (hasPendingInteraction && !state.isEditing()) {
+                            R.string.chat_input_placeholder_pending_interaction
+                        } else {
+                            R.string.chat_input_placeholder
+                        }
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             },
-            lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = 5),
+            lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = maxInputLines),
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Sentences,
                 imeAction = if (settings.displaySetting.sendOnEnter) ImeAction.Send else ImeAction.Default

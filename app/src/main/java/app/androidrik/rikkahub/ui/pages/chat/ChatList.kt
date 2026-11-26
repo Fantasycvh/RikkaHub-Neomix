@@ -21,6 +21,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -189,6 +190,7 @@ fun ChatList(
     /** 分支切换（时间线）：切到某兄弟子树（服务端落到该子树最近更新叶子）；树形分支 P1 */
     onSwitchBranch: (Uuid) -> Unit = {},
     onClickSuggestion: (String) -> Unit = {},
+    onLongClickSuggestion: ((String) -> Unit)? = null,
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)? = null,
     onClearTranslation: (UIMessage) -> Unit = {},
     /** 预览搜索跳转：参数为目标节点（外层借此退出预览模式；滚动由列表内部解析） */
@@ -276,6 +278,7 @@ fun ChatList(
                     onDelete = onDelete,
                     onUpdateMessage = onUpdateMessage,
                     onClickSuggestion = onClickSuggestion,
+                    onLongClickSuggestion = onLongClickSuggestion,
                     onTranslate = onTranslate,
                     onClearTranslation = onClearTranslation,
                     animatedVisibilityScope = this@AnimatedContent,
@@ -324,6 +327,7 @@ private fun ChatListNormal(
     onDelete: (UIMessage) -> Unit,
     onUpdateMessage: (MessageNode) -> Unit,
     onClickSuggestion: (String) -> Unit,
+    onLongClickSuggestion: ((String) -> Unit)? = null,
     onTranslate: ((UIMessage, java.util.Locale) -> Unit)?,
     onClearTranslation: (UIMessage) -> Unit,
     animatedVisibilityScope: AnimatedVisibilityScope,
@@ -996,6 +1000,7 @@ private fun ChatListNormal(
                 ChatSuggestionsRow(
                     conversation = conversation,
                     onClickSuggestion = onClickSuggestion,
+                    onLongClickSuggestion = onLongClickSuggestion,
                     modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
@@ -1410,7 +1415,8 @@ private fun PreviewCheckpointCard(
 private fun ChatSuggestionsRow(
     modifier: Modifier = Modifier,
     conversation: Conversation,
-    onClickSuggestion: (String) -> Unit
+    onClickSuggestion: (String) -> Unit,
+    onLongClickSuggestion: ((String) -> Unit)? = null,
 ) {
     LazyRow(
         modifier = modifier
@@ -1423,9 +1429,10 @@ private fun ChatSuggestionsRow(
             Box(
                 modifier = Modifier
                     .clip(appSkinButtonShape())
-                    .clickable {
-                        onClickSuggestion(suggestion)
-                    }
+                    .combinedClickable(
+                        onClick = { onClickSuggestion(suggestion) },
+                        onLongClick = onLongClickSuggestion?.let { action -> { action(suggestion) } },
+                    )
                     .background(MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp))
                     .padding(vertical = 4.dp, horizontal = 8.dp),
             ) {
