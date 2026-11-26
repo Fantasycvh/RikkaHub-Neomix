@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
@@ -106,12 +108,15 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor
     ) { contentPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = contentPadding + PaddingValues(8.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(contentPadding + PaddingValues(8.dp)),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            item {
+            run {
                 var createNewConversationOnStart by rememberSharedPreferenceBoolean(
                     "create_new_conversation_on_start",
                     true
@@ -496,7 +501,7 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                 }
             }
 
-            item {
+            run {
                 var retrySetting by remember(settings) { mutableStateOf(settings.retrySetting) }
                 // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条；范本 1808d418f）。
                 // 旧写法是 `remember(settings)` 文本缓冲：每次设置回声（含本框自己的落盘回声）都把
@@ -652,15 +657,12 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                 }
             }
 
-            item {
-                KeepAliveSettingGroup()
-            }
+            KeepAliveSettingGroup()
 
-            item {
-                CardGroup(
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    title = { Text(stringResource(R.string.setting_page_tts_settings)) },
-                ) {
+            CardGroup(
+                modifier = Modifier.padding(horizontal = 8.dp),
+                title = { Text(stringResource(R.string.setting_page_tts_settings)) },
+            ) {
                     item(
                         headlineContent = { Text(stringResource(R.string.setting_display_page_tts_only_read_quoted_title)) },
                         supportingContent = { Text(stringResource(R.string.setting_display_page_tts_only_read_quoted_desc)) },
@@ -697,12 +699,9 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                             )
                         },
                     )
-                }
             }
 
-            item {
-                GuardrailsSettingGroup()
-            }
+            GuardrailsSettingGroup()
         }
     }
 }

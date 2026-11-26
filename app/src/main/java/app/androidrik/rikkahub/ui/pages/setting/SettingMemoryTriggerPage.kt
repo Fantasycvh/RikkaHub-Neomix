@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
@@ -45,7 +47,9 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.ui.hooks.rememberSyncedPersistedTextFieldState
 import app.androidrik.rikkahub.data.ai.CronExpression
 import app.androidrik.rikkahub.data.ai.MemoryTriggerConfig
 import app.androidrik.rikkahub.data.ai.MemoryTriggerMode
@@ -83,13 +87,13 @@ import kotlin.uuid.Uuid
 @Composable
 fun SettingMemoryTriggerPage() {
     val settingsStore: SettingsStore = koinInject()
+    val appScope: AppScope = koinInject()
     val settings = LocalSettings.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val scope = rememberCoroutineScope()
     val config = settings.memoryTriggerConfig
 
     fun update(transform: (MemoryTriggerConfig) -> MemoryTriggerConfig) {
-        scope.launch { settingsStore.update { it.copy(memoryTriggerConfig = transform(it.memoryTriggerConfig)) } }
+        appScope.launch { settingsStore.update { it.copy(memoryTriggerConfig = transform(it.memoryTriggerConfig)) } }
     }
 
     /** 墙钟参数变化：旧排程作废（nextRunAt 置空由对账层重算首槽），ONCE 同时复位已执行标记 */
@@ -147,108 +151,135 @@ fun SettingMemoryTriggerPage() {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = innerPadding + PaddingValues(8.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(innerPadding + PaddingValues(8.dp)),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item {
-                CardGroup(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                ) {
-                    item {
-                        Column {
-                            MemoryTriggerMode.entries.forEach { mode ->
-                                TriggerModeRow(
-                                    mode = mode,
-                                    selected = config.mode == mode,
-                                    onSelect = { selectMode(mode) },
-                                )
-                            }
+            CardGroup(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+            ) {
+                item {
+                    Column {
+                        MemoryTriggerMode.entries.forEach { mode ->
+                            TriggerModeRow(
+                                mode = mode,
+                                selected = config.mode == mode,
+                                onSelect = { selectMode(mode) },
+                            )
                         }
                     }
                 }
             }
-            item {
-                CardGroup(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                ) {
-                    when (config.mode) {
-                        MemoryTriggerMode.IDLE -> {
-                            numberParamItem(
-                                headlineRes = R.string.memory_trigger_param_idle_delay,
-                                supportingRes = R.string.memory_trigger_param_idle_delay_desc,
-                                value = config.idleDelayMinutes,
-                                range = MemoryTriggerConfig.MIN_IDLE_DELAY_MINUTES..
-                                    MemoryTriggerConfig.MAX_IDLE_DELAY_MINUTES,
-                                onChange = { v -> update { it.copy(idleDelayMinutes = v) } },
-                            )
-                            numberParamItem(
-                                headlineRes = R.string.memory_trigger_param_every_n,
-                                supportingRes = R.string.memory_trigger_param_every_n_desc,
-                                value = config.everyNTurns,
-                                range = 1..100,
-                                onChange = { v -> update { it.copy(everyNTurns = v) } },
-                            )
-                        }
-
-                        MemoryTriggerMode.EVERY_N_TURNS -> numberParamItem(
+            CardGroup(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+            ) {
+                when (config.mode) {
+                    MemoryTriggerMode.IDLE -> {
+                        numberParamItem(
+                            headlineRes = R.string.memory_trigger_param_idle_delay,
+                            supportingRes = R.string.memory_trigger_param_idle_delay_desc,
+                            value = config.idleDelayMinutes,
+                            range = MemoryTriggerConfig.MIN_IDLE_DELAY_MINUTES..
+                                MemoryTriggerConfig.MAX_IDLE_DELAY_MINUTES,
+                            resetKey = settings.init,
+                            onChange = { v -> update { it.copy(idleDelayMinutes = v) } },
+                        )
+                        numberParamItem(
                             headlineRes = R.string.memory_trigger_param_every_n,
                             supportingRes = R.string.memory_trigger_param_every_n_desc,
                             value = config.everyNTurns,
                             range = 1..100,
+                            resetKey = settings.init,
                             onChange = { v -> update { it.copy(everyNTurns = v) } },
                         )
+                    }
 
-                        MemoryTriggerMode.TURN_N -> numberParamItem(
-                            headlineRes = R.string.memory_trigger_param_turn_n,
-                            supportingRes = R.string.memory_trigger_param_turn_n_desc,
-                            value = config.triggerTurn,
-                            range = 1..1000,
-                            onChange = { v -> update { it.copy(triggerTurn = v) } },
-                        )
+                    MemoryTriggerMode.EVERY_N_TURNS -> numberParamItem(
+                        headlineRes = R.string.memory_trigger_param_every_n,
+                        supportingRes = R.string.memory_trigger_param_every_n_desc,
+                        value = config.everyNTurns,
+                        range = 1..100,
+                        resetKey = settings.init,
+                        onChange = { v -> update { it.copy(everyNTurns = v) } },
+                    )
 
-                        MemoryTriggerMode.ONCE -> {
-                            item(
-                                onClick = { showOnceDatePicker = true },
-                                headlineContent = { Text(stringResource(R.string.memory_trigger_param_once_date)) },
-                                supportingContent = {
-                                    Text(
-                                        if (config.schedule.runAt > 0) {
-                                            formatDateTime(config.schedule.runAt)
-                                        } else {
-                                            stringResource(R.string.scheduled_task_pick_date)
-                                        }
-                                    )
-                                },
-                            )
-                            timeOfDayItem(
-                                headlineRes = R.string.memory_trigger_param_time,
-                                hour = config.schedule.hour,
-                                minute = config.schedule.minute,
-                                onHour = { h -> setOnceRunAt(hour = h) },
-                                onMinute = { m -> setOnceRunAt(minute = m) },
-                            )
-                        }
+                    MemoryTriggerMode.TURN_N -> numberParamItem(
+                        headlineRes = R.string.memory_trigger_param_turn_n,
+                        supportingRes = R.string.memory_trigger_param_turn_n_desc,
+                        value = config.triggerTurn,
+                        range = 1..1000,
+                        resetKey = settings.init,
+                        onChange = { v -> update { it.copy(triggerTurn = v) } },
+                    )
 
-                        MemoryTriggerMode.INTERVAL -> numberParamItem(
-                            headlineRes = R.string.memory_trigger_param_interval,
-                            supportingRes = R.string.memory_trigger_param_interval_desc,
-                            value = config.schedule.intervalMinutes.toInt(),
-                            range = 15..10080,
-                            onChange = { v ->
-                                updateSchedule { it.copy(schedule = it.schedule.copy(intervalMinutes = v.toLong())) }
+                    MemoryTriggerMode.ONCE -> {
+                        item(
+                            onClick = { showOnceDatePicker = true },
+                            headlineContent = { Text(stringResource(R.string.memory_trigger_param_once_date)) },
+                            supportingContent = {
+                                Text(
+                                    if (config.schedule.runAt > 0) {
+                                        formatDateTime(config.schedule.runAt)
+                                    } else {
+                                        stringResource(R.string.scheduled_task_pick_date)
+                                    }
+                                )
                             },
                         )
-
-                        MemoryTriggerMode.DAILY -> timeOfDayItem(
+                        timeOfDayItem(
                             headlineRes = R.string.memory_trigger_param_time,
                             hour = config.schedule.hour,
                             minute = config.schedule.minute,
+                            resetKey = settings.init,
+                            onHour = { h -> setOnceRunAt(hour = h) },
+                            onMinute = { m -> setOnceRunAt(minute = m) },
+                        )
+                    }
+
+                    MemoryTriggerMode.INTERVAL -> numberParamItem(
+                        headlineRes = R.string.memory_trigger_param_interval,
+                        supportingRes = R.string.memory_trigger_param_interval_desc,
+                        value = config.schedule.intervalMinutes.toInt(),
+                        range = 15..10080,
+                        resetKey = settings.init,
+                        onChange = { v ->
+                            updateSchedule { it.copy(schedule = it.schedule.copy(intervalMinutes = v.toLong())) }
+                        },
+                    )
+
+                    MemoryTriggerMode.DAILY -> timeOfDayItem(
+                        headlineRes = R.string.memory_trigger_param_time,
+                        hour = config.schedule.hour,
+                        minute = config.schedule.minute,
+                        resetKey = settings.init,
+                        onHour = { h ->
+                            updateSchedule { it.copy(schedule = it.schedule.copy(hour = h)) }
+                        },
+                        onMinute = { m ->
+                            updateSchedule { it.copy(schedule = it.schedule.copy(minute = m)) }
+                        },
+                    )
+
+                    MemoryTriggerMode.WEEKLY -> {
+                        weekdayItem(
+                            dayOfWeek = config.schedule.dayOfWeek,
+                            onSelect = { dow ->
+                                updateSchedule { it.copy(schedule = it.schedule.copy(dayOfWeek = dow)) }
+                            },
+                        )
+                        timeOfDayItem(
+                            headlineRes = R.string.memory_trigger_param_time,
+                            hour = config.schedule.hour,
+                            minute = config.schedule.minute,
+                            resetKey = settings.init,
                             onHour = { h ->
                                 updateSchedule { it.copy(schedule = it.schedule.copy(hour = h)) }
                             },
@@ -256,95 +287,72 @@ fun SettingMemoryTriggerPage() {
                                 updateSchedule { it.copy(schedule = it.schedule.copy(minute = m)) }
                             },
                         )
-
-                        MemoryTriggerMode.WEEKLY -> {
-                            weekdayItem(
-                                dayOfWeek = config.schedule.dayOfWeek,
-                                onSelect = { dow ->
-                                    updateSchedule { it.copy(schedule = it.schedule.copy(dayOfWeek = dow)) }
-                                },
-                            )
-                            timeOfDayItem(
-                                headlineRes = R.string.memory_trigger_param_time,
-                                hour = config.schedule.hour,
-                                minute = config.schedule.minute,
-                                onHour = { h ->
-                                    updateSchedule { it.copy(schedule = it.schedule.copy(hour = h)) }
-                                },
-                                onMinute = { m ->
-                                    updateSchedule { it.copy(schedule = it.schedule.copy(minute = m)) }
-                                },
-                            )
-                        }
-
-                        MemoryTriggerMode.CRON -> cronExpressionItem(
-                            expression = config.cronExpression,
-                            onCommit = { expr -> updateSchedule { it.copy(cronExpression = expr) } },
-                        )
                     }
+
+                    MemoryTriggerMode.CRON -> cronExpressionItem(
+                        expression = config.cronExpression,
+                        resetKey = settings.init,
+                        onCommit = { expr -> updateSchedule { it.copy(cronExpression = expr) } },
+                    )
                 }
             }
             if (config.mode.isWallClock) {
-                item {
-                    CardGroup(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp),
-                    ) {
-                        item(
-                            headlineContent = { Text(stringResource(R.string.memory_trigger_status_title)) },
-                            supportingContent = {
-                                Text(
-                                    when {
-                                        config.mode == MemoryTriggerMode.ONCE && config.onceFired ->
-                                            stringResource(R.string.memory_trigger_status_once_done)
-
-                                        config.nextRunAt != null ->
-                                            stringResource(
-                                                R.string.memory_trigger_status_next,
-                                                formatDateTime(config.nextRunAt),
-                                            )
-
-                                        else -> stringResource(R.string.memory_trigger_status_pending)
-                                    }
-                                )
-                            },
-                        )
-                    }
-                }
-            }
-            item {
                 CardGroup(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 8.dp),
                 ) {
                     item(
-                        onClick = { showScopePicker = true },
-                        headlineContent = { Text(stringResource(R.string.memory_trigger_scope)) },
+                        headlineContent = { Text(stringResource(R.string.memory_trigger_status_title)) },
                         supportingContent = {
                             Text(
-                                if (config.scopeAssistantIds.isEmpty()) {
-                                    stringResource(R.string.memory_trigger_scope_all)
-                                } else {
-                                    stringResource(
-                                        R.string.memory_trigger_scope_selected,
-                                        config.scopeAssistantIds.size,
-                                    )
+                                when {
+                                    config.mode == MemoryTriggerMode.ONCE && config.onceFired ->
+                                        stringResource(R.string.memory_trigger_status_once_done)
+
+                                    config.nextRunAt != null ->
+                                        stringResource(
+                                            R.string.memory_trigger_status_next,
+                                            formatDateTime(config.nextRunAt),
+                                        )
+
+                                    else -> stringResource(R.string.memory_trigger_status_pending)
                                 }
                             )
                         },
                     )
-                    item(
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.memory_trigger_note_per_assistant),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                    )
                 }
+            }
+            CardGroup(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+            ) {
+                item(
+                    onClick = { showScopePicker = true },
+                    headlineContent = { Text(stringResource(R.string.memory_trigger_scope)) },
+                    supportingContent = {
+                        Text(
+                            if (config.scopeAssistantIds.isEmpty()) {
+                                stringResource(R.string.memory_trigger_scope_all)
+                            } else {
+                                stringResource(
+                                    R.string.memory_trigger_scope_selected,
+                                    config.scopeAssistantIds.size,
+                                )
+                            }
+                        )
+                    },
+                )
+                item(
+                    headlineContent = {
+                        Text(
+                            text = stringResource(R.string.memory_trigger_note_per_assistant),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                )
             }
         }
     }
@@ -465,21 +473,26 @@ private fun CardGroupScope.numberParamItem(
     value: Int,
     range: IntRange,
     onChange: (Int) -> Unit,
+    resetKey: Any? = Unit,
 ) {
     item(
         headlineContent = { Text(stringResource(headlineRes)) },
         supportingContent = { Text(stringResource(supportingRes)) },
         trailingContent = {
-            var text by remember(value) { mutableStateOf(value.toString()) }
+            val state = rememberSyncedPersistedTextFieldState(
+                externalValue = value,
+                format = { it.toString() },
+                parse = { raw -> raw.trim().toIntOrNull()?.takeIf { it in range } },
+                onCommit = onChange,
+                resetKey = resetKey,
+            )
             TextField(
-                value = text,
-                onValueChange = { input ->
-                    text = input.filter { it.isDigit() }
-                    val parsed = text.toIntOrNull()
-                    if (parsed != null && parsed in range && parsed != value) onChange(parsed)
+                state = state,
+                inputTransformation = InputTransformation {
+                    if (!asCharSequence().all(Char::isDigit)) revertAllChanges()
                 },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
+                lineLimits = TextFieldLineLimits.SingleLine,
                 // 固定宽度：不约束的话 TextField 会把 supporting 文本挤成竖排一列（真机截图实测）
                 modifier = Modifier.width(110.dp),
                 shape = CircleShape,
@@ -500,6 +513,7 @@ private fun CardGroupScope.timeOfDayItem(
     minute: Int,
     onHour: (Int) -> Unit,
     onMinute: (Int) -> Unit,
+    resetKey: Any? = Unit,
 ) {
     formItem(headlineContent = { Text(stringResource(headlineRes)) }) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -508,6 +522,7 @@ private fun CardGroupScope.timeOfDayItem(
                 range = 0..23,
                 label = stringResource(R.string.scheduled_task_hour),
                 onCommit = onHour,
+                resetKey = resetKey,
                 modifier = Modifier.weight(1f),
             )
             NumberField(
@@ -515,6 +530,7 @@ private fun CardGroupScope.timeOfDayItem(
                 range = 0..59,
                 label = stringResource(R.string.scheduled_task_minute),
                 onCommit = onMinute,
+                resetKey = resetKey,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -529,23 +545,27 @@ private fun CardGroupScope.timeOfDayItem(
 private fun CardGroupScope.cronExpressionItem(
     expression: String,
     onCommit: (String) -> Unit,
+    resetKey: Any? = Unit,
 ) {
     formItem(
         headlineContent = { Text(stringResource(R.string.memory_trigger_param_cron)) },
         supportingContent = { Text(stringResource(R.string.memory_trigger_param_cron_desc)) },
     ) {
-        var text by remember(expression) { mutableStateOf(expression) }
+        val state = rememberSyncedPersistedTextFieldState(
+            externalValue = expression,
+            format = { it },
+            parse = { raw -> raw.takeIf { runCatching { CronExpression.parse(it) }.isSuccess } },
+            onCommit = onCommit,
+            resetKey = resetKey,
+        )
+        val text = state.text.toString()
         val parseError = remember(text) {
             runCatching { CronExpression.parse(text) }.exceptionOrNull()
         }
         AppOutlinedTextField(
-            value = text,
-            onValueChange = { input ->
-                text = input
-                if (runCatching { CronExpression.parse(input) }.isSuccess) onCommit(input)
-            },
+            state = state,
             isError = parseError != null,
-            singleLine = true,
+            lineLimits = TextFieldLineLimits.SingleLine,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -603,17 +623,22 @@ private fun NumberField(
     label: String,
     onCommit: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    resetKey: Any? = Unit,
 ) {
-    var text by remember(value) { mutableStateOf(value.toString()) }
+    val state = rememberSyncedPersistedTextFieldState(
+        externalValue = value,
+        format = { it.toString() },
+        parse = { raw -> raw.trim().toIntOrNull()?.takeIf { it in range } },
+        onCommit = onCommit,
+        resetKey = resetKey,
+    )
     AppOutlinedTextField(
-        value = text,
-        onValueChange = { input ->
-            text = input.filter { it.isDigit() }.take(4)
-            val parsed = text.toIntOrNull()
-            if (parsed != null && parsed in range && parsed != value) onCommit(parsed)
+        state = state,
+        inputTransformation = InputTransformation {
+            if (length > 4 || !asCharSequence().all(Char::isDigit)) revertAllChanges()
         },
         label = { Text(label) },
-        singleLine = true,
+        lineLimits = TextFieldLineLimits.SingleLine,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = modifier,
     )

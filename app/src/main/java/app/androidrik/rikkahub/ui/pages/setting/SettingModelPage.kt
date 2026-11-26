@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -44,6 +42,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -52,6 +51,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -78,6 +79,7 @@ import app.androidrik.rikkahub.ui.components.ai.ReasoningButton
 import app.androidrik.rikkahub.ui.components.ai.rememberModelListState
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
+import app.androidrik.rikkahub.ui.hooks.rememberSyncedPersistedTextFieldState
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_RETAIN_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS_RANGE
@@ -162,7 +164,7 @@ private fun ModelSettingsPage(
     contentPadding: PaddingValues,
     revealSection: String? = null,
 ) {
-    val listState = rememberLazyListState()
+    val scrollState = rememberScrollState()
     var ocrExpanded by rememberSaveable {
         mutableStateOf(revealSection == SettingAdvancedSection.MODEL_OCR_BACKEND)
     }
@@ -175,175 +177,173 @@ private fun ModelSettingsPage(
     val overrideHighlighted = rememberAdvancedRevealHighlight(
         revealSection == SettingAdvancedSection.MODEL_CONTEXT_LENGTH_OVERRIDE,
     )
-    LaunchedEffect(revealSection) {
-        when (revealSection) {
-            SettingAdvancedSection.MODEL_OCR_BACKEND -> listState.animateScrollToItem(8)
-            SettingAdvancedSection.MODEL_CONTEXT_LENGTH_OVERRIDE -> listState.animateScrollToItem(10)
+    var ocrSectionY by remember { mutableIntStateOf(-1) }
+    var overrideSectionY by remember { mutableIntStateOf(-1) }
+    var revealScrolled by rememberSaveable(revealSection) { mutableStateOf(false) }
+    LaunchedEffect(revealSection, ocrSectionY, overrideSectionY, revealScrolled) {
+        if (revealScrolled) return@LaunchedEffect
+        val targetY = when (revealSection) {
+            SettingAdvancedSection.MODEL_OCR_BACKEND -> ocrSectionY
+            SettingAdvancedSection.MODEL_CONTEXT_LENGTH_OVERRIDE -> overrideSectionY
+            else -> -1
+        }
+        if (targetY >= 0) {
+            revealScrolled = true
+            scrollState.animateScrollTo(targetY)
         }
     }
-    LazyColumn(
-        state = listState,
-        // imePadding：键盘弹出时抬高列表底部，避免最后一个输入项（默认上下文窗口）被 IME 遮挡
+    // 非 Lazy 常驻 Column + imePadding 在 verticalScroll 之前（AGENTS TextField Host Rules）：
+    // 本页全是静态配置项且含多处数字/上下文窗口输入框，不再使用 LazyColumn 以免键盘收缩视口裁出 item。
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .imePadding(),
-        contentPadding = contentPadding + PaddingValues(horizontal = 16.dp),
+            .imePadding()
+            .verticalScroll(scrollState)
+            .padding(contentPadding + PaddingValues(horizontal = 16.dp)),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_chat_model),
-                description = stringResource(R.string.setting_model_page_chat_model_desc),
-                modelId = settings.chatModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(chatModelId = it.id)) },
-            )
-        }
-        item {
-            // 全局默认备用模型：助手未配置 fallback 时生效（优先级 助手 > 全局）
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_fallback_model),
-                description = stringResource(R.string.setting_model_page_fallback_model_desc),
-                modelId = settings.fallbackChatModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(fallbackChatModelId = it.id)) },
-                onClear = { vm.updateSettings(settings.copy(fallbackChatModelId = null)) },
-            )
-        }
-        item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_fast_model),
-                description = stringResource(R.string.setting_model_page_fast_model_desc),
-                modelId = settings.fastModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(fastModelId = it.id)) },
-                onClear = { vm.updateSettings(settings.copy(fastModelId = null)) },
-            )
-        }
-        item {
-            Column {
-                CardGroup(title = { Text("对话后记忆归纳") }) {
+        ModelSettingItem(
+            title = stringResource(R.string.setting_model_page_chat_model),
+            description = stringResource(R.string.setting_model_page_chat_model_desc),
+            modelId = settings.chatModelId,
+            providers = settings.providers,
+            onSelect = { vm.updateSettings(settings.copy(chatModelId = it.id)) },
+        )
+        // 全局默认备用模型：助手未配置 fallback 时生效（优先级 助手 > 全局）
+        ModelSettingItem(
+            title = stringResource(R.string.setting_model_page_fallback_model),
+            description = stringResource(R.string.setting_model_page_fallback_model_desc),
+            modelId = settings.fallbackChatModelId,
+            providers = settings.providers,
+            onSelect = { vm.updateSettings(settings.copy(fallbackChatModelId = it.id)) },
+            onClear = { vm.updateSettings(settings.copy(fallbackChatModelId = null)) },
+        )
+        ModelSettingItem(
+            title = stringResource(R.string.setting_model_page_fast_model),
+            description = stringResource(R.string.setting_model_page_fast_model_desc),
+            modelId = settings.fastModelId,
+            providers = settings.providers,
+            onSelect = { vm.updateSettings(settings.copy(fastModelId = it.id)) },
+            onClear = { vm.updateSettings(settings.copy(fastModelId = null)) },
+        )
+        Column {
+            CardGroup(title = { Text("对话后记忆归纳") }) {
+                item(
+                    headlineContent = { Text("空闲两分钟后归纳") },
+                    supportingContent = { Text("每个会话独立提取新记忆，可与定期做梦同时启用。沿用助手的整理开关和审批设置。") },
+                    trailingContent = {
+                        Switch(settings.memoryExtraction.enabled, { enabled ->
+                            vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(enabled = enabled)) }
+                        })
+                    },
+                )
+                if (settings.memoryExtraction.enabled) {
+                    item {
+                        ModelSettingItem(
+                            title = "归纳模型",
+                            description = "未指定时跟随最后一轮回复的实际模型",
+                            modelId = settings.memoryExtraction.modelId,
+                            providers = settings.providers,
+                            emptyText = "跟随最后一轮模型",
+                            onSelect = { model -> vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(modelId = model.id)) } },
+                            onClear = { vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(modelId = null)) } },
+                        )
+                    }
                     item(
-                        headlineContent = { Text("空闲两分钟后归纳") },
-                        supportingContent = { Text("每个会话独立提取新记忆，可与定期做梦同时启用。沿用助手的整理开关和审批设置。") },
+                        headlineContent = { Text("尝试复用 Prompt Cache") },
+                        supportingContent = { Text("实验功能，跟随模型时可复用 OpenAI 兼容请求的前缀。缓存不可用时使用增量归纳，实际命中量见用量统计。") },
                         trailingContent = {
-                            Switch(settings.memoryExtraction.enabled, { enabled ->
-                                vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(enabled = enabled)) }
+                            Switch(settings.memoryExtraction.reusePromptCache, { enabled ->
+                                vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(reusePromptCache = enabled)) }
                             })
                         },
                     )
-                    if (settings.memoryExtraction.enabled) {
-                        item {
-                            ModelSettingItem(
-                                title = "归纳模型",
-                                description = "未指定时跟随最后一轮回复的实际模型",
-                                modelId = settings.memoryExtraction.modelId,
-                                providers = settings.providers,
-                                emptyText = "跟随最后一轮模型",
-                                onSelect = { model -> vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(modelId = model.id)) } },
-                                onClear = { vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(modelId = null)) } },
+                }
+            }
+            ModelSettingItem(
+                title = stringResource(R.string.setting_model_page_memory_consolidation_model),
+                description = stringResource(R.string.setting_model_page_memory_consolidation_model_desc),
+                modelId = settings.memoryConsolidationModelId,
+                providers = settings.providers,
+                onSelect = { vm.updateSettings(settings.copy(memoryConsolidationModelId = it.id)) },
+                onClear = { vm.updateSettings(settings.copy(memoryConsolidationModelId = null)) },
+                emptyText = stringResource(R.string.setting_model_page_memory_consolidation_empty),
+            )
+            // 整理任务的推理强度（上游 72d419171 增量移植）：仅配置了做梦模型时展示，
+            // 对整理实际用上的模型生效；选「自动」= 原行为
+            if (settings.memoryConsolidationModelId != null) {
+                FormItem(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    label = { Text(stringResource(R.string.setting_model_page_memory_consolidation_reasoning)) },
+                    description = { Text(stringResource(R.string.setting_model_page_memory_consolidation_reasoning_desc)) },
+                ) {
+                    ReasoningButton(
+                        reasoningLevel = settings.memoryConsolidationReasoningLevel
+                            ?: ReasoningLevel.AUTO,
+                        onUpdateReasoningLevel = { level ->
+                            vm.updateSettings(
+                                settings.copy(memoryConsolidationReasoningLevel = level)
                             )
                         }
-                        item(
-                            headlineContent = { Text("尝试复用 Prompt Cache") },
-                            supportingContent = { Text("实验功能，跟随模型时可复用 OpenAI 兼容请求的前缀。缓存不可用时使用增量归纳，实际命中量见用量统计。") },
-                            trailingContent = {
-                                Switch(settings.memoryExtraction.reusePromptCache, { enabled ->
-                                    vm.updateSettings { current -> current.copy(memoryExtraction = current.memoryExtraction.copy(reusePromptCache = enabled)) }
-                                })
+                    )
+                }
+            }
+        }
+        // 自动标题开关 + 标题模型：与下面「建议模型」同形（关掉时隐藏模型选择器）。
+        // 开关只关**自动**：会话列表/抽屉里的「重新生成标题」不受影响（force = true）。
+        Column {
+            CardGroup(title = { Text(stringResource(R.string.setting_model_page_title_model)) }) {
+                item(
+                    headlineContent = { Text(stringResource(R.string.setting_model_page_enable_auto_title)) },
+                    supportingContent = {
+                        Text(stringResource(R.string.setting_model_page_enable_auto_title_desc))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = settings.enableAutoTitle,
+                            onCheckedChange = {
+                                vm.updateSettings(settings.copy(enableAutoTitle = it))
                             },
                         )
-                    }
-                }
-                ModelSettingItem(
-                    title = stringResource(R.string.setting_model_page_memory_consolidation_model),
-                    description = stringResource(R.string.setting_model_page_memory_consolidation_model_desc),
-                    modelId = settings.memoryConsolidationModelId,
-                    providers = settings.providers,
-                    onSelect = { vm.updateSettings(settings.copy(memoryConsolidationModelId = it.id)) },
-                    onClear = { vm.updateSettings(settings.copy(memoryConsolidationModelId = null)) },
-                    emptyText = stringResource(R.string.setting_model_page_memory_consolidation_empty),
+                    },
                 )
-                // 整理任务的推理强度（上游 72d419171 增量移植）：仅配置了做梦模型时展示，
-                // 对整理实际用上的模型生效；选「自动」= 原行为
-                if (settings.memoryConsolidationModelId != null) {
-                    FormItem(
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                        label = { Text(stringResource(R.string.setting_model_page_memory_consolidation_reasoning)) },
-                        description = { Text(stringResource(R.string.setting_model_page_memory_consolidation_reasoning_desc)) },
-                    ) {
-                        ReasoningButton(
-                            reasoningLevel = settings.memoryConsolidationReasoningLevel
-                                ?: ReasoningLevel.AUTO,
-                            onUpdateReasoningLevel = { level ->
-                                vm.updateSettings(
-                                    settings.copy(memoryConsolidationReasoningLevel = level)
-                                )
-                            }
+                if (settings.enableAutoTitle) {
+                    item {
+                        ModelSettingItem(
+                            title = stringResource(R.string.setting_model_page_title_model),
+                            description = stringResource(R.string.setting_model_page_title_model_desc),
+                            modelId = settings.titleModelId,
+                            providers = settings.providers,
+                            onSelect = { vm.updateSettings(settings.copy(titleModelId = it.id)) },
+                            onClear = { vm.updateSettings(settings.copy(titleModelId = null)) },
                         )
                     }
                 }
             }
         }
-        item {
-            // 自动标题开关 + 标题模型：与下面「建议模型」同形（关掉时隐藏模型选择器）。
-            // 开关只关**自动**：会话列表/抽屉里的「重新生成标题」不受影响（force = true）。
-            Column {
-                CardGroup(title = { Text(stringResource(R.string.setting_model_page_title_model)) }) {
-                    item(
-                        headlineContent = { Text(stringResource(R.string.setting_model_page_enable_auto_title)) },
-                        supportingContent = {
-                            Text(stringResource(R.string.setting_model_page_enable_auto_title_desc))
-                        },
-                        trailingContent = {
-                            Switch(
-                                checked = settings.enableAutoTitle,
-                                onCheckedChange = {
-                                    vm.updateSettings(settings.copy(enableAutoTitle = it))
-                                },
-                            )
-                        },
-                    )
-                    if (settings.enableAutoTitle) {
-                        item {
-                            ModelSettingItem(
-                                title = stringResource(R.string.setting_model_page_title_model),
-                                description = stringResource(R.string.setting_model_page_title_model_desc),
-                                modelId = settings.titleModelId,
-                                providers = settings.providers,
-                                onSelect = { vm.updateSettings(settings.copy(titleModelId = it.id)) },
-                                onClear = { vm.updateSettings(settings.copy(titleModelId = null)) },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        item {
-            SuggestionModelSettingItem(
-                settings = settings,
-                vm = vm,
-            )
-        }
-        item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_translate_model),
-                description = stringResource(R.string.setting_model_page_translate_model_desc),
-                modelId = settings.translateModeId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(translateModeId = it.id)) },
-            )
-        }
-        item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_ocr_model),
-                description = stringResource(R.string.setting_model_page_ocr_model_desc),
-                modelId = settings.ocrModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(ocrModelId = it.id)) },
-            )
-        }
-        item(key = "ocr_backend") {
+        SuggestionModelSettingItem(
+            settings = settings,
+            vm = vm,
+        )
+        ModelSettingItem(
+            title = stringResource(R.string.setting_model_page_translate_model),
+            description = stringResource(R.string.setting_model_page_translate_model_desc),
+            modelId = settings.translateModeId,
+            providers = settings.providers,
+            onSelect = { vm.updateSettings(settings.copy(translateModeId = it.id)) },
+        )
+        ModelSettingItem(
+            title = stringResource(R.string.setting_model_page_ocr_model),
+            description = stringResource(R.string.setting_model_page_ocr_model_desc),
+            modelId = settings.ocrModelId,
+            providers = settings.providers,
+            onSelect = { vm.updateSettings(settings.copy(ocrModelId = it.id)) },
+        )
+        Column(
+            modifier = Modifier.onGloballyPositioned {
+                ocrSectionY = it.positionInParent().y.toInt()
+            },
+        ) {
             OcrBackendSettingItem(
                 settings = settings,
                 vm = vm,
@@ -352,25 +352,27 @@ private fun ModelSettingsPage(
                 highlighted = ocrHighlighted,
             )
         }
-        item {
-            ModelSettingItem(
-                title = stringResource(R.string.setting_model_page_compress_model),
-                description = if (settings.compressModelId == null) {
-                    // 已选「跟随当前对话模型」
-                    stringResource(R.string.setting_model_page_compress_model_follow)
-                } else {
-                    // 预设为固定模型；提示清除后可改为跟随对话
-                    stringResource(R.string.setting_model_page_compress_model_desc) + "\n" +
-                        stringResource(R.string.setting_model_page_compress_model_clear_hint)
-                },
-                modelId = settings.compressModelId,
-                providers = settings.providers,
-                onSelect = { vm.updateSettings(settings.copy(compressModelId = it.id)) },
-                onClear = { vm.updateSettings(settings.copy(compressModelId = null)) },
-                emptyText = stringResource(R.string.setting_model_page_compress_model_follow),
-            )
-        }
-        item(key = "context_length_override") {
+        ModelSettingItem(
+            title = stringResource(R.string.setting_model_page_compress_model),
+            description = if (settings.compressModelId == null) {
+                // 已选「跟随当前对话模型」
+                stringResource(R.string.setting_model_page_compress_model_follow)
+            } else {
+                // 预设为固定模型；提示清除后可改为跟随对话
+                stringResource(R.string.setting_model_page_compress_model_desc) + "\n" +
+                    stringResource(R.string.setting_model_page_compress_model_clear_hint)
+            },
+            modelId = settings.compressModelId,
+            providers = settings.providers,
+            onSelect = { vm.updateSettings(settings.copy(compressModelId = it.id)) },
+            onClear = { vm.updateSettings(settings.copy(compressModelId = null)) },
+            emptyText = stringResource(R.string.setting_model_page_compress_model_follow),
+        )
+        Column(
+            modifier = Modifier.onGloballyPositioned {
+                overrideSectionY = it.positionInParent().y.toInt()
+            },
+        ) {
             ContextLengthOverrideSetting(
                 settings = settings,
                 vm = vm,
@@ -379,24 +381,18 @@ private fun ModelSettingsPage(
                 highlighted = overrideHighlighted,
             )
         }
-        item {
-            AutoCompressSetting(
-                settings = settings,
-                vm = vm,
-            )
-        }
-        item {
-            ContextImageLimitSetting(
-                settings = settings,
-                vm = vm,
-            )
-        }
-        item {
-            ModelCardScaleSetting(
-                settings = settings,
-                vm = vm,
-            )
-        }
+        AutoCompressSetting(
+            settings = settings,
+            vm = vm,
+        )
+        ContextImageLimitSetting(
+            settings = settings,
+            vm = vm,
+        )
+        ModelCardScaleSetting(
+            settings = settings,
+            vm = vm,
+        )
     }
 }
 
@@ -421,56 +417,60 @@ private fun ModelCardScaleSetting(
                     label = "模型选择弹窗卡片",
                     value = (settings.displaySetting.modelPickerCardScale * 100).roundToInt(),
                     range = MODEL_CARD_SCALE_PERCENT_RANGE,
-                    onValueChange = {
-                        vm.updateSettings(
-                            settings.copy(
-                                displaySetting = settings.displaySetting.copy(
-                                    modelPickerCardScale = it / 100f
+                    resetKey = settings.init,
+                    onValueChange = { pct ->
+                        vm.updateSettings { current ->
+                            current.copy(
+                                displaySetting = current.displaySetting.copy(
+                                    modelPickerCardScale = pct / 100f
                                 )
                             )
-                        )
+                        }
                     },
                 )
                 SliderSettingField(
                     label = "模型管理页卡片",
                     value = (settings.displaySetting.modelManageCardScale * 100).roundToInt(),
                     range = MODEL_CARD_SCALE_PERCENT_RANGE,
-                    onValueChange = {
-                        vm.updateSettings(
-                            settings.copy(
-                                displaySetting = settings.displaySetting.copy(
-                                    modelManageCardScale = it / 100f
+                    resetKey = settings.init,
+                    onValueChange = { pct ->
+                        vm.updateSettings { current ->
+                            current.copy(
+                                displaySetting = current.displaySetting.copy(
+                                    modelManageCardScale = pct / 100f
                                 )
                             )
-                        )
+                        }
                     },
                 )
                 SliderSettingField(
                     label = "添加模型弹窗卡片",
                     value = (settings.displaySetting.modelAddCardScale * 100).roundToInt(),
                     range = MODEL_CARD_SCALE_PERCENT_RANGE,
-                    onValueChange = {
-                        vm.updateSettings(
-                            settings.copy(
-                                displaySetting = settings.displaySetting.copy(
-                                    modelAddCardScale = it / 100f
+                    resetKey = settings.init,
+                    onValueChange = { pct ->
+                        vm.updateSettings { current ->
+                            current.copy(
+                                displaySetting = current.displaySetting.copy(
+                                    modelAddCardScale = pct / 100f
                                 )
                             )
-                        )
+                        }
                     },
                 )
                 SliderSettingField(
                     label = "提供商列表卡片",
                     value = (settings.displaySetting.providerCardScale * 100).roundToInt(),
                     range = MODEL_CARD_SCALE_PERCENT_RANGE,
-                    onValueChange = {
-                        vm.updateSettings(
-                            settings.copy(
-                                displaySetting = settings.displaySetting.copy(
-                                    providerCardScale = it / 100f
+                    resetKey = settings.init,
+                    onValueChange = { pct ->
+                        vm.updateSettings { current ->
+                            current.copy(
+                                displaySetting = current.displaySetting.copy(
+                                    providerCardScale = pct / 100f
                                 )
                             )
-                        )
+                        }
                     },
                 )
             }
@@ -498,8 +498,9 @@ private fun ContextImageLimitSetting(
                     label = "图片保留张数（0 = 不淘汰）",
                     value = settings.contextImageLimit,
                     range = CONTEXT_IMAGE_LIMIT_RANGE,
-                    onValueChange = {
-                        vm.updateSettings(settings.copy(contextImageLimit = it))
+                    resetKey = settings.init,
+                    onValueChange = { limit ->
+                        vm.updateSettings { current -> current.copy(contextImageLimit = limit) }
                     },
                 )
                 Text(
@@ -595,8 +596,9 @@ private fun AutoCompressSetting(
                         label = stringResource(R.string.setting_model_page_auto_compress_threshold),
                         value = settings.autoCompressThresholdPercent,
                         range = AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE,
-                        onValueChange = {
-                            vm.updateSettings(settings.copy(autoCompressThresholdPercent = it))
+                        resetKey = settings.init,
+                        onValueChange = { threshold ->
+                            vm.updateSettings { current -> current.copy(autoCompressThresholdPercent = threshold) }
                         },
                     )
 
@@ -606,12 +608,12 @@ private fun AutoCompressSetting(
                         selectedTargetTokens = settings.autoCompressTargetTokens,
                         customPresets = settings.compressPresets,
                         onApply = { retain, target ->
-                            vm.updateSettings(
-                                settings.copy(
+                            vm.updateSettings { current ->
+                                current.copy(
                                     autoCompressRetainPercent = retain,
                                     autoCompressTargetTokens = target,
                                 )
-                            )
+                            }
                         },
                         onManage = { showPresetManager = true },
                     )
@@ -620,16 +622,18 @@ private fun AutoCompressSetting(
                         label = stringResource(R.string.setting_model_page_auto_compress_retain),
                         value = settings.autoCompressRetainPercent,
                         range = AUTO_COMPRESS_RETAIN_PERCENT_RANGE,
-                        onValueChange = {
-                            vm.updateSettings(settings.copy(autoCompressRetainPercent = it))
+                        resetKey = settings.init,
+                        onValueChange = { retain ->
+                            vm.updateSettings { current -> current.copy(autoCompressRetainPercent = retain) }
                         },
                     )
                     NumericSettingField(
                         label = stringResource(R.string.setting_model_page_auto_compress_target),
                         value = settings.autoCompressTargetTokens,
                         range = COMPRESS_TARGET_TOKENS_RANGE,
-                        onValueChange = {
-                            vm.updateSettings(settings.copy(autoCompressTargetTokens = it))
+                        resetKey = settings.init,
+                        onValueChange = { target ->
+                            vm.updateSettings { current -> current.copy(autoCompressTargetTokens = target) }
                         },
                     )
 
@@ -675,19 +679,23 @@ private fun NumericSettingField(
     value: Int,
     range: IntRange,
     onValueChange: (Int) -> Unit,
+    resetKey: Any? = Unit,
 ) {
-    var text by remember(value) { mutableStateOf(value.toString()) }
-    val parsed = text.trim().toIntOrNull()
-    val isOutOfRange = text.isNotBlank() && (parsed == null || parsed !in range)
+    val inputState = rememberSyncedPersistedTextFieldState(
+        externalValue = value,
+        format = { it.toString() },
+        parse = { raw -> raw.trim().toIntOrNull()?.takeIf { it in range } },
+        onCommit = onValueChange,
+        resetKey = resetKey,
+    )
+    val typedText = inputState.text.toString()
+    val parsed = typedText.trim().toIntOrNull()
+    val isOutOfRange = typedText.isNotBlank() && (parsed == null || parsed !in range)
 
     OutlinedTextField(
-        value = text,
-        onValueChange = { new ->
-            text = new
-            new.trim().toIntOrNull()?.let { if (it in range) onValueChange(it) }
-        },
+        state = inputState,
         label = { Text(label) },
-        singleLine = true,
+        lineLimits = TextFieldLineLimits.SingleLine,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         isError = isOutOfRange,
         supportingText = {
@@ -698,12 +706,8 @@ private fun NumericSettingField(
 }
 
 /**
- * 数值设置项（滑杆 + 可填写）：滑杆拖拽即时预览、松手落库；文本框可填任意值，解析成功且
- * 在 [range] 内才提交（与 [NumericSettingField] 同口径，越界标红不落库）。
- *
- * 为什么不直接滑一步写一步：滑杆拖动每帧都会触发 onValueChange，直接连到 DataStore 写入
- * 会高频落库——用 [dragValue] 缓冲拖动中的值，`onValueChangeFinished` 才提交。
- * `remember(value)` 保证设置被其他入口（如压缩配置档）改写后两个控件都回填同步。
+ * 数值设置项（滑杆 + 可填写）：滑杆拖拽即时预览、松手落库；文本框走本地权威 `TextFieldState`
+ * 去抖提交并忽略自身写回回声，仅外部滑杆/预设变更时回填。
  */
 @Composable
 private fun SliderSettingField(
@@ -711,11 +715,19 @@ private fun SliderSettingField(
     value: Int,
     range: IntRange,
     onValueChange: (Int) -> Unit,
+    resetKey: Any? = Unit,
 ) {
     var dragValue by remember(value) { mutableStateOf<Int?>(null) }
-    var text by remember(value) { mutableStateOf(value.toString()) }
-    val parsed = text.trim().toIntOrNull()
-    val isOutOfRange = text.isNotBlank() && (parsed == null || parsed !in range)
+    val inputState = rememberSyncedPersistedTextFieldState(
+        externalValue = value,
+        format = { it.toString() },
+        parse = { raw -> raw.trim().toIntOrNull()?.takeIf { it in range } },
+        onCommit = onValueChange,
+        resetKey = resetKey,
+    )
+    val typedText = inputState.text.toString()
+    val parsed = typedText.trim().toIntOrNull()
+    val isOutOfRange = typedText.isNotBlank() && (parsed == null || parsed !in range)
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -746,13 +758,9 @@ private fun SliderSettingField(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(
-            value = text,
-            onValueChange = { new ->
-                text = new
-                new.trim().toIntOrNull()?.let { if (it in range) onValueChange(it) }
-            },
+            state = inputState,
             isError = isOutOfRange,
-            singleLine = true,
+            lineLimits = TextFieldLineLimits.SingleLine,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             suffix = { Text("%") },
             supportingText = {

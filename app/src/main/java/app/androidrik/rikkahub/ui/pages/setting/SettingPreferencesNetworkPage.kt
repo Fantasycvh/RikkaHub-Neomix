@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +40,7 @@ import app.androidrik.rikkahub.ui.components.nav.BackButton
 import app.androidrik.rikkahub.ui.hooks.HiddenTextTransformation
 import app.androidrik.rikkahub.ui.hooks.rememberPersistedTextFieldState
 import app.androidrik.rikkahub.ui.theme.CustomColors
+import app.androidrik.rikkahub.utils.plus
 import org.koin.androidx.compose.koinViewModel
 
 /**
@@ -71,23 +74,21 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = CustomColors.topBarColors.containerColor,
     ) { innerPadding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(innerPadding + PaddingValues(16.dp)),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                Text(
-                    text = stringResource(R.string.setting_network_proxy_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = stringResource(R.string.setting_network_proxy_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
-            item {
-                Card(colors = CustomColors.cardColorsOnSurfaceContainer) {
+            Card(colors = CustomColors.cardColorsOnSurfaceContainer) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -180,7 +181,6 @@ fun SettingPreferencesNetworkPage(vm: SettingVM = koinViewModel()) {
                         }
                     }
                 }
-            }
         }
     }
 }
