@@ -3547,5 +3547,15 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="lan_sync_uploading">Uploading conversations and attachments…</string>
   <string name="lan_sync_version_error">The sync or database versions differ. Update both devices.</string>
   <string name="lan_sync_waiting">Waiting for the paired device…</string>
+  <string name="setting_page_summary_default_skin">Default</string>
+  <string name="setting_page_summary_count">%1$d</string>
+  <string name="setting_page_summary_enabled_count">%1$d enabled</string>
+  <string name="setting_page_summary_none">Off</string>
+  <string name="setting_page_summary_unset">Not set</string>
+  <string name="setting_page_summary_web_running">Running :%1$d</string>
+  <string name="setting_page_summary_web_stopped">Stopped</string>
+  <string name="setting_page_summary_backup_auto_snapshot">Auto snapshot</string>
+  <string name="setting_page_summary_backup_reminder">Reminder on</string>
+  <string name="setting_page_summary_backup_manual">Manual</string>
 </resources>
 

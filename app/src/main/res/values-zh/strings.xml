@@ -3547,4 +3547,14 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="lan_sync_uploading">正在上传会话和附件…</string>
   <string name="lan_sync_version_error">同步协议或数据库版本不同，请更新两台设备。</string>
   <string name="lan_sync_waiting">正在等待已配对设备…</string>
+  <string name="setting_page_summary_default_skin">默认</string>
+  <string name="setting_page_summary_count">%1$d 个</string>
+  <string name="setting_page_summary_enabled_count">%1$d 个启用</string>
+  <string name="setting_page_summary_none">未启用</string>
+  <string name="setting_page_summary_unset">未设置</string>
+  <string name="setting_page_summary_web_running">运行中 :%1$d</string>
+  <string name="setting_page_summary_web_stopped">已停止</string>
+  <string name="setting_page_summary_backup_auto_snapshot">自动快照</string>
+  <string name="setting_page_summary_backup_reminder">提醒已开</string>
+  <string name="setting_page_summary_backup_manual">手动</string>
 </resources>

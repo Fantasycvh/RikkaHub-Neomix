@@ -3533,4 +3533,14 @@
   <string name="lan_sync_uploading">正在上傳對話和附件…</string>
   <string name="lan_sync_version_error">同步協定或資料庫版本不同，請更新兩台裝置。</string>
   <string name="lan_sync_waiting">正在等待已配對的裝置…</string>
+  <string name="setting_page_summary_default_skin">預設</string>
+  <string name="setting_page_summary_count">%1$d 個</string>
+  <string name="setting_page_summary_enabled_count">%1$d 個啟用</string>
+  <string name="setting_page_summary_none">未啟用</string>
+  <string name="setting_page_summary_unset">未設定</string>
+  <string name="setting_page_summary_web_running">執行中 :%1$d</string>
+  <string name="setting_page_summary_web_stopped">已停止</string>
+  <string name="setting_page_summary_backup_auto_snapshot">自動快照</string>
+  <string name="setting_page_summary_backup_reminder">提醒已開</string>
+  <string name="setting_page_summary_backup_manual">手動</string>
 </resources>

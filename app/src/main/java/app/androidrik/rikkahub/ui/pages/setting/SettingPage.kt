@@ -27,6 +27,7 @@ import app.androidrik.rikkahub.ui.components.ui.AppSkinListItemIcon
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,8 +64,11 @@ import me.rerere.hugeicons.stroke.ServerStack01
 import me.rerere.hugeicons.stroke.Settings03
 import me.rerere.hugeicons.stroke.Sun01
 import me.rerere.hugeicons.stroke.Time02
+import app.androidrik.rikkahub.BuildConfig
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.datastore.findModelById
 import app.androidrik.rikkahub.data.datastore.isNotConfigured
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.components.nav.BackButton
@@ -74,18 +78,22 @@ import app.androidrik.rikkahub.ui.components.ui.permission.PermissionManager
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberLocalNetworkPermissionState
 import app.androidrik.rikkahub.ui.components.ui.permission.rememberNotificationPermissionState
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
+import app.androidrik.rikkahub.ui.components.ui.CardGroupValueChip
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.ui.pages.setting.search.SettingSearchBar
 import app.androidrik.rikkahub.ui.components.ui.Select
 import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.Navigator
 import app.androidrik.rikkahub.ui.hooks.rememberColorMode
+import app.androidrik.rikkahub.ui.theme.AppSkinRegistry
 import app.androidrik.rikkahub.ui.theme.ColorMode
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.LocalAppSkin
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.utils.openUrl
 import app.androidrik.rikkahub.utils.plus
+import app.androidrik.rikkahub.web.WebServerManager
+import app.androidrik.rikkahub.web.WebServerState
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
 
@@ -96,6 +104,17 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val showFeatureShortcut = LocalAppSkin.current.skin.hero.gradientFor(LocalDarkMode.current) != null
     val filesManager: FilesManager = koinInject()
+    val webServerManager: WebServerManager = koinInject()
+    val webServerState by webServerManager.state.collectAsStateWithLifecycle()
+    val skins by AppSkinRegistry.shared.skins.collectAsState()
+    val activeSkinName = skins.firstOrNull { it.id == settings.displaySetting.appSkinId }?.name
+    val summaries = remember(settings, webServerState, activeSkinName) {
+        resolveSettingHomeSummaries(
+            settings = settings,
+            webServerState = webServerState,
+            skinName = activeSkinName,
+        )
+    }
     val localNetworkPermission = rememberLocalNetworkPermissionState()
     localNetworkPermission?.let { PermissionManager(it) }
     val notificationPermission = rememberNotificationPermissionState()
@@ -200,12 +219,22 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { AppSkinListItemIcon(HugeIcons.Settings03, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_preferences_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_preferences)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                summaries.skinName ?: stringResource(R.string.setting_page_summary_default_skin),
+                            )
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Assistant) },
                         leadingContent = { AppSkinListItemIcon(HugeIcons.LookTop, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_assistant_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_assistant)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                stringResource(R.string.setting_page_summary_count, summaries.assistantCount),
+                            )
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Extensions) },
@@ -226,24 +255,59 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { AppSkinListItemIcon(HugeIcons.AiMagic, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_default_model_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_default_model)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                text = summaries.defaultModelName
+                                    ?: stringResource(R.string.setting_page_summary_unset),
+                                emphasized = summaries.defaultModelName != null,
+                            )
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingProvider) },
                         leadingContent = { AppSkinListItemIcon(HugeIcons.Brain02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_providers_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_providers)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                text = if (summaries.enabledProviderCount > 0) {
+                                    stringResource(
+                                        R.string.setting_page_summary_enabled_count,
+                                        summaries.enabledProviderCount,
+                                    )
+                                } else {
+                                    stringResource(R.string.setting_page_summary_none)
+                                },
+                                emphasized = summaries.enabledProviderCount > 0,
+                            )
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingMedia) },
                         leadingContent = { AppSkinListItemIcon(HugeIcons.Image02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_media_and_speech_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_media_and_speech)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                text = if (summaries.mediaSpeechProviderCount > 0) {
+                                    stringResource(
+                                        R.string.setting_page_summary_count,
+                                        summaries.mediaSpeechProviderCount,
+                                    )
+                                } else {
+                                    stringResource(R.string.setting_page_summary_none)
+                                },
+                            )
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingSearch) },
                         leadingContent = { AppSkinListItemIcon(HugeIcons.GlobalSearch, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_search_service_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_search_service)) },
+                        trailingValue = summaries.selectedSearchServiceName?.let { serviceName ->
+                            { CardGroupValueChip(serviceName) }
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingKnowledgeBase) },
@@ -280,18 +344,55 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { AppSkinListItemIcon(HugeIcons.McpServer, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_mcp_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_mcp)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                text = if (summaries.enabledMcpCount > 0) {
+                                    stringResource(
+                                        R.string.setting_page_summary_enabled_count,
+                                        summaries.enabledMcpCount,
+                                    )
+                                } else {
+                                    stringResource(R.string.setting_page_summary_none)
+                                },
+                                emphasized = summaries.enabledMcpCount > 0,
+                            )
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingWeb) },
                         leadingContent = { AppSkinListItemIcon(HugeIcons.ServerStack01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_web_server_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_web_server)) },
+                        trailingValue = {
+                            CardGroupValueChip(
+                                text = if (summaries.webServerRunning) {
+                                    stringResource(
+                                        R.string.setting_page_summary_web_running,
+                                        summaries.webServerPort,
+                                    )
+                                } else {
+                                    stringResource(R.string.setting_page_summary_web_stopped)
+                                },
+                                emphasized = summaries.webServerRunning,
+                            )
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Backup) },
                         leadingContent = { AppSkinListItemIcon(HugeIcons.Database02, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_data_backup_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_data_backup)) },
+                        trailingValue = {
+                            val (labelRes, active) = when (summaries.backupMode) {
+                                SettingBackupSummaryMode.AUTO_SNAPSHOT ->
+                                    R.string.setting_page_summary_backup_auto_snapshot to true
+                                SettingBackupSummaryMode.REMINDER ->
+                                    R.string.setting_page_summary_backup_reminder to true
+                                SettingBackupSummaryMode.MANUAL ->
+                                    R.string.setting_page_summary_backup_manual to false
+                            }
+                            CardGroupValueChip(stringResource(labelRes), emphasized = active)
+                        },
                     )
                     item(
                         onClick = { navController.navigate(Screen.SettingFiles) },
@@ -331,6 +432,7 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
                         leadingContent = { AppSkinListItemIcon(HugeIcons.Clapping01, null) },
                         supportingContent = { Text(stringResource(R.string.setting_page_about_desc)) },
                         headlineContent = { Text(stringResource(R.string.setting_page_about)) },
+                        trailingValue = { CardGroupValueChip(BuildConfig.VERSION_NAME) },
                     )
                     item(
                         onClick = { navController.navigate(Screen.Log) },
@@ -342,6 +444,55 @@ fun SettingPage(vm: SettingVM = koinViewModel()) {
             }
         }
     }
+}
+
+internal enum class SettingBackupSummaryMode {
+    AUTO_SNAPSHOT,
+    REMINDER,
+    MANUAL,
+}
+
+internal data class SettingHomeSummaries(
+    val skinName: String?,
+    val assistantCount: Int,
+    val defaultModelName: String?,
+    val enabledProviderCount: Int,
+    val mediaSpeechProviderCount: Int,
+    val selectedSearchServiceName: String?,
+    val enabledMcpCount: Int,
+    val webServerRunning: Boolean,
+    val webServerPort: Int,
+    val backupMode: SettingBackupSummaryMode,
+)
+
+internal fun resolveSettingHomeSummaries(
+    settings: Settings,
+    webServerState: WebServerState,
+    skinName: String?,
+): SettingHomeSummaries {
+    val defaultModel = settings.findModelById(settings.chatModelId)
+    val selectedSearch = settings.searchServices.getOrNull(settings.searchServiceSelected)
+        ?: settings.searchServices.firstOrNull { it.enabled }
+    val backupMode = when {
+        settings.localSnapshotConfig.enabled -> SettingBackupSummaryMode.AUTO_SNAPSHOT
+        settings.backupReminderConfig.enabled -> SettingBackupSummaryMode.REMINDER
+        else -> SettingBackupSummaryMode.MANUAL
+    }
+    return SettingHomeSummaries(
+        skinName = skinName?.takeIf { it.isNotBlank() },
+        assistantCount = settings.assistants.size,
+        defaultModelName = defaultModel?.displayName?.takeIf { it.isNotBlank() }
+            ?: defaultModel?.modelId?.takeIf { it.isNotBlank() },
+        enabledProviderCount = settings.providers.count { it.enabled },
+        mediaSpeechProviderCount = settings.mediaGenerationProviders.size +
+            settings.ttsProviders.size +
+            settings.asrProviders.size,
+        selectedSearchServiceName = selectedSearch?.displayName?.takeIf { it.isNotBlank() },
+        enabledMcpCount = settings.mcpServers.count { it.commonOptions.enable },
+        webServerRunning = webServerState.isRunning,
+        webServerPort = webServerState.port,
+        backupMode = backupMode,
+    )
 }
 
 @Composable
