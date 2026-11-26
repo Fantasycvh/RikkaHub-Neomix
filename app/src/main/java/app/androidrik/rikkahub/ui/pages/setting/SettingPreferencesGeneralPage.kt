@@ -48,6 +48,10 @@ import app.androidrik.rikkahub.phoneuse.PhoneUseManager
 import app.androidrik.rikkahub.ui.components.ui.OutlinedNumberInput
 import androidx.compose.foundation.layout.width
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingAdvancedSection
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingSearchReveal
+import app.androidrik.rikkahub.ui.pages.setting.search.rememberAdvancedRevealHighlight
 import app.androidrik.rikkahub.data.datastore.BackgroundEffectType
 import app.androidrik.rikkahub.data.datastore.ChatListScrollMode
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
@@ -71,6 +75,13 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     var displaySetting by remember(settings) { mutableStateOf(settings.displaySetting) }
     val skin = rememberAppSkin(displaySetting).skin
+    val revealSection = remember { SettingSearchReveal.consumeRoute(Screen.SettingPreferencesGeneral) }
+    var glassAdvancedExpanded by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(revealSection == SettingAdvancedSection.GENERAL_GLASS)
+    }
+    val glassAdvancedHighlighted = rememberAdvancedRevealHighlight(
+        revealSection == SettingAdvancedSection.GENERAL_GLASS,
+    )
 
     fun updateDisplaySetting(setting: DisplaySetting) {
         displaySetting = setting
@@ -105,9 +116,6 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                     "create_new_conversation_on_start",
                     true
                 )
-                var glassAdvancedExpanded by androidx.compose.runtime.saveable.rememberSaveable {
-                    mutableStateOf(false)
-                }
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
                 ) {
@@ -243,6 +251,7 @@ fun SettingPreferencesGeneralPage(vm: SettingVM = koinViewModel()) {
                         hint = "低频外观项，默认收起",
                         expanded = glassAdvancedExpanded,
                         onToggle = { glassAdvancedExpanded = it },
+                        highlighted = glassAdvancedHighlighted,
                     ) {
                         // 方向 B：输入栏浮动 pill 形态（胶囊 + 键盘上方浮动）
                         item(

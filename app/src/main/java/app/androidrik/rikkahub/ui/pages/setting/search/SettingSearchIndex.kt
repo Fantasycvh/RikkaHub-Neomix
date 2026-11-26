@@ -23,6 +23,7 @@ object SettingSearchIndex {
         description: Int? = null,
         section: Int? = null,
         keywords: List<String> = emptyList(),
+        advancedSection: String? = null,
     ) = SettingSearchEntry(
         id = "%d/%d".format(route.hashCode(), title),
         title = title,
@@ -31,6 +32,7 @@ object SettingSearchIndex {
         section = section,
         route = route,
         keywords = keywords,
+        advancedSection = advancedSection,
     )
 
     /** 全部可搜索设置项。 */
@@ -165,7 +167,23 @@ object SettingSearchIndex {
             title = R.string.setting_model_page_enable_suggestion,
             route = Screen.SettingModels,
             pageTitle = R.string.setting_model_page_title,
-            section = R.string.setting_model_page_context_length_override
+            section = R.string.setting_model_page_suggestion_model
+        ),
+        entry(
+            title = R.string.setting_model_page_context_length_override,
+            description = R.string.setting_model_page_context_length_override_hint,
+            route = Screen.SettingModels,
+            pageTitle = R.string.setting_model_page_title,
+            keywords = listOf("上下文长度", "上下文窗口", "context length", "context window", "token"),
+            advancedSection = SettingAdvancedSection.MODEL_CONTEXT_LENGTH_OVERRIDE,
+        ),
+        entry(
+            title = R.string.setting_model_page_ocr_backend,
+            description = R.string.setting_model_page_ocr_backend_desc,
+            route = Screen.SettingModels,
+            pageTitle = R.string.setting_model_page_title,
+            keywords = listOf("ocr", "文字识别", "deepseek ocr", "ocr 后端"),
+            advancedSection = SettingAdvancedSection.MODEL_OCR_BACKEND,
         ),
         entry(
             title = R.string.settings,
@@ -354,16 +372,42 @@ object SettingSearchIndex {
             pageTitle = R.string.setting_page_preferences_general
         ),
         entry(
+            title = R.string.setting_display_page_chat_input_pill_title,
+            description = R.string.setting_display_page_chat_input_pill_desc,
+            route = Screen.SettingPreferencesGeneral,
+            pageTitle = R.string.setting_page_preferences_general,
+            keywords = listOf("浮动输入栏", "胶囊输入栏", "pill", "floating input"),
+            advancedSection = SettingAdvancedSection.GENERAL_GLASS,
+        ),
+        entry(
+            title = R.string.setting_display_page_chat_input_icon_fade_title,
+            description = R.string.setting_display_page_chat_input_icon_fade_desc,
+            route = Screen.SettingPreferencesGeneral,
+            pageTitle = R.string.setting_page_preferences_general,
+            keywords = listOf("输入栏图标", "淡入淡出", "icon fade"),
+            advancedSection = SettingAdvancedSection.GENERAL_GLASS,
+        ),
+        entry(
             title = R.string.setting_display_page_enable_glass_theme_title,
             description = R.string.setting_display_page_enable_glass_theme_desc,
             route = Screen.SettingPreferencesGeneral,
-            pageTitle = R.string.setting_page_preferences_general
+            pageTitle = R.string.setting_page_preferences_general,
+            advancedSection = SettingAdvancedSection.GENERAL_GLASS,
         ),
         entry(
             title = R.string.setting_display_page_enable_top_bar_blur_title,
             description = R.string.setting_display_page_enable_top_bar_blur_desc,
             route = Screen.SettingPreferencesGeneral,
-            pageTitle = R.string.setting_page_preferences_general
+            pageTitle = R.string.setting_page_preferences_general,
+            advancedSection = SettingAdvancedSection.GENERAL_GLASS,
+        ),
+        entry(
+            title = R.string.setting_display_page_enable_page_glass_theme_title,
+            description = R.string.setting_display_page_enable_page_glass_theme_desc,
+            route = Screen.SettingPreferencesGeneral,
+            pageTitle = R.string.setting_page_preferences_general,
+            keywords = listOf("页面玻璃", "顶栏玻璃", "page glass"),
+            advancedSection = SettingAdvancedSection.GENERAL_GLASS,
         ),
         entry(
             title = R.string.setting_display_page_enable_message_generation_haptic_effect_title,
@@ -743,21 +787,24 @@ object SettingSearchIndex {
             description = R.string.setting_display_page_code_block_auto_wrap_desc,
             route = Screen.SettingPreferencesUI,
             pageTitle = R.string.setting_page_preferences_ui,
-            section = R.string.setting_page_code_display_settings
+            section = R.string.setting_page_code_display_settings,
+            advancedSection = SettingAdvancedSection.UI_CODE_DISPLAY,
         ),
         entry(
             title = R.string.setting_display_page_code_block_auto_collapse_title,
             description = R.string.setting_display_page_code_block_auto_collapse_desc,
             route = Screen.SettingPreferencesUI,
             pageTitle = R.string.setting_page_preferences_ui,
-            section = R.string.setting_page_code_display_settings
+            section = R.string.setting_page_code_display_settings,
+            advancedSection = SettingAdvancedSection.UI_CODE_DISPLAY,
         ),
         entry(
             title = R.string.setting_display_page_show_line_numbers_title,
             description = R.string.setting_display_page_show_line_numbers_desc,
             route = Screen.SettingPreferencesUI,
             pageTitle = R.string.setting_page_preferences_ui,
-            section = R.string.setting_page_code_display_settings
+            section = R.string.setting_page_code_display_settings,
+            advancedSection = SettingAdvancedSection.UI_CODE_DISPLAY,
         ),
         entry(
             title = R.string.setting_provider_page_title,

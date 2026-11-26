@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import app.androidrik.rikkahub.ui.components.ui.AppButton as Button
 import androidx.compose.material3.Icon
@@ -29,6 +30,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +56,10 @@ import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Delete02
 import me.rerere.hugeicons.stroke.FileImport
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingAdvancedSection
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingSearchReveal
+import app.androidrik.rikkahub.ui.pages.setting.search.rememberAdvancedRevealHighlight
 import app.androidrik.rikkahub.data.datastore.ChatFontFamily
 import app.androidrik.rikkahub.data.datastore.DisplaySetting
 import app.androidrik.rikkahub.data.datastore.UsageDisplayMode
@@ -198,6 +204,22 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val listState = rememberLazyListState()
+    val revealSection = remember { SettingSearchReveal.consumeRoute(Screen.SettingPreferencesUI) }
+    var codeAdvancedExpanded by rememberSaveable {
+        mutableStateOf(revealSection == SettingAdvancedSection.UI_CODE_DISPLAY)
+    }
+    val codeAdvancedHighlighted = rememberAdvancedRevealHighlight(
+        revealSection == SettingAdvancedSection.UI_CODE_DISPLAY,
+    )
+    LaunchedEffect(revealSection) {
+        if (revealSection == SettingAdvancedSection.UI_CODE_DISPLAY) {
+            val targetIndex = 4 +
+                (if (settings.avatarFrameSchemes.isNotEmpty()) 1 else 0) +
+                (if (settings.cotStyleSchemes.isNotEmpty()) 1 else 0)
+            listState.animateScrollToItem(targetIndex)
+        }
+    }
 
     GlassTopBarScaffold(
         displaySetting = displaySetting,
@@ -217,6 +239,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
         containerColor = CustomColors.topBarColors.containerColor
     ) { contentPadding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding + PaddingValues(skinSpacing.pageDp.dp),
             verticalArrangement = Arrangement.spacedBy(skinSpacing.sectionDp.dp)
@@ -720,8 +743,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                 }
             }
 
-            item {
-                var codeAdvancedExpanded by rememberSaveable { mutableStateOf(false) }
+            item(key = "code_display") {
                 val codeTitle = stringResource(R.string.setting_page_code_display_settings)
                 CardGroup(
                     modifier = Modifier.padding(horizontal = 8.dp),
@@ -732,6 +754,7 @@ fun SettingPreferencesUIPage(vm: SettingVM = koinViewModel()) {
                         hint = "低频代码显示项，默认收起",
                         expanded = codeAdvancedExpanded,
                         onToggle = { codeAdvancedExpanded = it },
+                        highlighted = codeAdvancedHighlighted,
                     ) {
                         item(
                             headlineContent = { Text(stringResource(R.string.setting_display_page_code_block_auto_wrap_title)) },

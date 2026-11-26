@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -41,6 +42,7 @@ import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +87,10 @@ import app.androidrik.rikkahub.ui.components.ai.CompressPresetManageDialog
 import app.androidrik.rikkahub.ui.components.ai.CompressPresetSelector
 import app.androidrik.rikkahub.ui.components.ai.builtInCompressPresetNames
 import app.androidrik.rikkahub.ui.components.nav.BackButton
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingAdvancedSection
+import app.androidrik.rikkahub.ui.pages.setting.search.SettingSearchReveal
+import app.androidrik.rikkahub.ui.pages.setting.search.rememberAdvancedRevealHighlight
 import app.androidrik.rikkahub.ui.components.ui.CardGroup
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
 import app.androidrik.rikkahub.utils.formatContextLength
@@ -100,6 +106,7 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val pagerState = rememberPagerState { 2 }
     val scope = rememberCoroutineScope()
+    val revealSection = remember { SettingSearchReveal.consumeRoute(Screen.SettingModels) }
 
     GlassTopBarScaffold(displaySetting = LocalSettings.current.displaySetting,
         containerColor = CustomColors.topBarColors.containerColor,
@@ -136,7 +143,12 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
             modifier = Modifier.fillMaxSize(),
         ) { page ->
             when (page) {
-                0 -> ModelSettingsPage(settings = settings, vm = vm, contentPadding = contentPadding)
+                0 -> ModelSettingsPage(
+                    settings = settings,
+                    vm = vm,
+                    contentPadding = contentPadding,
+                    revealSection = revealSection,
+                )
                 1 -> PromptSettingsPage(settings = settings, vm = vm, contentPadding = contentPadding)
             }
         }
@@ -144,8 +156,33 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
 }
 
 @Composable
-private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding: PaddingValues) {
+private fun ModelSettingsPage(
+    settings: Settings,
+    vm: SettingVM,
+    contentPadding: PaddingValues,
+    revealSection: String? = null,
+) {
+    val listState = rememberLazyListState()
+    var ocrExpanded by rememberSaveable {
+        mutableStateOf(revealSection == SettingAdvancedSection.MODEL_OCR_BACKEND)
+    }
+    var overrideExpanded by rememberSaveable {
+        mutableStateOf(revealSection == SettingAdvancedSection.MODEL_CONTEXT_LENGTH_OVERRIDE)
+    }
+    val ocrHighlighted = rememberAdvancedRevealHighlight(
+        revealSection == SettingAdvancedSection.MODEL_OCR_BACKEND,
+    )
+    val overrideHighlighted = rememberAdvancedRevealHighlight(
+        revealSection == SettingAdvancedSection.MODEL_CONTEXT_LENGTH_OVERRIDE,
+    )
+    LaunchedEffect(revealSection) {
+        when (revealSection) {
+            SettingAdvancedSection.MODEL_OCR_BACKEND -> listState.animateScrollToItem(8)
+            SettingAdvancedSection.MODEL_CONTEXT_LENGTH_OVERRIDE -> listState.animateScrollToItem(10)
+        }
+    }
     LazyColumn(
+        state = listState,
         // imePadding：键盘弹出时抬高列表底部，避免最后一个输入项（默认上下文窗口）被 IME 遮挡
         modifier = Modifier
             .fillMaxSize()
@@ -306,8 +343,14 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 onSelect = { vm.updateSettings(settings.copy(ocrModelId = it.id)) },
             )
         }
-        item {
-            OcrBackendSettingItem(settings = settings, vm = vm)
+        item(key = "ocr_backend") {
+            OcrBackendSettingItem(
+                settings = settings,
+                vm = vm,
+                expanded = ocrExpanded,
+                onExpandedChange = { ocrExpanded = it },
+                highlighted = ocrHighlighted,
+            )
         }
         item {
             ModelSettingItem(
@@ -327,10 +370,13 @@ private fun ModelSettingsPage(settings: Settings, vm: SettingVM, contentPadding:
                 emptyText = stringResource(R.string.setting_model_page_compress_model_follow),
             )
         }
-        item {
+        item(key = "context_length_override") {
             ContextLengthOverrideSetting(
                 settings = settings,
                 vm = vm,
+                expanded = overrideExpanded,
+                onExpandedChange = { overrideExpanded = it },
+                highlighted = overrideHighlighted,
             )
         }
         item {
@@ -725,6 +771,9 @@ private fun SliderSettingField(
 private fun ContextLengthOverrideSetting(
     settings: Settings,
     vm: SettingVM,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    highlighted: Boolean = false,
 ) {
     // 本地权威编辑态 + 去抖单向写出（AGENTS「TextField Host Rules」第 4 条；范本 1808d418f）。
     // 旧写法 `remember(settings.contextLengthOverride)`：每次设置回声（含本框自己的逐键提交）
@@ -752,15 +801,15 @@ private fun ContextLengthOverrideSetting(
     // isError/supportingText 都从本地权威文本算：不读持久态，避免落盘回声让错误态闪烁。
     val typedText = inputState.text.toString()
     val isInvalid = typedText.isNotBlank() && parseContextLengthInput(typedText) == null
-    var overrideExpanded by rememberSaveable { mutableStateOf(false) }
     val overrideTitle = stringResource(R.string.setting_model_page_context_length_override)
     CardGroup {
         // 低频项收「高级」折叠段（默认收起；CardGroup 是 Column 实现，无 Lazy IME 坑）
         advancedGroup(
             title = overrideTitle,
             hint = if (settings.contextLengthOverride == null) "跟随模型默认" else "已覆盖",
-            expanded = overrideExpanded,
-            onToggle = { overrideExpanded = it },
+            expanded = expanded,
+            onToggle = onExpandedChange,
+            highlighted = highlighted,
         ) {
             item {
                 OutlinedTextField(
@@ -928,9 +977,14 @@ private fun ModelSettingItem(
  * 全部走字段级 `vm.updateSettings { }` transform，不走「读 settings.value 改整对象写回」。
  */
 @Composable
-private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
+private fun OcrBackendSettingItem(
+    settings: Settings,
+    vm: SettingVM,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    highlighted: Boolean = false,
+) {
     Column {
-        var ocrExpanded by rememberSaveable { mutableStateOf(false) }
         val ocrTitle = stringResource(R.string.setting_model_page_ocr_backend)
         val ocrHint = when (settings.ocrBackend) {
             OcrBackend.MODEL -> stringResource(R.string.setting_model_page_ocr_backend_model)
@@ -941,8 +995,9 @@ private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
             advancedGroup(
                 title = ocrTitle,
                 hint = ocrHint,
-                expanded = ocrExpanded,
-                onToggle = { ocrExpanded = it },
+                expanded = expanded,
+                onToggle = onExpandedChange,
+                highlighted = highlighted,
             ) {
                 item(
                     headlineContent = {
@@ -970,7 +1025,7 @@ private fun OcrBackendSettingItem(settings: Settings, vm: SettingVM) {
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         )
 
-        if (ocrExpanded && settings.ocrBackend == OcrBackend.DEEPSEEK) {
+        if (expanded && settings.ocrBackend == OcrBackend.DEEPSEEK) {
             val selectedProvider = settings.ocrDeepSeekProviderId?.let { id ->
                 settings.providers.find { it.id == id }
             }

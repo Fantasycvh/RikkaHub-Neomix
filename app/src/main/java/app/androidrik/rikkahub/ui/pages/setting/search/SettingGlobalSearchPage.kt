@@ -138,7 +138,10 @@ fun SettingGlobalSearchPage() {
                     .fillMaxSize()
                     .padding(contentPadding)
                     .imePadding(),
-                onQuickLink = { navController.navigate(it) },
+                onQuickLink = {
+                    SettingSearchReveal.clear()
+                    navController.navigate(it)
+                },
             )
 
             hits.isEmpty() -> NoResultHint(
@@ -170,7 +173,10 @@ fun SettingGlobalSearchPage() {
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         item(
-                            onClick = { navController.navigate(hit.entry.route) },
+                            onClick = {
+                                SettingSearchReveal.request(hit.entry.route, hit.entry.advancedSection)
+                                navController.navigate(hit.entry.route)
+                            },
                             headlineContent = {
                                 Text(stringResource(hit.entry.title))
                             },

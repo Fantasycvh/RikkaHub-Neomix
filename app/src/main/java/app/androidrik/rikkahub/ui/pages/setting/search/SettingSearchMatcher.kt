@@ -21,6 +21,8 @@ data class SettingSearchEntry(
     val route: Screen,
     /** 额外别名：中英文口语说法、缩写、拼音（如「主题」→ theme、zhuti） */
     val keywords: List<String> = emptyList(),
+    /** 若设置项位于目标页的 `advancedGroup` 折叠段内，记录其段标识以便跳转后自动展开。 */
+    val advancedSection: String? = null,
 )
 
 /** 一条命中结果。 */

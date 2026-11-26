@@ -3,6 +3,7 @@ package app.androidrik.rikkahub.ui.components.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -61,6 +62,7 @@ import app.androidrik.rikkahub.data.model.AppSkinGroupStyle
 import app.androidrik.rikkahub.data.model.AppSkinGroups
 import app.androidrik.rikkahub.ui.theme.CustomColors
 import app.androidrik.rikkahub.ui.theme.LocalAppSkin
+import app.androidrik.rikkahub.ui.theme.LocalMotionTokens
 import app.androidrik.rikkahub.ui.theme.shapeForRadius
 import app.androidrik.rikkahub.ui.theme.toComposeColorOrNull
 
@@ -92,6 +94,7 @@ private data class AdvancedHead(
     val hint: String?,
     val expanded: Boolean,
     val memberCount: Int,
+    val highlighted: Boolean = false,
 )
 
 @DslMarker
@@ -130,6 +133,7 @@ interface CardGroupScope {
         hint: String? = null,
         expanded: Boolean,
         onToggle: (Boolean) -> Unit,
+        highlighted: Boolean = false,
         content: CardGroupScope.() -> Unit,
     )
 }
@@ -191,6 +195,7 @@ private class CardGroupScopeImpl : CardGroupScope {
         hint: String?,
         expanded: Boolean,
         onToggle: (Boolean) -> Unit,
+        highlighted: Boolean,
         content: CardGroupScope.() -> Unit,
     ) {
         val nested = CardGroupScopeImpl()
@@ -206,7 +211,7 @@ private class CardGroupScopeImpl : CardGroupScope {
                 leadingContent = null,
                 trailingContent = null,
                 colors = null,
-                advancedHead = AdvancedHead(title, hint, expanded, nested.items.size),
+                advancedHead = AdvancedHead(title, hint, expanded, nested.items.size, highlighted),
             )
         )
         items.addAll(nested.items.map { it.copy(advanced = true) })
@@ -334,6 +339,26 @@ private fun CardGroupListItem(
         // 值 chip 与操作并排：值在前、操作靠右
         else -> MergedTrailing(requireNotNull(item.trailingValue), requireNotNull(item.trailingContent))
     }
+    val baseColors = item.colors ?: if (flat) CustomColors.listItemColors else ListItemDefaults.colors(containerColor = Color.Transparent)
+    val resolvedColors = if (head != null) {
+        val motion = LocalMotionTokens.current
+        val animatedContainer by animateColorAsState(
+            targetValue = if (head.highlighted) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+            } else {
+                baseColors.containerColor
+            },
+            animationSpec = tween(durationMillis = motion.emphasizedMs),
+            label = "advanced_group_highlight",
+        )
+        if (animatedContainer != baseColors.containerColor) {
+            ListItemDefaults.colors(containerColor = animatedContainer)
+        } else {
+            baseColors
+        }
+    } else {
+        baseColors
+    }
     ListItem(
         headlineContent = if (head != null) {
             { Text(head.title) }
@@ -363,7 +388,7 @@ private fun CardGroupListItem(
         } else item.supportingContent,
         leadingContent = item.leadingContent,
         trailingContent = trailing,
-        colors = item.colors ?: if (flat) CustomColors.listItemColors else ListItemDefaults.colors(containerColor = Color.Transparent),
+        colors = resolvedColors,
     )
 }
 
