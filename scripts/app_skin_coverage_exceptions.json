@@ -16,11 +16,39 @@
       "reason": "Startup/recovery runs before settings are available; GateTheme must not depend on AppSkin loading."
     },
     {
+      "path": "ui/activity/RecoveryExport.kt",
+      "kind": "control",
+      "expression": "OutlinedButton(...)",
+      "count": 2,
+      "reason": "Startup/recovery runs before settings are available; GateTheme must not depend on AppSkin loading."
+    },
+    {
+      "path": "ui/activity/SafeModeActivity.kt",
+      "kind": "control",
+      "expression": "FilledTonalButton(...)",
+      "count": 1,
+      "reason": "Crash recovery runs under GateTheme before AppSkin settings are guaranteed available."
+    },
+    {
+      "path": "ui/activity/SafeModeActivity.kt",
+      "kind": "control",
+      "expression": "TextButton(...)",
+      "count": 2,
+      "reason": "Crash recovery runs under GateTheme before AppSkin settings are guaranteed available."
+    },
+    {
       "path": "ui/components/ai/AsrButton.kt",
       "kind": "shape",
       "expression": "RoundedCornerShape(barWidth / 2)",
       "count": 1,
       "reason": "Audio waveform bar caps follow the bar width; these are visualization geometry."
+    },
+    {
+      "path": "ui/components/ai/ChatInput.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(28.dp)",
+      "count": 1,
+      "reason": "Floating pill composer geometry; fixed 28.dp pill corner regardless of multiline expansion."
     },
     {
       "path": "ui/components/ai/ReasoningPicker.kt",
@@ -70,6 +98,20 @@
       "expression": "RoundedCornerShape(radius)",
       "count": 1,
       "reason": "Already reads the ChatAppearance bubble radius and continuous slice edges."
+    },
+    {
+      "path": "ui/components/message/ChatBubbleSurface.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape( topStart = radius, topEnd = radius, bottomStart = radius, bottomEnd = tail, )",
+      "count": 1,
+      "reason": "Already reads the ChatAppearance bubble radius and tailCornerDp geometry."
+    },
+    {
+      "path": "ui/components/message/ChatBubbleSurface.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape( topStart = radius, topEnd = radius, bottomStart = tail, bottomEnd = radius, )",
+      "count": 1,
+      "reason": "Already reads the ChatAppearance bubble radius and tailCornerDp geometry."
     },
     {
       "path": "ui/components/message/MessageQuoteCard.kt",
@@ -135,6 +177,27 @@
       "reason": "Already reads grouped-card tokens and animates the resolved corners."
     },
     {
+      "path": "ui/components/ui/CardGroup.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(0.dp)",
+      "count": 1,
+      "reason": "Non-flat group item delegates outer corner clipping to the enclosing CardGroup container."
+    },
+    {
+      "path": "ui/components/ui/CardGroup.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(999.dp)",
+      "count": 1,
+      "reason": "Value chip capsule geometry; full pill radius."
+    },
+    {
+      "path": "ui/components/ui/CardGroup.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(CardGroupCorner)",
+      "count": 1,
+      "reason": "Already reads LocalAppSkin.current.skin.shapes.cardGroupOuterDp."
+    },
+    {
       "path": "ui/components/ui/ChainOfThought.kt",
       "kind": "shape",
       "expression": "RoundedCornerShape(it.dp)",
@@ -186,58 +249,9 @@
     {
       "path": "ui/theme/AppSkinTheme.kt",
       "kind": "shape",
-      "expression": "RoundedCornerShape(extraLargeDp.dp)",
+      "expression": "RoundedCornerShape(it.dp)",
       "count": 1,
-      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
-    },
-    {
-      "path": "ui/theme/AppSkinTheme.kt",
-      "kind": "shape",
-      "expression": "RoundedCornerShape(extraSmallDp.dp)",
-      "count": 1,
-      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
-    },
-    {
-      "path": "ui/theme/AppSkinTheme.kt",
-      "kind": "shape",
-      "expression": "RoundedCornerShape(largeDp.dp)",
-      "count": 1,
-      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
-    },
-    {
-      "path": "ui/theme/AppSkinTheme.kt",
-      "kind": "shape",
-      "expression": "RoundedCornerShape(mediumDp.dp)",
-      "count": 1,
-      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
-    },
-    {
-      "path": "ui/theme/AppSkinTheme.kt",
-      "kind": "shape",
-      "expression": "RoundedCornerShape(scaledCornerRadius(20f).dp)",
-      "count": 1,
-      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
-    },
-    {
-      "path": "ui/theme/AppSkinTheme.kt",
-      "kind": "shape",
-      "expression": "RoundedCornerShape(scaledCornerRadius(32f).dp)",
-      "count": 1,
-      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
-    },
-    {
-      "path": "ui/theme/AppSkinTheme.kt",
-      "kind": "shape",
-      "expression": "RoundedCornerShape(scaledCornerRadius(48f).dp)",
-      "count": 1,
-      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
-    },
-    {
-      "path": "ui/theme/AppSkinTheme.kt",
-      "kind": "shape",
-      "expression": "RoundedCornerShape(smallDp.dp)",
-      "count": 1,
-      "reason": "Global token-to-Material shape adapter, including three derived Expressive tiers."
+      "reason": "Global token-to-Material shape adapter via shapeForRadius(), including derived Expressive tiers."
     },
     {
       "path": "ui/theme/BuiltinChatAppearancePlugin.kt",
@@ -245,6 +259,13 @@
       "expression": "RoundedCornerShape(24.dp)",
       "count": 1,
       "reason": "Demonstration plugin renderer explicitly owns this badge shape; plugin renderers can override host defaults."
+    },
+    {
+      "path": "ui/theme/SmoothCornerShape.kt",
+      "kind": "shape",
+      "expression": "RoundedCornerShape(topStart, topEnd, bottomEnd, bottomStart)",
+      "count": 1,
+      "reason": "CornerBasedShape.lerp() fallback to standard rounded-corner interpolation during shape transitions."
     }
   ]
 }

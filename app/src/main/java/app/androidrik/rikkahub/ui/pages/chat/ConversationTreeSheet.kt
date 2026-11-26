@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -222,7 +222,7 @@ private fun TreeRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(appSkinRoundedShape(10f))
             .background(rowBackground)
             .clickable(onClick = onSwitch)
             .padding(start = treeIndentDp(depth).dp, end = 4.dp, top = 6.dp, bottom = 6.dp),

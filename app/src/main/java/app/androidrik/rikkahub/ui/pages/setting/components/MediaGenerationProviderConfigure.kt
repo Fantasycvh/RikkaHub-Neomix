@@ -50,7 +50,6 @@ import app.androidrik.common.http.ProviderProxy
 import app.androidrik.rikkahub.ui.pages.assistant.detail.CustomBodies
 import app.androidrik.rikkahub.ui.pages.assistant.detail.CustomHeaders
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -330,7 +329,6 @@ fun MediaGenerationProviderConfigure(
     advancedModel?.let { model ->
         ModalBottomSheet(
             onDismissRequest = { advancedModelId = null },
-            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         ) {
             Column(
                 modifier = Modifier
