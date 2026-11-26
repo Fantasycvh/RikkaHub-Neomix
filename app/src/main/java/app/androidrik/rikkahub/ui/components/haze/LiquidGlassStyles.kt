@@ -13,10 +13,12 @@ import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.material3.Material3
+import dev.chrisbanes.haze.glass.ChromaticAberrationMode
 import dev.chrisbanes.haze.glass.GlassDefaults
 import dev.chrisbanes.haze.glass.GlassStyle
 import dev.chrisbanes.haze.glass.GlassStyleScope
 import dev.chrisbanes.haze.glass.OpticalSizeValue
+import dev.chrisbanes.haze.glass.SurfaceProfile
 import dev.chrisbanes.haze.glass.hazeGlass
 import dev.chrisbanes.haze.glass.material3.Material3
 import app.androidrik.rikkahub.data.datastore.BackgroundEffectType
@@ -146,6 +148,146 @@ fun Modifier.chatInputBackgroundEffect(
             }
         }
     }
+}
+
+/**
+ * 顶栏液态胶囊的光学参数规格（纯数据模型，供单测直接校验两档可读性与明暗参数边界）。
+ *
+ * - AUTO：晶莹液态感（低模糊 + 深透镜折射 + 克制边缘色散 + Squircle 连续曲面 + 柔和菲涅尔高光）；
+ * - STABLE_CONTENT：高可读厚底（强磨砂 + 低折射 + 零色散 + 加厚着色，确保标题文字对比度稳定）。
+ */
+internal data class LiquidCapsuleOpticsSpec(
+    val blurRadiusDp: Float,
+    val depth: Float,
+    val tintAlpha: Float,
+    val refractionStrength: Float,
+    val refractionHeightFraction: Float,
+    val chromaticAberrationStrength: Float,
+    val specularIntensity: Float,
+    val fresnelExponent: Float,
+    val useSquircleProfile: Boolean,
+)
+
+internal fun resolveLiquidCapsuleOptics(
+    mode: LiquidGlassReadabilityMode,
+    darkMode: Boolean,
+): LiquidCapsuleOpticsSpec = when (mode) {
+    LiquidGlassReadabilityMode.AUTO -> LiquidCapsuleOpticsSpec(
+        blurRadiusDp = 9f,
+        depth = 0.82f,
+        tintAlpha = if (darkMode) 0.24f else 0.18f,
+        refractionStrength = 0.82f,
+        refractionHeightFraction = 0.30f,
+        chromaticAberrationStrength = if (darkMode) 0.14f else 0.12f,
+        specularIntensity = if (darkMode) 0.50f else 0.62f,
+        fresnelExponent = 2.6f,
+        useSquircleProfile = true,
+    )
+
+    LiquidGlassReadabilityMode.STABLE_CONTENT -> LiquidCapsuleOpticsSpec(
+        blurRadiusDp = 15f,
+        depth = 0.62f,
+        tintAlpha = if (darkMode) 0.56f else 0.52f,
+        refractionStrength = 0.55f,
+        refractionHeightFraction = 0.22f,
+        chromaticAberrationStrength = 0.0f,
+        specularIntensity = if (darkMode) 0.42f else 0.52f,
+        fresnelExponent = 3.0f,
+        useSquircleProfile = true,
+    )
+}
+
+/**
+ * 顶栏胶囊的背景效果解析：统一以顶栏自身开关（[DisplaySetting.enableTopBarBlur] /
+ * [DisplaySetting.topBarEffectType]）为准，不再误读输入栏开关。
+ */
+internal fun resolveTopBarCapsuleEffectType(
+    displaySetting: DisplaySetting,
+): BackgroundEffectType? = if (displaySetting.enableTopBarBlur) {
+    displaySetting.topBarEffectType
+} else {
+    null
+}
+
+@Composable
+private fun liquidCapsuleGlassStyle(
+    containerColor: Color,
+    readabilityMode: LiquidGlassReadabilityMode,
+    darkMode: Boolean,
+    cornerShape: RoundedCornerShape?,
+): GlassStyle {
+    val spec = resolveLiquidCapsuleOptics(readabilityMode, darkMode)
+    val effectiveContainer = when (readabilityMode) {
+        LiquidGlassReadabilityMode.AUTO -> containerColor
+        LiquidGlassReadabilityMode.STABLE_CONTENT -> MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    return GlassStyle.Material3(
+        containerColor = effectiveContainer,
+        tint = effectiveContainer.copy(alpha = spec.tintAlpha),
+    ) {
+        appearanceResponse(dark = darkMode)
+        specularIntensity(spec.specularIntensity)
+        fresnelExponent(spec.fresnelExponent)
+        chromaticAberrationStrength(spec.chromaticAberrationStrength)
+        chromaticAberrationMode(ChromaticAberrationMode.Simple)
+        if (spec.useSquircleProfile) {
+            surfaceProfile(SurfaceProfile.Squircle)
+        }
+        optics(
+            GlassDefaults.optics.copy(
+                refractionStrength = spec.refractionStrength,
+                refractionHeightFraction = spec.refractionHeightFraction,
+                blurRadius = OpticalSizeValue.Fixed(spec.blurRadiusDp.dp),
+                depth = OpticalSizeValue.Fixed(spec.depth),
+            )
+        )
+        if (cornerShape != null) shape(cornerShape)
+    }
+}
+
+/**
+ * 顶栏液态胶囊的背景效果：直接联动 [DisplaySetting.enableTopBarBlur] 与 [DisplaySetting.topBarEffectType]，
+ * 并按 [DisplaySetting.liquidGlassReadabilityMode] 在晶莹液态感（AUTO）与高可读厚底（STABLE_CONTENT）之间切换。
+ */
+@Composable
+fun Modifier.topBarCapsuleBackgroundEffect(
+    hazeState: HazeState,
+    displaySetting: DisplaySetting,
+    containerColor: Color,
+    shape: Shape,
+): Modifier {
+    val effectType = resolveTopBarCapsuleEffectType(displaySetting) ?: return this
+    val readabilityMode = displaySetting.liquidGlassReadabilityMode
+    if (effectType == BackgroundEffectType.GLASS &&
+        shouldAllowRuntimeShaderBackedGlassEffect(Build.VERSION.SDK_INT) &&
+        recoverableBlurEnabled(hazeState)
+    ) {
+        val darkMode = LocalDarkMode.current
+        @OptIn(ExperimentalHazeApi::class)
+        return hazeGlass(
+            input = HazeInput.Sources(hazeState),
+            style = liquidCapsuleGlassStyle(
+                containerColor = containerColor,
+                readabilityMode = readabilityMode,
+                darkMode = darkMode,
+                cornerShape = shape as? RoundedCornerShape,
+            ),
+        )
+    }
+    return recoverableHazeBlur(
+        state = hazeState,
+        style = when (readabilityMode) {
+            LiquidGlassReadabilityMode.AUTO -> HazeBlurStyle.Material3 {
+                blurRadius(12.dp)
+            }
+
+            LiquidGlassReadabilityMode.STABLE_CONTENT -> HazeBlurStyle.Material3(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                blurRadius(16.dp)
+            }
+        },
+    )
 }
 
 /**

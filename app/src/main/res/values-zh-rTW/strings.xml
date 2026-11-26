@@ -1570,7 +1570,7 @@
   <string name="setting_provider_page_balance_api_path">餘額 API 路徑</string>
   <string name="setting_provider_page_quota_body">POST 請求體（JSON）</string>
   <string name="setting_provider_page_quota_body_hint">支援 {{baseUrl}} / {{apiKey}} 樣板變數</string>
-  <string name="setting_display_page_top_bar_style_desc">「整條模糊」保持現狀整條穿底；「浮動膠囊」把按鈕裝進膠囊、背景與輸入欄同款並隨滾動淡入，開啟後整條效果讓位。</string>
+  <string name="setting_display_page_top_bar_style_desc">「整條模糊」保持整條頂欄穿底；「浮動膠囊」將選單、標題與右側按鈕分別裝入三段式液態膠囊，跟隨頂欄背景效果並隨滾動凝結淡入。</string>
   <string name="setting_display_page_top_bar_style_full_bar">整條模糊</string>
   <string name="setting_display_page_top_bar_style_capsules">浮動膠囊</string>
   <string name="setting_provider_page_quota_url">額度查詢 URL</string>

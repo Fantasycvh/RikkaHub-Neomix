@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -225,6 +226,7 @@ internal fun TopBar(
                         hazeState = hazeState,
                         displaySetting = settings.displaySetting,
                         showBackground = showCapsuleBackground,
+                        contentPadding = PaddingValues(0.dp),
                         modifier = Modifier.padding(start = 8.dp, end = 4.dp),
                     ) {
                         IconButton(onClick = onOpenDrawer) {
@@ -240,18 +242,18 @@ internal fun TopBar(
         },
         title = {
             val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
-            Surface(
-                onClick = {
-                    if (conversation.messageNodes.isNotEmpty()) {
-                        titleState.open(conversation.title)
-                    } else {
-                        toaster.show(editTitleWarning, type = ToastType.Warning)
-                    }
-                },
-                color = Color.Transparent,
-            ) {
-                Column(Modifier.padding(horizontal = (panel.paddingHorizontalDp ?: 0f).dp,
-                    vertical = (panel.paddingVerticalDp ?: 0f).dp), verticalArrangement = Arrangement.spacedBy((panel.gapDp ?: 0f).dp)) {
+            val onEditTitleClick: () -> Unit = {
+                if (conversation.messageNodes.isNotEmpty()) {
+                    titleState.open(conversation.title)
+                } else {
+                    toaster.show(editTitleWarning, type = ToastType.Warning)
+                }
+            }
+            val titleBody: @Composable (Modifier) -> Unit = { bodyModifier ->
+                Column(
+                    modifier = bodyModifier,
+                    verticalArrangement = Arrangement.spacedBy((panel.gapDp ?: 1f).dp),
+                ) {
                     val assistant = settings.getCurrentAssistant()
                     val model = settings.getCurrentChatModel()
                     val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)
@@ -282,6 +284,33 @@ internal fun TopBar(
                     }
                 }
             }
+            if (capsuleMode) {
+                TopBarCapsule(
+                    hazeState = hazeState,
+                    displaySetting = settings.displaySetting,
+                    showBackground = showCapsuleBackground,
+                    contentPadding = PaddingValues(
+                        horizontal = (panel.paddingHorizontalDp ?: 14f).dp,
+                        vertical = (panel.paddingVerticalDp ?: 6f).dp,
+                    ),
+                    onClick = onEditTitleClick,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                ) {
+                    titleBody(Modifier)
+                }
+            } else {
+                Surface(
+                    onClick = onEditTitleClick,
+                    color = Color.Transparent,
+                ) {
+                    titleBody(
+                        Modifier.padding(
+                            horizontal = (panel.paddingHorizontalDp ?: 0f).dp,
+                            vertical = (panel.paddingVerticalDp ?: 0f).dp,
+                        )
+                    )
+                }
+            }
         },
         actions = {
             if (capsuleMode) {
@@ -289,6 +318,7 @@ internal fun TopBar(
                     hazeState = hazeState,
                     displaySetting = settings.displaySetting,
                     showBackground = showCapsuleBackground,
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 0.dp),
                     modifier = Modifier.padding(start = 4.dp, end = 8.dp),
                     content = topBarActions,
                 )
