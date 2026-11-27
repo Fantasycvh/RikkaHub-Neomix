@@ -32,7 +32,7 @@ internal suspend fun compileTikzToSvg(context: Context, code: String): String? =
         val cached = TikzSvgCache.get(context, trimmed)
         if (cached != null) {
             cached
-        } else if (MupdfSvgBridge.available) {
+        } else if (TectonicNative.isPackaged && MupdfSvgBridge.available) {
             // mupdf 链优先：tectonic PDF（内嵌字体）→ <text> 保留型 SVG（与聊天同链路）
             TectonicNative.compileIsolated(context, trimmed)
                 ?.let { MupdfSvgBridge.pdfToSvg(it) }

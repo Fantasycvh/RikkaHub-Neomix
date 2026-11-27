@@ -1,10 +1,10 @@
 # 原生库 16 KB 内存页对齐与 TikZ 加载收口设计稿
 
-日期：2026-11-27。状态：draft，已复核并修订，待择机实施；本轮仅修订设计文档。关联：[dsh-Go §7.1 16 KB 实证候选](../../references/other%20projects/dsh-go.md)、[TikZ Tectonic 复盘 §8.4](../../tikz-rendering-tectonic-postmortem.md)、[peer-verdicts §六](../../peer-verdicts-2026-11-08.md)。
+日期：2026-11-27。状态：P1/P2/P3 已实施，静态门禁及 4 KB 真机回归通过，arm64 16 KB 终验待完成。验收：[实施记录](../verification/native-16kb-alignment.md)。关联：[dsh-Go §7.1 16 KB 实证候选](../../references/other%20projects/dsh-go.md)、[TikZ Tectonic 复盘 §8.4](../../tikz-rendering-tectonic-postmortem.md)、[peer-verdicts §六](../../peer-verdicts-2026-11-08.md)。
 
-## 一、问题与全仓实测现状
+## 一、实施前问题与全仓实测快照
 
-本仓 `targetSdk = 37`、`compileSdk = 37.2`。2026-11-27 对本机现有 release 合并产物 `app/build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib` 下的全部原生库（`arm64-v8a` 18 个、`x86_64` 12 个，含 AAR 传递带入的 `libsqlite3x.so`、`libink.so`、`libquickjs-android-wrapper.so` 以及子模块 CMake 编译的 `libtermux.so`、`libworkspace.so`）逐一做 ELF64 程序头核验（本轮未重新构建，最终发布 APK 仍须独立核验）：
+本仓 `targetSdk = 37`、`compileSdk = 37.2`。2026-11-27 对本机现有 release 合并产物 `app/build/intermediates/merged_native_libs/release/mergeReleaseNativeLibs/out/lib` 下的全部原生库（`arm64-v8a` 18 个、`x86_64` 12 个，含 AAR 传递带入的 `libsqlite3x.so`、`libink.so`、`libquickjs-android-wrapper.so` 以及子模块 CMake 编译的 `libtermux.so`、`libworkspace.so`）逐一做 ELF64 程序头核验（该次核查未重新构建；实施后的最终 APK 结果见验收记录）：
 
 - **合格（`PT_LOAD` `p_align ≥ 0x4000` 且 `p_offset ≡ p_vaddr (mod 0x4000)`）**：`x86_64` 全部 12 个；`arm64-v8a` 其余 15 个（含 `libmupdf_java.so`、`libsimple.so`、`libproot_exec.so`、`libproot_loader.so`、`libicuuc78.so`、`libicudata78.so`、`libc++_shared.so`）。
 - **不合格（`p_align = 0x1000` 且多段同余不满足 16 KB）**：仅 `app/src/main/jniLibs/arm64-v8a/` 下 3 个手工预编译库：
@@ -65,7 +65,7 @@
 
 ## 四、分阶段改进方案
 
-实施顺序为：先编写门禁和修正测试失败条件，随后修复对齐与运行期加载，最后独立评估并实施 Graphite2 静态化。以下阶段均待择机实施，当前仅完成设计修订。
+实施顺序为：先编写门禁和修正测试失败条件，随后修复对齐与运行期加载，最后独立评估并实施 Graphite2 静态化。P1/P2/P3 已按此顺序落地；各阶段结果与尚未完成的验收见实施记录。
 
 ### P1：对齐修复与运行期加载收口（核心范围）
 
@@ -150,7 +150,7 @@ P1 保留 `libgraphite2.so`，先用同一份 Graphite2 1.3.15 源码、原 Rele
 | 环境与来源核对 | 保存 WSL 工具链版本、源码/锁文件/原生依赖校验值、有效构建参数和链接日志 | 使用当前仓内源码；target linker 显式配置；隔离宿主 pkg-config 与旧构建缓存 |
 | 静态自测 | `python -B -m unittest discover -s scripts -p test_verify_native_16kb.py` | 全部正负样本符合预期，错误输入不能静默跳过 |
 | 构建与最终包门禁 | debug/release 构建后对 arm64、x86_64、universal APK 分别执行 `--apk` | P1 arm64 预计 18 个、P2 预计 17 个；x86_64 预计 12 个；数量仅用于核对，以库集合和契约为准；所有库、依赖及 JNI 导出通过；无重复 MuPDF 来源冲突 |
-| 4 KB arm64 回归 | `TectonicNativeTest` 当前 4 项、`MupdfSvgBridgeTest` 当前 7 项及修订后的失败条件；PDF 解析、FTS5、PRoot 工作区/终端 | 支持 ABI 的缺库/加载故障必须失败；正常样例真正生成 PDF/SVG，错误信息可诊断；现有功能正常 |
+| 4 KB arm64 回归 | `TectonicNativeTest` 当前 6 项、`MupdfSvgBridgeTest` 当前 8 项及修订后的失败条件；PDF 解析、FTS5、PRoot 工作区/终端 | 支持 ABI 的缺库/加载故障必须失败；正常样例真正生成 PDF/SVG，错误信息可诊断；现有功能正常 |
 | 主进程加载收口 | 分别冷启测试缓存命中与缓存未命中；清楚记录测试进程和主进程 PID，检查可读取的 `/proc/<pid>/maps` 或等效调试证据 | 主进程两条路径均不加载 `libtex_poc.so` / TeX ICU 依赖；未命中时由 `:texcompile` 加载和执行；x86_64 不因导出尝试启动该服务；时间与内存收益另测 |
 | x86_64 16 KB 冒烟（可选） | 当前可用的 16 KB 系统镜像，装 x86_64/universal 包 | `getconf PAGE_SIZE` 为 `16384`，关闭页大小兼容模式；启动、搜索、PDF、PRoot 正常；无缓存 TikZ 降级源码。不能据此证明 arm64 TeX 已兼容 |
 | arm64 16 KB 终验 | 支持 16 KB 模式的真机或 arm64 主机 AVD，运行真实 TikZ 与桥接测试 | `getconf PAGE_SIZE` 为 `16384`，**确认关闭页大小兼容模式**，TeX 子进程与 MuPDF 桥均能加载并产出正确结果；记录设备、系统、兼容模式状态和测试报告 |

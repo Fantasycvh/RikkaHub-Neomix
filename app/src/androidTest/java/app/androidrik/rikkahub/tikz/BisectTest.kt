@@ -6,7 +6,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -35,7 +34,7 @@ class BisectTest {
 
     @Test
     fun bisectComponents() {
-        assumeTrue(TectonicNative.available)
+        requirePackagedTectonic()
         tryCase("grid-only", "\\draw[gray!30, very thin] (-3,-3) grid (3,3);")
         tryCase("axis-only", "\\draw[thick, ->] (-3.5,0) -- (3.5,0) node[right]{\$x\$};")
         tryCase("foreach-labels-only",

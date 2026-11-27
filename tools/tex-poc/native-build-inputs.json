@@ -1,0 +1,48 @@
+{
+  "checked_date": "2026-11-28",
+  "ndk_revision": "27.2.12479018",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "patchelf": "patchelf 0.18.0",
+  "target": "aarch64-linux-android",
+  "api": 26,
+  "tectonic": "0.17.0",
+  "graphite2": {
+    "release": "1.3.15",
+    "archive_sha256": "c6bc8b4252724665297f7cad0c55897285c673f9b8e6db3522ace833593fe0b1",
+    "recovered_source_tree_sha256": "1cc890aaa9e875beb7f5c00e7653289122f24873375bfbd492da07a6b611bf01",
+    "source_file_count": 484,
+    "cmake_sha256": "4d1302c6c1bf9087d7de9163994c5b72abd815c14e49c126f39ab277abad9230",
+    "configuration": {
+      "CMAKE_BUILD_TYPE": "Release",
+      "BUILD_SHARED_LIBS": "OFF",
+      "CMAKE_POSITION_INDEPENDENT_CODE": "ON",
+      "GRAPHITE2_NTRACING": "ON"
+    }
+  },
+  "baseline_pkgconfig": {
+    "fontconfig.pc": "prefix=/root/android-libs\nName: fontconfig\nDescription: stub for Android POC\nVersion: 2.15.0\nLibs: -L/root/android-libs/lib -lfontconfig\nCflags: -I${includedir}\n",
+    "freetype2.pc": "prefix=/root/android-libs\nexec_prefix=${prefix}\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: FreeType 2\nURL: https://freetype.org\nDescription: A free, high-quality, and portable font engine.\nVersion: 26.1.20\nRequires:  \nRequires.private: \nLibs: -L${libdir} -lfreetype \nLibs.private: \nCflags: -I${includedir}/freetype2\n",
+    "graphite2.pc": "\nName: Graphite2\nDescription: Font rendering engine for Complex Scripts\nVersion: 3.3.1\nLibs: -L/root/android-libs/lib -lgraphite2\nCflags: -I/root/android-libs/include\n\n",
+    "icu-i18n.pc": "prefix=/root/android-libs\nName: icu-i18n\nDescription: ICU i18n (termux aarch64)\nVersion: 78.3\nLibs: -L/root/android-libs/lib -licui18n\nCflags: -I/root/android-libs/include\n",
+    "icu-uc.pc": "prefix=/root/android-libs\nName: icu-uc\nDescription: ICU C API (termux aarch64)\nVersion: 78.3\nLibs: -L/root/android-libs/lib -licuuc -licudata\nCflags: -I/root/android-libs/include\n",
+    "libpng.pc": "prefix=/root/android-libs\nexec_prefix=/root/android-libs\nlibdir=/root/android-libs/lib\nincludedir=/root/android-libs/include/libpng16\n\nName: libpng\nDescription: Loads and saves PNG files\nVersion: 1.6.43\nRequires.private: zlib\nLibs: -L${libdir} -lpng16\nLibs.private: -lz -lm\nCflags: -I${includedir}\n",
+    "libpng16.pc": "prefix=/root/android-libs\nexec_prefix=/root/android-libs\nlibdir=/root/android-libs/lib\nincludedir=/root/android-libs/include/libpng16\n\nName: libpng\nDescription: Loads and saves PNG files\nVersion: 1.6.43\nRequires.private: zlib\nLibs: -L${libdir} -lpng16\nLibs.private: -lz -lm\nCflags: -I${includedir}\n",
+    "zlib.pc": "prefix=/root/ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr\nName: zlib\nDescription: Android system zlib\nVersion: 1.3\nLibs: -lz\nCflags:\n"
+  },
+  "baseline_libraries_sha256": {
+    "libfontconfig.a": "ad5f2ceb7bb9a123a72b7c4e8c8d394408861a64bc596ec3468337cf6ec1fc28",
+    "libfreetype.a": "2bf6bca59febd51b61add17e03dd32b124ea21f5360c7aab8971eedd6be33874",
+    "libgraphite2.so": "0254afa5241f08e0f87630f7777d5307dc67e694a47dd0efa0d8f9fd01f8e533",
+    "libicudata.so": "71a7479056941b610589f82698cdfb220c169dce9bc7c78ef6a6e74d07b1e8fd",
+    "libicudata.so.78": "71a7479056941b610589f82698cdfb220c169dce9bc7c78ef6a6e74d07b1e8fd",
+    "libicudata.so.78.3": "71a7479056941b610589f82698cdfb220c169dce9bc7c78ef6a6e74d07b1e8fd",
+    "libicui18n.so": "3140b2b28d16a6486a65663f1c47a94a4bb0d9def51612f8e941414bd50c7a0e",
+    "libicui18n.so.78": "3140b2b28d16a6486a65663f1c47a94a4bb0d9def51612f8e941414bd50c7a0e",
+    "libicui18n.so.78.3": "3140b2b28d16a6486a65663f1c47a94a4bb0d9def51612f8e941414bd50c7a0e",
+    "libicuuc.so": "91bcef1faba58b755d4870aaea95814d1753961fd72365c4701cfd4461e3584c",
+    "libicuuc.so.78": "91bcef1faba58b755d4870aaea95814d1753961fd72365c4701cfd4461e3584c",
+    "libicuuc.so.78.3": "91bcef1faba58b755d4870aaea95814d1753961fd72365c4701cfd4461e3584c",
+    "libpng.a": "2db280a50c342fa7831889347c45f1b48e662665552a60f5a2cd57c09acc3527",
+    "libpng16.a": "2db280a50c342fa7831889347c45f1b48e662665552a60f5a2cd57c09acc3527"
+  }
+}

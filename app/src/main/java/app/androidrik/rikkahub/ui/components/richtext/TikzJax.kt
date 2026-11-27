@@ -75,11 +75,7 @@ fun TikzJax(
     // 不等待 LaunchedEffect 异步协程）依赖此；未命中仍走下方 LaunchedEffect 异步编译
     var nativeSvg by remember(code) {
         mutableStateOf(
-            if (TectonicNative.available) {
-                runCatching { TikzSvgCache.get(context, code) }.getOrNull()
-            } else {
-                null
-            }
+            runCatching { TikzSvgCache.get(context, code) }.getOrNull()
         )
     }
     var nativeBitmap by remember(code) { mutableStateOf<ImageBitmap?>(null) }
@@ -99,7 +95,7 @@ fun TikzJax(
     }
 
     LaunchedEffect(code) {
-        if (!nativeFailed && TectonicNative.available) {
+        if (!nativeFailed && TectonicNative.isPackaged) {
             // 缓存命中：历史消息秒开（TeX 确定性输出，sha256(code) 内容寻址）
             val cached: String? = withContext(Dispatchers.IO) { TikzSvgCache.get(context, code) }
             if (cached != null) {

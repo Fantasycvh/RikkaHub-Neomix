@@ -5,7 +5,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -16,6 +16,10 @@ import org.junit.runner.RunWith
  */
 @RunWith(AndroidJUnit4::class)
 class TectonicNativeTest {
+    @Before
+    fun requireSupportedProcessAndPackagedEngine() {
+        requirePackagedTectonic()
+    }
 
     /** positioning 语法片段：TikzRenderer 子集必然失败，覆盖 wrapDocument 包装路径 */
     private val positioningFragment = """
@@ -43,7 +47,6 @@ class TectonicNativeTest {
     @Test
     fun compileFragmentWithPositioningOnDevice() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        assumeTrue("libtex_poc.so not available on this ABI", TectonicNative.available)
         val pdf = TectonicNative.compileIsolated(context, positioningFragment)
         assertNotNull("compile returned null, lastError=${TectonicNative.lastErrorText()}", pdf)
         assertTrue("pdf too small: ${pdf!!.size}", pdf.size > 1000)
@@ -52,7 +55,6 @@ class TectonicNativeTest {
     @Test
     fun compilePgfplotsAxisOnDevice() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        assumeTrue(TectonicNative.available)
         val pdf = TectonicNative.compileIsolated(context, pgfplotsDoc)
         assertNotNull("compile returned null, lastError=${TectonicNative.lastErrorText()}", pdf)
         assertTrue("pdf too small: ${pdf!!.size}", pdf.size > 1000)
@@ -61,7 +63,6 @@ class TectonicNativeTest {
     @Test
     fun compileIsDeterministicAcrossRuns() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        assumeTrue(TectonicNative.available)
         val first = TectonicNative.compileIsolated(context, positioningFragment)!!
         val second = TectonicNative.compileIsolated(context, positioningFragment)!!
         assertEquals(first.size, second.size)
@@ -71,7 +72,6 @@ class TectonicNativeTest {
     @Test
     fun invalidTexReturnsNullWithLastError() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        assumeTrue(TectonicNative.available)
         val bad = "\\documentclass{article}\\begin{document}\\undefinedmacro"
         val result = TectonicNative.compileIsolated(context, bad)
         android.util.Log.i(
@@ -79,6 +79,47 @@ class TectonicNativeTest {
             "bad input result=${result?.size ?: "null"} lastError=${TectonicNative.lastErrorText()}",
         )
         org.junit.Assert.assertNull(result)
-        assertTrue(!TectonicNative.lastErrorText().isNullOrBlank())
+        val error = TectonicNative.lastErrorText().orEmpty()
+        assertTrue("Expected a TeX diagnostic, got: $error", error.contains("TeX error:"))
+    }
+
+    @Test
+    fun packagedProbeAndCompilationKeepTexOutOfMainProcess() {
+        fun assertNoTexMappings() {
+            val maps = java.io.File("/proc/self/maps").readText()
+            listOf("libtex_poc.so", "libicuuc78.so", "libicudata78.so").forEach {
+                assertTrue("Main process loaded $it", !maps.contains(it))
+            }
+        }
+        assertNoTexMappings()
+        assertTrue(TectonicNative.isPackaged)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        assertNotNull(TectonicNative.compileIsolated(context, positioningFragment))
+        assertNoTexMappings()
+    }
+
+    /** Save the same uncached samples for dynamic/static Graphite2 comparison. */
+    @Test
+    fun renderReferenceFixtures() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val output = java.io.File(context.getExternalFilesDir(null), "native-16kb-fixtures").apply { mkdirs() }
+        val samples = mapOf(
+            "positioning-cjk" to positioningFragment,
+            "pgfplots" to pgfplotsDoc,
+            "font-sizes" to """
+                \begin{tikzpicture}
+                \node[draw] at (0,0) {中文 Hello};
+                \node[draw,font=\small] at (0,-1) {小字 Small};
+                \end{tikzpicture}
+            """.trimIndent(),
+        )
+        samples.forEach { (name, code) ->
+            val pdf = TectonicNative.compileIsolated(context, code)
+            assertNotNull("$name: ${TectonicNative.lastErrorText()}", pdf)
+            val svg = MupdfSvgBridge.pdfToSvg(pdf!!)
+            assertNotNull("$name: SVG conversion failed", svg)
+            java.io.File(output, "$name.pdf").writeBytes(pdf)
+            java.io.File(output, "$name.svg").writeText(svg!!)
+        }
     }
 }

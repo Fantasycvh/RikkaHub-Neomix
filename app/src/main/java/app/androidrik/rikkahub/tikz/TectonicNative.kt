@@ -28,9 +28,14 @@ object TectonicNative {
     @Volatile
     private var lastIsolatedError: String? = null
 
-    /** so 是否可用（仅打包了 arm64-v8a；其他 ABI 或加载失败时为 false，回退链自动降级） */
-    val available: Boolean
-        get() = runCatching { load() }.isSuccess
+    @Volatile
+    private var lastLocalError: String? = null
+
+    /** Path lookup only: presence does not guarantee that dlopen or compilation succeeds. */
+    val isPackaged: Boolean by lazy {
+        (TectonicNative::class.java.classLoader as? dalvik.system.BaseDexClassLoader)
+            ?.findLibrary("tex_poc") != null
+    }
 
     private fun load() {
         if (!loaded) synchronized(this) {
@@ -77,6 +82,7 @@ object TectonicNative {
      * 互污染；隔离进程自身（service 侧）直接调本方法内的 native 路径。
      */
     fun compile(context: Context, texSource: String, format: String = "pdf"): ByteArray? {
+        lastLocalError = null
         return try {
             load()
             val cacheDir = File(context.cacheDir, "texfmt").apply { mkdirs() }.absolutePath
@@ -85,6 +91,7 @@ object TectonicNative {
             if (data != null) Log.i(TAG, "native compile ok ($format): ${data.size} bytes") else Log.w(TAG, "native compile failed ($format): ${lastErrorText()}")
             data
         } catch (t: Throwable) {
+            lastLocalError = "${t.javaClass.simpleName}: ${t.message}"
             Log.w(TAG, "native compile error", t)
             null
         }
@@ -100,10 +107,10 @@ object TectonicNative {
                 data = android.os.Bundle().apply { putString(TexProto.KEY_TEX, tex) }
             }
         }
+        lastIsolatedError = result.error
         if (result.data != null) {
             Log.i(TAG, "isolated compile ok ($format): ${result.data.size} bytes")
         } else {
-            lastIsolatedError = result.error
             Log.w(TAG, "isolated compile failed ($format): ${result.error}")
         }
         return result.data
@@ -206,7 +213,7 @@ object TectonicNative {
         // 隔离进程回传缓存（compileIsolated/xdvToSvgIsolated 主路径）优先，
         // 无则回退主进程 native 槽（直接 compile 用）。
         // 注意 native 槽失败时返回 "unknown error" 而非 null，故不能先取它。
-        lastIsolatedError ?: lastError()
+        lastIsolatedError ?: lastLocalError ?: if (loaded) lastError() else null
     } catch (t: Throwable) {
         t.message
     }

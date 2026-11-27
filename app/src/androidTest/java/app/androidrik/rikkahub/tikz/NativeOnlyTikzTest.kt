@@ -4,7 +4,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
@@ -23,7 +22,7 @@ class NativeOnlyTikzTest {
 
     private fun compileToSvg(name: String, code: String): String? {
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
-        assumeTrue(TectonicNative.available)
+        requirePackagedTectonic()
         val pdf = TectonicNative.compileIsolated(ctx, code)
         assertNotNull("$name pdf compile failed: ${TectonicNative.lastErrorText()}", pdf)
         val svg = MupdfSvgBridge.pdfToSvg(pdf!!)
@@ -73,7 +72,7 @@ class NativeOnlyTikzTest {
         // 记录性用例：文档化 pgf 对 #hex 的限制（真机 + 宿主 TeX 双端确认）。
         // 若未来引擎加了 #hex 预处理，本用例需随行为更新。
         val ctx = InstrumentationRegistry.getInstrumentation().targetContext
-        assumeTrue(TectonicNative.available)
+        requirePackagedTectonic()
         val pdf = TectonicNative.compileIsolated(ctx, tHex)
         val err = TectonicNative.lastErrorText()
         if (pdf != null) {

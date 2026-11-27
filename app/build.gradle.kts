@@ -23,10 +23,12 @@ android {
     defaultConfig {
         // Synthetic backup acceptance must never install over an existing user/debug profile.
         val backupIsolatedTests = providers.gradleProperty("backupIsolatedTests").orNull == "true"
+        val nativeIsolatedTests = providers.gradleProperty("nativeIsolatedTests").orNull == "true"
         val longTextBaseline = providers.gradleProperty("longTextBaseline").orNull
         applicationId = when {
             longTextBaseline == "true" -> "app.androidrik.rikkahub.longtextbaseline"
             backupIsolatedTests -> "app.androidrik.rikkahub.backupverification"
+            nativeIsolatedTests -> "app.androidrik.rikkahub.nativeverification"
             else -> "app.androidrik.rikkahub"
         }
         minSdk = 26
@@ -46,6 +48,13 @@ android {
 
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 

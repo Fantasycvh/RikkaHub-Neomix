@@ -148,10 +148,11 @@ jobs:
       #     python3 scripts/audit_app_skin.py
       #     ./gradlew testDebugUnitTest
 
-      - name: R8 regression guards
+      - name: R8 and native regression guards
         run: |
           chmod +x gradlew
           python3 -B -m unittest discover -s scripts -p test_verify_r8_output.py
+          python3 -B -m unittest discover -s scripts -p test_verify_native_16kb.py
           ./gradlew :app:testDebugUnitTest --tests 'app.androidrik.rikkahub.r8.*' \
             -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8" \
             --max-workers=2
@@ -204,6 +205,10 @@ jobs:
           mapping=app/build/outputs/mapping/release/mapping.txt
           [ -s "$mapping" ] || { echo "::error::mapping.txt 不存在（R8 没跑？）" >&2; exit 1; }
           python3 scripts/verify_r8_output.py
+          find app/build/outputs/apk/release -name '*.apk' -print0 |
+            while IFS= read -r -d '' native_apk; do
+              python3 scripts/verify_native_16kb.py --apk "$native_apk" || exit 1
+            done
           gzip -9 -c "$mapping" > mapping.txt.gz
           gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
           git push origin ":refs/tags/nightly" 2>/dev/null || true
