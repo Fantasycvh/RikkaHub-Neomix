@@ -149,9 +149,12 @@ internal fun TopBar(
     val capsuleMode = skin.topBarMode(settings.displaySetting) == TopBarChromeStyle.CAPSULES
 
     // 右侧操作按钮：FULL_BAR 直挂 actions，CAPSULES 由胶囊包裹（背景随滚动淡入）。
-    // 「本会话任务」保留一级直达，其余收进「更多」二级展开菜单，压缩顶栏占位
+    // 「新聊天」和「本会话任务」可直接点击，其余操作收进「更多」菜单。
     var showMoreMenu by remember { mutableStateOf(false) }
     val topBarActions: @Composable RowScope.() -> Unit = {
+        IconButton(onClick = onNewChat) {
+            Icon(HugeIcons.MessageAdd01, stringResource(R.string.chat_page_new_chat))
+        }
         IconButton(onClick = { showTasks = true }) { Icon(Lucide.ListTree, stringResource(R.string.conversation_tasks_title)) }
         Box {
             IconButton(onClick = { showMoreMenu = !showMoreMenu }) {
@@ -191,14 +194,6 @@ internal fun TopBar(
                         onExport()
                     },
                     leadingIcon = { Icon(HugeIcons.Share01, null) }
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.chat_page_new_chat)) },
-                    onClick = {
-                        showMoreMenu = false
-                        onNewChat()
-                    },
-                    leadingIcon = { Icon(HugeIcons.MessageAdd01, null) }
                 )
             }
         }
