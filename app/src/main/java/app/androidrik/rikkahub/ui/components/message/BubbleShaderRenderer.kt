@@ -55,7 +55,7 @@ internal class BubbleShaderRenderer {
     }
 }
 
-private object BubbleShaderTiles {
+internal object BubbleShaderTiles {
     // 16 * 128 * 128 * 4 = 1 MiB; never recycle bitmaps still held by a mounted painter.
     private val cache = LruCache<BubbleShaderStyle, Bitmap>(16)
     @Synchronized fun get(style: BubbleShaderStyle): Bitmap = cache.get(style) ?: run {
@@ -65,6 +65,11 @@ private object BubbleShaderTiles {
             field.color((index % side + 0.5f) / side, (index / side + 0.5f) / side)
         }
         Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888).also { cache.put(style, it) }
+    }
+
+    /** 释放缓存引用供 GC 回收；不调用 `bitmap.recycle()`，避免正在绘制的 painter 崩溃。 */
+    @Synchronized fun evictAll() {
+        cache.evictAll()
     }
 }
 

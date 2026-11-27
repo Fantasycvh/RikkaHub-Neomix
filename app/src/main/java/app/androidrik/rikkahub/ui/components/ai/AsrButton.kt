@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import app.androidrik.asr.ASRState
+import app.androidrik.rikkahub.ui.components.motion.rememberDecorativeAnimationGate
 import app.androidrik.rikkahub.R
 import app.androidrik.asr.ASRStatus
 import me.rerere.hugeicons.HugeIcons
@@ -123,20 +124,28 @@ internal fun AsrButton(
                 }
 
                 AsrDisplayState.Connecting -> {
+                    val gate = rememberDecorativeAnimationGate()
                     Box(
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier
+                            .then(gate.modifier)
+                            .size(36.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        val infiniteTransition = rememberInfiniteTransition(label = "asr_pulse")
-                        val scale by infiniteTransition.animateFloat(
-                            initialValue = 0.8f,
-                            targetValue = 1.2f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(MotionTokens.PULSE_MS, easing = MotionTokens.LinearEasingToken),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "asr_pulse_scale"
-                        )
+                        val scale = if (gate.active) {
+                            val infiniteTransition = rememberInfiniteTransition(label = "asr_pulse")
+                            val animated by infiniteTransition.animateFloat(
+                                initialValue = 0.8f,
+                                targetValue = 1.2f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(MotionTokens.PULSE_MS, easing = MotionTokens.LinearEasingToken),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "asr_pulse_scale"
+                            )
+                            animated
+                        } else {
+                            1f
+                        }
                         Box(
                             modifier = Modifier
                                 .size(8.dp)

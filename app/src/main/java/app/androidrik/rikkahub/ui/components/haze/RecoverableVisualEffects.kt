@@ -3,12 +3,12 @@ package app.androidrik.rikkahub.ui.components.haze
 import android.os.Build
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -19,6 +19,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.hazeBlur
+import app.androidrik.rikkahub.ui.components.motion.LocalPageVisible
 import java.util.Collections
 import java.util.WeakHashMap
 
@@ -55,15 +56,16 @@ internal fun shouldRecreateHazeStateOnForeground(sdkInt: Int): Boolean {
 internal fun shouldEnableRecoverableBlur(
     userEnabled: Boolean,
     isAppInBackground: Boolean,
+    isPageVisible: Boolean = true,
 ): Boolean {
-    return userEnabled && !isAppInBackground
+    return userEnabled && !isAppInBackground && isPageVisible
 }
 
 /**
  * Haze 2 移除了 [HazeState.blurEnabled]，前后台 gate 按 state 记录在 WeakHashMap 里
  * （state 不再被引用时条目自动回收），各 blur 消费点经 [recoverableBlurEnabled] 读取应用。
  */
-private val recoverableBlurGates: MutableMap<HazeState, MutableState<Boolean>> =
+private val recoverableBlurGates: MutableMap<HazeState, State<Boolean>> =
     Collections.synchronizedMap(WeakHashMap())
 
 @Composable
@@ -112,12 +114,21 @@ fun rememberRecoverableHazeState(
     userEnabled: Boolean = true,
     sdkInt: Int = Build.VERSION.SDK_INT,
 ): HazeState {
+    val isPageVisible = LocalPageVisible.current
     var isAppInBackground by remember { mutableStateOf(false) }
     var recreationKey by remember { mutableIntStateOf(0) }
     val shouldRecreateState = shouldRecreateHazeStateOnForeground(sdkInt)
     val hazeState = remember(recreationKey) { HazeState() }
-    val blurGate = remember(hazeState) {
-        mutableStateOf(userEnabled).also { recoverableBlurGates[hazeState] = it }
+    // 组合时同步门控，避免隐藏页重新进入转场的第一帧仍读到旧的关闭态。
+    val blurGate = rememberUpdatedState(
+        shouldEnableRecoverableBlur(
+            userEnabled = userEnabled,
+            isAppInBackground = isAppInBackground,
+            isPageVisible = isPageVisible,
+        )
+    )
+    remember(hazeState) {
+        recoverableBlurGates[hazeState] = blurGate
     }
 
     DisposableEffect(hazeState) {
@@ -135,19 +146,12 @@ fun rememberRecoverableHazeState(
             override fun onStop(owner: LifecycleOwner) {
                 isAppInBackground = true
                 // 进后台不重建：界面不可见，重录全屏 haze source 没有意义；
-                // blurGate 会经 SideEffect 随 isAppInBackground 关掉。
+                // blurGate 随 isAppInBackground 关掉。
             }
         }
         val lifecycle = ProcessLifecycleOwner.get().lifecycle
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
-    }
-
-    SideEffect {
-        blurGate.value = shouldEnableRecoverableBlur(
-            userEnabled = userEnabled,
-            isAppInBackground = isAppInBackground,
-        )
     }
 
     return hazeState

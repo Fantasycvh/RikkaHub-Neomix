@@ -71,6 +71,9 @@ import app.androidrik.rikkahub.data.event.AppEventBus
 import app.androidrik.rikkahub.data.repository.MediaCreationRepository
 import app.androidrik.rikkahub.service.MediaCreationForegroundService
 import app.androidrik.rikkahub.ui.activity.SafeModeActivity
+import app.androidrik.rikkahub.ui.components.motion.rememberPageVisualWorkNavEntryDecorator
+import app.androidrik.rikkahub.ui.components.motion.LocalSystemReduceMotion
+import app.androidrik.rikkahub.ui.components.motion.rememberSystemReduceMotionObserver
 import app.androidrik.rikkahub.ui.components.ui.TTSController
 import app.androidrik.rikkahub.ui.context.LocalASRState
 import app.androidrik.rikkahub.ui.context.LocalNavController
@@ -435,6 +438,14 @@ open class RouteActivity : ComponentActivity() {
             if (screen != null) NavStats.recordPageEnter(screen::class.simpleName)
         }
 
+        val systemReduceMotion = rememberSystemReduceMotionObserver()
+        val topContentKeyState = remember(backStack) {
+            derivedStateOf {
+                backStack.lastOrNull()?.let { NavEntry<NavKey>(it) {}.contentKey }
+            }
+        }
+        val pageActiveDecorator = rememberPageVisualWorkNavEntryDecorator<NavKey>(topContentKeyState)
+
         SharedTransitionLayout {
             CompositionLocalProvider(
                 LocalNavController provides Navigator(backStack),
@@ -443,6 +454,7 @@ open class RouteActivity : ComponentActivity() {
                 LocalToaster provides toastState,
                 LocalTTSState provides tts,
                 LocalASRState provides asr,
+                LocalSystemReduceMotion provides systemReduceMotion,
             ) {
                 Toaster(
                     state = toastState,
@@ -463,6 +475,7 @@ open class RouteActivity : ComponentActivity() {
                         entryDecorators = listOf(
                             rememberSaveableStateHolderNavEntryDecorator(),
                             rememberViewModelStoreNavEntryDecorator(),
+                            pageActiveDecorator,
                         ),
                         modifier = Modifier.fillMaxSize(),
                         // 空栈防线之第二道（首选防线）：只在栈内还有页面时才 pop。

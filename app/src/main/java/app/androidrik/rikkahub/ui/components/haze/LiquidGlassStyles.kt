@@ -27,7 +27,7 @@ import app.androidrik.rikkahub.data.datastore.LiquidGlassReadabilityMode
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 
 /**
- * 玻璃/磨砂表面的通用样式（ChatList 兄弟层与顶栏共用）。
+ * 玻璃/磨砂表面的通用样式（ChatList 兄弟层与顶栏共用），经 [GlassStyleCache] 跨组件复用。
  *
  * 可读性模式（对照 BiliPai LiquidGlassReadabilityMode）：
  * - AUTO：Material3 默认铺底，视觉最「透」；
@@ -35,17 +35,28 @@ import app.androidrik.rikkahub.ui.theme.LocalDarkMode
  */
 @Composable
 fun liquidGlassBlurStyle(mode: LiquidGlassReadabilityMode): HazeBlurStyle {
-    return when (mode) {
-        LiquidGlassReadabilityMode.AUTO -> HazeBlurStyle.Material3 {
-            blurRadius(16.dp)
-        }
-
-        LiquidGlassReadabilityMode.STABLE_CONTENT -> HazeBlurStyle.Material3(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ) {
-            blurRadius(16.dp)
-        }
+    val containerColor = when (mode) {
+        LiquidGlassReadabilityMode.AUTO -> MaterialTheme.colorScheme.surface
+        LiquidGlassReadabilityMode.STABLE_CONTENT -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
+    return cachedBlurStyle(containerColor = containerColor, blurRadiusDp = 16f)
+}
+
+@Composable
+private fun cachedBlurStyle(
+    containerColor: Color,
+    blurRadiusDp: Float,
+): HazeBlurStyle {
+    val key = BlurStyleCacheKey.of(
+        containerColor = containerColor,
+        blurRadiusDp = blurRadiusDp,
+        darkMode = LocalDarkMode.current,
+    )
+    GlassStyleCache.blurStyles.get(key)?.let { return it }
+    val created = HazeBlurStyle.Material3(containerColor = containerColor) {
+        blurRadius(blurRadiusDp.dp)
+    }
+    return GlassStyleCache.blurStyles.put(key, created)
 }
 
 /** 玻璃着色浓度：AUTO 视觉最透，STABLE_CONTENT 加厚着色保文字对比度（ blur 样式同款语义）。 */
@@ -70,33 +81,46 @@ fun Modifier.bubbleGlassEffect(
             style = liquidGlassStyle(color, opacity * 0.3f, LocalDarkMode.current, shape),
         )
     }
-    BubbleGlassBackend.BLUR -> recoverableHazeBlur(state, HazeBlurStyle.Material3(
-        containerColor = color.copy(alpha = opacity * 0.3f),
-    ) { blurRadius(16.dp) })
+    BubbleGlassBackend.BLUR -> recoverableHazeBlur(
+        state = state,
+        style = cachedBlurStyle(containerColor = color.copy(alpha = opacity * 0.3f), blurRadiusDp = 16f),
+    )
     BubbleGlassBackend.STATIC -> this
 }
 
-/** 输入框/悬浮层的共用玻璃样式（`GlassStyle.Material3` + 明暗预设 + 光学参数）。 */
+/** 输入框/悬浮层的共用玻璃样式（`GlassStyle.Material3` + 明暗预设 + 光学参数），经 [GlassStyleCache] 复用。 */
 @Composable
 private fun liquidGlassStyle(
     containerColor: Color,
     tintAlpha: Float,
     darkMode: Boolean,
     cornerShape: RoundedCornerShape?,
-): GlassStyle = GlassStyle.Material3(
-    containerColor = containerColor,
-    tint = containerColor.copy(alpha = tintAlpha),
-) {
-    appearanceResponse(dark = darkMode)
-    // 与背景文字拉开层次，避免玻璃后的内容与玻璃上的文字互相干扰
-    optics(
-        GlassDefaults.optics.copy(
-            blurRadius = OpticalSizeValue.Fixed(16.dp),
-            depth = OpticalSizeValue.Fixed(0.5f),
-        )
+): GlassStyle {
+    val key = GlassStyleCacheKey.of(
+        preset = GlassStylePreset.STANDARD,
+        containerColor = containerColor,
+        tintAlpha = tintAlpha,
+        darkMode = darkMode,
+        readabilityMode = LiquidGlassReadabilityMode.AUTO,
+        cornerShape = cornerShape,
     )
-    // GlassStyleScope.shape 只收 RoundedCornerShape；全屏 chrome 无需写 shape
-    if (cornerShape != null) shape(cornerShape)
+    GlassStyleCache.glassStyles.get(key)?.let { return it }
+    val created = GlassStyle.Material3(
+        containerColor = containerColor,
+        tint = containerColor.copy(alpha = tintAlpha),
+    ) {
+        appearanceResponse(dark = darkMode)
+        // 与背景文字拉开层次，避免玻璃后的内容与玻璃上的文字互相干扰
+        optics(
+            GlassDefaults.optics.copy(
+                blurRadius = OpticalSizeValue.Fixed(16.dp),
+                depth = OpticalSizeValue.Fixed(0.5f),
+            )
+        )
+        // GlassStyleScope.shape 只收 RoundedCornerShape；全屏 chrome 无需写 shape
+        if (cornerShape != null) shape(cornerShape)
+    }
+    return GlassStyleCache.glassStyles.put(key, created)
 }
 
 /**
@@ -116,21 +140,23 @@ fun Modifier.chatInputBackgroundEffect(
     return when (displaySetting.inputEffectType) {
         BackgroundEffectType.BLUR -> recoverableHazeBlur(
             state = hazeState,
-            style = HazeBlurStyle.Material3 {
-                blurRadius(12.dp)
-            },
+            style = cachedBlurStyle(
+                containerColor = MaterialTheme.colorScheme.surface,
+                blurRadiusDp = 12f,
+            ),
         )
 
         BackgroundEffectType.GLASS -> {
-            // 前后台 gate：进后台后玻璃停渲染（recoverableBlurEnabled 同时承载回前台重建策略）
+            // 前后台/覆盖页 gate：进后台或被覆盖后玻璃停渲染（recoverableBlurEnabled 同时承载回前台重建策略）
             if (!shouldAllowRuntimeShaderBackedGlassEffect(Build.VERSION.SDK_INT) ||
                 !recoverableBlurEnabled(hazeState)
             ) {
                 recoverableHazeBlur(
                     state = hazeState,
-                    style = HazeBlurStyle.Material3 {
-                        blurRadius(12.dp)
-                    },
+                    style = cachedBlurStyle(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        blurRadiusDp = 12f,
+                    ),
                 )
             } else {
                 val darkMode = LocalDarkMode.current
@@ -221,7 +247,16 @@ private fun liquidCapsuleGlassStyle(
         LiquidGlassReadabilityMode.AUTO -> containerColor
         LiquidGlassReadabilityMode.STABLE_CONTENT -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
-    return GlassStyle.Material3(
+    val key = GlassStyleCacheKey.of(
+        preset = GlassStylePreset.CAPSULE,
+        containerColor = effectiveContainer,
+        tintAlpha = spec.tintAlpha,
+        darkMode = darkMode,
+        readabilityMode = readabilityMode,
+        cornerShape = cornerShape,
+    )
+    GlassStyleCache.glassStyles.get(key)?.let { return it }
+    val created = GlassStyle.Material3(
         containerColor = effectiveContainer,
         tint = effectiveContainer.copy(alpha = spec.tintAlpha),
     ) {
@@ -243,6 +278,7 @@ private fun liquidCapsuleGlassStyle(
         )
         if (cornerShape != null) shape(cornerShape)
     }
+    return GlassStyleCache.glassStyles.put(key, created)
 }
 
 /**
@@ -277,15 +313,15 @@ fun Modifier.topBarCapsuleBackgroundEffect(
     return recoverableHazeBlur(
         state = hazeState,
         style = when (readabilityMode) {
-            LiquidGlassReadabilityMode.AUTO -> HazeBlurStyle.Material3 {
-                blurRadius(12.dp)
-            }
+            LiquidGlassReadabilityMode.AUTO -> cachedBlurStyle(
+                containerColor = MaterialTheme.colorScheme.surface,
+                blurRadiusDp = 12f,
+            )
 
-            LiquidGlassReadabilityMode.STABLE_CONTENT -> HazeBlurStyle.Material3(
+            LiquidGlassReadabilityMode.STABLE_CONTENT -> cachedBlurStyle(
                 containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                blurRadius(16.dp)
-            }
+                blurRadiusDp = 16f,
+            )
         },
     )
 }

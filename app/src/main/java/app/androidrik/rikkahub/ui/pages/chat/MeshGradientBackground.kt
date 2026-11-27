@@ -14,8 +14,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import app.androidrik.rikkahub.ui.components.motion.rememberSystemReduceMotion
-import app.androidrik.rikkahub.ui.components.motion.rememberVisualWorkActive
+import app.androidrik.rikkahub.ui.components.motion.rememberDecorativeAnimationGate
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -54,17 +53,15 @@ fun MeshGradientBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit = {},
 ) {
-    val reduceMotion = rememberSystemReduceMotion()
-    val visualWorkActive = rememberVisualWorkActive()
+    val gate = rememberDecorativeAnimationGate()
     val elapsedMillis = remember { mutableLongStateOf(0L) }
 
     // 30fps 限速时间源：原实现用 `rememberInfiniteTransition` 四条 `animateFloat`，每个 vsync
     // 都重组重算相位（120Hz 屏空闲即 120fps 计算 + 重组）。改为自驱累计时间、相位只在 Canvas
-    // 绘制 lambda 里读取——状态更新只触发**重绘**、不触发重组；后台 / 失焦时协程取消，
-    // 相位原地冻结，回前台从冻结处续跑（不跳变）。
-    // 另：自驱循环不再自动遵循系统「移除动画」，由 [rememberSystemReduceMotion] 显式冻结。
-    LaunchedEffect(visualWorkActive, reduceMotion) {
-        if (reduceMotion || !visualWorkActive) return@LaunchedEffect
+    // 绘制 lambda 里读取——状态更新只触发**重绘**、不触发重组；后台 / 失焦 / 页面被覆盖 /
+    // 离屏 / 系统「移除动画」时协程取消，相位原地冻结，恢复后从冻结处续跑（不跳变）。
+    LaunchedEffect(gate.active) {
+        if (!gate.active) return@LaunchedEffect
         while (isActive) {
             delay(FRAME_INTERVAL_MS)
             elapsedMillis.longValue += FRAME_INTERVAL_MS
@@ -104,6 +101,7 @@ fun MeshGradientBackground(
 
     Box(
         modifier = modifier
+            .then(gate.modifier)
             .fillMaxSize()
             .background(Brush.verticalGradient(colorStops = baseGradient)),
     ) {

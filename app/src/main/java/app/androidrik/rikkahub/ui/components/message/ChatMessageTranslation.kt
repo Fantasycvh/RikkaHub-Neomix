@@ -51,6 +51,7 @@ import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Cancel01
 import me.rerere.hugeicons.stroke.LanguageCircle
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.ui.components.motion.rememberDecorativeAnimationGate
 import app.androidrik.rikkahub.ui.components.richtext.MarkdownBlock
 import java.util.Locale
 import app.androidrik.rikkahub.ui.components.motion.MotionTokens
@@ -246,9 +247,11 @@ fun CollapsibleTranslationText(
                 val isTranslating = content == stringResource(R.string.translating)
 
                 if (isTranslating) {
+                    val gate = rememberDecorativeAnimationGate()
                     // Show loading animation for translation
                     Row(
                         modifier = Modifier
+                            .then(gate.modifier)
                             .padding(12.dp)
                             .fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -260,16 +263,21 @@ fun CollapsibleTranslationText(
                             color = MaterialTheme.colorScheme.primary
                         )
 
-                        val infiniteTransition = rememberInfiniteTransition(label = "loading")
-                        val alpha by infiniteTransition.animateFloat(
-                            initialValue = 0.3f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(MotionTokens.AMBIENT_MS, easing = MotionTokens.LinearEasingToken),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "alpha"
-                        )
+                        val alpha = if (gate.active) {
+                            val infiniteTransition = rememberInfiniteTransition(label = "loading")
+                            val animated by infiniteTransition.animateFloat(
+                                initialValue = 0.3f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(MotionTokens.AMBIENT_MS, easing = MotionTokens.LinearEasingToken),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "alpha"
+                            )
+                            animated
+                        } else {
+                            0.75f
+                        }
 
                         Text(
                             text = stringResource(R.string.translating),

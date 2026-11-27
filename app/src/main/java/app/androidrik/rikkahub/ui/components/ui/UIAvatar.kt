@@ -61,6 +61,7 @@ import app.androidrik.rikkahub.data.datastore.AvatarFrameStyle
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Avatar
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
+import app.androidrik.rikkahub.ui.components.motion.rememberDecorativeAnimationGate
 import app.androidrik.rikkahub.ui.hooks.rememberAvatarShape
 import org.koin.compose.koinInject
 import java.io.File
@@ -72,10 +73,12 @@ fun TextAvatar(
     loading: Boolean = false,
     color: Color = MaterialTheme.colorScheme.secondaryContainer
 ) {
+    val gate = if (loading) rememberDecorativeAnimationGate() else null
     Box(
         modifier = modifier
+            .then(gate?.modifier ?: Modifier)
             .then(Modifier.size(32.dp))
-            .clip(shape = rememberAvatarShape(loading))
+            .clip(shape = rememberAvatarShape(loading = loading, animated = gate?.active))
             .background(color),
         contentAlignment = Alignment.Center
     ) {
@@ -146,9 +149,10 @@ fun UIAvatar(
         uri?.let { launchImageCrop(it) }
     }
 
-    Box(modifier = modifier.then(Modifier.size(32.dp))) {
+    val gate = if (loading) rememberDecorativeAnimationGate() else null
+    Box(modifier = modifier.then(gate?.modifier ?: Modifier).then(Modifier.size(32.dp))) {
         Surface(
-            shape = rememberAvatarShape(loading),
+            shape = rememberAvatarShape(loading = loading, animated = gate?.active),
             modifier = Modifier
                 .fillMaxSize()
                 .padding(frame.contentInset(frameParams)),

@@ -77,9 +77,11 @@ import app.androidrik.rikkahub.service.MemoryTriggerScheduleManager
 import app.androidrik.rikkahub.service.WebServerService
 import app.androidrik.rikkahub.service.KeepAliveService
 import app.androidrik.rikkahub.service.ScheduledTaskSweeperKeeper
+import app.androidrik.rikkahub.utils.BackgroundMemoryTrimController
 import app.androidrik.rikkahub.utils.CrashHandler
 import app.androidrik.rikkahub.utils.DatabaseUtil
 import app.androidrik.rikkahub.utils.TokenCountDiskCache
+import okhttp3.OkHttpClient
 import app.androidrik.rikkahub.data.repository.WorkspaceRepository
 import app.androidrik.workspace.WorkspaceManager
 import org.koin.android.ext.android.get
@@ -145,6 +147,9 @@ class RikkaHubApp : Application() {
 
     // boot 重入闸：Ready/不可重试时拒绝，防止重试按钮连点造成 startKoin 二次启动
     private val startupRunning = AtomicBoolean(false)
+
+    @Volatile
+    private var memoryTrimController: BackgroundMemoryTrimController? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -460,6 +465,16 @@ class RikkaHubApp : Application() {
         get<AppScope>().launch(Dispatchers.IO) {
             runCatching { QuickJsInit.ensureInitialized() }
                 .onFailure { Log.e(TAG, "quickjs preload failed (will retry on first use)", it) }
+        }
+
+        // 后台图片缓存温和收敛 + 系统内存压力分级释放（主线程注册 ProcessLifecycleOwner）
+        BackgroundMemoryTrimController(
+            context = this,
+            scope = get<AppScope>(),
+            okHttpClientProvider = { runCatching { get<OkHttpClient>() }.getOrNull() },
+        ).also {
+            memoryTrimController = it
+            it.register()
         }
 
         // 做梦（V3）：接上触发面（轮末 / 切后台 / 启动补漏）。**主线程调用**——
@@ -1010,6 +1025,18 @@ class RikkaHubApp : Application() {
             .setVibrationEnabled(true)
             .build()
         notificationManager.createNotificationChannel(subagentApprovalChannel)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (isIsolatedProcess()) return
+        memoryTrimController?.onTrimMemory(level)
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        if (isIsolatedProcess()) return
+        memoryTrimController?.onLowMemory()
     }
 
     override fun onTerminate() {

@@ -17,6 +17,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.svg.css
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.ui.components.motion.rememberDecorativeAnimationGate
 import app.androidrik.rikkahub.ui.hooks.rememberAvatarShape
 import app.androidrik.rikkahub.ui.theme.LocalDarkMode
 import app.androidrik.rikkahub.utils.computeAIIconByName
@@ -44,9 +45,10 @@ private fun AIIcon(
             )
             .build()
     }
+    val gate = if (loading) rememberDecorativeAnimationGate() else null
     Surface(
-        modifier = modifier.size(24.dp),
-        shape = rememberAvatarShape(loading),
+        modifier = modifier.then(gate?.modifier ?: Modifier).size(24.dp),
+        shape = rememberAvatarShape(loading = loading, animated = gate?.active),
         color = color,
     ) {
         AsyncImage(

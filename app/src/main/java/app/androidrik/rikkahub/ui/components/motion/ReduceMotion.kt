@@ -7,11 +7,18 @@ import android.os.Looper
 import android.provider.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+
+/**
+ * 根级共享的系统「移除动画」状态（由 RouteActivity 统一注册单个 ContentObserver 下发），
+ * 避免多个动效组件重复注册系统设置观察者；未提供时（单测/预览/独立宿主）回退到组件内自读。
+ */
+val LocalSystemReduceMotion = compositionLocalOf<Boolean?> { null }
 
 /**
  * 系统「移除动画」（开发者选项 / 无障碍）读取（借鉴 BiliPai `ReduceMotion.kt`，按本仓重写）。
@@ -35,11 +42,11 @@ internal fun readSystemReduceMotion(context: Context): Boolean = runCatching {
 }.getOrDefault(false)
 
 /**
- * 跟随系统「移除动画」设置，实时变化（`ContentObserver`）：
- * 注册后先同步一次，避免注册窗口期的变化被漏掉。
+ * 直接向系统注册 `ContentObserver` 跟随「移除动画」设置。
+ * 应用根部（`RouteActivity`）调用一次并通过 [LocalSystemReduceMotion] 下发即可。
  */
 @Composable
-fun rememberSystemReduceMotion(): Boolean {
+fun rememberSystemReduceMotionObserver(): Boolean {
     val context = LocalContext.current
     var reduceMotion by remember { mutableStateOf(readSystemReduceMotion(context)) }
 
@@ -64,4 +71,12 @@ fun rememberSystemReduceMotion(): Boolean {
     }
 
     return reduceMotion
+}
+
+/**
+ * 跟随系统「移除动画」设置：优先复用根级 [LocalSystemReduceMotion]，缺失时回退为局部观察。
+ */
+@Composable
+fun rememberSystemReduceMotion(): Boolean {
+    return LocalSystemReduceMotion.current ?: rememberSystemReduceMotionObserver()
 }

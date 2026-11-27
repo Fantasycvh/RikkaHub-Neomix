@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import app.androidrik.rikkahub.ui.activity.RecoveryExportActions
 import app.androidrik.rikkahub.ui.activity.RecoveryExportViewModel
 import app.androidrik.rikkahub.ui.pages.agentrun.SubagentApprovalDialog
+import app.androidrik.rikkahub.utils.SingletonImageLoaderGuard
 import okhttp3.OkHttpClient
 
 @Composable
@@ -69,6 +70,7 @@ internal fun AppStartupGateContent(
                 add(SvgDecoder.Factory(scaleToDensity = true))
             }
             .build()
+            .also { SingletonImageLoaderGuard.markInitialized() }
     }
     appRoutes()
     app.androidrik.rikkahub.ui.pages.agentrun.SubagentApprovalDialog()
