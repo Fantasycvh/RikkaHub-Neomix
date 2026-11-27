@@ -225,7 +225,7 @@ private fun CompressBackgroundBar(
 @Composable
 private fun compressBackgroundStageText(progress: CompressionProgress): String = when (progress.stage) {
     CompressionProgressStage.PREPARING -> stringResource(R.string.chat_page_compress_stage_parsing)
-    CompressionProgressStage.CHUNK, CompressionProgressStage.SINGLE_PASS ->
+    CompressionProgressStage.CHUNK, CompressionProgressStage.REFINING, CompressionProgressStage.SINGLE_PASS ->
         stringResource(R.string.chat_page_compress_stage_summarizing)
     CompressionProgressStage.VALIDATING, CompressionProgressStage.FALLBACK ->
         stringResource(R.string.chat_page_compress_stage_writing)

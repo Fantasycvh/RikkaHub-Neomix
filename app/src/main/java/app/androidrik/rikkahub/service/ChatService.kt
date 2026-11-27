@@ -128,6 +128,7 @@ import app.androidrik.rikkahub.data.datastore.getAssistantById
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
 import app.androidrik.rikkahub.data.datastore.getCurrentChatModel
 import app.androidrik.rikkahub.data.datastore.resolveCompressionModel
+import app.androidrik.rikkahub.data.datastore.resolveCompressionRefineModel
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.plugin.api.PluginCapability
 import app.androidrik.plugin.manager.PluginManager
@@ -144,16 +145,25 @@ import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgressStage
 import app.androidrik.rikkahub.data.ai.compression.CompressionSavings
 import app.androidrik.rikkahub.data.ai.compression.COMPRESS_TARGET_TOKENS
+import app.androidrik.rikkahub.data.ai.compression.ANCHOR_EXTRACTION_INSTRUCTION
 import app.androidrik.rikkahub.data.ai.compression.CompressionTier
+import app.androidrik.rikkahub.data.ai.compression.RollingCompressionResult
 import app.androidrik.rikkahub.data.ai.compression.attachTraceSection
+import app.androidrik.rikkahub.data.ai.compression.buildRollingAdditionalContext
 import app.androidrik.rikkahub.data.ai.compression.buildTruncatedFallback
+import app.androidrik.rikkahub.data.ai.compression.chunkTokenBudget
 import app.androidrik.rikkahub.data.ai.compression.effectiveMinKeep
 import app.androidrik.rikkahub.data.ai.compression.MidTurnCompressionDecision
 import app.androidrik.rikkahub.data.ai.compression.decideMidTurnCompression
+import app.androidrik.rikkahub.data.ai.compression.formatMessageForCompression
 import app.androidrik.rikkahub.data.ai.compression.midTurnCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.estimateCompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.runCompressionLadder
+import app.androidrik.rikkahub.data.ai.compression.runRefinePass
+import app.androidrik.rikkahub.data.ai.compression.runRollingCompression
+import app.androidrik.rikkahub.data.ai.compression.singleMessageTokenCap
 import app.androidrik.rikkahub.data.ai.compression.splitIntoChunks
+import app.androidrik.rikkahub.data.ai.compression.stripAnchorsSection
 import app.androidrik.rikkahub.data.ai.compression.stripTraceSection
 import app.androidrik.rikkahub.data.ai.compression.CompressionPlan
 import app.androidrik.rikkahub.data.ai.compression.CompressionPreview
@@ -2856,39 +2866,42 @@ class ChatService(
         // 已脱敏产物幂等通过；计数并入 trace 附录。
         val redactedPrior = Redactor.redact(stripTraceSection(priorSummary), credentials)
         redactedPrior.counts.forEach { (kind, n) -> totalRedactionCounts.merge(kind, n, Int::plus) }
-        val priorContext = if (priorSummary.isNotBlank()) {
-            "PRIOR CHECKPOINT (merge this with the new conversation into one consolidated checkpoint):\n${redactedPrior.text}"
-        } else {
-            ""
-        }
+        val priorBodyForCarry = redactedPrior.text
 
-        // prior 只注入**第一个**分块：每个分块提示词都要求「与 prior 合并为单一检查点」，
-        // 全部注入会让 prior 在 join 后的合并结果里出现 N 次，且随层层压缩滚雪球膨胀、
-        // 稀释覆盖率闸的分母。单步路径（singleSummarize）恒注入。
-        suspend fun compressChunk(chunk: List<UIMessage>, includePrior: Boolean): String {
-            // 提示词组装是纯 CPU 段（逐条 summaryAsText + 字符串拼接），与网络请求分开搬 IO
+        // 多步压缩二期（design-multi-pass-compression §3.2 / Q5）：按压缩模型窗口算单条帽与分块 token 预算，
+        // 取消旧版 2000 字符无条件截断（损失 ①），并消除 256 条无 token 上限的潜在超窗（事实 D）。
+        val compressModelWindow = model.effectiveContextLength(settings.contextLengthOverride)
+        val perMessageTokenCap = singleMessageTokenCap(compressModelWindow)
+        val perChunkTokenBudget = chunkTokenBudget(compressModelWindow)
+        val localeName = Locale.getDefault().displayName
+
+        suspend fun compressChunk(
+            chunk: List<UIMessage>,
+            chunkIndex: Int,
+            carry: String,
+            requestAnchors: Boolean,
+        ): String {
+            // 提示词组装是纯 CPU 段（逐条格式化 + 脱敏 + 字符串拼接），与网络请求分开搬 IO
             val prompt = withContext(Dispatchers.IO) {
-                val contentToCompress = chunk.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
-                // 脱敏落点在**截断之后**（§3.2）：标记不会被 summaryAsText 切半；
+                val contentToCompress = chunk.joinToString("\n\n") {
+                    formatMessageForCompression(it, maxTokens = perMessageTokenCap)
+                }
+                // 脱敏落点在**截断之后**（§3.2）：标记不会被截断切半；
                 // 用户 additionalPrompt 不脱敏（显式输入与 chat 同信任域）
                 val redactedContent = Redactor.redact(contentToCompress, credentials)
                 redactedContent.counts.forEach { (kind, n) -> totalRedactionCounts.merge(kind, n, Int::plus) }
-                val additional = buildString {
-                    if (additionalPrompt.isNotBlank()) {
-                        appendLine("Additional instructions from user: $additionalPrompt")
-                        appendLine()
-                    }
-                    if (includePrior) {
-                        append(priorContext)
-                    }
-                }.trim()
+                val additional = buildRollingAdditionalContext(
+                    chunkIndex = chunkIndex,
+                    additionalPrompt = additionalPrompt,
+                    carry = carry,
+                )
                 buildString {
                     append(
                         settings.compressPrompt.applyPlaceholders(
                             "content" to redactedContent.text,
                             "target_tokens" to targetTokens.toString(),
                             "additional_context" to additional,
-                            "locale" to Locale.getDefault().displayName,
+                            "locale" to localeName,
                         )
                     )
                     // 中途压缩指令追加在**用户模板之后**：不改用户手改过的提示词，也不与
@@ -2897,6 +2910,11 @@ class ChatService(
                         appendLine()
                         appendLine()
                         append(MID_TURN_COMPRESS_INSTRUCTION)
+                    }
+                    if (requestAnchors) {
+                        appendLine()
+                        appendLine()
+                        append(ANCHOR_EXTRACTION_INSTRUCTION)
                     }
                 }
             }
@@ -2910,47 +2928,118 @@ class ChatService(
                 ?: throw IllegalStateException("Failed to generate compressed summary")
         }
 
-        // 失败阶梯 C3→C2→C4（design-multi-pass-compression.md §3.5）：现状分块并行产出
-        // 过覆盖率闸（硬事实逐字命中 ≥0.8，代码侧），不过就退单步整体重摘一次，再不过
-        // 落确定性兜底（原文截断 + incomplete 声明）——宁可明说没压好，不静默入档。
-        // C2 在原文过长时跳过（单步请求自身会超窗）；各档同用上面的 model/providerHandler
-        // （同一次压缩冻结模型，NMoi D76 同款原则）。
+        // 失败阶梯 C0(滚动+精炼) → C1(仅滚动) → C2(单步整体) → C4(截断兜底)（design-multi-pass-compression §3–§4）：
+        // 滚动摘要串行携带 carry（消除块间失忆与 prior 重复注入）+ 输出侧退化自检（0.95 跳块）；
+        // 精炼遍走 fastModelId → 压缩模型 → 对话模型，带回声/长度/不退化/fail-open 护栏。
         val sourceText = withContext(Dispatchers.IO) {
-            messagesToCompress.joinToString("\n\n") { it.summaryAsText(maxLength = 2000) }
+            messagesToCompress.joinToString("\n\n") {
+                formatMessageForCompression(it, maxTokens = perMessageTokenCap)
+            }
+        }
+        var latestRollingResult: RollingCompressionResult? = null
+        val refineModel = settings.resolveCompressionRefineModel(followModel)
+        val refineProvider = refineModel?.findProvider(settings.providers)
+        val refineProviderHandler = if (refineModel != null && refineProvider != null) {
+            if (refineModel.id == model.id && refineProvider.id == provider.id) {
+                providerHandler
+            } else {
+                usageRecorder.wrap(
+                    providerManager.getProviderByType(refineProvider),
+                    UsageTag(UsageSource.COMPRESSION, conversationId = conversationId),
+                )
+            }
+        } else {
+            null
         }
         val ladder = runCompressionLadder(
             sourceText = sourceText,
+            primaryTier = CompressionTier.ROLLING,
             chunkedSummarize = {
-                val chunks = withContext(Dispatchers.IO) { splitIntoChunks(messagesToCompress) }
-                val finished = AtomicInteger(0)
-                coroutineScope {
-                    chunks.mapIndexed { index, chunk ->
-                        async {
-                            try {
-                                compressChunk(chunk, includePrior = index == 0)
-                            } finally {
-                                // 并行分块按完成数报进度（并行启动时报「已启动」会瞬间跳满）
-                                onProgress(
-                                    CompressionProgress(
-                                        stage = CompressionProgressStage.CHUNK,
-                                        current = finished.incrementAndGet(),
-                                        total = chunks.size,
-                                    )
-                                )
-                            }
-                        }
-                    }.awaitAll()
-                }.joinToString("\n\n")
+                val chunks = withContext(Dispatchers.IO) {
+                    splitIntoChunks(messagesToCompress, maxTokens = perChunkTokenBudget)
+                }
+                // §3.3 观测先行：每次压缩记录块数与每块估算 token 分布
+                val chunkTokens = withContext(Dispatchers.IO) {
+                    chunks.map { estimateTokenCount(it) }
+                }
+                Log.i(
+                    TAG,
+                    "compressToCheckpoint: rolling chunks=${chunks.size} tokens=$chunkTokens " +
+                        "budget=$perChunkTokenBudget (conv=$conversationId)",
+                )
+                val rolling = runRollingCompression(
+                    chunks = chunks,
+                    priorSummary = priorBodyForCarry,
+                    summarizeChunk = { idx, chunk, carry ->
+                        compressChunk(
+                            chunk = chunk,
+                            chunkIndex = idx,
+                            carry = carry,
+                            requestAnchors = refineProviderHandler != null,
+                        )
+                    },
+                    onProgress = onProgress,
+                )
+                latestRollingResult = rolling
+                Log.i(
+                    TAG,
+                    "compressToCheckpoint: rolling done anchors=${rolling.anchors.size} " +
+                        "skipped=${rolling.skippedChunks} containment=${rolling.containmentScores.map { "%.2f".format(it) }} " +
+                        "(conv=$conversationId)",
+                )
+                rolling.summaryBody
+            },
+            refineSummary = if (refineModel != null && refineProvider != null && refineProviderHandler != null) {
+                refine@{ _ ->
+                    val rolling = latestRollingResult ?: return@refine null
+                    val outcome = runRefinePass(
+                        sourceText = sourceText,
+                        rollingResult = rolling,
+                        targetTokens = targetTokens,
+                        locale = localeName,
+                        refineCall = { refinePrompt ->
+                            val result = refineProviderHandler.generateText(
+                                providerSetting = refineProvider,
+                                messages = listOf(UIMessage.user(refinePrompt)),
+                                params = backgroundTextGenerationParams(refineModel),
+                            )
+                            result.message.toText()?.trim().orEmpty()
+                        },
+                    )
+                    Log.i(
+                        TAG,
+                        "compressToCheckpoint: refine refined=${outcome.refined} reason=${outcome.reason} " +
+                            "facts=${"%.2f".format(outcome.scores.hardFactRatio)} " +
+                            "anchors=${"%.2f".format(outcome.scores.anchorRatio)} " +
+                            "confidence=${"%.2f".format(outcome.scores.combinedConfidence(outcome.refined))} " +
+                            "(conv=$conversationId)",
+                    )
+                    if (outcome.refined) outcome.summary else null
+                }
+            } else {
+                null
             },
             singleSummarize = if (sourceText.length <= COMPRESS_SINGLE_STEP_MAX_CHARS) {
-                { compressChunk(messagesToCompress, includePrior = true) }
+                {
+                    stripAnchorsSection(
+                        compressChunk(
+                            chunk = messagesToCompress,
+                            chunkIndex = 0,
+                            carry = priorBodyForCarry,
+                            requestAnchors = false,
+                        )
+                    )
+                }
             } else {
                 null
             },
             truncatedFallback = buildTruncatedFallback(sourceText),
             onProgress = onProgress,
         )
-        if (ladder.tier != CompressionTier.CHUNKED) {
+        if (ladder.tier != CompressionTier.ROLLING_REFINED &&
+            ladder.tier != CompressionTier.ROLLING &&
+            ladder.tier != CompressionTier.CHUNKED
+        ) {
             Log.w(TAG, "compressToCheckpoint fell to tier=${ladder.tier} for $conversationId (coverage gate / upstream failure)")
         }
         val combined = ladder.summary

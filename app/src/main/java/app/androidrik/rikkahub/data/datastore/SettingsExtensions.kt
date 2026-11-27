@@ -47,6 +47,17 @@ fun Settings.resolveCompressionModel(followModel: Model? = null): Model? =
         ?: followModel
         ?: getCurrentChatModel()
 
+/**
+ * 解析多步压缩精炼遍（refine pass）使用的模型（design-multi-pass-compression §4.1 勘误 / 事实 B）：
+ * `fastModelId` → 压缩模型（[resolveCompressionModel]）→ 全局当前对话模型。
+ *
+ * 精炼遍输入仅为「已合并摘要 + ≤20 行锚点」，体量几百到几千 token，优先走快速模型压低延迟与费用，
+ * 并配合回声指令 + 长度健全性检查 + fail-open 三道护栏对弱模型免疫。
+ */
+fun Settings.resolveCompressionRefineModel(followModel: Model? = null): Model? =
+    fastModelId?.let { findModelById(it) }
+        ?: resolveCompressionModel(followModel)
+
 fun Settings.getCurrentAssistant(): Assistant {
     return this.assistants.find { it.id == assistantId } ?: this.assistants.first()
 }

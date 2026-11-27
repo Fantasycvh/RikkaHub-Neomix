@@ -1,7 +1,8 @@
 # 多步压缩：滚动摘要 + 精炼遍 + 语义分段 设计草案
 
-> 状态：**设计草案 revision 3（2026-10-26，C3→C2→C4 失败阶梯与覆盖率闸已落地，滚动/精炼未实现）**。
-> revision 3（2026-10-26，借 NMoi-Agent 评估 §十三）：新增 §3.5 失败阶梯（压缩档 C0–C4，命名避开记忆分层 L0–L3）与覆盖率闸（硬事实逐字命中 ≥80%，代码侧）——**C3→C2→C4 已实现**（`CompressionLadder.kt` + `compressToCheckpoint` 接线，单测验证；C0/C1 待滚动落地后接入）；§4.1 精炼遍补三因子（硬事实 0.45 / 锚点 0.35 / 模型 0.20）；第一人称规则（D147 实测 62% vs 22–38%）进默认提示词；验收指标（要点命中 ≥0.9 / 思考膨胀 ≤1.5× / 文件口吻 ≤5%）。
+> 状态：**二期主线已落地（2026-11-27，C0 滚动+精炼 / C1 仅滚动 / token 预算分块 / 超长单条独占 / `<anchors>` 剥离 / 退化自检 / `resolveCompressionRefineModel` 全部接线并单测验证；仅第 3 步语义分段按方案暂缓，containment 阈值待真机观测分布后标定）**。
+> revision 4（2026-11-27）：落地第 1 步滚动摘要（`MultiPassCompression.kt` + `CompressionPlanner.kt` 按 token 预算切分 + 超长单条独占 + 单条 token 帽 + `ChatService.kt` 接线与块数/token 统计日志）与第 2 步锚点精炼遍（`<anchors>` 六类型 ≤20 行 + 精确剥离 + `resolveCompressionRefineModel` 快速模型回退链 + 三因子代码侧核对 + 回声/长度/不退化/fail-open 护栏 + 阶梯升级为 C0→C1→C2→C4）；第 3 步语义分段维持暂缓。
+> revision 3（2026-10-26，借 NMoi-Agent 评估 §十三）：新增 §3.5 失败阶梯（压缩档 C0–C4，命名避开记忆分层 L0–L3）与覆盖率闸（硬事实逐字命中 ≥80%，代码侧）——C3→C2→C4 已实现（`CompressionLadder.kt` + `compressToCheckpoint` 接线，单测验证）；§4.1 精炼遍补三因子（硬事实 0.45 / 锚点 0.35 / 模型 0.20）；第一人称规则（D147 实测 62% vs 22–38%）进默认提示词；验收指标（要点命中 ≥0.9 / 思考膨胀 ≤1.5× / 文件口吻 ≤5%）。
 > revision 2：§7 六个待讨论问题经并行会话全部收敛（锚点核验 + 立场），两处实质修正——Q5 从「字符帽/动态帽」改为
 > 「按 token 切分、分块本身带 token 预算」（顺带修掉分块无 token 上限的潜在超窗）；Q2 的「快速模型已有回退基建」
 > 证伪（`resolveCompressionModel` 链不含 fastModelId，需新写小链）。另并入核验确认的四条现状事实（§1.2）。

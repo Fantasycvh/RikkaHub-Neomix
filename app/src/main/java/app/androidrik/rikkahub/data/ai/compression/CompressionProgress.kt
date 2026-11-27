@@ -5,8 +5,11 @@ enum class CompressionProgressStage {
     /** 切分计划、组装提示词 */
     PREPARING,
 
-    /** 分块并行摘要：current/total 为已完成块数 */
+    /** 分块摘要：current/total 为已完成块数 */
     CHUNK,
+
+    /** 锚点精炼遍（快速模型校验与补遗，fail-open） */
+    REFINING,
 
     /** 覆盖率闸校验 */
     VALIDATING,

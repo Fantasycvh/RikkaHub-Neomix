@@ -91,22 +91,25 @@ fun coveragePassed(
     return coverageRatio(facts, summary) >= threshold
 }
 
-/** 阶梯档位：C3 分块并行 / C2 单步整体 / C4 截断兜底（C0/C1 未来接入同枚举） */
-enum class CompressionTier { CHUNKED, SINGLE, TRUNCATED }
+/** 阶梯档位：C0 滚动+精炼 / C1 仅滚动 / C3 分块并行 / C2 单步整体 / C4 截断兜底 */
+enum class CompressionTier { ROLLING_REFINED, ROLLING, CHUNKED, SINGLE, TRUNCATED }
 
 data class CompressionLadderResult(val summary: String, val tier: CompressionTier)
 
 /**
- * 跑 C3→C2→C4 阶梯：每档 LLM 产出先过覆盖率闸（异常 = 失败），不过就退一档；
- * C4 是确定性兜底，必然返回。**退档只许一层**——本函数天然满足（C3/C2 之间不循环重试）。
+ * 跑压缩失败阶梯（C0→C1→C2→C4，兼容旧调用 C3→C2→C4）：
+ * 每档 LLM 产出先过覆盖率闸（异常 = 失败），不过就退一档；C4 是确定性兜底，必然返回。
+ * **退档只许一层**——不循环重试。
  *
  * 取消语义：`CancellationException` **重抛**而非当作档位失败——用户取消压缩时绝不能
  * 退到 C4 把截断文本当摘要落库（那比失败更糟）。
  *
  * @param sourceText 覆盖率核对的原文（与喂给 summarizer 的转文本一致）
- * @param chunkedSummarize C3：现状分块并行流水线（可能抛异常——视为该档失败）
+ * @param chunkedSummarize 主档位：滚动摘要（[primaryTier] = [CompressionTier.ROLLING]）或旧分块并行（[CompressionTier.CHUNKED]）
  * @param singleSummarize C2：单步整体；null = 原文过长跳过该档
  * @param truncatedFallback C4 兜底文本（调用方用 [buildTruncatedFallback] 构造）
+ * @param primaryTier 主档位标识（默认 [CompressionTier.CHUNKED] 保持存量测试兼容；多步滚动传入 [CompressionTier.ROLLING]）
+ * @param refineSummary 可选精炼遍（C0）：接收主档位摘要正文，返回修订版或 null（fail-open / 护栏拒收时回退保留主档位正文）
  */
 suspend fun runCompressionLadder(
     sourceText: String,
@@ -114,11 +117,27 @@ suspend fun runCompressionLadder(
     singleSummarize: (suspend () -> String)?,
     truncatedFallback: String,
     onProgress: (CompressionProgress) -> Unit = {},
+    primaryTier: CompressionTier = CompressionTier.CHUNKED,
+    refineSummary: (suspend (String) -> String?)? = null,
 ): CompressionLadderResult {
-    val chunked = trySummarize(chunkedSummarize)
-    onProgress(CompressionProgress(CompressionProgressStage.VALIDATING))
-    if (!chunked.isNullOrBlank() && coveragePassed(sourceText, chunked)) {
-        return CompressionLadderResult(chunked, CompressionTier.CHUNKED)
+    val primary = trySummarize(chunkedSummarize)
+    if (!primary.isNullOrBlank()) {
+        if (refineSummary != null) {
+            onProgress(CompressionProgress(CompressionProgressStage.REFINING))
+            val refined = trySummarizeNullable { refineSummary(primary) }
+            if (!refined.isNullOrBlank()) {
+                onProgress(CompressionProgress(CompressionProgressStage.VALIDATING))
+                if (coveragePassed(sourceText, refined)) {
+                    return CompressionLadderResult(refined, CompressionTier.ROLLING_REFINED)
+                }
+            }
+        }
+        onProgress(CompressionProgress(CompressionProgressStage.VALIDATING))
+        if (coveragePassed(sourceText, primary)) {
+            return CompressionLadderResult(primary, primaryTier)
+        }
+    } else {
+        onProgress(CompressionProgress(CompressionProgressStage.VALIDATING))
     }
     if (singleSummarize != null) {
         onProgress(CompressionProgress(CompressionProgressStage.SINGLE_PASS))
@@ -134,6 +153,14 @@ suspend fun runCompressionLadder(
 
 /** 档位执行的统一异常边界：取消必须传播，其余异常 = 该档失败（返回 null 退档） */
 private suspend fun trySummarize(block: suspend () -> String): String? = try {
+    block()
+} catch (cancelled: kotlinx.coroutines.CancellationException) {
+    throw cancelled
+} catch (_: Exception) {
+    null
+}
+
+private suspend fun trySummarizeNullable(block: suspend () -> String?): String? = try {
     block()
 } catch (cancelled: kotlinx.coroutines.CancellationException) {
     throw cancelled

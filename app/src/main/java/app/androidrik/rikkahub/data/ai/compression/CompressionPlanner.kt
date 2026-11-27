@@ -4,6 +4,7 @@ import app.androidrik.ai.ui.alignCutIndex
 import app.androidrik.ai.ui.hasUnfinishedToolCalls
 import app.androidrik.rikkahub.data.model.MessageNode
 import app.androidrik.rikkahub.utils.estimateTokenCount
+import app.androidrik.rikkahub.utils.estimateTokens
 
 /** 压缩摘要目标 token（注入提示词的 {target_tokens}） */
 const val COMPRESS_TARGET_TOKENS: Int = 2000
@@ -31,8 +32,51 @@ val AUTO_COMPRESS_THRESHOLD_PERCENT_RANGE: IntRange = 50..95
 /** 保留比例钳制范围：过低保不住近期细节，过高则压缩收益不足 */
 val AUTO_COMPRESS_RETAIN_PERCENT_RANGE: IntRange = 10..80
 
-/** 单块最大消息数（超长时递归二分并行摘要） */
+/** 单块最大消息数（条数硬上限，配合 token 预算共同约束每块体量） */
 const val COMPRESS_MAX_MESSAGES_PER_CHUNK: Int = 256
+
+/** 单条消息的 token 绝对帽上限（design-multi-pass-compression §3.2 / Q5：`min(32K, 窗口/2)`） */
+const val COMPRESS_SINGLE_MESSAGE_MAX_TOKENS: Int = 32_000
+
+/** 分块默认 token 预算上限（防 256 条长消息在单一请求里撑爆压缩模型窗口，事实 D） */
+const val COMPRESS_MAX_TOKENS_PER_CHUNK: Int = 24_000
+
+/** 超长单条独占分块阈值（字符）：超过此长度的单条消息不走 2000 字硬截断，而是独占一块并受 token 帽约束 */
+const val COMPRESS_OVERSIZED_MESSAGE_CHARS: Int = 8_000
+
+/** 计算单条消息的压缩输入 token 上限：`min(32K, 压缩模型窗口 / 2)`（最低保底 2K）。 */
+fun singleMessageTokenCap(compressModelWindowTokens: Int): Int =
+    minOf(COMPRESS_SINGLE_MESSAGE_MAX_TOKENS, (compressModelWindowTokens / 2).coerceAtLeast(2_000))
+
+/** 计算分块 token 预算：`min(24K, 压缩模型窗口 / 2)`（最低保底 4K），为 prompt + carry + 输出留足余量。 */
+fun chunkTokenBudget(compressModelWindowTokens: Int): Int =
+    minOf(COMPRESS_MAX_TOKENS_PER_CHUNK, (compressModelWindowTokens / 2).coerceAtLeast(4_000))
+
+/**
+ * 格式化单条待压缩消息（design-multi-pass-compression §3.2）：
+ * 取消旧版无条件 2000 字符截断（损失 ①），改按 [maxTokens] 估算上限控制；超帽时二分截断并标 `[truncated]`。
+ */
+fun formatMessageForCompression(
+    message: app.androidrik.ai.ui.UIMessage,
+    maxTokens: Int = COMPRESS_SINGLE_MESSAGE_MAX_TOKENS,
+): String {
+    val full = message.summaryAsText(maxLength = Int.MAX_VALUE)
+    if (maxTokens <= 0) return "[truncated]"
+    if (estimateTokens(full) <= maxTokens) return full
+    // 二分找不超过 maxTokens 的最大前缀（避免线性扫大字符串）
+    var lo = 0
+    var hi = full.length
+    while (lo < hi) {
+        val mid = (lo + hi + 1) ushr 1
+        if (estimateTokens(full.substring(0, mid)) <= maxTokens) {
+            lo = mid
+        } else {
+            hi = mid - 1
+        }
+    }
+    val cut = full.lastIndexOf('\n', lo).takeIf { it > lo / 2 } ?: lo
+    return full.substring(0, cut).trimEnd() + "\n[truncated]"
+}
 
 /**
  * 最低压缩进度闸（OpenHands `minimum_progress` 同域，设计稿 §2.1）：安全切点回退/轮对齐后，
@@ -120,15 +164,57 @@ fun estimateCompressionPlan(
     )
 }
 
-/** 按 [maxPerChunk] 递归二分分块（超长输入并行摘要用）；不超过上限时单块返回 */
+/**
+ * 将待压缩消息切分为多个分块：
+ * - [maxTokens] 为 null 时沿用旧版按 [maxPerChunk] 递归二分（保持存量调用与测试兼容）；
+ * - [maxTokens] 非空时按 token 预算顺序切分（design-multi-pass-compression §3.2 + 事实 D）：
+ *   1. 单条正文超过 [oversizedMessageChars]（默认 8K 字符）时，该条**独占一块**（先冲刷当前累积块），
+ *      受单条 token 帽保护而不再被 2000 字截断毁掉核心内容；
+ *   2. 其余消息顺序装填，直到条数达 [maxPerChunk] 或累计估算 token 超出 [maxTokens] 时开新块。
+ */
 fun splitIntoChunks(
     messages: List<app.androidrik.ai.ui.UIMessage>,
     maxPerChunk: Int = COMPRESS_MAX_MESSAGES_PER_CHUNK,
+    maxTokens: Int? = null,
+    oversizedMessageChars: Int = COMPRESS_OVERSIZED_MESSAGE_CHARS,
 ): List<List<app.androidrik.ai.ui.UIMessage>> {
-    if (messages.size <= maxPerChunk) return listOf(messages)
-    val mid = messages.size / 2
-    return splitIntoChunks(messages.subList(0, mid), maxPerChunk) +
-        splitIntoChunks(messages.subList(mid, messages.size), maxPerChunk)
+    if (messages.isEmpty()) return emptyList()
+    if (maxTokens == null) {
+        if (messages.size <= maxPerChunk) return listOf(messages)
+        val mid = messages.size / 2
+        return splitIntoChunks(messages.subList(0, mid), maxPerChunk) +
+            splitIntoChunks(messages.subList(mid, messages.size), maxPerChunk)
+    }
+    val limitTokens = maxTokens.coerceAtLeast(1)
+    val limitCount = maxPerChunk.coerceAtLeast(1)
+    val chunks = mutableListOf<List<app.androidrik.ai.ui.UIMessage>>()
+    val current = mutableListOf<app.androidrik.ai.ui.UIMessage>()
+    var currentTokens = 0
+
+    for (msg in messages) {
+        val text = msg.summaryAsText(maxLength = Int.MAX_VALUE)
+        val msgTokens = estimateTokens(text).coerceAtLeast(1)
+        if (text.length > oversizedMessageChars) {
+            if (current.isNotEmpty()) {
+                chunks += current.toList()
+                current.clear()
+                currentTokens = 0
+            }
+            chunks += listOf(msg)
+            continue
+        }
+        if (current.isNotEmpty() && (current.size >= limitCount || currentTokens + msgTokens > limitTokens)) {
+            chunks += current.toList()
+            current.clear()
+            currentTokens = 0
+        }
+        current += msg
+        currentTokens += msgTokens
+    }
+    if (current.isNotEmpty()) {
+        chunks += current.toList()
+    }
+    return chunks
 }
 
 
