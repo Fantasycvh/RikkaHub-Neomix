@@ -1,0 +1,185 @@
+{
+  "localTools": [
+    {
+      "type": "javascript_engine"
+    },
+    {
+      "type": "time_info"
+    },
+    {
+      "type": "clipboard"
+    },
+    {
+      "type": "tts"
+    },
+    {
+      "type": "ask_user"
+    },
+    {
+      "type": "screen_time"
+    },
+    {
+      "type": "calendar"
+    },
+    {
+      "type": "chart_display"
+    },
+    {
+      "type": "todo_plan"
+    },
+    {
+      "type": "phone_use"
+    }
+  ],
+  "avatars": [
+    {
+      "type": "app.androidrik.rikkahub.data.model.Avatar.Dummy"
+    },
+    {
+      "type": "app.androidrik.rikkahub.data.model.Avatar.Emoji",
+      "content": "旧头像"
+    },
+    {
+      "type": "app.androidrik.rikkahub.data.model.Avatar.Image",
+      "url": "file:///legacy/avatar.png"
+    }
+  ],
+  "proxies": [
+    {
+      "type": "inherit"
+    },
+    {
+      "type": "none"
+    },
+    {
+      "type": "http",
+      "address": "127.0.0.1",
+      "port": 8080
+    },
+    {
+      "type": "socks5",
+      "address": "127.0.0.1",
+      "port": 1080
+    }
+  ],
+  "searchServices": [
+    {
+      "type": "tavily",
+      "id": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "type": "rikkahub",
+      "id": "00000000-0000-0000-0000-000000000002"
+    },
+    {
+      "type": "exa",
+      "id": "00000000-0000-0000-0000-000000000003"
+    }
+  ],
+  "mediaProviders": [
+    {
+      "type": "openai",
+      "id": "00000000-0000-0000-0000-000000000011",
+      "name": "",
+      "models": []
+    },
+    {
+      "type": "google",
+      "id": "00000000-0000-0000-0000-000000000012",
+      "name": "",
+      "models": []
+    },
+    {
+      "type": "aliyun",
+      "id": "00000000-0000-0000-0000-000000000013",
+      "name": "",
+      "models": []
+    },
+    {
+      "type": "volcengine",
+      "id": "00000000-0000-0000-0000-000000000014",
+      "name": "",
+      "models": []
+    },
+    {
+      "type": "minimax",
+      "id": "00000000-0000-0000-0000-000000000015",
+      "name": "",
+      "models": []
+    },
+    {
+      "type": "openrouter",
+      "id": "00000000-0000-0000-0000-000000000016",
+      "name": "",
+      "models": []
+    },
+    {
+      "type": "siliconflow",
+      "id": "00000000-0000-0000-0000-000000000017",
+      "name": "",
+      "models": []
+    }
+  ],
+  "messageParts": [
+    {
+      "type": "search"
+    },
+    {
+      "type": "tool_call",
+      "toolCallId": "old-call",
+      "toolName": "time_info",
+      "arguments": "{}"
+    },
+    {
+      "type": "tool_result",
+      "toolCallId": "old-call",
+      "toolName": "time_info",
+      "content": {
+        "time": "2026-11-25"
+      },
+      "arguments": {}
+    }
+  ],
+  "mediaGrant": {
+    "model": {
+      "id": "00000000-0000-0000-0001-000000000000",
+      "providerId": "00000000-0000-0000-0000-000000000011",
+      "modelId": "r8-fixture-openai",
+      "kind": "IMAGE"
+    },
+    "params": {
+      "count": 1
+    },
+    "configurationFingerprint": "gjySSNXlSrVKZGA78jOJzU4BYKluj9IP1aIKoBoXaWw="
+  },
+  "preKeepFingerprint": "zLiOOg8fOITRJBpgsgudFKQGkVmv5kFJ+JydCcRAp94=",
+  "message": {
+    "id": "00000000-0000-0000-0000-000000000201",
+    "role": "assistant",
+    "parts": [
+      {
+        "type": "text",
+        "text": "R8 legacy decode survived"
+      },
+      {
+        "type": "search"
+      },
+      {
+        "type": "tool_call",
+        "toolCallId": "old-call",
+        "toolName": "time_info",
+        "arguments": "{}"
+      },
+      {
+        "type": "tool_result",
+        "toolCallId": "old-call",
+        "toolName": "time_info",
+        "content": {
+          "time": "2026-11-25"
+        },
+        "arguments": {}
+      }
+    ],
+    "createdAt": "2026-11-25T12:00:00"
+  }
+}

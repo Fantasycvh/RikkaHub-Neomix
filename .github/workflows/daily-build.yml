@@ -137,9 +137,9 @@ jobs:
           [ -s app/app.key ] || { echo "::error::keystore 解码为空（检查 KEY_BASE64 secret）"; exit 1; }
 
       # 测试门禁（吸收 PurrCat 判据：静态红线脚本与单测不接进 CI 就等于不存在）——
-      # 目前**在 CI 跳过**：workspace 模块的 POSIX shell 测试（LocalWorkspaceBackendTest 等，
+      # 全量测试目前在 CI 跳过：workspace 模块的 POSIX shell 测试（LocalWorkspaceBackendTest 等，
       # Windows 本机按 Assume 跳过、只在 Linux 跑）在 CI runner 上失败，根因待查。恢复前
-      # 审计与单测仍是本机门禁：push 前本地跑 audit_ime_trap/audit_app_skin + testDebugUnitTest。
+      # 全量审计与单测仍是本机门禁（下方单独启用 R8 专项）：push 前本地跑 audit_ime_trap/audit_app_skin + testDebugUnitTest。
       # 恢复时把下面这步放回 Gradle Build 之前：
       # - name: 静态审计与单元测试
       #   run: |
@@ -147,6 +147,14 @@ jobs:
       #     python3 scripts/audit_ime_trap.py
       #     python3 scripts/audit_app_skin.py
       #     ./gradlew testDebugUnitTest
+
+      - name: R8 regression guards
+        run: |
+          chmod +x gradlew
+          python3 -B -m unittest discover -s scripts -p test_verify_r8_output.py
+          ./gradlew :app:testDebugUnitTest --tests 'app.androidrik.rikkahub.r8.*' \
+            -Dorg.gradle.jvmargs="-Xmx6g -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8" \
+            --max-workers=2
 
       - name: Gradle Build
         env:
