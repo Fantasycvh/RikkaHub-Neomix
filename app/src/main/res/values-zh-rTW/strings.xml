@@ -744,6 +744,7 @@
   <string name="compaction_undo_message_pruned">刪除此分界線將移除摘要。由於先前已開啟物理清理刪除過早期訊息，只能恢復目前仍保留的訊息。</string>
   <string name="compaction_undo_success">已撤回壓縮，完整歷史已恢復</string>
   <string name="compaction_undo_failed">撤回失敗：正在生成中或該壓縮記錄已不存在</string>
+  <string name="chat_overflow_tool_evicted">上下文超窗，已自動撤回 %1$s 的超大輸出並重發…</string>
   <!-- #2294 壓縮範圍預覽確認 + 壓縮記錄計數展示 -->
   <string name="compaction_row_count">現 %1$d 則（總 %2$d 則）</string>
   <string name="chat_page_compress_preview_action">預覽範圍</string>

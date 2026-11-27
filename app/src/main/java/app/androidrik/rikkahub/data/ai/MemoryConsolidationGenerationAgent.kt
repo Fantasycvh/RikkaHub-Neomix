@@ -134,7 +134,7 @@ class MemoryConsolidationGenerationAgent(
                 ).collect { chunk ->
                     when (chunk) {
                         is GenerationChunk.Messages -> incrementalOutput = chunk.messages.lastOrNull()?.toText().orEmpty()
-                        is GenerationChunk.Notice -> extractionNotice = chunk.notice
+                        is GenerationChunk.Notice -> if (chunk.notice.isTerminalStop) extractionNotice = chunk.notice
                         else -> Unit
                     }
                 }
@@ -192,7 +192,7 @@ class MemoryConsolidationGenerationAgent(
             memoryToolBinding = "entries:${request.memoryId}",
         ).collect { chunk ->
             when (chunk) {
-                is GenerationChunk.Notice -> notice = chunk.notice
+                is GenerationChunk.Notice -> if (chunk.notice.isTerminalStop) notice = chunk.notice
                 else -> Unit
             }
         }

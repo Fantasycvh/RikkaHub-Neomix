@@ -627,8 +627,12 @@ class GenerationHandler(
             var pendingRecoveryHint: String? = initialRecoveryHint
             var autoContinuations = 0
             // 输入超窗恢复（§3.1）：一次生成内最多试一次——恢复后再撞窗说明保护区自身
-            // 就装不下，再压也是白烧摘要 token，交给 fallback / 最终报错。
+            // 就装不下，再压也是白烧摘要 token，交给超窗工具结果撤回 / fallback / 最终报错。
             var overflowRecoveryTried = false
+            // 超窗撤回最大工具结果（NMoi 11-17 轮，与反应式压缩互补）：
+            // 请求面投影表（toolCallId → 极简句柄桩），DB/UI 原始消息不动。
+            val overflowEvictions = linkedMapOf<String, String>()
+            var overflowEvictionCount = 0
 
             // 计划提醒（`plan_missing`）的两个输入，**每轮只算一次**：
             // ①本轮开始时分支里是否已有「仍在进行」的计划 —— 全完成的旧清单不算，否则同一会话里
@@ -760,6 +764,7 @@ class GenerationHandler(
                         conversationModeInjectionIds = conversationModeInjectionIds,
                         conversationLorebookIds = conversationLorebookIds,
                         workspaceCwd = workspaceCwd,
+                        overflowEvictions = overflowEvictions,
                         // 有 fallback 时压缩主模型重试预算（最多 2 次），快速切备用模型——
                         // 否则连接类故障会先等完整个延迟序列（默认可达 100s+）才降级
                         retryBudgetOverride = if (fallbackModel != null) 2 else null,
@@ -787,43 +792,93 @@ class GenerationHandler(
                     // 半截输出已走 #1812 草稿通路：恢复重发会把已计费内容再生成一遍 ⇒ 不恢复
                     throw e
                 } catch (e: Throwable) {
-                    // 输入超窗反应式兜底（§3.1）：分类命中 + 本步零增量 + 本轮未试过 + 回调在位
-                    // ⇒ 压缩一次历史后重发同一步。触发点镜像上面的 ContextGateHardStop catch——
-                    // 它管装配期硬限，这里管 provider 拒收（请求已发出、被 400 挡回）。
-                    // 恢复失败/无收益 ⇒ 原错误重抛（重试 → 整轮 fallback → 最终报错），
-                    // 异常不出 runLoop ⇒ 对整轮 fallback 层不可见，恢复成功的一步不会二次重跑。
-                    if (!isInputContextOverflowError(e) || overflowRecoveryTried ||
-                        contextOverflowRecover == null || sawRequestDelta
-                    ) {
+                    // 输入超窗两档分类（NMoi 11-17 轮）：仅确定档（DEFINITE）+ 零增量才进入恢复；
+                    // 也许档（POSSIBLE，如裸 413 payload too large）不盲目摘工具结果，直接透传。
+                    val overflowConfidence = classifyInputContextOverflow(e)
+                    if (overflowConfidence == OverflowConfidence.POSSIBLE && !sawRequestDelta) {
+                        Log.i(
+                            TAG,
+                            "generateText: possible overflow (payload/413, not definite context window), " +
+                                "skipping eviction/compaction: ${e.message?.take(200)}",
+                        )
                         throw e
                     }
-                    overflowRecoveryTried = true
-                    Log.w(
-                        TAG,
-                        "generateText: input context overflow (zero-increment), " +
-                            "attempting compression recovery: ${e.message?.take(200)}"
-                    )
-                    val recovered = try {
-                        contextOverflowRecover(
-                            ContextOverflowRecoveryRequest(
-                                messages = messages,
-                                stepsExecuted = stepsExecuted,
-                                modelId = targetModel.id,
-                                windowTokens = targetModel.effectiveContextLength(settings.contextLengthOverride),
-                                errorMessage = e.message,
-                            )
-                        )
-                    } catch (recoveryError: CancellationException) {
-                        throw recoveryError
-                    } catch (recoveryError: Throwable) {
-                        Log.w(TAG, "generateText: overflow recovery failed", recoveryError)
-                        false
+                    if (overflowConfidence != OverflowConfidence.DEFINITE || sawRequestDelta) {
+                        throw e
                     }
-                    if (!recovered) throw e
-                    // 检查点已落盘：刷新压缩窗口后重试同一步（同模型；失败步不计入步数徽标）
-                    window = refreshCompressionWindow?.invoke() ?: window
-                    Log.i(TAG, "generateText: overflow recovery committed a checkpoint, retrying step #$stepIndex")
-                    continue
+                    // 第一道：反应式历史压缩（保留当前用户轮保护区，压较早历史；一次生成内最多试一次）
+                    if (!overflowRecoveryTried && contextOverflowRecover != null) {
+                        overflowRecoveryTried = true
+                        Log.w(
+                            TAG,
+                            "generateText: input context overflow (zero-increment), " +
+                                "attempting compression recovery: ${e.message?.take(200)}"
+                        )
+                        val recovered = try {
+                            contextOverflowRecover(
+                                ContextOverflowRecoveryRequest(
+                                    messages = messages,
+                                    stepsExecuted = stepsExecuted,
+                                    modelId = targetModel.id,
+                                    windowTokens = targetModel.effectiveContextLength(settings.contextLengthOverride),
+                                    errorMessage = e.message,
+                                )
+                            )
+                        } catch (recoveryError: CancellationException) {
+                            throw recoveryError
+                        } catch (recoveryError: Throwable) {
+                            Log.w(TAG, "generateText: overflow recovery failed", recoveryError)
+                            false
+                        }
+                        if (recovered) {
+                            // 检查点已落盘：刷新压缩窗口后重试同一步（同模型；失败步不计入步数徽标）
+                            window = refreshCompressionWindow?.invoke() ?: window
+                            Log.i(TAG, "generateText: overflow recovery committed a checkpoint, retrying step #$stepIndex")
+                            continue
+                        }
+                    }
+                    // 第二道（互补）：确定超窗且压缩未启用/无收益/压完仍超窗时，摘掉当前发送窗口里
+                    // 体积最大的未撤回工具结果（请求面投影为句柄桩，全文保底落盘），同轮重发。
+                    if (overflowEvictionCount < MAX_OVERFLOW_TOOL_EVICTIONS) {
+                        val activeWindowMessages = window?.applyTo(messages) ?: messages
+                        val candidate = findLargestEvictableToolResult(
+                            messages = activeWindowMessages,
+                            alreadyEvicted = overflowEvictions.keys,
+                        )
+                        if (candidate != null) {
+                            val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
+                            val workspaceBound = toolsInternal.any { it.name == "workspace_read_file" }
+                            val (stub, record) = evictToolResultForOverflow(
+                                context = context,
+                                candidate = candidate,
+                                workspaceBound = workspaceBound,
+                                hasShellAccess = hasShellAccess,
+                            )
+                            overflowEvictions[record.toolCallId] = stub
+                            overflowEvictionCount++
+                            Log.w(
+                                TAG,
+                                "generateText: definite overflow, evicted largest tool result " +
+                                    "tool=${record.toolName} callId=${record.toolCallId} " +
+                                    "shrunk=${record.originalChars - record.stubChars} chars " +
+                                    "(${record.originalChars} -> ${record.stubChars}, " +
+                                    "attempt=$overflowEvictionCount/$MAX_OVERFLOW_TOOL_EVICTIONS), retrying step #$stepIndex",
+                            )
+                            emit(
+                                GenerationChunk.Notice(
+                                    GenerationNotice.ToolOutputEvictedOnOverflow(
+                                        toolName = record.toolName,
+                                        toolCallId = record.toolCallId,
+                                        originalChars = record.originalChars,
+                                        shrunkChars = record.stubChars,
+                                        attempt = overflowEvictionCount,
+                                    )
+                                )
+                            )
+                            continue
+                        }
+                    }
+                    throw e
                 }
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
@@ -1644,6 +1699,8 @@ class GenerationHandler(
         debugKey: String? = null,
         /** 请求级会话 id（见 [generateText] 同名参数）；null = 不带。 */
         sessionId: String? = null,
+        /** 本轮超窗撤回的工具结果投影（toolCallId → 极简句柄桩），仅作用于请求面。 */
+        overflowEvictions: Map<String, String> = emptyMap(),
     ) {
         // 工具 schema 压缩（批次4，design §ToolSchemaCompactor）：只裁描述文本不改参数/required，
         // 默认 OFF。**只作用请求面**——工具执行查找走 runLoop 的 toolsInternal（未压缩原名表），
@@ -1712,7 +1769,7 @@ class GenerationHandler(
                 }
             },
         )
-        val internalMessages = assembly.messages
+        val internalMessages = applyOverflowEvictions(assembly.messages, overflowEvictions)
         // 上下文闸 B（design-tool-context-gate §5）：**请求前**对实发载荷做紧急卸载。
         // 挂在装配产物上而非原始会话：压缩窗口/上下文条数裁剪之后才是真正要发的东西，
         // 在原始会话上估算是白算。改写的是每请求临时物 ⇒ 天然投影、零持久化副作用；

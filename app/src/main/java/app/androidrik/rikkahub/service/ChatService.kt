@@ -76,6 +76,7 @@ import app.androidrik.rikkahub.data.ai.CONTINUE_INCOMPLETE_HINT
 import app.androidrik.rikkahub.data.ai.ContextBudgetGuard
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationNotice
+import app.androidrik.rikkahub.data.ai.isTerminalStop
 import app.androidrik.rikkahub.data.ai.GenerationPartialFailureException
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.ContextOverflowRecoveryRequest
@@ -2167,7 +2168,9 @@ class ChatService(
                     }
 
                     is GenerationChunk.Notice -> {
-                        workspaceNoticeInbox.suppress(session.externalNoticeRootScope ?: session.backgroundTaskOwner)
+                        if (chunk.notice.isTerminalStop) {
+                            workspaceNoticeInbox.suppress(session.externalNoticeRootScope ?: session.backgroundTaskOwner)
+                        }
                         when (val notice = chunk.notice) {
                         // 工具调用失控：本轮已**正常结束**（内容会照常落库），这里只补一条用户可见提示，
                         // 让「为什么突然停了」有解释。用 addError 而非写进对话：后者会被持久化并在
@@ -2253,6 +2256,20 @@ class ChatService(
                                 ),
                                 conversationId,
                                 title = context.getString(R.string.agent_run_error_context_budget),
+                            )
+                        }
+                        is GenerationNotice.ToolOutputEvictedOnOverflow -> {
+                            // 非终止提示（NMoi 11-17 轮）：超窗撤回最大工具结果并同轮重发，
+                            // 状态栏给出可读提示（不记错误、不压制外部通知）。
+                            Log.w(
+                                TAG,
+                                "overflow tool eviction: tool=${notice.toolName} " +
+                                    "(${notice.originalChars} -> ${notice.shrunkChars} chars, " +
+                                    "attempt=${notice.attempt}, conv=$conversationId)",
+                            )
+                            session.processingStatus.value = context.getString(
+                                R.string.chat_overflow_tool_evicted,
+                                notice.toolName,
                             )
                         }
                         }

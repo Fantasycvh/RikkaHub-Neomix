@@ -84,4 +84,23 @@ sealed interface GenerationNotice {
         val cutRule: ThinkingDegenerationGuard.Rule?,
         val repeated: Int,
     ) : GenerationNotice
+
+    /**
+     * **输入超窗撤回最大工具结果并同轮重发**（NMoi 11-17 轮，与反应式压缩互补）：
+     *
+     * **非终止提示**（[isTerminalStop] = false）：本轮并未停止，只是通知上层 UI/日志
+     * 「刚刚因为确定超窗把某条超大工具结果在请求面撤回成句柄桩并已重发同一步」，原始输出仍保留在
+     * 历史与 `/tool_outputs/` 中。
+     */
+    data class ToolOutputEvictedOnOverflow(
+        val toolName: String,
+        val toolCallId: String,
+        val originalChars: Int,
+        val shrunkChars: Int,
+        val attempt: Int,
+    ) : GenerationNotice
 }
+
+/** 是否为「提前终止本轮」类护栏通知（区分于 [GenerationNotice.ToolOutputEvictedOnOverflow] 等信息性通知）。 */
+internal val GenerationNotice.isTerminalStop: Boolean
+    get() = this !is GenerationNotice.ToolOutputEvictedOnOverflow

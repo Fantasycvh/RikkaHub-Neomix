@@ -75,7 +75,7 @@ class FileMemoryOrganizer(
             usageTag = UsageTag(UsageSource.MEMORY),
         ).collect { chunk ->
             when (chunk) {
-                is GenerationChunk.Notice -> notice = chunk.notice
+                is GenerationChunk.Notice -> if (chunk.notice.isTerminalStop) notice = chunk.notice
                 is GenerationChunk.Messages -> finalMessages = chunk.messages
             }
         }

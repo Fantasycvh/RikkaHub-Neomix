@@ -710,6 +710,7 @@
   <string name="compaction_undo_message_pruned">Deleting this divider removes the summary. Because earlier messages were previously pruned from storage, only remaining messages can be restored.</string>
   <string name="compaction_undo_success">Compression undone; full history restored</string>
   <string name="compaction_undo_failed">Failed to undo compression: generation in progress or checkpoint no longer exists</string>
+  <string name="chat_overflow_tool_evicted">Context limit reached; withdrew oversized output from %1$s and retrying…</string>
   <!-- #2294 压缩范围预览确认 + 压缩记录计数展示 -->
   <string name="compaction_row_count">Current %1$d (of %2$d total)</string>
   <string name="chat_page_compress_preview_action">Preview range</string>

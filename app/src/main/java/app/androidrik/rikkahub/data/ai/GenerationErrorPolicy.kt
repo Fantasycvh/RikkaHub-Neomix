@@ -91,20 +91,53 @@ private val RATE_LIMITED_MARKERS = listOf(
  * messages` 等——**不进 v1 恢复**（设计稿 §3.1：按历史结构问题处理，走现行错误路径）；
  * 阶段一的守卫六 + `alignCutIndex` 已从源头堵这类请求形态，确有样本再扩类。
  */
+/**
+ * 输入上下文超窗的两档置信度（NMoi 11-17 轮超窗撤回判据）：
+ * - [DEFINITE]：明确指出输入上下文/token 超过窗口上限（可安全触发反应式压缩或摘最大工具结果重发）；
+ * - [POSSIBLE]：仅提示载荷/请求体过大（如裸 HTTP 413 / payload too large，可能来自图片/字段限制而非上下文窗口），
+ *   不盲目摘除工具结果；
+ * - [NONE]：非超窗错误。
+ */
+internal enum class OverflowConfidence {
+    DEFINITE,
+    POSSIBLE,
+    NONE,
+}
+
 private val CONTEXT_OVERFLOW_MARKERS = listOf(
     "contextwindowexceedederror",                          // litellm 异常类名透传
     "prompt is too long",                                  // Anthropic 官方措辞
     "input length and `max_tokens` exceed context limit",  // Anthropic v1
     "please reduce the length of",                         // OpenAI 官方措辞（maximum context length ...）
+    "maximum context length",                              // OpenAI / 兼容层常见措辞
     "exceeds the available context size",                  // Azure / 旧版措辞
     "context length exceeded",                             // OpenAI 兼容层常见
     "input exceeds the context window",                    // 通用措辞
     "context window exceeds limit",                        // Minimax
+    "token limit exceeded",                                // 常见网关/兼容层
+    "too many tokens",                                     // 常见 token 超限措辞
 )
 
-/** provider 报「输入上下文超窗」类错误（判据见 [CONTEXT_OVERFLOW_MARKERS]）。 */
+/** 可能是超窗但也可能是请求体/附件体积限制的模糊特征（仅归入 [OverflowConfidence.POSSIBLE]）。 */
+private val POSSIBLE_OVERFLOW_MARKERS = listOf(
+    "payload too large",
+    "request entity too large",
+    "request body too large",
+    "content too large",
+)
+
+/** 将异常归类为「确定超窗 / 也许超窗 / 非超窗」三态（仅确定档触发反应式恢复与工具结果撤回）。 */
+internal fun classifyInputContextOverflow(t: Throwable): OverflowConfidence {
+    if (t.matchesAnyMarker(CONTEXT_OVERFLOW_MARKERS)) return OverflowConfidence.DEFINITE
+    if (t.matchesAnyMarker(POSSIBLE_OVERFLOW_MARKERS) || findHttpStatusCode(t.message) == 413) {
+        return OverflowConfidence.POSSIBLE
+    }
+    return OverflowConfidence.NONE
+}
+
+/** provider 报「确定输入上下文超窗」类错误（判据见 [CONTEXT_OVERFLOW_MARKERS]）。 */
 internal fun isInputContextOverflowError(t: Throwable): Boolean =
-    t.matchesAnyMarker(CONTEXT_OVERFLOW_MARKERS)
+    classifyInputContextOverflow(t) == OverflowConfidence.DEFINITE
 
 private fun Throwable.matchesAnyMarker(markers: List<String>): Boolean {
     val message = this.message?.lowercase() ?: return false

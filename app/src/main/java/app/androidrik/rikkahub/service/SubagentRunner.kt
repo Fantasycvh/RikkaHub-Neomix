@@ -20,6 +20,7 @@ import app.androidrik.rikkahub.data.ai.DenialGuard
 import app.androidrik.rikkahub.data.ai.GenerationChunk
 import app.androidrik.rikkahub.data.ai.GenerationHandler
 import app.androidrik.rikkahub.data.ai.GenerationNotice
+import app.androidrik.rikkahub.data.ai.isTerminalStop
 import app.androidrik.rikkahub.data.ai.DeliverableChecker
 import app.androidrik.rikkahub.data.ai.LoopGateConfig
 import app.androidrik.rikkahub.data.ai.forcePassNote
@@ -670,8 +671,10 @@ class SubagentRunner(
                                 }
 
                                 is GenerationChunk.Notice -> {
-                                    // 护栏停止：flow 会自行 break，这里只把原因映射成 run 的失败细分
-                                    stopNotice = chunk.notice
+                                    // 仅终止类护栏通知才映射为 run 的失败细分；信息性恢复通知（如超窗撤回工具结果）不阻断完成
+                                    if (chunk.notice.isTerminalStop) {
+                                        stopNotice = chunk.notice
+                                    }
                                 }
                             }
                         }

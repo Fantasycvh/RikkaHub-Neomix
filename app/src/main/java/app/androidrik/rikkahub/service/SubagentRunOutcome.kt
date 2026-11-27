@@ -84,6 +84,7 @@ internal fun evaluateCompletion(
                 AgentRunEntity.ERROR_CONTEXT_BUDGET,
                 "${stopNotice.usedTokens}/${stopNotice.windowTokens} tokens",
             )
+        is GenerationNotice.ToolOutputEvictedOnOverflow -> Unit
         null -> Unit
     }
 
