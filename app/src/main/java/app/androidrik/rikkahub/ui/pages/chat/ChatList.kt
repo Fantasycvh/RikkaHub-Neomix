@@ -120,7 +120,9 @@ import app.androidrik.rikkahub.ui.components.message.LocalChatBranchController
 import app.androidrik.rikkahub.ui.components.message.MAX_RENDER_TEXT_LENGTH
 import app.androidrik.rikkahub.ui.components.richtext.SharedSelectableContent
 import app.androidrik.rikkahub.ui.components.message.CompactionCheckpointRow
+import app.androidrik.rikkahub.ui.components.message.CompactionUndoConfirmDialog
 import app.androidrik.rikkahub.ui.components.message.CompressionSummarySheet
+import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.components.ui.ErrorCardsDisplay
 import app.androidrik.rikkahub.ui.components.ui.ListSelectableItem
 import app.androidrik.rikkahub.ui.components.ui.LocalConversationImageUrls
@@ -210,6 +212,8 @@ fun ChatList(
     onHydrateNode: (Uuid) -> Unit = {},
     /** 压缩摘要编辑保存（「摘要可见可编辑」）；null = 折叠行不显示编辑入口 */
     onUpdateCompressionSummary: ((summaryId: Long, content: String, onResult: (Boolean) -> Unit) -> Unit)? = null,
+    /** 撤回（删除）压缩检查点（「删线即还原」，NMoi D324–D327）；null = 不显示撤回入口 */
+    onDeleteCompressionSummary: ((summaryId: Long, onResult: (Boolean) -> Unit) -> Unit)? = null,
     scrollController: ChatListScrollController? = null,
 ) {
     // 「点击消息里的图片 ⇒ 全屏后在**本会话**的图片间左右切换」：
@@ -293,6 +297,7 @@ fun ChatList(
                     onLoadEarlierNodes = onLoadEarlierNodes,
                     onHydrateNode = onHydrateNode,
                     onUpdateCompressionSummary = onUpdateCompressionSummary,
+                    onDeleteCompressionSummary = onDeleteCompressionSummary,
                     scrollController = scrollController ?: defaultScrollController,
                 )
                 }
@@ -346,6 +351,8 @@ private fun ChatListNormal(
     onHydrateNode: (Uuid) -> Unit = {},
     /** 压缩摘要编辑保存；null = 折叠行不显示编辑入口 */
     onUpdateCompressionSummary: ((summaryId: Long, content: String, onResult: (Boolean) -> Unit) -> Unit)? = null,
+    /** 撤回（删除）压缩分界线；null = 不显示撤回入口 */
+    onDeleteCompressionSummary: ((summaryId: Long, onResult: (Boolean) -> Unit) -> Unit)? = null,
     scrollController: ChatListScrollController? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -424,6 +431,15 @@ private fun ChatListNormal(
     }
     // 压缩摘要查看/编辑 sheet（native 检查点；入口在折叠行上的编辑图标）
     var showSummarySheet by remember(conversation.id) { mutableStateOf(false) }
+    // 撤回压缩分界线确认弹窗（从折叠行直接点删线时弹出；sheet 内部自带同款确认弹窗）
+    var showUndoCheckpointDialog by remember(conversation.id) { mutableStateOf(false) }
+    // 物理清理检测：若边界前的路径节点数小于检查点记录的累计压缩条数，说明此前 pruneCompressedPrefix 删过旧节点
+    val checkpointPrefixPruned = remember(activeCheckpoint, conversation.nodeSummaries, conversation.messageNodes) {
+        val boundaryId = activeCheckpoint?.boundaryNodeId ?: return@remember false
+        val pathIds = conversation.summaryPathNodeIds()
+        val boundaryIdx = pathIds.indexOfFirst { it.toString() == boundaryId }
+        boundaryIdx >= 0 && (boundaryIdx + 1) < activeCheckpoint.messageCount
+    }
     val visibleNodes = if (activeCheckpoint != null && !showCompressedHistory) {
         conversation.windowNodes()
     } else {
@@ -705,6 +721,11 @@ private fun ChatListNormal(
                         } else {
                             null
                         },
+                        onDeleteClick = if (activeCheckpoint.id != 0L && !loading && onDeleteCompressionSummary != null) {
+                            { showUndoCheckpointDialog = true }
+                        } else {
+                            null
+                        },
                     )
                 }
             }
@@ -977,6 +998,29 @@ private fun ChatListNormal(
                     onDismissRequest = { showSummarySheet = false },
                     onSave = { newContent, onResult ->
                         onUpdateCompressionSummary?.invoke(activeCheckpoint.id, newContent, onResult)
+                    },
+                    onDelete = if (!loading && onDeleteCompressionSummary != null) {
+                        { onResult -> onDeleteCompressionSummary.invoke(activeCheckpoint.id, onResult) }
+                    } else {
+                        null
+                    },
+                    prefixPruned = checkpointPrefixPruned,
+                )
+            }
+
+            if (showUndoCheckpointDialog && activeCheckpoint != null && activeCheckpoint.id != 0L && onDeleteCompressionSummary != null) {
+                val toaster = LocalToaster.current
+                val undoSuccessMsg = stringResource(R.string.compaction_undo_success)
+                val undoFailedMsg = stringResource(R.string.compaction_undo_failed)
+                CompactionUndoConfirmDialog(
+                    messageCount = activeCheckpoint.messageCount,
+                    prefixPruned = checkpointPrefixPruned,
+                    onDismissRequest = { showUndoCheckpointDialog = false },
+                    onConfirm = {
+                        showUndoCheckpointDialog = false
+                        onDeleteCompressionSummary(activeCheckpoint.id) { ok ->
+                            toaster.show(message = if (ok) undoSuccessMsg else undoFailedMsg)
+                        }
                     },
                 )
             }

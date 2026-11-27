@@ -940,6 +940,10 @@ class ConversationRepository(
         checkpointStore.deleteCompressionCheckpoints(conversationId)
     }
 
+    /** 按主键删除单条检查点（「删线即还原」，NMoi D324–D327）。 */
+    suspend fun deleteCompressionCheckpoint(summaryId: Long): Boolean =
+        checkpointStore.deleteById(summaryId)
+
     /**
      * 用户编辑摘要正文（只改 content 单列）。
      *

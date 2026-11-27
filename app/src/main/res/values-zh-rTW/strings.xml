@@ -738,6 +738,12 @@
   <string name="compaction_row_title">已壓縮早前 %1$d 則訊息</string>
   <string name="compaction_row_expand">展開被壓縮的歷史</string>
   <string name="compaction_row_collapse">收起被壓縮的歷史</string>
+  <string name="compaction_row_undo">撤回壓縮</string>
+  <string name="compaction_undo_title">撤回壓縮分界線？</string>
+  <string name="compaction_undo_message">刪除此分界線將移除摘要，並把早前 %1$d 則原文恢復到目前傳送視窗中，原始訊息不會遺失。</string>
+  <string name="compaction_undo_message_pruned">刪除此分界線將移除摘要。由於先前已開啟物理清理刪除過早期訊息，只能恢復目前仍保留的訊息。</string>
+  <string name="compaction_undo_success">已撤回壓縮，完整歷史已恢復</string>
+  <string name="compaction_undo_failed">撤回失敗：正在生成中或該壓縮記錄已不存在</string>
   <!-- #2294 壓縮範圍預覽確認 + 壓縮記錄計數展示 -->
   <string name="compaction_row_count">現 %1$d 則（總 %2$d 則）</string>
   <string name="chat_page_compress_preview_action">預覽範圍</string>

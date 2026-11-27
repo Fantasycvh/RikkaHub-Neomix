@@ -3073,6 +3073,46 @@ class ChatService(
     }
 
     /**
+     * 撤回（删除）压缩检查点（「删线即还原」，NMoi D324–D327）：
+     *
+     * 原始 `message_node` 行在压缩时未被改动（除非用户显式开启了 `pruneCompressedPrefix`），
+     * 删除 `compression_checkpoint` 行并从内存态移除后，`activeCompression()` 自动失效或回退到
+     * 更早的有效检查点，`requestWindowMessages()` / `windowNodes()` / 占用条立即恢复完整历史。
+     *
+     * - 与 [compressToCheckpoint] 共用会话级 [compressionMutexes]，避免与进行中的压缩竞态；
+     * - 生成中拒绝撤回（防止发送窗口在流式回写中途跳变）；
+     * - 稀疏会话撤回后全量 hydrate，保证恢复出来的早期消息立即可见、可发送。
+     *
+     * @return false = 生成中 / 该检查点已不存在
+     */
+    suspend fun deleteCompressionCheckpoint(
+        conversationId: Uuid,
+        summaryId: Long,
+    ): Boolean = compressionMutexes
+        .getOrPut(conversationId) { Mutex() }
+        .withLock {
+            if (sessions[conversationId]?.isGenerating == true) {
+                Log.w(TAG, "deleteCompressionCheckpoint rejected: generation in progress (conv=$conversationId)")
+                return@withLock false
+            }
+            val deleted = conversationRepo.deleteCompressionCheckpoint(summaryId)
+            if (!deleted) {
+                Log.w(TAG, "compression summary #$summaryId no longer exists for deletion (conv=$conversationId)")
+                return@withLock false
+            }
+            updateConversationState(conversationId) { latest ->
+                latest.copy(
+                    compressionSummaries = latest.compressionSummaries.filterNot { it.id == summaryId },
+                )
+            }
+            if (sessions[conversationId]?.state?.value?.isSparse == true) {
+                hydrateAll(conversationId)
+            }
+            Log.i(TAG, "compression summary #$summaryId deleted (reverted, conv=$conversationId)")
+            true
+        }
+
+    /**
      * 自动压缩：占用达到阈值时调用 [compressToCheckpoint]。
      *
      * - 未启用（默认关）或未达阈值时不动作

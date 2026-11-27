@@ -25,6 +25,15 @@ interface CompressionCheckpointDAO {
     @Query("DELETE FROM compression_checkpoint WHERE conversation_id = :conversationId")
     suspend fun deleteOfConversation(conversationId: String)
 
+    /**
+     * 按主键删除单条检查点（「删线即还原」，NMoi D324–D327）：
+     * 原始 `message_node` 行未被改动，删掉检查点行即自动恢复完整上下文窗口。
+     *
+     * @return 受影响行数；0 = 该检查点已不存在（已被新压缩替换或已删除）
+     */
+    @Query("DELETE FROM compression_checkpoint WHERE id = :id")
+    suspend fun deleteById(id: Long): Int
+
     /** 仅保留末行（最新检查点），删除更早的检查点行——合并旧摘要后清理冗余 */
     @Query(
         "DELETE FROM compression_checkpoint WHERE conversation_id = :conversationId " +

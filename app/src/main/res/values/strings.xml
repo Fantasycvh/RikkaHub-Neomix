@@ -704,6 +704,12 @@
   <string name="compaction_row_title">Compressed %1$d earlier messages</string>
   <string name="compaction_row_expand">Show compressed history</string>
   <string name="compaction_row_collapse">Hide compressed history</string>
+  <string name="compaction_row_undo">Undo compression</string>
+  <string name="compaction_undo_title">Undo compression checkpoint?</string>
+  <string name="compaction_undo_message">Deleting this divider removes the summary and restores the earlier %1$d messages to the active context window. The original messages are preserved.</string>
+  <string name="compaction_undo_message_pruned">Deleting this divider removes the summary. Because earlier messages were previously pruned from storage, only remaining messages can be restored.</string>
+  <string name="compaction_undo_success">Compression undone; full history restored</string>
+  <string name="compaction_undo_failed">Failed to undo compression: generation in progress or checkpoint no longer exists</string>
   <!-- #2294 压缩范围预览确认 + 压缩记录计数展示 -->
   <string name="compaction_row_count">Current %1$d (of %2$d total)</string>
   <string name="chat_page_compress_preview_action">Preview range</string>

@@ -16,6 +16,8 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +53,7 @@ import me.rerere.hugeicons.stroke.Archive02
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
 import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.Delete01
 import me.rerere.hugeicons.stroke.Edit01
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -79,6 +82,7 @@ fun CompactionCheckpointRow(
     currentCount: Int? = null,
     totalCount: Int? = null,
     onEditClick: (() -> Unit)? = null,
+    onDeleteClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -132,6 +136,19 @@ fun CompactionCheckpointRow(
                 )
             }
         }
+        if (onDeleteClick != null) {
+            IconButton(
+                onClick = onDeleteClick,
+                modifier = Modifier.size(24.dp),
+            ) {
+                Icon(
+                    imageVector = HugeIcons.Delete01,
+                    contentDescription = stringResource(R.string.compaction_row_undo),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
         Icon(
             imageVector = if (expanded) HugeIcons.ArrowUp01 else HugeIcons.ArrowDown01,
             contentDescription = stringResource(
@@ -179,14 +196,38 @@ fun CompressionSummarySheet(
     summary: CompressionSummary,
     onDismissRequest: () -> Unit,
     onSave: (newContent: String, onResult: (Boolean) -> Unit) -> Unit,
+    onDelete: ((onResult: (Boolean) -> Unit) -> Unit)? = null,
+    prefixPruned: Boolean = false,
 ) {
     val toaster = LocalToaster.current
+    val undoSuccessMsg = stringResource(R.string.compaction_undo_success)
+    val undoFailedMsg = stringResource(R.string.compaction_undo_failed)
     // 痕迹附录与正文拆分：展示/编辑只针对可读正文，附录保存时原样拼回
     val body = remember(summary.id, summary.content) { stripTraceSection(summary.content) }
     val traceSection = remember(summary.id, summary.content) { extractTraceSection(summary.content) }
     var editing by remember { mutableStateOf(false) }
     // 进入编辑态时快照一次正文作为 TextFieldState 初值；此后 state 是唯一权威（无回灌）
     var editTarget by remember { mutableStateOf<String?>(null) }
+    var showUndoConfirm by remember { mutableStateOf(false) }
+
+    if (showUndoConfirm && onDelete != null) {
+        CompactionUndoConfirmDialog(
+            messageCount = summary.messageCount,
+            prefixPruned = prefixPruned,
+            onDismissRequest = { showUndoConfirm = false },
+            onConfirm = {
+                showUndoConfirm = false
+                onDelete { ok ->
+                    if (ok) {
+                        toaster.show(message = undoSuccessMsg)
+                        onDismissRequest()
+                    } else {
+                        toaster.show(message = undoFailedMsg)
+                    }
+                }
+            },
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -233,10 +274,50 @@ fun CompressionSummarySheet(
                 onCopy = {
                     toaster.show(message = "已复制摘要正文")
                 },
+                onDelete = onDelete?.let { { showUndoConfirm = true } },
                 onClose = onDismissRequest,
             )
         }
     }
+}
+
+/**
+ * 撤回压缩分界线二次确认对话框（「删线即还原」，NMoi D324–D327）。
+ * 折叠行直接点撤回与摘要 sheet 内点撤回共用同一确认弹窗。
+ */
+@Composable
+fun CompactionUndoConfirmDialog(
+    messageCount: Int,
+    prefixPruned: Boolean,
+    onDismissRequest: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(stringResource(R.string.compaction_undo_title)) },
+        text = {
+            Text(
+                text = if (prefixPruned) {
+                    stringResource(R.string.compaction_undo_message_pruned)
+                } else {
+                    stringResource(R.string.compaction_undo_message, messageCount)
+                }
+            )
+        },
+        confirmButton = {
+            AppTextButton(onClick = onConfirm) {
+                Text(
+                    text = stringResource(R.string.compaction_row_undo),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        dismissButton = {
+            AppTextButton(onClick = onDismissRequest) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -246,6 +327,7 @@ private fun ViewSummaryContent(
     hasTrace: Boolean,
     onEdit: () -> Unit,
     onCopy: () -> Unit,
+    onDelete: (() -> Unit)?,
     onClose: () -> Unit,
 ) {
     // 60% 高度上限（用户拍板）：折叠行外的完整摘要不再占满全屏；正文区 weight(1f) + 竖向滚动
@@ -288,9 +370,25 @@ private fun ViewSummaryContent(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (onDelete != null) {
+                AppTextButton(onClick = onDelete) {
+                    Icon(
+                        HugeIcons.Delete01,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.compaction_row_undo),
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.weight(1f))
             CopySummaryButton(body = body, onCopied = onCopy)
             AppTextButton(onClick = onEdit) {
                 Icon(HugeIcons.Edit01, contentDescription = null, modifier = Modifier.size(16.dp))

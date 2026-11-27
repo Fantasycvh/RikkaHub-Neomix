@@ -741,6 +741,12 @@
   <string name="compaction_row_title">已压缩早前 %1$d 条消息</string>
   <string name="compaction_row_expand">展开被压缩的历史</string>
   <string name="compaction_row_collapse">收起被压缩的历史</string>
+  <string name="compaction_row_undo">撤回压缩</string>
+  <string name="compaction_undo_title">撤回压缩分界线？</string>
+  <string name="compaction_undo_message">删除此分界线将移除摘要，并把早前 %1$d 条原文恢复到当前发送窗口中，原始消息不会丢失。</string>
+  <string name="compaction_undo_message_pruned">删除此分界线将移除摘要。由于此前已开启物理清理删除过早期消息，只能恢复当前仍保留的消息。</string>
+  <string name="compaction_undo_success">已撤回压缩，完整历史已恢复</string>
+  <string name="compaction_undo_failed">撤回失败：正在生成中或该压缩记录已不存在</string>
   <!-- #2294 压缩范围预览确认 + 压缩记录计数展示 -->
   <string name="compaction_row_count">现 %1$d 条（总 %2$d 条）</string>
   <string name="chat_page_compress_preview_action">预览范围</string>

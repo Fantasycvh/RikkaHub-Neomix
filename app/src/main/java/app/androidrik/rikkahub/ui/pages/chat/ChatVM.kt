@@ -601,6 +601,16 @@ class ChatVM(
         }
     }
 
+    /**
+     * 撤回（删除）压缩分界线（「删线即还原」，NMoi D324–D327）。
+     * 删除检查点 DB 行并同步内存态，恢复被压缩前的完整上下文窗口。
+     */
+    fun deleteCompressionSummary(summaryId: Long, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            onResult(chatService.deleteCompressionCheckpoint(_conversationId, summaryId))
+        }
+    }
+
     fun deleteConversation(conversation: Conversation): Job =
         viewModelScope.launch {
             conversationRepo.deleteConversation(conversation)

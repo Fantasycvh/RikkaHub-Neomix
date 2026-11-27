@@ -51,6 +51,14 @@ internal class CompressionCheckpointStore(
     }
 
     /**
+     * 按主键撤回单条检查点（「删线即还原」，NMoi D324–D327）。
+     *
+     * @return false = 该检查点已不存在（已被替换或已删）
+     */
+    suspend fun deleteById(summaryId: Long): Boolean =
+        checkpointDAO.deleteById(summaryId) > 0
+
+    /**
      * 用户编辑摘要正文（只改 content 单列，指纹/边界/计数不动）。
      *
      * @return false = 该检查点已不存在（被新压缩替换等），调用方据此提示重试
