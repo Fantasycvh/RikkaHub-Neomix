@@ -3585,6 +3585,14 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="safe_mode_import_overwrite_confirm">Importing this backup will overwrite existing settings, chat history, and attachments, then restart the app to apply. Continue?</string>
   <string name="safe_mode_import_backup_failed">Import failed: %1$s</string>
   <string name="safe_mode_import_invalid_archive">Selected file is not a valid Neomix/RikkaHub backup archive.</string>
+  <string name="chat_credential_warning_title">Possible Sensitive Credentials Detected</string>
+  <string name="chat_credential_warning_desc">Detected %1$d possible credential(s) (%2$s). Sending them will expose them to the model provider and store them in chat history. Send anyway?</string>
+  <string name="chat_credential_warning_send_anyway">Send anyway</string>
+  <string name="chat_credential_kind_private_key">Private Key</string>
+  <string name="chat_credential_kind_registered">Configured Key/Header</string>
+  <string name="chat_credential_kind_api_key">API Key</string>
+  <string name="chat_credential_kind_token">Access Token</string>
+  <string name="chat_credential_kind_bearer">Bearer Token</string>
   <string name="lan_sync_discovered">Discovered on this network</string>
 </resources>
 

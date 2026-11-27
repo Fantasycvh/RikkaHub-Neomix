@@ -3571,5 +3571,13 @@
   <string name="safe_mode_import_overwrite_confirm">匯入此備份將覆蓋現有設定、聊天記錄和附件，並在完成後自動重啟應用生效。是否繼續？</string>
   <string name="safe_mode_import_backup_failed">匯入失敗：%1$s</string>
   <string name="safe_mode_import_invalid_archive">所選檔案不是有效的 Neomix/RikkaHub 備份包。</string>
+  <string name="chat_credential_warning_title">偵測到疑似敏感憑證</string>
+  <string name="chat_credential_warning_desc">目前輸入包含 %1$d 處疑似敏感憑證（%2$s）。傳送後將進入模型上下文並儲存在本機聊天記錄中，確認仍要傳送嗎？</string>
+  <string name="chat_credential_warning_send_anyway">仍然傳送</string>
+  <string name="chat_credential_kind_private_key">私鑰區塊</string>
+  <string name="chat_credential_kind_registered">已設定金鑰/標頭</string>
+  <string name="chat_credential_kind_api_key">API Key</string>
+  <string name="chat_credential_kind_token">存取權杖</string>
+  <string name="chat_credential_kind_bearer">Bearer 權杖</string>
   <string name="lan_sync_discovered">已找到區域網路裝置</string>
 </resources>
