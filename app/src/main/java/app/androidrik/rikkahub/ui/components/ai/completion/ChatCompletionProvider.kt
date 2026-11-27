@@ -28,6 +28,22 @@ internal fun completionContext(text: CharSequence, selection: TextRange): ChatCo
     return ChatCompletionContext(window, selection, start)
 }
 
+enum class ChatCompletionGroup {
+    COMMAND,
+    SKILL,
+}
+
+sealed interface ChatCompletionEffect {
+    /** 原地替换文本（@工作区提及、带参命令前缀 "/goal "、定时任务提示词内插 "/skill-name "） */
+    data class InsertText(val text: String) : ChatCompletionEffect
+
+    /** 挂载本轮 Skill Chip（可叠加）并抹除当前输入的 /xxx token */
+    data class AttachSkill(val skillName: String) : ChatCompletionEffect
+
+    /** 客户端立即执行内置斜杠命令并清理已匹配的命令文本 */
+    data class ExecuteCommand(val call: SlashCommandCall) : ChatCompletionEffect
+}
+
 data class ChatCompletionList(
     val providerId: String,
     val replacementRange: TextRange,
@@ -40,7 +56,10 @@ data class ChatCompletionItem(
     val detail: String? = null,
     val icon: ImageVector? = null,
     val sortScore: Int = 0,
-    val skillName: String? = null,
+    val key: String = "$label:$insertText",
+    val group: ChatCompletionGroup? = null,
+    val badge: String? = null,
+    val effect: ChatCompletionEffect = ChatCompletionEffect.InsertText(insertText),
 )
 
 interface ChatCompletionProvider {

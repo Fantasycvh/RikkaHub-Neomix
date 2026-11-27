@@ -217,9 +217,12 @@ fun ChatMessage(
             else -> ChatLayoutSection.BODY
         },
         leading = {
-            message.annotations.filterIsInstance<UIMessageAnnotation.InvokedSkill>().firstOrNull()?.let { skill ->
-                val label = "/${skill.name}"
-                if ((message.parts.singleOrNull() as? UIMessagePart.Text)?.text != label) {
+            val invokedSkills = message.annotations
+                .filterIsInstance<UIMessageAnnotation.InvokedSkill>()
+                .distinctBy { it.name }
+            if (invokedSkills.isNotEmpty()) {
+                val label = invokedSkills.joinToString(" ") { "/${it.name}" }
+                if ((message.parts.singleOrNull() as? UIMessagePart.Text)?.text?.trim() != label) {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.labelMedium,

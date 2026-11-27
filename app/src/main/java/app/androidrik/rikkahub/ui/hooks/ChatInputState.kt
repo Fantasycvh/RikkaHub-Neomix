@@ -25,7 +25,17 @@ class ChatInputState {
      * 新消息引用谁」。发送或清空输入时置 null。
      */
     var pendingQuote by mutableStateOf<UIMessageAnnotation.QuotedMessage?>(null)
-    var pendingSkill by mutableStateOf<String?>(null)
+    var pendingSkills by mutableStateOf<List<String>>(emptyList())
+
+    fun addPendingSkill(name: String) {
+        if (isEditing() || name.isBlank() || name in pendingSkills) return
+        pendingSkills = pendingSkills + name
+    }
+
+    fun removePendingSkill(name: String) {
+        if (name !in pendingSkills) return
+        pendingSkills = pendingSkills.filterNot { it == name }
+    }
 
     private var editingParts: List<UIMessagePart>? = null
     private var editingAttachmentUrls: Set<String> = emptySet()
@@ -55,7 +65,7 @@ class ChatInputState {
         messageContent = emptyList()
         editingMessage = null
         pendingQuote = null
-        pendingSkill = null
+        pendingSkills = emptyList()
         editingParts = null
         editingAttachmentUrls = emptySet()
         replacedAttachments = emptyMap()
@@ -98,7 +108,7 @@ class ChatInputState {
             segmentedDraft = null
             textContent.undoState.clearHistory()
         }
-        pendingSkill = null
+        pendingSkills = emptyList()
         setMessageText(text)
         loadedEditingMessage = editingMessage
         messageContent = contents.filter { it.isEditableAttachment() }
@@ -127,7 +137,7 @@ class ChatInputState {
         return textContent.text.isBlank() && messageContent.isEmpty()
     }
 
-    internal fun canSend(): Boolean = !isEmpty() || pendingSkill != null
+    internal fun canSend(): Boolean = !isEmpty() || pendingSkills.isNotEmpty()
 
     fun addImages(uris: List<Uri>) {
         val newMessage = messageContent.toMutableList()

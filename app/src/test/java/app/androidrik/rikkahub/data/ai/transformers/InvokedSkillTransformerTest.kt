@@ -46,4 +46,30 @@ class InvokedSkillTransformerTest {
         assertSame(ordinary, expandInvokedSkill(ordinary))
         assertSame(scheduled, expandInvokedSkill(scheduled))
     }
+
+    @Test
+    fun `expands multiple stacked skills in order with deduplication including scheduled turns`() {
+        val second = UIMessageAnnotation.InvokedSkill("summarize", "Keep bullets under 5 lines.")
+        val multiUser = UIMessage.user("Analyze report").copy(
+            isSynthetic = true,
+            annotations = listOf(
+                UIMessageAnnotation.ScheduledTrigger("run-1"),
+                selection,
+                second,
+                selection,
+            ),
+        )
+
+        val request = expandInvokedSkill(listOf(multiUser))
+        val expanded = request.single()
+        val promptPart = (expanded.parts.first() as UIMessagePart.Text).text
+
+        assertTrue(promptPart.contains("review, summarize"))
+        assertTrue(promptPart.indexOf("### Skill: review") < promptPart.indexOf("### Skill: summarize"))
+        assertTrue(promptPart.contains(selection.instructions))
+        assertTrue(promptPart.contains(second.instructions))
+        assertEquals(listOf(UIMessageAnnotation.ScheduledTrigger("run-1")), expanded.annotations)
+        assertEquals(multiUser.parts, expanded.parts.drop(1))
+        assertSame(request, expandInvokedSkill(request))
+    }
 }

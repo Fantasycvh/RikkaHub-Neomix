@@ -20,15 +20,29 @@ internal fun expandInvokedSkill(messages: List<UIMessage>): List<UIMessage> {
             (!message.isSynthetic || message.annotations.any { it is UIMessageAnnotation.ScheduledTrigger })
     }
     val message = messages.getOrNull(index) ?: return messages
-    val skill = message.annotations.filterIsInstance<UIMessageAnnotation.InvokedSkill>().firstOrNull()
-        ?: return messages
-    val instructions = UIMessagePart.Text(
-        "Use the following instructions for the user-selected skill ${skill.name} for this turn.\n\n${skill.instructions}",
-    )
+    val skills = message.annotations
+        .filterIsInstance<UIMessageAnnotation.InvokedSkill>()
+        .distinctBy { it.name }
+    if (skills.isEmpty()) return messages
+    val instructions = UIMessagePart.Text(formatInvokedSkillsPrompt(skills))
     return messages.toMutableList().apply {
         this[index] = message.copy(
             parts = listOf(instructions) + message.parts,
             annotations = message.annotations.filterNot { it is UIMessageAnnotation.InvokedSkill },
         )
     }
+}
+
+internal fun formatInvokedSkillsPrompt(skills: List<UIMessageAnnotation.InvokedSkill>): String {
+    val distinct = skills.distinctBy { it.name }
+    if (distinct.isEmpty()) return ""
+    if (distinct.size == 1) {
+        val skill = distinct.single()
+        return "Use the following instructions for the user-selected skill ${skill.name} for this turn.\n\n${skill.instructions}"
+    }
+    val names = distinct.joinToString(", ") { it.name }
+    val body = distinct.joinToString("\n\n") { skill ->
+        "### Skill: ${skill.name}\n${skill.instructions}"
+    }
+    return "Use the following instructions for the user-selected skills ($names) for this turn.\n\n$body"
 }
