@@ -322,6 +322,7 @@ val appModule = module {
             runRegistry = get(),
             subagentRunner = get(),
             mediaRunner = get(),
+            skillManager = get(),
         )
     }
 

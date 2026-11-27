@@ -56,7 +56,9 @@ fun ScheduledTaskDetailPage(
     val task by vm.task.collectAsStateWithLifecycle()
     val conversationTitles by vm.conversationTitles.collectAsStateWithLifecycle()
     val conversationGoals by vm.conversationGoals.collectAsStateWithLifecycle()
+    val conversationAssistantIds by vm.conversationAssistantIds.collectAsStateWithLifecycle()
     val assistantNames by vm.assistantNames.collectAsStateWithLifecycle()
+    val settings = LocalSettings.current
     val runs by vm.runs.collectAsStateWithLifecycle()
     val navController = LocalNavController.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -119,10 +121,18 @@ fun ScheduledTaskDetailPage(
                     uploadFingerprint = uploadFingerprint,
                 )
             }
+            val targetAssistantId = current.assistantId?.let { raw ->
+                runCatching { kotlin.uuid.Uuid.parse(raw) }.getOrNull()
+            } ?: conversationAssistantIds[current.conversationId]
+            val targetEnabledSkills = settings.assistants
+                .firstOrNull { it.id == targetAssistantId }
+                ?.enabledSkills
+                .orEmpty()
             ScheduledTaskFormFields(
                 form,
                 withGoalAvailable = !form.mediaTemplate && withGoalAvailable,
                 keepLastVisible = !form.mediaTemplate && keepLastVisible,
+                enabledSkills = targetEnabledSkills,
             )
             // 运行历史入口（P3）：列表摊到二级页（ScheduledTaskRunsPage），这里只留一行摘要——
             // 几十条历史塞在编辑表单中间既挤又喧宾夺主

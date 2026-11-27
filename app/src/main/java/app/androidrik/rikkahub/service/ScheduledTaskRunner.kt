@@ -73,6 +73,7 @@ class ScheduledTaskRunner(
     /** P4b 可选 headless 执行：定时任务走独立 agent_run（默认关，见 Settings.scheduledHeadlessEnabled）。 */
     private val subagentRunner: SubagentRunner,
     private val mediaRunner: ScheduledMediaRunner,
+    private val skillManager: app.androidrik.rikkahub.data.files.SkillManager,
 ) {
     /**
      * 执行一个**已认领**的任务，返回落 `last_status` 的状态值。媒体任务完成持久化移交后返回 null。
@@ -221,7 +222,14 @@ class ScheduledTaskRunner(
             return TaskRunStatus.ASSISTANT_GONE
         }
 
-        val goal = buildTaskPrompt(task.prompt, task.withGoal, conversation.goal)
+        val resolvedPrompt = resolvePromptSkills(task.prompt)
+        val baseGoal = buildTaskPrompt(resolvedPrompt.effectivePrompt, task.withGoal, conversation.goal)
+        val goal = if (resolvedPrompt.invokedSkills.isEmpty()) {
+            baseGoal
+        } else {
+            app.androidrik.rikkahub.data.ai.transformers.formatInvokedSkillsPrompt(resolvedPrompt.invokedSkills) +
+                "\n\n" + baseGoal
+        }
         val deliverables = task.deliverables
             ?.let { raw ->
                 runCatching { JsonInstant.decodeFromString<List<String>>(raw) }
@@ -345,10 +353,11 @@ class ScheduledTaskRunner(
         // 归属令牌显式指定（P0.5）：取消入口只知道 runId，这一轮的令牌必须可被它反查；
         // 同时它决定本轮起的后台 shell 任务的 owner（轮取消时由 onTurnCancelled 一并收掉）。
         val turnOwner = scheduledRunTurnOwner(runId)
+        val resolvedPrompt = resolvePromptSkills(task.prompt)
         chatService.sendMessage(
             conversationId,
-            listOf(UIMessagePart.Text(buildTaskPrompt(task.prompt, task.withGoal, conversationGoal, memoryAvailable))),
-            annotations = listOf(app.androidrik.ai.ui.UIMessageAnnotation.ScheduledTrigger(runId)),
+            listOf(UIMessagePart.Text(buildTaskPrompt(resolvedPrompt.effectivePrompt, task.withGoal, conversationGoal, memoryAvailable))),
+            annotations = listOf(app.androidrik.ai.ui.UIMessageAnnotation.ScheduledTrigger(runId)) + resolvedPrompt.invokedSkills,
             loopGate = loopGate,
             turnOwner = turnOwner,
             // 定时任务无人值守：不装配 Phone Use（design-phone-use.md §2.3）
@@ -583,6 +592,20 @@ class ScheduledTaskRunner(
         }
     }
 
+    private suspend fun resolvePromptSkills(rawPrompt: String): ResolvedScheduledTaskPrompt {
+        if (!rawPrompt.trimStart().startsWith("/")) {
+            return ResolvedScheduledTaskPrompt(effectivePrompt = rawPrompt, invokedSkills = emptyList())
+        }
+        return withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val installed = skillManager.listSkills().mapTo(HashSet()) { it.name }
+            resolveScheduledTaskPrompt(
+                rawPrompt = rawPrompt,
+                skillExists = { it in installed },
+                readSkillBody = { name -> runCatching { skillManager.readSkillBody(name) }.getOrNull() },
+            )
+        }
+    }
+
     companion object {
         private const val TAG = "ScheduledTaskRunner"
 
@@ -709,3 +732,38 @@ internal fun buildTaskPrompt(prompt: String, withGoal: Boolean, goal: String?, m
     if (memoryAvailable) add("## Memory\nThis is a preconfigured scheduled task, not a new user statement. Use the active memory tool only for sourced stable facts, explicit user preferences, or verified task results. Do not store guesses, greetings, invented user circumstances or raw logs as facts. Existing write approvals still apply. If you assessed the run and there is no appropriate memory candidate, call the active memory tool with action=no_candidate.")
     add(prompt)
 }.joinToString("\n\n")
+
+internal data class ResolvedScheduledTaskPrompt(
+    val effectivePrompt: String,
+    val invokedSkills: List<app.androidrik.ai.ui.UIMessageAnnotation.InvokedSkill>,
+)
+
+/**
+ * 解析定时任务提示词开头的前导 `/skill` 或 `/skill:name` 链（支持多技能叠加）。
+ *
+ * 与主聊天发送解析共用同一套纯函数，禁用客户端命令（只解析技能）。若未命中任何已安装技能
+ * 或全部技能正文读取失败，保持原提示词不变，绝不阻断定时任务执行。
+ */
+internal fun resolveScheduledTaskPrompt(
+    rawPrompt: String,
+    skillExists: (String) -> Boolean,
+    readSkillBody: (String) -> String?,
+): ResolvedScheduledTaskPrompt {
+    val parsed = app.androidrik.rikkahub.ui.components.ai.completion.parseSendTimeSlashInput(
+        rawText = rawPrompt,
+        allowBuiltinCommands = false,
+        skillExists = skillExists,
+    )
+    if (parsed !is app.androidrik.rikkahub.ui.components.ai.completion.SendSlashParseResult.SkillChain) {
+        return ResolvedScheduledTaskPrompt(effectivePrompt = rawPrompt, invokedSkills = emptyList())
+    }
+    val invoked = parsed.skillNames.mapNotNull { name ->
+        val body = readSkillBody(name)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        app.androidrik.ai.ui.UIMessageAnnotation.InvokedSkill(name = name, instructions = body)
+    }
+    if (invoked.isEmpty()) {
+        return ResolvedScheduledTaskPrompt(effectivePrompt = rawPrompt, invokedSkills = emptyList())
+    }
+    val effective = parsed.remainingText.ifBlank { rawPrompt.trim() }
+    return ResolvedScheduledTaskPrompt(effectivePrompt = effective, invokedSkills = invoked)
+}

@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import app.androidrik.rikkahub.ui.components.ui.AppOutlinedTextField as OutlinedTextField
@@ -14,6 +17,7 @@ import androidx.compose.material3.Text
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -21,10 +25,12 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -35,6 +41,7 @@ import app.androidrik.rikkahub.data.db.entity.MissPolicy
 import app.androidrik.rikkahub.data.db.entity.ScheduleType
 import app.androidrik.rikkahub.data.db.entity.ScheduledTaskEntity
 import app.androidrik.rikkahub.data.ai.DeliverableChecker
+import app.androidrik.rikkahub.data.files.SkillManager
 import app.androidrik.rikkahub.data.scheduled.mediaGrant
 import app.androidrik.rikkahub.data.scheduled.isMediaTemplate
 import app.androidrik.rikkahub.data.scheduled.SchedulePayload
@@ -42,8 +49,14 @@ import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAsset
 import app.androidrik.rikkahub.data.scheduled.ScheduledMediaAssetStore
 import app.androidrik.rikkahub.data.scheduled.ScheduledMediaOperation
 import app.androidrik.rikkahub.utils.JsonInstant
+import app.androidrik.rikkahub.ui.components.ai.CompletionPopup
+import app.androidrik.rikkahub.ui.components.ai.applyTextCompletion
+import app.androidrik.rikkahub.ui.components.ai.completion.SkillCompletionMode
+import app.androidrik.rikkahub.ui.components.ai.completion.SkillCompletionProvider
+import app.androidrik.rikkahub.ui.components.ai.rememberCompletionPopupState
 import app.androidrik.rikkahub.ui.components.ui.FormItem
 import app.androidrik.rikkahub.ui.components.ui.SegmentedPill
+import org.koin.compose.koinInject
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -58,7 +71,14 @@ import java.util.Locale
 @Stable
 class ScheduledTaskFormState {
     var title by mutableStateOf("")
-    var prompt by mutableStateOf("")
+    val promptState = TextFieldState()
+    var prompt: String
+        get() = promptState.text.toString()
+        set(value) {
+            if (!promptState.text.contentEquals(value)) {
+                promptState.setTextAndPlaceCursorAtEnd(value)
+            }
+        }
     var mediaTemplate by mutableStateOf(false)
     var authorizeMedia by mutableStateOf(false)
     var mediaModel by mutableStateOf<app.androidrik.rikkahub.data.media.MediaModelRef?>(null)
@@ -187,6 +207,7 @@ class ScheduledTaskFormState {
         }
         title = entity.title
         prompt = entity.prompt
+        promptState.undoState.clearHistory()
         type = runCatching { ScheduleType.valueOf(entity.scheduleType) }.getOrDefault(ScheduleType.DAILY)
         hourText = (payload.randomWindow?.startMinute?.div(60) ?: payload.hour).toString()
         minuteText = (payload.randomWindow?.startMinute?.rem(60) ?: payload.minute).toString()
@@ -235,9 +256,42 @@ fun ScheduledTaskFormFields(
     withGoalAvailable: Boolean = false,
     /** NEW_EACH_RUN 才显示「保留最近 N 轮」清理行（§4.2） */
     keepLastVisible: Boolean = false,
+    enabledSkills: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
+    var promptFocused by remember { mutableStateOf(false) }
+    val skillManager: SkillManager = koinInject()
+    val promptCompletionProviders = remember(skillManager, enabledSkills, state.mediaTemplate) {
+        if (state.mediaTemplate) {
+            emptyList()
+        } else {
+            listOf(
+                SkillCompletionProvider(
+                    skillManager = skillManager,
+                    enabledSkills = enabledSkills,
+                    mode = SkillCompletionMode.INSERT_TEXT,
+                ),
+            )
+        }
+    }
+    val promptCompletionState = rememberCompletionPopupState(
+        textState = state.promptState,
+        providers = promptCompletionProviders,
+        active = promptFocused && !state.mediaTemplate,
+    )
+    LaunchedEffect(state) {
+        var lastPrompt = state.promptState.text.toString()
+        snapshotFlow { state.promptState.text.toString() }.collect { current ->
+            if (current != lastPrompt) {
+                lastPrompt = current
+                if (state.mediaTemplate) {
+                    state.authorizeMedia = false
+                    state.mediaConfigurationFingerprint = null
+                }
+            }
+        }
+    }
     // 「时」按键盘的下一步直接落到「分」，省掉一次点按（此前是行内两个独立输入框，
     // 键盘不切数字、也不串焦点，见 docs/design/design-scheduled-ai-tasks.md §七）
     val minuteFocusRequester = remember { FocusRequester() }
@@ -251,18 +305,24 @@ fun ScheduledTaskFormFields(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        promptCompletionState.list?.takeIf { it.items.isNotEmpty() }?.let { list ->
+            CompletionPopup(
+                completionList = list,
+                onItemClick = { item ->
+                    if (promptCompletionState.matchesCurrent(state.promptState)) {
+                        state.promptState.applyTextCompletion(list.replacementRange, item)
+                    }
+                    promptCompletionState.dismiss()
+                },
+            )
+        }
         OutlinedTextField(
-            value = state.prompt,
-            onValueChange = {
-                state.prompt = it
-                if (state.mediaTemplate) {
-                    state.authorizeMedia = false
-                    state.mediaConfigurationFingerprint = null
-                }
-            },
+            state = state.promptState,
             label = { Text(stringResource(R.string.scheduled_task_field_prompt)) },
-            minLines = 3,
-            modifier = Modifier.fillMaxWidth(),
+            lineLimits = TextFieldLineLimits.MultiLine(minHeightInLines = 3),
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { promptFocused = it.isFocused },
         )
         FormItem(label = { Text(stringResource(R.string.scheduled_task_field_schedule)) }) {
             SegmentedPill(

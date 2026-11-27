@@ -46,6 +46,11 @@ class ScheduledTaskDetailVM(
         .map { list -> list.associate { it.id.toString() to it.goal } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
+    /** 目标会话所属助手（用于提示词 `/skill` 补全时优先排序已启用技能） */
+    val conversationAssistantIds = conversationRepository.searchConversations("")
+        .map { list -> list.associate { it.id.toString() to it.assistantId } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     /** 运行账本（P2）：运行历史（新→旧，至账本保留上限；二级页整页摊开） */
     val runs = taskRepository.flowRuns(taskId, ScheduledTaskRepository.RUNS_KEEP_PER_TASK)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

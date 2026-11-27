@@ -243,10 +243,20 @@ fun ScheduledTaskCreatePage(
                 uploadFingerprint = uploadFingerprint,
             )
             Spacer(Modifier.height(8.dp))
+            val targetEnabledSkills = remember(targetMode, selectedConversation, selectedAssistant, assistants) {
+                val targetAssistant = when (targetMode) {
+                    TargetMode.EXISTING -> selectedConversation?.assistantId?.let { id ->
+                        assistants.firstOrNull { it.id == id }
+                    }
+                    TargetMode.DEDICATED, TargetMode.NEW_EACH_RUN -> selectedAssistant
+                }
+                targetAssistant?.enabledSkills.orEmpty()
+            }
             ScheduledTaskFormFields(
                 form,
                 withGoalAvailable = !form.mediaTemplate && withGoalAvailable,
                 keepLastVisible = !form.mediaTemplate && keepLastVisible,
+                enabledSkills = targetEnabledSkills,
             )
             Spacer(Modifier.height(24.dp))
         }
