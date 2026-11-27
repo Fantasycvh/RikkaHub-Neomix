@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import app.androidrik.rikkahub.utils.formatContextLength
 import app.androidrik.rikkahub.data.ai.computeContextCapacity
 import app.androidrik.rikkahub.utils.CONTEXT_USAGE_WARNING_RATIO
+import app.androidrik.rikkahub.data.ai.ComposerCredentialDetector
 import app.androidrik.rikkahub.data.ai.ContextCapacity
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgress
 import app.androidrik.rikkahub.data.ai.compression.CompressionProgressStage
@@ -98,6 +99,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import app.androidrik.rikkahub.ui.pages.share.handler.SharedFileInfo
 import app.androidrik.rikkahub.ui.pages.share.handler.importSharedAttachments
+import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessageAnnotation
@@ -129,9 +131,15 @@ import app.androidrik.rikkahub.ui.pages.chat.rememberVoiceModeStarter
 import app.androidrik.rikkahub.ui.components.ai.ChatInput
 import app.androidrik.rikkahub.ui.components.ai.ContextUsage
 import app.androidrik.rikkahub.ui.components.ai.FilesPicker
+import app.androidrik.rikkahub.ui.components.ai.completion.BuiltinSlashCommand
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionProvider
+import app.androidrik.rikkahub.ui.components.ai.completion.SendSlashParseResult
 import app.androidrik.rikkahub.ui.components.ai.completion.SkillCompletionProvider
+import app.androidrik.rikkahub.ui.components.ai.completion.SlashCommandAvailability
+import app.androidrik.rikkahub.ui.components.ai.completion.SlashCommandCall
+import app.androidrik.rikkahub.ui.components.ai.completion.SlashCommandCompletionProvider
 import app.androidrik.rikkahub.ui.components.ai.completion.WorkspaceCompletionProvider
+import app.androidrik.rikkahub.ui.components.ai.completion.parseSendTimeSlashInput
 import app.androidrik.rikkahub.ui.components.ai.useCropLauncher
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
 import app.androidrik.rikkahub.utils.effectiveContextLength
@@ -655,9 +663,29 @@ private fun ChatPageContent(
         (inputState.editingMessage?.let { conversation.followingCount(it) } ?: 0) > 0
 
     val isEditing = inputState.isEditing()
+    val lastActiveMessage = conversation.currentMessages.lastOrNull()
+    val canContinueLastMessage = loadingJob == null &&
+        lastActiveMessage?.role == MessageRole.ASSISTANT &&
+        lastActiveMessage.parts.none { it is UIMessagePart.ServerTool }
+    val slashAvailability = remember(
+        conversation.currentMessages.size,
+        canContinueLastMessage,
+        loadingJob != null,
+        compressionStates.containsKey(conversation.id),
+        conversation.goal,
+    ) {
+        SlashCommandAvailability(
+            hasMessages = conversation.currentMessages.isNotEmpty(),
+            canContinue = canContinueLastMessage,
+            isGenerating = loadingJob != null,
+            isCompressing = compressionStates.containsKey(conversation.id),
+            hasGoal = !conversation.goal.isNullOrBlank(),
+        )
+    }
     val completionProviders = remember(
         assistant.workspaceId, conversation.workspaceCwd, workspaceRepository,
         assistant.enabledSkills, skillManager, isEditing,
+        slashAvailability, inputState.pendingSkills,
     ) {
         buildList<ChatCompletionProvider> {
             assistant.workspaceId?.let { workspaceId ->
@@ -669,46 +697,367 @@ private fun ChatPageContent(
                     )
                 )
             }
-            if (!isEditing && assistant.enabledSkills.isNotEmpty()) {
-                add(SkillCompletionProvider(skillManager, assistant.enabledSkills))
+            if (!isEditing) {
+                add(SlashCommandCompletionProvider(slashAvailability))
+                add(
+                    SkillCompletionProvider(
+                        skillManager = skillManager,
+                        enabledSkills = assistant.enabledSkills,
+                        excludedSkills = inputState.pendingSkills.toSet(),
+                    )
+                )
             }
         }
     }
 
     var preparingSkill by remember(inputState) { mutableStateOf(false) }
-    fun submitMessage(send: (List<UIMessagePart>, List<UIMessageAnnotation>) -> Unit) {
-        if (preparingSkill) return
-        val parts = inputState.getContents()
-        val quote = inputState.pendingQuote
+    // 发送前凭据拦截（借鉴 Miffan 51c6b0f2）：命中高置信凭据时先弹确认框，保留输入框内容不丢失
+    var pendingCredentialConfirm by remember {
+        mutableStateOf<Pair<ComposerCredentialDetector.Warning, () -> Unit>?>(null)
+    }
+    fun guardCredentials(parts: List<UIMessagePart>, proceed: () -> Unit) {
+        val warning = ComposerCredentialDetector.scanParts(parts, setting.providers, setting.assistants)
+        if (warning.hasFindings) {
+            pendingCredentialConfirm = warning to proceed
+        } else {
+            proceed()
+        }
+    }
+
+    suspend fun dispatchWithSkills(
+        baseParts: List<UIMessagePart>,
+        skillNames: List<String>,
+        quote: UIMessageAnnotation.QuotedMessage?,
+        expectedText: String,
+        expectedChipSkills: List<String>,
+        requireModel: Boolean,
+        send: (List<UIMessagePart>, List<UIMessageAnnotation>) -> Unit,
+    ) {
+        if (requireModel && currentChatModel == null) {
+            toaster.show(resources.getString(R.string.media_creation_page_select_model_first), type = ToastType.Error)
+            return
+        }
         val annotations = listOfNotNull(quote)
-        val name = inputState.pendingSkill
-        if (name == null) {
-            send(parts, annotations)
+        val distinctSkills = skillNames.distinct()
+        if (distinctSkills.isEmpty()) {
+            if (baseParts.isEmptyInputMessage()) return
+            guardCredentials(baseParts) {
+                send(baseParts, annotations)
+                inputState.clearInput()
+            }
+            return
+        }
+
+        val loaded = withContext(Dispatchers.IO) {
+            distinctSkills.map { skillName ->
+                val body = try {
+                    skillManager.readSkillBody(skillName)
+                } catch (_: IOException) {
+                    null
+                }
+                skillName to body
+            }
+        }
+        if (inputState.textContent.text.toString() != expectedText ||
+            inputState.pendingSkills != expectedChipSkills ||
+            inputState.isEditing() ||
+            inputState.pendingQuote != quote
+        ) return
+
+        val failed = loaded.firstOrNull { it.second.isNullOrBlank() }
+        if (failed != null) {
+            toaster.show(
+                resources.getString(R.string.skills_page_read_failed_path, "/${failed.first}"),
+                type = ToastType.Error,
+            )
+            return
+        }
+
+        val skillAnnotations = loaded.map { (name, body) ->
+            UIMessageAnnotation.InvokedSkill(name, body!!)
+        }
+        val content = if (baseParts.isEmptyInputMessage()) {
+            listOf(UIMessagePart.Text(distinctSkills.joinToString(" ") { "/$it" }))
+        } else {
+            baseParts
+        }
+        guardCredentials(content) {
+            send(content, annotations + skillAnnotations)
             inputState.clearInput()
+        }
+    }
+
+    fun executeSlashCommand(call: SlashCommandCall) {
+        when (call.command) {
+            BuiltinSlashCommand.NEW -> {
+                inputState.clearInput()
+                navigateToChatPage(navController)
+            }
+
+            BuiltinSlashCommand.COMPRESS -> {
+                inputState.clearInput()
+                if (call.argument.isBlank()) {
+                    showCompressDialog = true
+                } else {
+                    vm.handleCompressContext(
+                        additionalPrompt = call.argument,
+                        targetTokens = setting.autoCompressTargetTokens,
+                        retainRatio = setting.autoCompressRetainPercent / 100.0,
+                        keepRecentMessages = 0,
+                        continueInNewWindow = false,
+                    )
+                }
+            }
+
+            BuiltinSlashCommand.RETRY -> {
+                val target = conversation.currentMessages.lastOrNull()
+                if (loadingJob != null) {
+                    toaster.show(resources.getString(R.string.chat_vm_stop_generation_before_edit), type = ToastType.Error)
+                } else if (target == null) {
+                    toaster.show("当前没有可重新生成的消息", type = ToastType.Info)
+                } else {
+                    inputState.clearInput()
+                    if (conversation.followingCount(target.id) > 0) {
+                        regenerateScopeFor = target
+                    } else {
+                        doRegenerate(target, ChatService.RegenerateScope.THIS_ONLY)
+                    }
+                }
+            }
+
+            BuiltinSlashCommand.CONTINUE -> {
+                val target = conversation.currentMessages.lastOrNull()
+                val canContinue = loadingJob == null &&
+                    target?.role == MessageRole.ASSISTANT &&
+                    target.parts.none { it is UIMessagePart.ServerTool }
+                if (loadingJob != null) {
+                    toaster.show(resources.getString(R.string.chat_vm_stop_generation_before_edit), type = ToastType.Error)
+                } else if (!canContinue) {
+                    toaster.show("当前末条消息不支持继续生成", type = ToastType.Info)
+                } else {
+                    inputState.clearInput()
+                    vm.continueMessage()
+                    chatListScrollController.scrollToBottom()
+                }
+            }
+
+            BuiltinSlashCommand.FORK -> {
+                val target = conversation.currentMessages.lastOrNull()
+                if (target == null) {
+                    toaster.show("当前没有可分叉的消息", type = ToastType.Info)
+                } else {
+                    inputState.clearInput()
+                    scope.launch {
+                        val fork = vm.forkMessage(message = target)
+                        navigateToChatPage(navController, chatId = fork.id)
+                    }
+                }
+            }
+
+            BuiltinSlashCommand.STOP -> {
+                inputState.clearInput()
+                when {
+                    loadingJob != null -> vm.stopGeneration()
+                    compressionStates.containsKey(conversation.id) -> vm.cancelManualCompression()
+                    else -> toaster.show("当前没有正在进行的生成或压缩", type = ToastType.Info)
+                }
+            }
+
+            BuiltinSlashCommand.NOTE -> {
+                val attachments = inputState.messageContent
+                val chipSkills = inputState.pendingSkills
+                if (call.argument.isBlank() && attachments.isEmpty() && chipSkills.isEmpty()) {
+                    toaster.show("用法：/note <备忘内容>", type = ToastType.Info)
+                    return
+                }
+                val noteParts = if (call.argument.isBlank()) {
+                    attachments
+                } else {
+                    listOf(UIMessagePart.Text(call.argument)) + attachments
+                }
+                val expectedText = inputState.textContent.text.toString()
+                val quote = inputState.pendingQuote
+                if (preparingSkill) return
+                preparingSkill = true
+                scope.launch {
+                    try {
+                        dispatchWithSkills(
+                            baseParts = noteParts,
+                            skillNames = chipSkills,
+                            quote = quote,
+                            expectedText = expectedText,
+                            expectedChipSkills = chipSkills,
+                            requireModel = false,
+                        ) { content, annotations ->
+                            vm.handleMessageSend(content, answer = false, annotations = annotations)
+                            chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
+                        }
+                    } finally {
+                        preparingSkill = false
+                    }
+                }
+            }
+
+            BuiltinSlashCommand.TREE -> {
+                inputState.clearInput()
+                vm.prepareTreeView()
+                showTreeSheet = true
+            }
+
+            BuiltinSlashCommand.EXPORT -> {
+                inputState.clearInput()
+                showExportSheet = true
+            }
+
+            BuiltinSlashCommand.INSPECT -> {
+                inputState.clearInput()
+                navController.navigate(Screen.PromptInspect(conversation.id.toString()))
+            }
+
+            BuiltinSlashCommand.GOAL -> {
+                val arg = call.argument.trim()
+                if (arg.isBlank()) {
+                    val currentGoal = conversation.goal?.takeIf { it.isNotBlank() }
+                    toaster.show(
+                        message = if (currentGoal != null) {
+                            "当前长期目标：$currentGoal（发送 /goal clear 清除）"
+                        } else {
+                            "用法：/goal <长期目标> 或 /goal clear"
+                        },
+                        type = ToastType.Info,
+                    )
+                } else if (arg.equals("clear", ignoreCase = true) || arg.equals("off", ignoreCase = true)) {
+                    inputState.clearInput()
+                    vm.updateConversationGoal(null)
+                    toaster.show("已清除会话长期目标", type = ToastType.Success)
+                } else {
+                    inputState.clearInput()
+                    vm.updateConversationGoal(arg)
+                    toaster.show("已更新会话长期目标", type = ToastType.Success)
+                }
+            }
+        }
+    }
+
+    fun submitMessage(
+        requireModel: Boolean = true,
+        send: (List<UIMessagePart>, List<UIMessageAnnotation>) -> Unit,
+    ) {
+        if (preparingSkill) return
+        val rawText = inputState.textContent.text.toString()
+        val attachments = inputState.messageContent
+        val quote = inputState.pendingQuote
+        val chipSkills = inputState.pendingSkills
+
+        if (!rawText.trimStart().startsWith("/") && chipSkills.isEmpty()) {
+            if (requireModel && currentChatModel == null) {
+                toaster.show(resources.getString(R.string.media_creation_page_select_model_first), type = ToastType.Error)
+                return
+            }
+            val parts = inputState.getContents()
+            if (parts.isEmptyInputMessage()) return
+            guardCredentials(parts) {
+                send(parts, listOfNotNull(quote))
+                inputState.clearInput()
+            }
             return
         }
 
         preparingSkill = true
         scope.launch {
             try {
-                val instructions = if (name in assistant.enabledSkills) {
-                    try {
-                        withContext(Dispatchers.IO) { skillManager.readSkillBody(name) }
-                    } catch (_: IOException) {
-                        null
-                    }
-                } else null
-                if (inputState.pendingSkill != name || inputState.isEditing() ||
-                    inputState.pendingQuote != quote || inputState.getContents() != parts
-                ) return@launch
-                if (instructions.isNullOrBlank()) {
-                    toaster.show(resources.getString(R.string.skills_page_read_failed_path, "/$name"), type = ToastType.Error)
+                if (!rawText.trimStart().startsWith("/")) {
+                    dispatchWithSkills(
+                        baseParts = inputState.getContents(),
+                        skillNames = chipSkills,
+                        quote = quote,
+                        expectedText = rawText,
+                        expectedChipSkills = chipSkills,
+                        requireModel = requireModel,
+                        send = send,
+                    )
                     return@launch
                 }
 
-                val content = if (parts.isEmptyInputMessage()) listOf(UIMessagePart.Text("/$name")) else parts
-                send(content, annotations + UIMessageAnnotation.InvokedSkill(name, instructions))
-                inputState.clearInput()
+                val installedSkills = withContext(Dispatchers.IO) {
+                    skillManager.listSkills().mapTo(HashSet()) { it.name }
+                }
+                if (inputState.textContent.text.toString() != rawText ||
+                    inputState.pendingSkills != chipSkills ||
+                    inputState.isEditing() ||
+                    inputState.pendingQuote != quote
+                ) return@launch
+
+                when (val parsed = parseSendTimeSlashInput(
+                    rawText = rawText,
+                    allowBuiltinCommands = true,
+                    skillExists = { it in installedSkills },
+                )) {
+                    is SendSlashParseResult.ClientCommand -> {
+                        if (parsed.call.command == BuiltinSlashCommand.NOTE) {
+                            val noteArg = parsed.call.argument
+                            if (noteArg.isBlank() && attachments.isEmpty() && chipSkills.isEmpty()) {
+                                toaster.show("用法：/note <备忘内容>", type = ToastType.Info)
+                                return@launch
+                            }
+                            val noteParts = if (noteArg.isBlank()) {
+                                attachments
+                            } else {
+                                listOf(UIMessagePart.Text(noteArg)) + attachments
+                            }
+                            dispatchWithSkills(
+                                baseParts = noteParts,
+                                skillNames = chipSkills,
+                                quote = quote,
+                                expectedText = rawText,
+                                expectedChipSkills = chipSkills,
+                                requireModel = false,
+                            ) { content, annotations ->
+                                vm.handleMessageSend(content, answer = false, annotations = annotations)
+                                chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
+                            }
+                        } else {
+                            executeSlashCommand(parsed.call)
+                        }
+                    }
+
+                    is SendSlashParseResult.UnknownExplicitSkill -> {
+                        toaster.show(
+                            resources.getString(R.string.skills_page_read_failed_path, "/${parsed.skillName}"),
+                            type = ToastType.Error,
+                        )
+                    }
+
+                    is SendSlashParseResult.SkillChain -> {
+                        val combinedSkills = (chipSkills + parsed.skillNames).distinct()
+                        val effectiveParts = if (parsed.remainingText.isBlank()) {
+                            attachments
+                        } else {
+                            listOf(UIMessagePart.Text(parsed.remainingText)) + attachments
+                        }
+                        dispatchWithSkills(
+                            baseParts = effectiveParts,
+                            skillNames = combinedSkills,
+                            quote = quote,
+                            expectedText = rawText,
+                            expectedChipSkills = chipSkills,
+                            requireModel = requireModel,
+                            send = send,
+                        )
+                    }
+
+                    SendSlashParseResult.Plain -> {
+                        dispatchWithSkills(
+                            baseParts = inputState.getContents(),
+                            skillNames = chipSkills,
+                            quote = quote,
+                            expectedText = rawText,
+                            expectedChipSkills = chipSkills,
+                            requireModel = requireModel,
+                            send = send,
+                        )
+                    }
+                }
             } finally {
                 preparingSkill = false
             }
@@ -808,6 +1157,7 @@ private fun ChatPageContent(
                     modelProviderLock = subscriptionProviderLock,
                     hazeState = hazeState,
                     completionProviders = completionProviders,
+                    onExecuteSlashCommand = ::executeSlashCommand,
                     contextUsage = contextUsage,
                     onShowContextSheet = { showContextSheet = true },
                     onCancelClick = {
@@ -836,19 +1186,23 @@ private fun ChatPageContent(
                         }
                     },
                     onSendClick = {
-                        if (currentChatModel == null) {
-                            toaster.show(resources.getString(R.string.media_creation_page_select_model_first), type = ToastType.Error)
-                            return@ChatInput
-                        }
                         if (inputState.isEditing()) {
-                            vm.handleMessageEdit(
-                                parts = inputState.getContents(),
-                                messageId = inputState.editingMessage!!,
-                                keepFollowing = editKeepFollowing,
-                            )
-                            inputState.clearInput()
+                            if (currentChatModel == null) {
+                                toaster.show(resources.getString(R.string.media_creation_page_select_model_first), type = ToastType.Error)
+                                return@ChatInput
+                            }
+                            val parts = inputState.getContents()
+                            val editingId = inputState.editingMessage!!
+                            guardCredentials(parts) {
+                                vm.handleMessageEdit(
+                                    parts = parts,
+                                    messageId = editingId,
+                                    keepFollowing = editKeepFollowing,
+                                )
+                                inputState.clearInput()
+                            }
                         } else {
-                            submitMessage { content, annotations ->
+                            submitMessage(requireModel = true) { content, annotations ->
                                 vm.handleMessageSend(content, annotations = annotations)
                                 chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                             }
@@ -856,14 +1210,18 @@ private fun ChatPageContent(
                     },
                     onLongSendClick = {
                         if (inputState.isEditing()) {
-                            vm.handleMessageEdit(
-                                parts = inputState.getContents(),
-                                messageId = inputState.editingMessage!!,
-                                keepFollowing = editKeepFollowing,
-                            )
-                            inputState.clearInput()
+                            val parts = inputState.getContents()
+                            val editingId = inputState.editingMessage!!
+                            guardCredentials(parts) {
+                                vm.handleMessageEdit(
+                                    parts = parts,
+                                    messageId = editingId,
+                                    keepFollowing = editKeepFollowing,
+                                )
+                                inputState.clearInput()
+                            }
                         } else {
-                            submitMessage { content, annotations ->
+                            submitMessage(requireModel = false) { content, annotations ->
                                 vm.handleMessageSend(content, answer = false, annotations = annotations)
                                 chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                             }
@@ -1304,6 +1662,49 @@ private fun ChatPageContent(
                 },
                 dismissButton = {
                     TextButton(onClick = { treePruneConfirmFor = null }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                },
+            )
+        }
+
+        pendingCredentialConfirm?.let { (warning, proceed) ->
+            val kindLabels = warning.kinds.map { kind ->
+                stringResource(
+                    when (kind) {
+                        ComposerCredentialDetector.Kind.PRIVATE_KEY -> R.string.chat_credential_kind_private_key
+                        ComposerCredentialDetector.Kind.REGISTERED_CREDENTIAL -> R.string.chat_credential_kind_registered
+                        ComposerCredentialDetector.Kind.API_KEY -> R.string.chat_credential_kind_api_key
+                        ComposerCredentialDetector.Kind.TOKEN -> R.string.chat_credential_kind_token
+                        ComposerCredentialDetector.Kind.BEARER_TOKEN -> R.string.chat_credential_kind_bearer
+                    }
+                )
+            }.joinToString(", ")
+            AlertDialog(
+                onDismissRequest = { pendingCredentialConfirm = null },
+                title = { Text(stringResource(R.string.chat_credential_warning_title)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.chat_credential_warning_desc,
+                            warning.totalCount,
+                            kindLabels,
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        pendingCredentialConfirm = null
+                        proceed()
+                    }) {
+                        Text(
+                            stringResource(R.string.chat_credential_warning_send_anyway),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingCredentialConfirm = null }) {
                         Text(stringResource(R.string.cancel))
                     }
                 },

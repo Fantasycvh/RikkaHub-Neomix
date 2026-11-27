@@ -28,6 +28,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -135,11 +136,8 @@ import app.androidrik.rikkahub.data.datastore.getQuickMessagesOfAssistant
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Assistant
 import app.androidrik.rikkahub.data.model.QuickMessage
-import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionContext
-import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionItem
-import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionList
 import app.androidrik.rikkahub.ui.components.ai.completion.ChatCompletionProvider
-import app.androidrik.rikkahub.ui.components.ai.completion.completionContext
+import app.androidrik.rikkahub.ui.components.ai.completion.SlashCommandCall
 import app.androidrik.rikkahub.ui.components.message.MessageQuoteCard
 import app.androidrik.rikkahub.ui.components.ui.KeepScreenOn
 import app.androidrik.rikkahub.ui.components.ui.rememberMorphShape
@@ -179,6 +177,7 @@ fun ChatInput(
     onFreezeMemory: () -> Unit = {},
     modifier: Modifier = Modifier,
     completionProviders: List<ChatCompletionProvider> = emptyList(),
+    onExecuteSlashCommand: (SlashCommandCall) -> Unit = {},
     onUpdateChatModel: (Model) -> Unit,
     onUpdateAssistant: (Assistant) -> Unit,
     onUpdateSearchService: (Int) -> Unit,
@@ -518,16 +517,25 @@ fun ChatInput(
                         )
                     }
 
-                    state.pendingSkill?.let { name ->
-                        InputChip(
-                            selected = true,
-                            onClick = { state.pendingSkill = null },
-                            label = { Text("/$name", maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailingIcon = {
-                                Icon(HugeIcons.Cancel01, stringResource(R.string.cancel), Modifier.size(16.dp))
-                            },
-                            modifier = Modifier.testTag("chat_pending_skill"),
-                        )
+                    if (state.pendingSkills.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("chat_pending_skill"),
+                        ) {
+                            state.pendingSkills.forEach { name ->
+                                InputChip(
+                                    selected = true,
+                                    onClick = { state.removePendingSkill(name) },
+                                    label = { Text("/$name", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    trailingIcon = {
+                                        Icon(HugeIcons.Cancel01, stringResource(R.string.cancel), Modifier.size(16.dp))
+                                    },
+                                )
+                            }
+                        }
                     }
 
                     if (state.messageContent.isNotEmpty()) {
@@ -537,6 +545,11 @@ fun ChatInput(
                     TextInputRow(
                         state = state,
                         completionProviders = completionProviders,
+                        onExecuteSlashCommand = { call ->
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                            onExecuteSlashCommand(call)
+                        },
                         onSendMessage = { sendMessage() },
                         hasPendingInteraction = hasPendingInteraction,
                         imeVisible = imeVisible,
@@ -777,6 +790,7 @@ internal fun resolveComposerMaxLines(windowHeightDp: Int, imeVisible: Boolean): 
 private fun TextInputRow(
     state: ChatInputState,
     completionProviders: List<ChatCompletionProvider>,
+    onExecuteSlashCommand: (SlashCommandCall) -> Unit,
     onSendMessage: () -> Unit,
     hasPendingInteraction: Boolean = false,
     imeVisible: Boolean = false,
@@ -839,8 +853,11 @@ private fun TextInputRow(
         var inlineHeightPx by remember { mutableStateOf(0) }
         val density = LocalDensity.current
         val focusManager = LocalFocusManager.current
-        var completionList by remember { mutableStateOf<ChatCompletionList?>(null) }
-        var completionRequest by remember { mutableStateOf<ChatCompletionContext?>(null) }
+        val completionPopupState = rememberCompletionPopupState(
+            textState = state.textContent,
+            providers = completionProviders,
+            active = isFocused && !isFullScreen,
+        )
         val attachmentToaster = LocalToaster.current
         val receiveContentListener = remember(
             settings.displaySetting.pasteLongTextAsFile, settings.displaySetting.pasteLongTextThreshold
@@ -879,58 +896,18 @@ private fun TextInputRow(
             }
         }
 
-        LaunchedEffect(completionProviders, isFocused, isFullScreen) {
-            if (!isFocused || isFullScreen || completionProviders.isEmpty()) {
-                completionList = null
-                completionRequest = null
-                return@LaunchedEffect
-            }
-
-            snapshotFlow {
-                completionContext(state.textContent.text, state.textContent.selection)
-            }.collectLatest { context ->
-                completionList = null
-                completionRequest = null
-                if (context == null) return@collectLatest
-                val lists = withContext(Dispatchers.Default) {
-                    completionProviders.mapNotNull { provider ->
-                        try {
-                            provider.complete(context)
-                                ?.takeIf { it.items.isNotEmpty() }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (_: Exception) {
-                            null
-                        }
-                    }
-                }
-                val primary = lists.firstOrNull()
-                completionRequest = context
-                completionList = primary?.let { list ->
-                    val mergedItems = lists
-                        .filter { it.replacementRange == list.replacementRange }
-                        .flatMap { it.items }
-                        .distinctBy { it.label to it.insertText }
-                        .sortedWith(
-                            compareByDescending<ChatCompletionItem> { it.sortScore }
-                                .thenBy { it.label.length }
-                                .thenBy { it.label.lowercase() }
-                        )
-                        .take(8)
-                    list.copy(items = mergedItems)
-                }
-            }
-        }
-
-        completionList?.takeIf { it.items.isNotEmpty() }?.let { list ->
-            val request = completionRequest
+        completionPopupState.list?.takeIf { it.items.isNotEmpty() }?.let { list ->
             CompletionPopup(
                 completionList = list,
                 onItemClick = { item ->
-                    if (request != null && request == completionContext(state.textContent.text, state.textContent.selection)) {
-                        state.applyCompletion(list.replacementRange, item)
+                    if (completionPopupState.matchesCurrent(state.textContent)) {
+                        state.applyCompletion(
+                            replacementRange = list.replacementRange,
+                            item = item,
+                            onExecuteSlashCommand = onExecuteSlashCommand,
+                        )
                     }
-                    completionList = null
+                    completionPopupState.dismiss()
                 },
             )
         }
@@ -995,7 +972,7 @@ private fun TextInputRow(
                         modifier = Modifier.testTag("chat_input_expand"),
                         onClick = {
                             focusManager.clearFocus()
-                            completionList = null
+                            completionPopupState.dismiss()
                             isFullScreen = true
                         }) {
                         Icon(HugeIcons.FullScreen, null)
