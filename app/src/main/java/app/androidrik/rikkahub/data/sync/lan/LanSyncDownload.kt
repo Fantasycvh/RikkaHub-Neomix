@@ -39,7 +39,7 @@ internal class LanSyncDownloadServer(
     private val tokenForPeer: suspend (String) -> String?,
     private val uploads: LanSyncUploadSession? = null,
 ) : Closeable {
-    private val inventory = (manifest.conversations + manifest.assistants).flatMap { listOf(it.sha256) + it.attachmentShas }
+    private val inventory = manifest.objects.flatMap { listOf(it.sha256) + it.attachmentShas }
         .toSet().associateWith { digest -> requireNotNull(files[digest]) }
     private val manifestBody = json.encodeToString(manifest).encodeToByteArray()
     private val listener = run {
@@ -167,8 +167,9 @@ internal class LanSyncDownloadClient(
         LanTransferResult(transferred, remaining)
     }
 
-    suspend fun finish(): LanSyncReport = withContext(Dispatchers.IO) {
-        execute(request(LAN_APPLIED_PATH).post(ByteArray(0).toRequestBody()).build(), 200)
+    suspend fun finish(keys: Set<String>? = null): LanSyncReport = withContext(Dispatchers.IO) {
+        val body = keys?.let { json.encodeToString(LanSyncApplyRequest(it)).encodeToByteArray() } ?: ByteArray(0)
+        execute(request(LAN_APPLIED_PATH).post(body.toRequestBody("application/json".toMediaType())).build(), 200)
             .use { readJson<LanSyncReport>(it, 2_048) }
     }
 

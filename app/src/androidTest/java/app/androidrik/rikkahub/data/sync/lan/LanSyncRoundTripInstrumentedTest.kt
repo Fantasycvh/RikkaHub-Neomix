@@ -17,6 +17,11 @@ import app.androidrik.rikkahub.data.export.collectAttachmentUrls
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.data.model.Conversation
 import app.androidrik.rikkahub.data.model.MessageNode
+import app.androidrik.rikkahub.data.model.Assistant
+import app.androidrik.rikkahub.data.model.Lorebook
+import app.androidrik.rikkahub.data.model.Avatar
+import app.androidrik.rikkahub.data.db.entity.WorkspaceEntity
+import kotlinx.coroutines.flow.first
 import app.androidrik.rikkahub.data.repository.ConversationRepository
 import app.androidrik.rikkahub.data.repository.FilesRepository
 import app.androidrik.rikkahub.data.sync.BackupArchiveEngine
@@ -48,6 +53,93 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class LanSyncRoundTripInstrumentedTest {
+    @Test
+    fun synchronizesFamiliesAssetsSkillsWorkspaceAndDeletions() = runBlocking {
+        withContext(Dispatchers.IO) {
+            val base = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as Application
+            check(base.packageName.contains(".localsnapshotqa.") || base.packageName.contains(".backupverification."))
+            val address = requireNotNull(findPrivateAddress())
+            val fixture = Files.createTempDirectory(base.cacheDir.toPath(), "lan-families-").toFile()
+            val aliases = List(2) { "lan-families-${UUID.randomUUID()}" }
+            startKoin { modules(module { single { PebbleEngine.Builder().build() } }) }
+            try {
+                roomPeer(base, File(fixture, "left"), aliases[0]).use { left ->
+                    roomPeer(base, File(fixture, "right"), aliases[1]).use { right ->
+                        left.settings.settingsFlow.first { !it.init }
+                        right.settings.settingsFlow.first { !it.init }
+                        val image = File(left.app.filesDir, "avatars/fixture.png")
+                        image.parentFile!!.mkdirs()
+                        image.writeText("avatar fixture")
+                        val book = Lorebook(name = "synced world")
+                        val assistant = Assistant(name = "full config", systemPrompt = "keep prompt",
+                            temperature = 0.42f, enabledSkills = setOf("qa-skill"), lorebookIds = setOf(book.id),
+                            avatar = Avatar.Image("file://${image.absolutePath}"))
+                        left.settings.update { it.copy(assistants = it.assistants + assistant, lorebooks = it.lorebooks + book) }
+                        val skill = File(left.app.filesDir, "skills/qa-skill/SKILL.md")
+                        skill.parentFile!!.mkdirs()
+                        skill.writeText("---\nname: qa-skill\ndescription: fixture\n---\nUse this fixture.")
+                        val workspace = WorkspaceEntity(UUID.randomUUID().toString(), "test workspace", "qa-workspace",
+                            createdAt = 1, updatedAt = 1)
+                        left.database.workspaceDao().upsert(workspace)
+                        val content = File(left.app.filesDir, "workspaces/qa-workspace/files/src/file.txt")
+                        content.parentFile!!.mkdirs()
+                        content.writeBytes(ByteArray(128 * 1024) { (it % 113).toByte() })
+                        round(address, left, right, budget = 32 * 1024)
+                        assertTrue(right.settings.settingsFlow.value.assistants.any { it.id == assistant.id })
+                        assertTrue(!File(right.app.filesDir, "workspaces/qa-workspace/files/src/file.txt").exists())
+                        round(address, left, right)
+                        val copied = right.settings.settingsFlow.first { it.assistants.any { a -> a.id == assistant.id } }
+                        val received = copied.assistants.single { it.id == assistant.id }
+                        assertEquals(assistant.systemPrompt, received.systemPrompt)
+                        assertEquals(assistant.temperature, received.temperature)
+                        assertEquals(assistant.lorebookIds, received.lorebookIds)
+                        assertEquals(assistant.enabledSkills, received.enabledSkills)
+                        assertEquals(image.readText(), File((received.avatar as Avatar.Image).url.removePrefix("file://")).readText())
+                        assertEquals(book, copied.lorebooks.single { it.id == book.id })
+                        assertEquals(skill.readText(), File(right.app.filesDir, "skills/qa-skill/SKILL.md").readText())
+                        val remoteContent = File(right.app.filesDir, "workspaces/qa-workspace/files/src/file.txt")
+                        assertEquals(content.readText(), remoteContent.readText())
+                        assertNotNull(right.database.workspaceDao().getByRoot("qa-workspace"))
+                        assertEquals(LanSyncReport() to LanSyncReport(), round(address, left, right))
+                        right.settings.update { current -> current.copy(assistants = current.assistants.map {
+                            if (it.id == assistant.id) it.copy(systemPrompt = "edited on right") else it
+                        }) }
+                        round(address, right, left)
+                        assertEquals("edited on right", left.settings.settingsFlow.value.assistants.single { it.id == assistant.id }.systemPrompt)
+                        remoteContent.writeText("edited on right")
+                        round(address, right, left)
+                        assertEquals("edited on right", content.readText())
+                        assertTrue(content.delete())
+                        left.settings.update { it.copy(lorebooks = it.lorebooks.filterNot { b -> b.id == book.id }) }
+                        round(address, left, right)
+                        assertTrue(!remoteContent.exists())
+                        assertTrue(right.settings.settingsFlow.value.lorebooks.none { it.id == book.id })
+                        assertEquals(LanSyncReport() to LanSyncReport(), round(address, left, right))
+                        val collisionId = UUID.randomUUID().toString()
+                        left.database.workspaceDao().upsert(WorkspaceEntity(collisionId, "source", "collision-source",
+                            createdAt = 1, updatedAt = 1))
+                        right.database.workspaceDao().upsert(WorkspaceEntity(collisionId, "target", "collision-target",
+                            createdAt = 1, updatedAt = 1))
+                        val conflictingFile = File(left.app.filesDir, "workspaces/collision-source/files/file.txt")
+                        conflictingFile.parentFile!!.mkdirs()
+                        conflictingFile.writeText("a file that must roll back")
+                        left.settings.update { current -> current.copy(assistants = current.assistants.map {
+                            if (it.id == assistant.id) it.copy(systemPrompt = "must roll back") else it
+                        }) }
+                        val failure = runCatching { round(address, left, right) }.exceptionOrNull()
+                        assertEquals("Workspace identity already has a different root", failure?.message)
+                        assertEquals("edited on right", right.settings.settingsFlow.value.assistants.single { it.id == assistant.id }.systemPrompt)
+                        assertTrue(!File(right.app.filesDir, "workspaces/collision-source/files/file.txt").exists())
+                    }
+                }
+            } finally {
+                fixture.deleteRecursively()
+                KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.let { store -> aliases.forEach(store::deleteEntry) }
+                stopKoin()
+            }
+        }
+    }
+
     @Test
     fun synchronizesBothRoomsWithResumeConflictsDeletionAndUndo() = runBlocking {
         withContext(Dispatchers.IO) {
@@ -123,14 +215,26 @@ class LanSyncRoundTripInstrumentedTest {
         }
     }
 
-    private suspend fun round(address: Inet4Address, left: RoomPeer, right: RoomPeer, interrupt: Boolean = false) =
+    private suspend fun round(
+        address: Inet4Address,
+        left: RoomPeer,
+        right: RoomPeer,
+        interrupt: Boolean = false,
+        budget: Long = LAN_OBJECT_MAX_BYTES,
+    ) =
         coroutineScope {
             val token = newPairToken()
             val now = System.currentTimeMillis()
             left.data.capture(left.credentials.fingerprint, "Left", now).use { local ->
                 right.data.capture(right.credentials.fingerprint, "Right", now).use { remote ->
+                    val applyFailure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
                     val uploads = LanSyncUploadSession(remote.manifest, right.store, JsonInstant, { now }, remote.files) { manifest, plan ->
-                        right.data.apply(remote, manifest, plan, right.store)
+                        try {
+                            right.data.apply(remote, manifest, plan, right.store)
+                        } catch (failure: Throwable) {
+                            applyFailure.set(failure)
+                            throw failure
+                        }
                     }
                     LanSyncDownloadServer(right.credentials, address, remote.manifest, remote.files, JsonInstant,
                         tokenForPeer = { token.takeIf { _ -> it == left.credentials.fingerprint } }, uploads = uploads).use { server ->
@@ -144,13 +248,18 @@ class LanSyncRoundTripInstrumentedTest {
                                 assertTrue(client.push(outgoing, local.files, 1).remainingObjects.isNotEmpty())
                                 assertEquals(409, (runCatching { client.finish() }.exceptionOrNull() as LanSyncHttpException).status)
                             }
-                            val sent = client.push(outgoing, local.files)
-                            val received = client.pull(plan.objectsFrom(remote.manifest), left.store, localObjects = local.files)
-                            assertTrue(sent.remainingObjects.isEmpty() && received.remainingObjects.isEmpty())
+                            val sent = client.push(outgoing, local.files, budget)
+                            val received = client.pull(plan.objectsFrom(remote.manifest), left.store, budget, local.files)
+                            if (budget == LAN_OBJECT_MAX_BYTES) {
+                                assertTrue(sent.remainingObjects.isEmpty() && received.remainingObjects.isEmpty())
+                            }
                             assertTrue(sent.transferredBytes < LAN_CHUNK_BYTES && received.transferredBytes < LAN_CHUNK_BYTES)
-                            val other = client.finish()
-                            assertEquals(other, client.finish())
-                            left.data.apply(local, offer.manifest, plan, left.store) to other
+                            val ready = plan.completedKeys(local.manifest, remote.manifest, sent, received)
+                            val other = try { client.finish(ready) } catch (failure: Throwable) {
+                                throw (applyFailure.get() ?: failure)
+                            }
+                            assertEquals(other, client.finish(ready))
+                            left.data.apply(local, offer.manifest, plan.restrictTo(ready), left.store) to other
                         } finally {
                             server.close()
                             listening.cancel()
@@ -170,12 +279,19 @@ class LanSyncRoundTripInstrumentedTest {
             .openHelperFactory(factory).build()
         createMessageFtsTables(database.openHelper.writableDatabase)
         val scope = AppScope()
-        val settings = SettingsStore(app, scope, File(root, "settings.preferences_pb"))
-        val manager = FilesManager(app, FilesRepository(database.managedFileDao()), scope, settings)
+        val peerApp = PeerApplication(app, root)
+        val originalUploads = File(app.filesDir, "upload")
+        originalUploads.listFiles().orEmpty().filter { it.name.startsWith("lan-roundtrip-") }.forEach {
+            val target = File(peerApp.filesDir, "upload/${it.name}")
+            target.parentFile!!.mkdirs()
+            it.copyTo(target)
+        }
+        val settings = SettingsStore(peerApp, scope, File(root, "settings.preferences_pb"))
+        val manager = FilesManager(peerApp, FilesRepository(database.managedFileDao()), scope, settings)
         val repository = ConversationRepository(database.conversationDao(), database.messageNodeDao(), database.favoriteDao(),
             database, manager, MessageFtsManager(database), database.compressionCheckpointDao(), database.messageFileRefDao())
-        val data = LanSyncData(app, database, repository, settings, BackupArchiveEngine(settings, JsonInstant, app, database), { false }, {})
-        return RoomPeer(LanIdentity.load(alias), database, repository, data, LanObjectStore(File(root, "staging")), scope)
+        val data = LanSyncData(peerApp, database, repository, settings, BackupArchiveEngine(settings, JsonInstant, peerApp, database), { false }, {})
+        return RoomPeer(LanIdentity.load(alias), database, repository, data, LanObjectStore(File(root, "staging")), scope, peerApp, settings)
     }
 
     private class RoomPeer(
@@ -185,10 +301,18 @@ class LanSyncRoundTripInstrumentedTest {
         val data: LanSyncData,
         val store: LanObjectStore,
         private val scope: AppScope,
+        val app: Application,
+        val settings: SettingsStore,
     ) : AutoCloseable {
         override fun close() {
             database.close()
             scope.cancel()
         }
+    }
+
+    private class PeerApplication(base: Application, private val root: File) : Application() {
+        init { attachBaseContext(base) }
+        override fun getFilesDir(): File = File(root, "files").apply { mkdirs() }
+        override fun getCacheDir(): File = File(root, "cache").apply { mkdirs() }
     }
 }

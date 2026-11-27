@@ -8,6 +8,24 @@ import java.io.RandomAccessFile
 
 internal data class LanTransferResult(val transferredBytes: Long, val remainingObjects: Set<String>)
 
+/** Reserve one quarter of each round for workspace content; unused capacity goes to the other lane. */
+internal suspend fun transferLanLanes(
+    entries: List<LanManifestObject>,
+    transfer: suspend (List<LanManifestObject>, Long) -> LanTransferResult,
+): LanTransferResult {
+    val content = entries.filter { it.key.startsWith("workspace:") }
+    val ordinary = entries.filterNot { it.key.startsWith("workspace:") }
+        .sortedWith(compareBy<LanManifestObject> { if (it.key.startsWith("conversation:")) 0 else 1 }.thenBy { it.key })
+    val first = transfer(ordinary, if (content.isEmpty()) LAN_OBJECT_MAX_BYTES else LAN_OBJECT_MAX_BYTES * 3 / 4)
+    val second = transfer(content, LAN_OBJECT_MAX_BYTES - first.transferredBytes)
+    val used = first.transferredBytes + second.transferredBytes
+    if (used < LAN_OBJECT_MAX_BYTES && first.remainingObjects.isNotEmpty()) {
+        val extra = transfer(ordinary, LAN_OBJECT_MAX_BYTES - used)
+        return LanTransferResult(used + extra.transferredBytes, extra.remainingObjects + second.remainingObjects)
+    }
+    return LanTransferResult(used, first.remainingObjects + second.remainingObjects)
+}
+
 internal fun lanObjectSizes(entries: List<LanManifestObject>): Map<String, Long?> {
     val objects = linkedMapOf<String, Long?>()
     entries.forEach { entry ->

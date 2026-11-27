@@ -11,8 +11,32 @@ internal data class LanMergePlan(
 
 internal data class LanConflict(val winner: LanManifestObject, val loser: LanManifestObject)
 
+internal fun LanMergePlan.restrictTo(keys: Set<String>) = copy(
+    push = push.filter { it.key in keys },
+    pull = pull.filter { it.key in keys },
+    deleteLocal = deleteLocal.filter { it.key in keys },
+    deleteRemote = deleteRemote.filter { it.key in keys },
+    tombstones = tombstones.filter { it.key in keys },
+    conflicts = conflicts.filter { it.winner.key in keys },
+)
+
+internal fun LanMergePlan.completedKeys(
+    local: LanManifest,
+    remote: LanManifest,
+    sending: LanTransferResult,
+    receiving: LanTransferResult,
+): Set<String> {
+    val incomplete = objectsFrom(local).filter { entry ->
+        entry.sha256 in sending.remainingObjects || entry.attachmentShas.any { it in sending.remainingObjects }
+    }.map { it.key } + objectsFrom(remote).filter { entry ->
+        entry.sha256 in receiving.remainingObjects || entry.attachmentShas.any { it in receiving.remainingObjects }
+    }.map { it.key }
+    return (push.map { it.key } + pull.map { it.key } + conflicts.map { it.winner.key } +
+        deleteLocal.map { it.key } + deleteRemote.map { it.key } + tombstones.map { it.key }).toSet() - incomplete.toSet()
+}
+
 internal fun LanMergePlan.objectsFrom(manifest: LanManifest): List<LanManifestObject> {
-    val entries = (manifest.conversations + manifest.assistants).associateBy { it.key }
+    val entries = manifest.objects.associateBy { it.key }
     return (push + pull + conflicts.map { it.loser })
         .filter { entries[it.key] == it }
         .distinctBy { it.key }
@@ -23,8 +47,8 @@ internal fun planLanMerge(local: LanManifest, remote: LanManifest, now: Long): L
     local.validate(local.device.dbVersion, local.device.id)
     remote.validate(local.device.dbVersion, remote.device.id)
     require(local.device.id != remote.device.id)
-    val here = (local.conversations + local.assistants).associateBy { it.key }
-    val there = (remote.conversations + remote.assistants).associateBy { it.key }
+    val here = local.objects.associateBy { it.key }
+    val there = remote.objects.associateBy { it.key }
     val deletions = (local.tombstones + remote.tombstones).groupBy { it.key }.mapValues { (_, marks) ->
         marks.maxBy { it.deletedAt }
     }

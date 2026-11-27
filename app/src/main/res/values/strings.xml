@@ -3539,10 +3539,10 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="lan_sync_open">LAN sync</string>
   <string name="lan_sync_preparing">Preparing the local conversation list…</string>
   <string name="lan_sync_receive">Allow sync requests</string>
-  <string name="lan_sync_receive_help">Open a receive window on one device, then enter its address on the other device.</string>
+  <string name="lan_sync_receive_help">Open a receive window on the other device. It will be discovered automatically, or you can enter its address.</string>
   <string name="lan_sync_report">%1$s · %2$d added, %3$d updated, %4$d deleted, %5$d conflicts</string>
   <string name="lan_sync_resume">Transfer paused. Open a new receive window on the peer and sync again to resume.</string>
-  <string name="lan_sync_summary">Sync conversations, attachments and deletions in both directions.</string>
+  <string name="lan_sync_summary">Sync conversations, assistants, skills, lorebooks and workspace files in both directions.</string>
   <string name="lan_sync_this_device">This device</string>
   <string name="lan_sync_uploading">Uploading conversations and attachments…</string>
   <string name="lan_sync_version_error">The sync or database versions differ. Update both devices.</string>
@@ -3578,5 +3578,6 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="safe_mode_import_overwrite_confirm">Importing this backup will overwrite existing settings, chat history, and attachments, then restart the app to apply. Continue?</string>
   <string name="safe_mode_import_backup_failed">Import failed: %1$s</string>
   <string name="safe_mode_import_invalid_archive">Selected file is not a valid Neomix/RikkaHub backup archive.</string>
+  <string name="lan_sync_discovered">Discovered on this network</string>
 </resources>
 

@@ -3539,10 +3539,10 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="lan_sync_open">局域网同步</string>
   <string name="lan_sync_preparing">正在准备本机会话清单…</string>
   <string name="lan_sync_receive">接收同步请求</string>
-  <string name="lan_sync_receive_help">在一台设备开启接收，再在另一台设备输入它的地址。</string>
+  <string name="lan_sync_receive_help">在另一台设备开启接收，即可自动发现，也可以手动输入地址。</string>
   <string name="lan_sync_report">%1$s · 新增 %2$d，更新 %3$d，删除 %4$d，冲突 %5$d</string>
   <string name="lan_sync_resume">传输已暂停。请在对端重新开启接收，然后再次同步以续传。</string>
-  <string name="lan_sync_summary">双向同步会话、附件及删除记录。</string>
+  <string name="lan_sync_summary">双向同步会话、助手、技能、世界书和工作区文件。</string>
   <string name="lan_sync_this_device">本机</string>
   <string name="lan_sync_uploading">正在上传会话和附件…</string>
   <string name="lan_sync_version_error">同步协议或数据库版本不同，请更新两台设备。</string>
@@ -3578,4 +3578,5 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="safe_mode_import_overwrite_confirm">导入此备份将覆盖现有设置、聊天记录和附件，并在完成后自动重启应用生效。是否继续？</string>
   <string name="safe_mode_import_backup_failed">导入失败：%1$s</string>
   <string name="safe_mode_import_invalid_archive">所选文件不是有效的 Neomix/RikkaHub 备份包。</string>
+  <string name="lan_sync_discovered">已发现局域网设备</string>
 </resources>

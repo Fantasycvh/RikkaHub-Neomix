@@ -40,6 +40,7 @@ internal class LanSyncData(
 ) {
     private val dao = database.conversationDao()
     private val tombstones = database.lanConversationTombstoneDao()
+    private val families = LanFamilyStore(app, settings, database)
 
     suspend fun capture(fingerprint: String, name: String, now: Long): LanSyncInventory {
         val directory = Files.createTempDirectory(app.cacheDir.toPath(), "lan-inventory-").toFile()
@@ -58,7 +59,12 @@ internal class LanSyncData(
                 tombstones.listSince(cutoff)
             }.sortedBy { it.conversationId }.map { LanTombstone("conversation:${it.conversationId}", it.deletedAt) }
             val device = LanManifestDevice(fingerprint, name, AppDatabase.SCHEMA_VERSION, LAN_FORMAT_VERSION)
-            return LanSyncInventory(LanManifest(LAN_PROTOCOL, device, conversations = entries, tombstones = deleted), files, directory)
+            val extra = families.capture(directory, now)
+            files.putAll(extra.files)
+            return LanSyncInventory(LanManifest(LAN_PROTOCOL, device, conversations = entries,
+                assistants = extra.entries.filter { it.key.startsWith("assistant:") },
+                families = extra.entries.filterNot { it.key.startsWith("assistant:") },
+                tombstones = deleted + extra.tombstones), files, directory)
         } catch (failure: Throwable) {
             directory.deleteRecursively()
             throw failure
@@ -71,9 +77,16 @@ internal class LanSyncData(
         plan: LanMergePlan,
         staging: LanObjectStore,
     ): LanSyncReport = DataOperationLock.runWaiting(DataOperation.RESTORE) {
-        requireConversationOnly(remote)
+        requireSupportedFamilies(remote)
         check(!PendingRestoreStore.hasPending(app.filesDir) && !PendingRestoreStore.hasApplied(app.filesDir))
         check(!isChatBusy()) { "A conversation is generating" }
+        val familyReport = families.apply(local, plan, staging)
+        val plan = plan.copy(
+            pull = plan.pull.filter { it.key.startsWith("conversation:") },
+            deleteLocal = plan.deleteLocal.filter { it.key.startsWith("conversation:") },
+            tombstones = plan.tombstones.filter { it.key.startsWith("conversation:") },
+            conflicts = plan.conflicts.filter { it.winner.key.startsWith("conversation:") },
+        )
         val captured = local.manifest.conversations.associateBy { it.key }
         val capturedMarks = local.manifest.tombstones.associateBy { it.key }
         val conflicts = plan.conflicts.associateBy { it.winner.key }
@@ -91,7 +104,7 @@ internal class LanSyncData(
         }
         val changes = replacements.keys + plan.deleteLocal.map { it.key }
         val marks = plan.tombstones.filter { it != capturedMarks[it.key] }
-        if (changes.isEmpty() && marks.isEmpty()) return@runWaiting LanSyncReport()
+        if (changes.isEmpty() && marks.isEmpty()) return@runWaiting familyReport
         if (changes.any(captured::containsKey)) archives.writeSafetyBackup()
         val needed = replacements.values.map { it.assistantId }.toSet()
         if (needed.isNotEmpty()) {
@@ -127,12 +140,13 @@ internal class LanSyncData(
             LanSyncReport(added, replacements.size - added, plan.deleteLocal.size, conflicts.size)
         }
         onChanged(affected)
-        report
+        LanSyncReport(report.added + familyReport.added, report.updated + familyReport.updated,
+            report.deleted + familyReport.deleted, report.conflicts + familyReport.conflicts)
     }
 }
 
-internal fun requireConversationOnly(manifest: LanManifest) {
-    require(manifest.assistants.isEmpty() && manifest.tombstones.all { it.key.startsWith("conversation:") })
+internal fun requireSupportedFamilies(manifest: LanManifest) {
+    require(manifest.objects.all { it.key.substringBefore(':') in setOf("conversation", "assistant", "lorebook", "skill", "workspace") })
 }
 
 private fun conversationId(key: String): Uuid = Uuid.parse(key.removePrefix("conversation:"))

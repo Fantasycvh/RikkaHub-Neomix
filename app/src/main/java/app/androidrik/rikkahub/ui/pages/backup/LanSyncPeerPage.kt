@@ -55,6 +55,8 @@ import app.androidrik.rikkahub.ui.components.ui.permission.rememberLocalNetworkP
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import androidx.lifecycle.repeatOnLifecycle
 import org.koin.compose.koinInject
 import java.text.DateFormat
 import java.util.Date
@@ -80,7 +82,15 @@ internal fun LanSyncPeerPage(
     var hostAddress by remember { mutableStateOf<LanSyncEndpoint?>(null) }
     var result by remember { mutableStateOf<LanSyncResult?>(null) }
     var error by remember { mutableStateOf<Int?>(null) }
+    var discovered by remember { mutableStateOf(emptyList<LanSyncEndpoint>()) }
     val busy = running != null
+
+    LaunchedEffect(peer, allowed) {
+        val paired = peer ?: return@LaunchedEffect
+        if (allowed) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            service.discover(paired).collectLatest { discovered = it }
+        }
+    }
 
     LaunchedEffect(peer?.certSha256) {
         if (endpoint.text.isEmpty()) {
@@ -109,6 +119,7 @@ internal fun LanSyncPeerPage(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
+                android.util.Log.w("LanSync", "LAN operation failed", failure)
                 error = failure.syncMessage()
             } finally {
                 stage = null
@@ -174,12 +185,14 @@ internal fun LanSyncPeerPage(
             )
             Row {
                 val parsed = LanSyncEndpoint.parse(endpoint.text.toString())
-                TextButton(enabled = allowed && !busy && parsed != null, onClick = {
-                    val target = parsed ?: return@TextButton
-                    launchSync { result = service.sync(peer, target) { stage = it } }
+                val candidates = (discovered + listOfNotNull(parsed) + peer.lastEndpoints.mapNotNull(LanSyncEndpoint::parse)).distinct()
+                TextButton(enabled = allowed && !busy && candidates.isNotEmpty(), onClick = {
+                    launchSync { result = service.sync(peer, candidates) { stage = it } }
                 }) { Text(stringResource(R.string.lan_sync_now)) }
                 if (busy) TextButton(onClick = { running?.cancel() }) { Text(stringResource(R.string.common_close)) }
             }
+            if (discovered.isNotEmpty()) Text(stringResource(R.string.lan_sync_discovered))
+            discovered.forEach { address -> Text(address.toString()) }
             stage?.let { Text(stringResource(it.label())) }
             error?.let { Text(stringResource(it)) }
             result?.let { shown ->

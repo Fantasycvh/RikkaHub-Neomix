@@ -3525,10 +3525,10 @@
   <string name="lan_sync_open">區域網路同步</string>
   <string name="lan_sync_preparing">正在準備本機對話清單…</string>
   <string name="lan_sync_receive">接收同步請求</string>
-  <string name="lan_sync_receive_help">在一台裝置開啟接收，再於另一台裝置輸入其位址。</string>
+  <string name="lan_sync_receive_help">在另一台裝置開啟接收，即可自動探索，也可以手動輸入位址。</string>
   <string name="lan_sync_report">%1$s · 新增 %2$d、更新 %3$d、刪除 %4$d、衝突 %5$d</string>
   <string name="lan_sync_resume">傳輸已暫停。請在對端重新開啟接收，然後再次同步以續傳。</string>
-  <string name="lan_sync_summary">雙向同步對話、附件及刪除記錄。</string>
+  <string name="lan_sync_summary">雙向同步對話、助理、技能、世界書和工作區檔案。</string>
   <string name="lan_sync_this_device">本機</string>
   <string name="lan_sync_uploading">正在上傳對話和附件…</string>
   <string name="lan_sync_version_error">同步協定或資料庫版本不同，請更新兩台裝置。</string>
@@ -3564,4 +3564,5 @@
   <string name="safe_mode_import_overwrite_confirm">匯入此備份將覆蓋現有設定、聊天記錄和附件，並在完成後自動重啟應用生效。是否繼續？</string>
   <string name="safe_mode_import_backup_failed">匯入失敗：%1$s</string>
   <string name="safe_mode_import_invalid_archive">所選檔案不是有效的 Neomix/RikkaHub 備份包。</string>
+  <string name="lan_sync_discovered">已找到區域網路裝置</string>
 </resources>

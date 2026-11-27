@@ -2,12 +2,12 @@ package app.androidrik.rikkahub.data.sync.lan
 
 import kotlinx.serialization.Serializable
 
-internal const val LAN_FORMAT_VERSION = 1
+internal const val LAN_FORMAT_VERSION = 2
 internal const val LAN_OBJECT_MAX_BYTES = 64L * 1024 * 1024
 private const val MANIFEST_MAX_ENTRIES = 10_000
 private const val ATTACHMENTS_PER_CONVERSATION = 1_024
 private val digestPattern = Regex("[0-9a-f]{64}")
-private val logicalKeyPattern = Regex("(?:conversation|assistant):[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+private val logicalKeyPattern = Regex("(?:conversation|assistant|lorebook|skill|workspace):[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
 @Serializable
 internal data class LanManifest(
@@ -16,20 +16,26 @@ internal data class LanManifest(
     val conversations: List<LanManifestObject> = emptyList(),
     val assistants: List<LanManifestObject> = emptyList(),
     val tombstones: List<LanTombstone> = emptyList(),
+    val families: List<LanManifestObject> = emptyList(),
 ) {
+    val objects: List<LanManifestObject> get() = conversations + assistants + families
     fun validate(dbVersion: Int, expectedDevice: String) {
         require(protocol == LAN_PROTOCOL && device.formatVersion == LAN_FORMAT_VERSION && device.dbVersion == dbVersion) {
             "Incompatible LAN sync version"
         }
         require(isLanDigest(device.id) && device.id == expectedDevice && validLanName(device.name))
-        require(conversations.size.toLong() + assistants.size + tombstones.size <= MANIFEST_MAX_ENTRIES)
+        require(conversations.size.toLong() + assistants.size + families.size + tombstones.size <= MANIFEST_MAX_ENTRIES)
         val keys = HashSet<String>()
         conversations.forEach { entry -> require(entry.key.startsWith("conversation:") && keys.add(entry.key)); entry.validate() }
         assistants.forEach { entry ->
-            require(entry.key.startsWith("assistant:") && keys.add(entry.key) && entry.attachmentShas.isEmpty())
+            require(entry.key.startsWith("assistant:") && keys.add(entry.key))
             entry.validate()
         }
         val deleted = HashSet<String>()
+        families.forEach { entry ->
+            require(entry.key.substringBefore(':') in setOf("lorebook", "skill", "workspace") && keys.add(entry.key))
+            entry.validate()
+        }
         tombstones.forEach { require(logicalKeyPattern.matches(it.key) && it.deletedAt > 0 && deleted.add(it.key)) }
     }
 }

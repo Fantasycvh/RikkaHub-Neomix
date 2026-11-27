@@ -12,6 +12,9 @@ internal data class LanSyncOffer(val manifest: LanManifest, val plannedAt: Long)
 @Serializable
 internal data class LanSyncReport(val added: Int = 0, val updated: Int = 0, val deleted: Int = 0, val conflicts: Int = 0)
 
+@Serializable
+internal data class LanSyncApplyRequest(val keys: Set<String>)
+
 internal const val LAN_INBOX_PATH = "/v1/inbox/"
 internal const val LAN_APPLIED_PATH = "/v1/applied"
 internal const val LAN_OFFSET_HEADER = "X-Rikka-Offset"
@@ -35,6 +38,7 @@ internal class LanSyncUploadSession(
         val plannedAt: Long,
         val expected: Map<String, Long?>,
         var report: LanSyncReport? = null,
+        var appliedKeys: Set<String>? = null,
     )
 
     fun offer(peer: String, request: LanHttpRequest): LanHttpResponse {
@@ -42,7 +46,7 @@ internal class LanSyncUploadSession(
         val remote = try {
             json.decodeFromString<LanManifest>(bytes.decodeToString()).also {
                 it.validate(local.device.dbVersion, peer)
-                requireConversationOnly(it)
+                requireSupportedFamilies(it)
             }
         } catch (_: IllegalArgumentException) {
             return LanHttpResponse(426)
@@ -98,15 +102,24 @@ internal class LanSyncUploadSession(
     }
 
     suspend fun finish(request: LanHttpRequest): LanHttpResponse {
-        if (request.contentLength != 0L) return LanHttpResponse(400)
         val active = exchange ?: return LanHttpResponse(409)
+        val known = (local.objects.map { it.key } + active.remote.objects.map { it.key } +
+            local.tombstones.map { it.key } + active.remote.tombstones.map { it.key }).toSet()
+        val keys = if (request.contentLength == 0L) known else {
+            val bytes = request.readBytes(LAN_MANIFEST_BYTES.toInt()) ?: return LanHttpResponse(400)
+            try { json.decodeFromString<LanSyncApplyRequest>(bytes.decodeToString()).keys }
+            catch (_: IllegalArgumentException) { return LanHttpResponse(400) }
+        }
+        if (!known.containsAll(keys) || keys.size > 10_000) return LanHttpResponse(400)
+        if (active.report != null && active.appliedKeys != keys) return LanHttpResponse(409)
+        val plan = active.plan.restrictTo(keys)
         val report = active.report ?: run {
-            for ((digest, size) in active.expected) {
+            for ((digest, size) in lanObjectSizes(plan.objectsFrom(active.remote))) {
                 val file = completed(digest) ?: return LanHttpResponse(409)
                 if (size != null && file.length() != size) return LanHttpResponse(422)
             }
             try {
-                apply(active.remote, active.plan).also { active.report = it }
+                apply(active.remote, plan).also { active.report = it; active.appliedKeys = keys }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
