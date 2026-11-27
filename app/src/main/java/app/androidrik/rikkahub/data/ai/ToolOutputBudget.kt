@@ -28,9 +28,15 @@ private const val CONTEXT_GUARD_KEEP_RECENT = 4
 // 豁免只在基础档生效：分级收缩档（16K/8K）下窗口优先级高于豁免（design-tool-context-gate §3）。
 private val TOOLS_WITHOUT_OUTPUT_TRUNCATION = setOf("search_web")
 
-/** 上下文闸 A 的调用侧包装（批次 10 从 GenerationHandler 拆出）：按消息估算 + 模型窗口取档。 */
-internal fun toolOutputBudget(messages: List<UIMessage>, model: Model): Int =
-    toolOutputBudgetFor(estimateTokenCount(messages), model.effectiveContextLength())
+/** 上下文闸 A 的调用侧包装（批次 10 从 GenerationHandler 拆出）：按消息估算 + 统一有效窗口取档（A5）。 */
+internal fun toolOutputBudget(
+    messages: List<UIMessage>,
+    model: Model,
+    contextLengthOverride: Int? = null,
+): Int = toolOutputBudgetFor(
+    estimateTokenCount(messages),
+    model.effectiveContextLength(contextLengthOverride),
+)
 
 /**
  * 上下文闸 B：请求前紧急卸载（design-tool-context-gate §5，Yuihub 3.0.0 `enforceContextBudget` 的投影版）。
@@ -48,8 +54,9 @@ internal suspend fun enforceContextBudget(
     context: Context,
     messages: List<UIMessage>,
     model: Model,
+    contextLengthOverride: Int? = null,
 ): List<UIMessage> {
-    val window = model.effectiveContextLength().coerceAtLeast(1)
+    val window = model.effectiveContextLength(contextLengthOverride).coerceAtLeast(1)
     val softLimit = (window * CONTEXT_EMERGENCY_RATIO).toInt()
     val hardLimit = (window * CONTEXT_HARD_RATIO).toInt()
     var current = messages
@@ -124,59 +131,25 @@ internal fun maybeTruncateToolOutput(
     maxChars: Int,
     workspaceBound: Boolean,
     hasShellAccess: Boolean,
+    globalCapChars: Int = maxChars,
 ): List<UIMessagePart> {
-    // 截断**恒生效**（原 `|| !hasShellAccess` 短路已废除，design-tool-context-gate §3）：
-    // 无恢复通道时宁可给「缩窄重跑」提示，也不能让 30K+ 输出无界进历史
-    if (tool.toolName in TOOLS_WITHOUT_OUTPUT_TRUNCATION && maxChars >= MAX_TOOL_OUTPUT_CHARS) return output
-
-    val toolCallId = tool.toolCallId
-    val textParts = output.filterIsInstance<UIMessagePart.Text>()
-    val nonTextParts = output.filter { it !is UIMessagePart.Text }
-    val totalChars = textParts.sumOf { it.text.length }
-
-    if (totalChars <= maxChars) return output
-
-    Log.i(TAG, "maybeTruncateToolOutput: truncating tool $toolCallId output ($totalChars chars, budget $maxChars)")
-
-    val fullText = textParts.joinToString("\n") { it.text }
-    val preview = fullText.take(TOOL_OUTPUT_PREVIEW_CHARS)
-
-    // [FIX] toolCallId 由模型提供（外部可控），直接拼文件名可含 "/" 或 "../" →
-    // 逃逸 tool_outputs 目录写入 app 私有目录其他位置（移植自 rikkahub-turbo a9449cc）。
-    val safeFileName = toolCallId.replace(Regex("[^A-Za-z0-9_-]"), "_")
-    val fileName = "$safeFileName.txt"
-    val outputDir = File(context.filesDir, FileFolders.TOOL_OUTPUTS).apply { mkdirs() }
-    val outputFile = File(outputDir, fileName)
-    outputFile.writeText(fullText)
-    // 投影无损回环校验（华灯投影原则）：外部全文是模型恢复上下文的**唯一**来源，
-    // 写坏（磁盘满/静默截断）必须当场报错——绝不能让「预览说存了、文件却是残的」。
-    require(outputFile.readText() == fullText) {
-        "Tool output projection write failed (lossless check): $fileName"
-    }
-
-    // 恢复指引按会话真实能力三分支（§4）：有 workspace 用分页读（比整段 cat 省）；
-    // 只有 shell 才指引 cat/grep；两者皆无时诚实告知重跑，不给假指引
-    val recovery = when {
-        workspaceBound ->
-            "Use workspace_read_file(path=\"/tool_outputs/$fileName\", offset=1, limit=200) " +
-                "to read only the needed range instead of re-running the tool."
-        hasShellAccess ->
-            "Use shell to read: `cat /tool_outputs/$fileName`\n" +
-                "Use shell to search: `grep \"pattern\" /tool_outputs/$fileName`"
-        else ->
-            "The output is too large to include in context and this session has no file-reading " +
-                "tool. Re-run the tool with narrower arguments to get a smaller result."
-    }
-
-    return listOf(
-        UIMessagePart.Text(
-            buildString {
-                appendLine("[Tool output truncated: $totalChars characters total]")
-                appendLine("Full output saved to: /tool_outputs/$fileName")
-                append(recovery)
-                appendLine()
-                append(preview)
-            }
+    val result = ToolOutputCompressor.compressSuccess(
+        context = context,
+        tool = tool,
+        output = output,
+        maxChars = maxChars,
+        globalCapChars = globalCapChars,
+        workspaceBound = workspaceBound,
+        hasShellAccess = hasShellAccess,
+    )
+    if (result.method != ToolOutputCompressor.Method.VERBATIM) {
+        Log.i(
+            TAG,
+            "tool.budget tool=${tool.toolName} callId=${tool.toolCallId} method=${result.method} " +
+                "chars=${result.originalChars}->${result.outputChars} deduped=${result.dedupedLines} " +
+                "loss=${"%.2f".format(result.contentLossRatio)} wireTokens=${result.wireMeasure.wireTokens} " +
+                "wireBytes=${result.wireMeasure.wireBytes} avail=${result.availability}",
         )
-    ) + nonTextParts
+    }
+    return result.parts
 }

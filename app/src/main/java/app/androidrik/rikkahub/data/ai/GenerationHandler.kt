@@ -176,6 +176,7 @@ internal data class PreparedTool(
     val tool: UIMessagePart.Tool,
     val signature: String,
     val outputBudget: Int,
+    val globalCapChars: Int = outputBudget,
     val hasShellAccess: Boolean,
     val workspaceBound: Boolean,
     val toolStartedAt: kotlinx.datetime.LocalDateTime,
@@ -1168,6 +1169,18 @@ class GenerationHandler(
             // 的并发写同样由它兜住）。
             val laneMutex = kotlinx.coroutines.sync.Mutex()
             val lanePendingEmissions = mutableListOf<List<UIMessage>>()
+            // 阶段 2 批次预算协调器（design-tool-output-budget A1 两级限幅 + A2 执行前预留/结清 + A3 零额度）：
+            // 本批即将执行的工具共用同一份额池；执行前预留、完成/失败统一结清、下一步请求前断言清零。
+            val executableToolCount = toolsToProcess.count {
+                it.approvalState !is ToolApprovalState.Denied &&
+                    it.approvalState !is ToolApprovalState.Answered &&
+                    it.approvalState !is ToolApprovalState.Pending
+            }
+            val batchBudget = ToolOutputBatchBudget(
+                windowTokens = targetModel.effectiveContextLength(settings.contextLengthOverride),
+                initialUsedTokens = estimateTokenCount(messages),
+                batchSize = executableToolCount.coerceAtLeast(1),
+            )
 
             suspend fun emitLaneSnapshots() {
                 lanePendingEmissions.forEach { snapshot ->
@@ -1240,9 +1253,13 @@ class GenerationHandler(
                         )
                     }
                 }
-                // 上下文闸 A：per-call 动态限幅（每次执行前按当前窗口占用算预算）；
-                // 能力判定放 runCatching 外——成功/失败两条路径共用
-                val outputBudget = toolOutputBudget(messages, targetModel)
+                // 上下文闸 A + 阶段 2 两级限幅/执行前预留（design-tool-output-budget A1/A2）：
+                // 预留 `min(批次份额, 全局档位上限)`，避免并行工具合力撑爆窗口；能力判定放 runCatching 外
+                val reservation = batchBudget.reserve(
+                    toolCallId = tool.toolCallId,
+                    currentUsedTokens = estimateTokenCount(messages),
+                )
+                val outputBudget = reservation.budgetChars
                 val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
                 val workspaceBound = toolsInternal.any { it.name == "workspace_read_file" }
                 // 执行窗口起点：**护栏全过后、真正执行前**（不含审批等待——语义=执行耗时）
@@ -1251,6 +1268,7 @@ class GenerationHandler(
                     tool = tool,
                     signature = signature,
                     outputBudget = outputBudget,
+                    globalCapChars = reservation.globalCapChars,
                     hasShellAccess = hasShellAccess,
                     workspaceBound = workspaceBound,
                     toolStartedAt = toolStartedAt,
@@ -1259,6 +1277,8 @@ class GenerationHandler(
 
             suspend fun runPreparedTool(prepared: PreparedTool) {
                 val tool = prepared.tool
+                var budgetSettled = false
+                try {
                 runCatching {
                     if (isMemoryTool(tool.toolName)) {
                         check(memoryBinding != MEMORY_CONTEXT_OFF && tool.memoryContext == memoryBinding) {
@@ -1305,8 +1325,15 @@ class GenerationHandler(
                             maxChars = prepared.outputBudget,
                             workspaceBound = prepared.workspaceBound,
                             hasShellAccess = prepared.hasShellAccess,
+                            globalCapChars = prepared.globalCapChars,
                         )
                     )
+                    // A2 + A4：按最终到达模型的完整线载荷结清预留，盈余自动回池
+                    batchBudget.settle(
+                        tool.toolCallId,
+                        measureWirePayload(tool.toolName, tool.toolCallId, output).wireTokens,
+                    )
+                    budgetSettled = true
                     executedSignature[prepared.signature] = output
                     // 车道合并点：只合并不发射（见 laneMutex 处注释）；NonCancellable
                     // 保持与 commitToolResult 相同的「已完成结果必须落地」语义
@@ -1380,21 +1407,28 @@ class GenerationHandler(
                     // 专用异常：工具不在本回合工具表里（来源门控，如重生成前旧候选里的
                     // phone_use 调用被模仿重发）。onFailure 对它不带堆栈——模型只需要
                     // 一句「不可用、别重试」，长栈只会污染上下文诱导再试。
-                    val errorText = (if (it is ToolNotAvailableException) {
-                        "[${it.javaClass.name}] ${it.message}"
-                    } else {
-                        buildString {
-                            append("[${it.javaClass.name}] ${it.message}")
-                            append("\n${it.stackTraceToString()}")
-                        }
-                    }).let { text ->
-                        if (text.length > prepared.outputBudget) {
-                            text.take(prepared.outputBudget) +
-                                "\n[... error text truncated at ${prepared.outputBudget} chars]"
-                        } else {
-                            text
-                        }
-                    }
+                    // 失败路径共用单一压缩器（D2 + B5）：错误头进不可裁剪信封，堆栈按余量去重+保头保尾
+                    val errorHeader = "[${it.javaClass.name}] ${it.message}"
+                    val stackTrace = if (it is ToolNotAvailableException) null else it.stackTraceToString()
+                    val errorText = ToolOutputCompressor.compressError(
+                        errorHeader = errorHeader,
+                        stackTrace = stackTrace,
+                        maxChars = prepared.outputBudget,
+                    )
+                    val errorOutput = listOf(
+                        UIMessagePart.Text(
+                            json.encodeToString(
+                                buildJsonObject {
+                                    put("error", JsonPrimitive(errorText))
+                                }
+                            )
+                        )
+                    )
+                    batchBudget.settle(
+                        tool.toolCallId,
+                        measureWirePayload(tool.toolName, tool.toolCallId, errorOutput).wireTokens,
+                    )
+                    budgetSettled = true
                     if (tool.toolName.startsWith(WorkspaceTurnBudget.TOOL_NAME_PREFIX)) {
                         workspaceBudget.record(errorText.length)
                     }
@@ -1418,15 +1452,7 @@ class GenerationHandler(
                     withContext(NonCancellable) {
                         laneMutex.withLock {
                             val committed = tool.copy(
-                                output = listOf(
-                                    UIMessagePart.Text(
-                                        json.encodeToString(
-                                            buildJsonObject {
-                                                put("error", JsonPrimitive(errorText))
-                                            }
-                                        )
-                                    )
-                                ),
+                                output = errorOutput,
                                 startedAt = prepared.toolStartedAt,
                                 finishedAt = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
                             )
@@ -1435,6 +1461,11 @@ class GenerationHandler(
                             onMessagesCommitted?.invoke(messages)
                             lanePendingEmissions += messages
                         }
+                    }
+                }
+                } finally {
+                    if (!budgetSettled) {
+                        batchBudget.release(tool.toolCallId)
                     }
                 }
             }
@@ -1553,6 +1584,11 @@ class GenerationHandler(
 
             // 批内工具全部处理完：冲刷尾部车道（批内最后几条是只读工具时它们还挂在车道上）
             flushParallelLane()
+            // A2：推进下一步模型请求前核验本批所有预算预留已结清
+            val leakedReservations = batchBudget.assertAllSettled()
+            if (leakedReservations > 0) {
+                Log.w(TAG, "generateText: cleared $leakedReservations unsettled tool budget reservation(s)")
+            }
 
             if (executedTools.isEmpty()) {
                 // No results to add (all tools were pending)
@@ -1777,7 +1813,12 @@ class GenerationHandler(
         // 85% 触发卸载；卸完仍 ≥90% 抛 [ContextGateHardStop]，由步骤循环转成优雅停止
         // （不采 Yuihub 的 throw 直达失败——本仓护栏家族一律优雅停止）。
         // 无工具的请求（标题/翻译）没有 Tool part，算法自然空转，无需特判。
-        val gatedMessages = enforceContextBudget(context, internalMessages, model)
+        val gatedMessages = enforceContextBudget(
+            context = context,
+            messages = internalMessages,
+            model = model,
+            contextLengthOverride = settings.contextLengthOverride,
+        )
         if (assistant.enableMemory && !memoryDisabled) {
             val plan = assembly.memoryPlan
             Log.i(TAG, "memory.inject budget=${plan.budgetTokens} estimated=${plan.totalEstimatedTokens} " +

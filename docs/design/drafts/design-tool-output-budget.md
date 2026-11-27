@@ -1,6 +1,6 @@
 # 工具输出预算与降级（设计稿）
 
-> 状态（2026-10-17）：**阶段 1 变体已落地（b05632c10，2026-10-18：ToolOutputMeta `_meta` 完整性声明，形态为 truncated/omitted/hint，与 §C1 草案的 complete/omissions 契约形状不同）；阶段 2/3（两级限幅/预留/单一压缩器）未做**。
+> 状态（2026-11-27）：**阶段 1（`b05632c10`，`ToolOutputMeta` `_meta` 完整性声明）与阶段 2/3 主体已落地（`ToolOutputBatchBudget.kt` 两级限幅 A1 + 执行前预留结清 A2 + 零额度最小信封 A3；`ToolOutputContextGate.kt` 线载荷+字节双口径计量 A4/B9 + 唯一容量来源 A5 + 结构预检 A6；`ToolOutputCompressor.kt` 分级降级 B1 + 重复行折叠 B2 + 信封/错误头优先 B4/B5 + 保护原子 B6 + 保头保尾 B7 + 成功/失败单一压缩器 B8/D2 + 避开落盘异常污染执行结论；`GenerationHandler.kt` & `ToolOutputBudget.kt` 全链路接线并单测验证）**。
 > 来源：对照 `senera` v2 的「宿主单一观测压缩管线」（主线 squash `99834b90`，2026-10-13），
 > 提取**与语言/技术栈无关**的判据。代码零可移植（TS/Node vs Kotlin/Android），判据可拿。
 >
