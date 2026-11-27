@@ -95,10 +95,10 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            // R8 keep 规则统一收口在 `src/main/keepRules/*.keep`（AGP 9 自动发现合并，见 SerializationKeepTest）
             optimization {
                 enable = true
             }
-            proguardFiles("proguard-rules.pro")
             buildConfigField("String", "VERSION_NAME", "\"${android.defaultConfig.versionName}\"")
             buildConfigField("String", "VERSION_CODE", "\"${android.defaultConfig.versionCode}\"")
         }
@@ -366,7 +366,7 @@ dependencies {
     debugImplementation(libs.salt.ui)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    // Phone Use 虚拟屏（Shizuku UserService）：release 也提供，见 proguard-rules.pro 的 keep 约束
+    // Phone Use 虚拟屏（Shizuku UserService）：release 也提供，见 src/main/keepRules/ipc-and-reflection.keep 的 keep 约束
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
 }

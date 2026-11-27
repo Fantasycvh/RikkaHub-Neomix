@@ -1,5 +1,6 @@
 package app.androidrik.common.android
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlin.uuid.Uuid
 import java.io.File
@@ -25,6 +26,7 @@ sealed class LogEntry {
     abstract val tag: String
 
     @Serializable
+    @SerialName("app.androidrik.common.android.LogEntry.TextLog")
     data class TextLog(
         override val id: Uuid = Uuid.random(),
         override val timestamp: Long = System.currentTimeMillis(),
@@ -33,6 +35,7 @@ sealed class LogEntry {
     ) : LogEntry()
 
     @Serializable
+    @SerialName("app.androidrik.common.android.LogEntry.RequestLog")
     data class RequestLog(
         override val id: Uuid = Uuid.random(),
         override val timestamp: Long = System.currentTimeMillis(),

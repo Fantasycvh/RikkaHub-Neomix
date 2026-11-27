@@ -195,6 +195,7 @@ jobs:
           # keep 场景），gzip -9 后 ~14MB 才适合当资产；排查时先 gunzip 再喂 retrace
           mapping=app/build/outputs/mapping/release/mapping.txt
           [ -s "$mapping" ] || { echo "::error::mapping.txt 不存在（R8 没跑？）" >&2; exit 1; }
+          python3 scripts/verify_r8_output.py
           gzip -9 -c "$mapping" > mapping.txt.gz
           gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
           git push origin ":refs/tags/nightly" 2>/dev/null || true

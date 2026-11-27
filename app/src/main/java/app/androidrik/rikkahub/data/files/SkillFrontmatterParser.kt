@@ -1,5 +1,6 @@
 package app.androidrik.rikkahub.data.files
 
+import android.util.Log
 import org.yaml.snakeyaml.LoaderOptions
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.constructor.SafeConstructor
@@ -8,7 +9,12 @@ import org.yaml.snakeyaml.constructor.SafeConstructor
 private val FRONTMATTER_END_REGEX = Regex("""\r?\n---(?:\r?\n|$)""")
 
 object SkillFrontmatterParser {
-    fun parse(content: String): SkillFrontmatter {
+    private const val TAG = "SkillFrontmatterParser"
+
+    fun parse(
+        content: String,
+        onParseError: ((Throwable) -> Unit)? = null,
+    ): SkillFrontmatter {
         if (!content.startsWith("---")) return SkillFrontmatter.Empty
         val endRange = findFrontmatterEndRange(content) ?: return SkillFrontmatter.Empty
         val yamlContent = content.substring(3, endRange.first).trim()
@@ -22,7 +28,13 @@ object SkillFrontmatterParser {
                     (key as? String)?.let { it to value }
                 }.toMap()
             )
-        }.getOrDefault(SkillFrontmatter.Empty)
+        }.getOrElse { error ->
+            // 严禁静默吞没：R8 拍平包名引发的 SnakeYAML Logger NPE（aeda077f69）或畸形 YAML
+            // 若在此处无日志返回 Empty，外层 SkillManager 无法获知异常、表现为全部技能无声消失。
+            Log.w(TAG, "Failed to parse skill YAML frontmatter (${error.javaClass.name}: ${error.message})", error)
+            onParseError?.invoke(error)
+            SkillFrontmatter.Empty
+        }
     }
 
     fun extractBody(content: String): String {

@@ -5,12 +5,14 @@ import app.androidrik.ai.provider.ModelType
 import app.androidrik.ai.provider.Modality
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.provider.effectiveApiKeys
+import app.androidrik.ai.provider.providerTypeDisplayName
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaKind
 import app.androidrik.mediagen.provider.MediaGenerationCapabilities
 import app.androidrik.mediagen.provider.MediaGenerationProviderSetting
 import app.androidrik.mediagen.provider.capabilities
 import app.androidrik.mediagen.provider.modelCapabilities
+import app.androidrik.mediagen.provider.providerTypeDisplayName
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.findProvider
 import app.androidrik.rikkahub.data.model.MediaCreationRecord
@@ -115,7 +117,7 @@ internal fun Settings.mediaModelCatalog(): List<MediaModelOption> = buildList {
             if (model.modelId.isBlank()) continue
             val capabilities = provider.modelCapabilities(model) ?: continue
             add(MediaModelOption(MediaGenerationTarget.Media(provider, model), model, stored.id,
-                provider.name.ifBlank { provider.javaClass.simpleName }, capabilities))
+                provider.name.ifBlank { provider.providerTypeDisplayName }, capabilities))
         }
     }
     for (provider in providers) {
@@ -177,7 +179,7 @@ internal fun Settings.legacyMediaOption(provider: ProviderSetting, model: Model)
         target = MediaGenerationTarget.Media(snapshot, presentation),
         model = presentation,
         providerId = provider.id,
-        providerName = provider.name.ifBlank { provider.javaClass.simpleName },
+        providerName = provider.name.ifBlank { provider.providerTypeDisplayName },
         capabilities = capabilities,
         visible = provider.enabled && model.enabled,
         legacyImageFormat = format,

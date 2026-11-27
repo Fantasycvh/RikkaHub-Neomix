@@ -347,13 +347,16 @@ private fun SearchServiceOptions.toWebDto(): WebSearchServiceDto = WebSearchServ
  * 容易在新增第 20 个子类时静默漂移，故直接复用序列化结果；只在内存里瞬时编码、只取判别值，
  * 不对外输出（`apiKey` 等字段不会离开进程）。
  */
-private fun <T : Any> sealedTypeName(serializer: KSerializer<T>, value: T): String =
-    (JsonInstant.encodeToJsonElement(serializer, value) as? JsonObject)
+private fun <T : Any> sealedTypeName(serializer: KSerializer<T>, value: T): String {
+    val encoded = JsonInstant.encodeToJsonElement(serializer, value)
+    // 严禁回退 `value::class.simpleName`（release 下会向前端泄漏混淆短类名）
+    return (encoded as? JsonObject)
         ?.get("type")
         ?.jsonPrimitive
         ?.content
-        ?: value::class.simpleName
+        ?: runCatching { encoded.jsonPrimitive.content }.getOrNull()
         ?: "unknown"
+}
 
 /** 取枚举在 JSON 里的字面量（`@SerialName` 优先），避免手写映射与序列化结果不一致。 */
 private fun <T> enumWireName(serializer: KSerializer<T>, value: T): String =

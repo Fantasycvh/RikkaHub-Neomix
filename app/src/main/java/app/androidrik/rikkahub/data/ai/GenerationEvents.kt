@@ -1,9 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
-import kotlinx.serialization.Serializable
 import app.androidrik.ai.ui.UIMessage
 
-@Serializable
 sealed interface GenerationChunk {
     data class Messages(
         val messages: List<UIMessage>,
@@ -23,7 +21,6 @@ sealed interface GenerationChunk {
 }
 
 /** [GenerationChunk.Notice] 的载荷。 */
-@Serializable
 sealed interface GenerationNotice {
     /** 同一工具同参数反复调用，已提前结束本轮（见 [ToolCallLoopGuard]）。 */
     data class ToolLoopStopped(

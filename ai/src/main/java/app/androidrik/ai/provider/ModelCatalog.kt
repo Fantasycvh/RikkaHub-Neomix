@@ -3,6 +3,7 @@ package app.androidrik.ai.provider
 import app.androidrik.ai.util.json
 import app.androidrik.common.http.await
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import okhttp3.CacheControl
@@ -51,13 +52,17 @@ enum class IncompleteReason { MALFORMED_ENTRY, PAGINATION, LIMIT, SOURCE_FAILED 
 @Serializable
 sealed interface CatalogFetchResult {
     @Serializable
+    @SerialName("app.androidrik.ai.provider.CatalogFetchResult.Complete")
     data class Complete(val entries: List<CatalogEntry>, val scope: CatalogScope) : CatalogFetchResult
     @Serializable
+    @SerialName("app.androidrik.ai.provider.CatalogFetchResult.Partial")
     data class Partial(val entries: List<CatalogEntry>, val scope: CatalogScope,
         val reason: IncompleteReason, val error: CatalogError? = null) : CatalogFetchResult
     @Serializable
+    @SerialName("app.androidrik.ai.provider.CatalogFetchResult.Failed")
     data class Failed(val error: CatalogError) : CatalogFetchResult
     @Serializable
+    @SerialName("app.androidrik.ai.provider.CatalogFetchResult.Unsupported")
     data class Unsupported(val httpStatus: Int? = null) : CatalogFetchResult
 }
 

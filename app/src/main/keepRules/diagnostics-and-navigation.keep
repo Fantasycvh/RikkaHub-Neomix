@@ -1,0 +1,27 @@
+# ==============================================================================
+# 堆栈还原、异常可读性与路由/桌面入口类名契约
+#
+# AGP 9 `optimization { enable = true }` 自动合并 `src/main/keepRules/*.keep`。
+# 本文件职责：任何「运行时读取类名用于日志诊断、本地路由统计或 Manifest 入口反射」的规则统一放此。
+# ==============================================================================
+
+# 保留源码文件名与行号表，确保混淆后的 release 崩溃堆栈可通过 mapping.txt 精确还原到行。
+-keepattributes SourceFile,LineNumberTable
+
+# 异常类名会直接出现在错误提示文案、解析诊断日志与兜底摘要（`e.javaClass.simpleName`）里；
+# 保留原名避免线上报错变成 `a.b.c` 无法一眼定性（对齐上游 e3d11e15f）。
+-keepnames class * extends java.lang.Throwable
+
+# 导航统计（NavStats / RouteActivity）依赖 `Screen::class.simpleName` 作为稳定路由身份；
+# R8 默认混淆会把类名压成 crc/esc 等短名（2026-11-22 release 真机实测）。
+-keepnames class app.androidrik.rikkahub.Screen { *; }
+-keepnames class app.androidrik.rikkahub.Screen$* { *; }
+
+# 桌面「名称 + 图标」预置切换（LauncherActivities.kt）：ShortcutEntryActivity 通过
+# `Class.forName(activityClass)` 转发到当前启用的真实 Activity；除 Manifest aapt_rules 外显式钉住类名。
+-keepnames class app.androidrik.rikkahub.RouteActivity
+-keepnames class app.androidrik.rikkahub.LauncherRikkaHubActivity
+-keepnames class app.androidrik.rikkahub.LauncherChatActivity
+-keepnames class app.androidrik.rikkahub.LauncherNotesActivity
+-keepnames class app.androidrik.rikkahub.LauncherAssistantActivity
+-keepnames class app.androidrik.rikkahub.ShortcutEntryActivity

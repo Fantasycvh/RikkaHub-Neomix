@@ -1,0 +1,46 @@
+# ==============================================================================
+# 第三方依赖反射、包名元数据与仅 JVM 可选类放行规则
+#
+# 注：`:document` 模块自有的 MuPDF JNI 绑定规则位于 `document/consumer-rules.pro`（随 AAR 导出）。
+# ==============================================================================
+
+# ---------- SnakeYAML 2.6（Skill SKILL.md YAML frontmatter 解析） ----------
+# SnakeYAML 2.6（如 TypeDescription / PropertySubstitute）通过 `Class.getPackage().getName()`
+# 初始化内部 Logger；若被 R8 重打包进默认包 `""`，Android 的 `Class.getPackage()` 返回 null，
+# 触发 NPE 导致全部 Skill 无法解析（2026-11-19 release 真机事故 aeda077f69）。
+# 覆盖根包与全部子包（零代码体积开销，仅保留包前缀字符串），并放行 JVM 专属 `java.beans` 引用，
+# 防止未来升级 SnakeYAML 或调用 `Yaml.dump()` 触发内省引用告警导致 minify 失败。
+-keeppackagenames org.yaml.snakeyaml,org.yaml.snakeyaml.**
+-dontwarn java.beans.**
+
+# ---------- Pebble 模板引擎（TemplateTransformer） ----------
+# Pebble 4.x 自带零 R8 规则：当前本仓仅向模板传入 Map（走 MapResolver，不走反射）；
+# 若未来向模板上下文传入自定义 Kotlin/Java 对象，须为该模型类单独补 getter/field keep。
+-dontwarn io.pebbletemplates.**
+
+# ---------- 内嵌 Web Server JWT 鉴权（Auth0 + Jackson，WebApiModule） ----------
+# Jackson TypeReference 运行时读取匿名子类的泛型父类签名；Auth0/Jackson 运行时反射解析 JWT payload
+# （对齐上游 3b4b80a4 / #1725）。
+-keepattributes Signature,InnerClasses,EnclosingMethod
+-keep,allowobfuscation class * extends com.fasterxml.jackson.core.type.TypeReference
+-keep class com.fasterxml.jackson.** { *; }
+-keep class com.auth0.jwt.** { *; }
+
+# ---------- SSH 工作区与交互式终端（JSch） ----------
+# JSch 按类名从配置字符串反射加载 cipher / key exchange / compression / MAC 实现，必须保活。
+-keep class com.jcraft.jsch.** { *; }
+
+# JSch 的可选集成（JNA / junixsocket、日志桥、GSSAPI）在 Android 上不会用到
+-dontwarn com.sun.jna.**
+-dontwarn org.newsclub.net.unix.**
+-dontwarn org.slf4j.**
+-dontwarn org.apache.logging.log4j.**
+-dontwarn org.ietf.jgss.**
+
+# ---------- Ktor / RE2J 可选 JVM 引用 ----------
+# Ktor debug detector 引用仅桌面 JVM 存在的 java.lang.management API
+-dontwarn java.lang.management.ManagementFactory
+-dontwarn java.lang.management.RuntimeMXBean
+
+# re2j 包含 Android 平台不存在的可选引用
+-dontwarn com.google.re2j.**

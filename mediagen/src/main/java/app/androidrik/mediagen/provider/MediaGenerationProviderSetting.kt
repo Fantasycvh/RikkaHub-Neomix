@@ -394,3 +394,20 @@ val MediaGenerationProviderSetting.effectiveMediaApiKeys: String
 /** [effectiveMediaApiKeys] 的首个 key（顺序模式语义：列表顺序即优先级）。 */
 fun MediaGenerationProviderSetting.firstMediaApiKey(): String =
     effectiveMediaApiKeys.split("[\\s,]+".toRegex()).firstOrNull { it.isNotBlank() } ?: apiKey
+
+/**
+ * 媒体供应商类型的**显式展示名**（用户留空 `name` 时的兜底文案）。
+ *
+ * **严禁回退 `javaClass.simpleName`**：release 混淆或重构会污染 UI 展示（与 `ProviderSetting.providerTypeDisplayName` 同纪律）。
+ * 用穷举 `when` 绑定 sealed 子类，新增厂商时编译器强制要求补齐展示名。
+ */
+val MediaGenerationProviderSetting.providerTypeDisplayName: String
+    get() = when (this) {
+        is MediaGenerationProviderSetting.OpenAI -> "OpenAI"
+        is MediaGenerationProviderSetting.Google -> "Google"
+        is MediaGenerationProviderSetting.Aliyun -> "Aliyun"
+        is MediaGenerationProviderSetting.Volcengine -> "Volcengine"
+        is MediaGenerationProviderSetting.MiniMax -> "MiniMax"
+        is MediaGenerationProviderSetting.OpenRouter -> "OpenRouter"
+        is MediaGenerationProviderSetting.SiliconFlow -> "SiliconFlow"
+    }

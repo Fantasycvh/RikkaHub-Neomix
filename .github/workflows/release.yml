@@ -193,6 +193,7 @@ jobs:
           # R8 混淆映射随包发布（原文件 ~200MB，gzip 后 ~14MB）；与 APK 同一次构建一一对应
           mapping=app/build/outputs/mapping/release/mapping.txt
           [ -s "$mapping" ] || { echo "::error::mapping.txt 不存在（R8 没跑？）" >&2; exit 1; }
+          python3 scripts/verify_r8_output.py
           gzip -9 -c "$mapping" > mapping.txt.gz
 
       # 发布说明优先取仓内存档 docs/releases/<version>.md（去掉顶部两行存档注释），

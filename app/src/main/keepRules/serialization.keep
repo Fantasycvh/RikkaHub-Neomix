@@ -1,0 +1,325 @@
+# ==============================================================================
+# kotlinx.serialization 多态 sealed 家族与合成序列化器防裁剪契约
+#
+# 背景（华灯 release 闪退实证 & 本仓 R8 防线）：
+# `kotlinx-serialization-r8.pro` 默认规则带 `allowshrinking`——当某个 `@Serializable` sealed
+# 子类仅在反序列化路径使用、无直接构造调用（例如 `@Deprecated` 历史消息分片、备份兼容子类、
+# 尚未接线的厂商配置子类）时，R8 Full Mode 会将该子类判定为未实例化而裁剪，或通过
+# HorizontalClassMerger 将多个子类合并成同一 Class，导致运行时 `SealedClassSerializer`
+# 报 `Serializer for subclass ... not found` 或类型键冲突崩溃。
+#
+# 纪律（由 `SerializationKeepTest` 自动守卫，新增 `@Serializable sealed` 家族必须登记到此）：
+# 1. 基类与 `* extends <Base>` 继承链一律使用 `-keep`（严禁 `allowshrinking` 与类合并）；
+# 2. 同步保活构造器（含 `SerializationConstructorMarker` 合成构造器）、`Companion`、`INSTANCE`、`serializer(...)`；
+# 3. 对所有存活的 `@Serializable` 类，同步锁死 `<1>$Companion` 与 `<1>$$serializer`。
+# ==============================================================================
+
+-keepattributes RuntimeVisibleAnnotations,AnnotationDefault,Signature,InnerClasses,EnclosingMethod
+
+# 合成 Companion 与 $$serializer 保活（仅对已存活的 @Serializable 类触发，不阻止死 DTO 正常收缩）
+-if @kotlinx.serialization.Serializable class **
+-keep class <1>$Companion {
+    <init>(...);
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-if @kotlinx.serialization.Serializable class **
+-keep class <1>$$serializer { *; }
+
+# ---------- :ai 模块 ----------
+
+-keep class app.androidrik.ai.core.InputSchema {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.core.InputSchema {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.ai.provider.BuiltInTools {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.provider.BuiltInTools {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.ai.provider.CatalogFetchResult {
+    static ** Companion;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.provider.CatalogFetchResult {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.ai.provider.ProviderSetting {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class app.androidrik.ai.provider.ProviderSetting$ApiKey {
+    <init>(...);
+    static ** Companion;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.provider.ProviderSetting$ApiKey {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class app.androidrik.ai.provider.ProviderSetting$Account {
+    <init>(...);
+    static ** Companion;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.provider.ProviderSetting$Account {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.provider.ProviderSetting {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.ai.ui.PartMetadata
+-keep class * extends app.androidrik.ai.ui.PartMetadata {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.ai.ui.StreamChunk {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.ui.StreamChunk {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.ai.ui.UIMessageAnnotation {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.ui.UIMessageAnnotation {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.ai.ui.ToolApprovalState {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.ui.ToolApprovalState {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.ai.ui.UIMessagePart {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.ai.ui.UIMessagePart {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# ---------- :app 模块 ----------
+
+# Navigation 3 类型化路由（SavedState 反序列化恢复返回栈 + NavStats 路由名）
+-keep class app.androidrik.rikkahub.Screen
+-keep class * extends app.androidrik.rikkahub.Screen {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.rikkahub.data.model.PromptInjection {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.rikkahub.data.model.PromptInjection {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.rikkahub.data.model.Avatar {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.rikkahub.data.model.Avatar {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.rikkahub.data.ai.mcp.McpServerConfig {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.rikkahub.data.ai.mcp.McpServerConfig {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.rikkahub.data.ai.tools.local.LocalToolOption {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.rikkahub.data.ai.tools.local.LocalToolOption {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# ---------- :common 模块 ----------
+
+-keep class app.androidrik.common.android.LogEntry {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.common.android.LogEntry {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.common.http.ProviderProxy {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.common.http.ProviderProxy {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# ---------- :mediagen 模块 ----------
+# 注：`MediaModelCatalog.authorizationFingerprint()` 同时读取 `provider.javaClass.name` 计算定时授权哈希，
+# 故此处 `-keep`（不混淆类名）亦保证跨版本升级时存量定时生图授权指纹稳定不失效。
+
+-keep class app.androidrik.mediagen.model.MediaGenerationInput {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.mediagen.model.MediaGenerationInput {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.mediagen.provider.MediaGenerationProviderSetting {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.mediagen.provider.MediaGenerationProviderSetting {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# ---------- :search 模块 ----------
+
+-keep class app.androidrik.search.SearchServiceOptions {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.search.SearchServiceOptions {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# ---------- :speech 模块 ----------
+
+-keep class app.androidrik.asr.ASRProviderSetting {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.asr.ASRProviderSetting {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep class app.androidrik.tts.provider.TTSProviderSetting {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keep class * extends app.androidrik.tts.provider.TTSProviderSetting {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
