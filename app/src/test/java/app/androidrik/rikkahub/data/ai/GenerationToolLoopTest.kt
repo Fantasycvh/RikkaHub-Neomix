@@ -9,6 +9,7 @@ import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.Provider
 import app.androidrik.ai.provider.ProviderManager
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.ai.provider.TextGenerationParams
 import app.androidrik.ai.provider.TextGenerationResult
 import app.androidrik.ai.ui.StreamChunk
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -232,7 +234,11 @@ class GenerationToolLoopTest {
         apiKey = "test-key",
     )
 
-    private fun handler(provider: Provider<ProviderSetting.OpenAI>): GenerationHandler {
+    private fun handler(
+        provider: Provider<ProviderSetting.OpenAI>,
+        firstChunkIdleTimeoutMs: Long = DEFAULT_FIRST_CHUNK_IDLE_TIMEOUT_MS,
+        midStreamIdleTimeoutMs: Long = DEFAULT_MID_STREAM_IDLE_TIMEOUT_MS,
+    ): GenerationHandler {
         // ContextWrapper(null)：循环只把它交给 Log / filesDir，单测里两者都不该被真正用到
         val context = ContextWrapper(null)
         val manager = ProviderManager(OkHttpClient(), context, accountCredentials = { _, _ -> error("no account provider in tests") })
@@ -243,6 +249,8 @@ class GenerationToolLoopTest {
             json = JsonInstant,
             // 空记录器：这些用例考的是生成循环，不需要真的往 usage_record 写行
             usageRecorder = noopUsageRecorder(),
+            firstChunkIdleTimeoutMs = firstChunkIdleTimeoutMs,
+            midStreamIdleTimeoutMs = midStreamIdleTimeoutMs,
         )
     }
 
@@ -873,6 +881,88 @@ class GenerationToolLoopTest {
         gate.complete(Unit)
         job.join()
         assertTrue(collectedTexts.contains("first second"))
+    }
+
+    @Test
+    fun `first-chunk idle timeout triggers retry and succeeds on next attempt`() = runBlocking {
+        val attempts = AtomicInteger(0)
+        val provider = object : Provider<ProviderSetting.OpenAI> {
+            override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> = emptyList()
+            override suspend fun generateText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): TextGenerationResult = error("stream only")
+
+            override suspend fun streamText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): Flow<StreamChunk> = flow {
+                if (attempts.getAndIncrement() == 0) {
+                    awaitCancellation()
+                }
+                emit(StreamChunk.TextStart("t1"))
+                emit(StreamChunk.TextDelta("t1", "recovered"))
+                emit(StreamChunk.TextEnd("t1"))
+                emit(StreamChunk.Finish(finishReason = "stop"))
+            }
+        }
+        val retrySettings = Settings(
+            providers = listOf(providerSetting),
+            chatModelId = model.id,
+            retrySetting = RetrySetting(enabled = true, delaysSeconds = listOf(0)),
+        )
+        val chunks = mutableListOf<GenerationChunk.Messages>()
+        handler(provider, firstChunkIdleTimeoutMs = 80L, midStreamIdleTimeoutMs = 500L).generateText(
+            settings = retrySettings,
+            model = model,
+            messages = listOf(UIMessage.user("hi")),
+            assistant = Assistant(chatModelId = model.id),
+            tools = emptyList(),
+        ).collect { if (it is GenerationChunk.Messages) chunks += it }
+
+        assertEquals(2, attempts.get())
+        assertEquals("recovered", chunks.last().messages.last().toText())
+    }
+
+    @Test
+    fun `mid-stream idle timeout preserves partial draft and emits incremental deltas when enabled`() = runBlocking {
+        val partialText = "B".repeat(65)
+        val provider = object : Provider<ProviderSetting.OpenAI> {
+            override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> = emptyList()
+            override suspend fun generateText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): TextGenerationResult = error("stream only")
+
+            override suspend fun streamText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): Flow<StreamChunk> = flow {
+                emit(StreamChunk.TextStart("t1"))
+                emit(StreamChunk.TextDelta("t1", partialText))
+                awaitCancellation()
+            }
+        }
+        val emitted = mutableListOf<GenerationChunk.Messages>()
+        try {
+            handler(provider, firstChunkIdleTimeoutMs = 500L, midStreamIdleTimeoutMs = 100L).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
+                model = model,
+                messages = listOf(UIMessage.user("hi")),
+                assistant = Assistant(chatModelId = model.id),
+                tools = emptyList(),
+                emitIncrementalUpdates = true,
+            ).collect { if (it is GenerationChunk.Messages) emitted += it }
+            fail("expected GenerationPartialFailureException")
+        } catch (partial: GenerationPartialFailureException) {
+            assertTrue(partial.cause is StreamIdleTimeoutException)
+            assertEquals(partialText, partial.partialMessages.last().toText())
+            assertTrue(emitted.any { it.isDelta && it.messages.size == 1 })
+        }
     }
 
     private companion object {

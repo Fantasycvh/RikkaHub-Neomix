@@ -32,6 +32,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -116,6 +117,7 @@ import app.androidrik.rikkahub.data.ai.transformers.WorkspaceReminderTransformer
 import app.androidrik.rikkahub.data.ai.prompts.MID_TURN_COMPRESS_INSTRUCTION
 import app.androidrik.rikkahub.data.ai.prompts.buildCompactionCheckpointText
 import app.androidrik.rikkahub.data.ai.prompts.compactionCheckpointBody
+import app.androidrik.rikkahub.data.model.applyGenerationChunk
 import app.androidrik.rikkahub.data.model.taskAnchorSuffix
 import app.androidrik.rikkahub.data.event.AppEvent
 import app.androidrik.rikkahub.data.event.AppEventBus
@@ -220,6 +222,24 @@ private const val MAX_USER_INPUT_CHARS = 200_000
  * 「崩溃最多丢 2 秒内容」与「写放大可忽略」的折中。
  */
 private const val STREAM_CHECKPOINT_INTERVAL_MS = 2_000L
+internal const val STREAM_CHECKPOINT_LARGE_CHARS = 32_000
+internal const val STREAM_CHECKPOINT_LARGE_INTERVAL_MS = 4_000L
+
+internal fun streamCheckpointIntervalMs(message: UIMessage?): Long {
+    if (message == null) return STREAM_CHECKPOINT_INTERVAL_MS
+    val chars = message.parts.sumOf { part ->
+        when (part) {
+            is UIMessagePart.Text -> part.text.length
+            is UIMessagePart.Reasoning -> part.reasoning.length
+            else -> 0
+        }
+    }
+    return if (chars >= STREAM_CHECKPOINT_LARGE_CHARS) {
+        STREAM_CHECKPOINT_LARGE_INTERVAL_MS
+    } else {
+        STREAM_CHECKPOINT_INTERVAL_MS
+    }
+}
 
 class ChatService(
     private val context: Application,
@@ -2011,291 +2031,319 @@ class ChatService(
                     else -> true
                 }
             }
-            generationHandler.generateText(
-                settings = settings,
-                model = model,
-                debugKey = conversationId.toString(),
-                // 提示缓存/账号类提供商的会话键（对齐上游 #2186 的 prompt_cache_key 语义）
-                sessionId = conversationId.toString(),
-                // Phone Use 回合授权：同一轮跨审批续跑时不再弹卡
-                phoneUseApprovedForTurn = session.phoneUseApprovedForTurn,
-                onPhoneUseApprovalPending = { toolCallId ->
-                    schedulePhoneUseApprovalTimeout(conversationId, toolCallId)
-                },
-                processingStatus = session.processingStatus,
-                // 护栏取自 session（不是在此处新建）：一次「轮」会跨多次 generateText——
-                // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能
-                // 跨审批累积，并在新一轮用户消息/重新生成时由本类 reset（见 ToolCallLoopGuard）。
-                loopGuard = session.toolLoopGuard,
-                ruleEngine = session.ruleEngine,
-                workspaceBudget = session.workspaceTurnBudget,
-                // Phone Use 单轮步数：与 workspace 同款挂 session，跨审批续跑累积
-                phoneUseBudget = session.phoneUseTurnBudget,
-                // 思考退化护栏（家族第四员）：同上取 session 上的实例，跨审批续跑累积
-                thinkingGuard = session.thinkingGuard,
-                // 上下文预算守卫（design-tool-context-gate §6）：无累积状态，调用点直接新建。
-                // 自动压缩/条数上限仍是第一道线；本守卫只管工具循环内部增长撞到
-                // 「剩余 <4K」的优雅停止（与 B 闸 90% 硬限互补：B 管请求前，C 管执行中）
-                contextGuard = ContextBudgetGuard(
-                    windowTokens = model.effectiveContextLength(settings),
-                ),
-                // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
-                // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
-                // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
-                messages = promptMessages,
-                // 发送窗口：压缩时 = 检查点合成消息 + 边界后原文（design §4.1 三边界对齐）；
-                // 重生成历史时传 null（= 与 messages 相同）——保持原始轨迹，压缩不改变重生成语义。
-                // 传「可重算的窗口描述」而非冻结列表：生成循环内每步对 live messages 重算，
-                // 本回合工具调用的结果才能进入上下文（否则模型重复调用同一工具）。
-                // 重生成历史时传 null（走完整轨迹，压缩不改变重生成语义）。
-                compressionWindow = if (messageRange != null) {
-                    null
-                } else {
-                    conversation.compressionWindow()
-                },
-                // 中途自动压缩（上游 bcc649abc）：普通发送路径才启用，重生成一律 null（见闭包定义）。
-                midTurnCompress = midTurnCompress,
-                // 输入超窗反应式兜底（§3.1）：普通发送路径才启用，重生成一律 null（同款理由）
-                contextOverflowRecover = if (messageRange != null) null else recoverContextOverflow,
-                // 压缩成功后检查点边界变了：窗口按会话内存态重算（压缩的提交段是同步写：
-                // updateConversationState 已生效，故这里一定拿得到新检查点）。null 时框架保留旧窗口。
-                refreshCompressionWindow = if (messageRange != null) {
-                    null
-                } else {
-                    { getConversationFlow(conversationId).value.compressionWindow() }
-                },
-                assistant = assistant,
-                conversationSystemPrompt = conversation.customSystemPrompt,
-                conversationModeInjectionIds = conversation.modeInjectionIds,
-                conversationLorebookIds = conversation.lorebookIds,
-                workspaceCwd = conversation.workspaceCwd,
-                // 收尾闸门：随本轮队列项带入（sendQueuedMessage），用户发起的轮次恒为 null
-                loopGate = session.turnLoopGate,
-                memoryDisabled = conversation.memoryDisabled,
-                frozenAnchorIds = frozenAnchorIds,
-                frozenFileAnchorIds = if (assistant.memoryMode == MemoryMode.FILES &&
-                    assistant.enableMemory && !conversation.memoryDisabled
-                ) ensureFrozenFileAnchors(conversation, assistant.memoryId()) else null,
-                // GenerationHandler logs the actual shared plan; no second selection/tokenization for logs.
-                memories = loadedMemories,
-                inputTransformers = transformerChains.inputTransformers,
-                outputTransformers = transformerChains.outputTransformers,
-                // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）；
-                // 已在上面取好并计时（assembledTools）
-                tools = assembledTools,
-                initialRecoveryHint = initialRecoveryHint,
-                // 已完成工具结果的**取消安全落点**（见 GenerationHandler 的 `onMessagesCommitted`）：
-                // emit 走 flow/flowOn，生成协程一被取消就送不到本方法的 collect 端
-                // ⇒ 把「已回填」的快照先记在 session 上，停止路径能补进内存态。
-                consumeStepNotices = if (messageRange == null) ({ live -> if (session.backgroundTaskOwner == generationOwner) workspaceNoticeInbox.atStep(session, live) else live }) else null,
-                onMessagesCommitted = { committed ->
-                    session.lastCommittedMessages.value = committed
-                },
-                // 用量流水的归属：聊天主流程（含工具调用的每一步、每次重试）
-                usageTag = UsageTag(
-                    UsageSource.CHAT,
-                    assistantId = assistant.id,
-                    conversationId = conversationId,
-                ),
-            ).coalesceMessageUpdates(onUndelivered = { pending ->
-                // Cancellation can interrupt a 50ms display window. Preserve its complete
-                // tail synchronously before completion/stop cleanup persists the conversation.
-                val current = getConversationFlow(conversationId).value
-                updateConversation(conversationId, current.mergeGenerationMessages(pending.messages))
-            }).onCompletion {
-                // 可能被取消了，或者意外结束，兜底更新
-                val flowValue = getConversationFlow(conversationId).value
-                val updatedConversation = flowValue.copy(
-                    messageNodes = flowValue.messageNodes.map { node ->
-                        node.copy(messages = node.messages.map { it.finishReasoning() })
-                    },
-                    updateAt = Instant.now()
-                )
-                // #2317 治本（B）：模型整轮零输出时空候选不落库——留着会被后续轮次当作上下文
-                // 原样发出（messagesForRequest 不过滤空消息），UI 上也是一条「隐形回复」。
-                // 摘除目标按 id 寻址（replyMessageId），守卫见 withoutEmptyGenerationCandidate；
-                // 摘除后补一条可见提示（空回复也是一次失败，不能静默）。
-                val trimmed = session.replyMessageId.value
-                    ?.let { updatedConversation.withoutEmptyGenerationCandidate(it) }
-                updateConversation(conversationId, trimmed ?: updatedConversation)
-                if (trimmed != null) {
-                    addError(
-                        IllegalStateException(context.getString(R.string.chat_generation_empty_reply)),
-                        conversationId,
-                        title = context.getString(R.string.error_title_operation),
-                    )
+            val mayNeedScheduledMemorySync = generationOwner.startsWith("sched:") ||
+                promptMessages.any {
+                    it.semanticRole == MessageRole.USER &&
+                        it.annotations.any { ann -> ann is UIMessageAnnotation.ScheduledTrigger }
                 }
+            val scheduledMemorySyncAvailable = assistant.enableMemory && !conversation.memoryDisabled && ModelAbility.TOOL in model.abilities
 
-                // 生成结束：取消 Live Update 通知，后台时发送完成通知
-                appEventBus.emit(
-                    AppEvent.ChatGenerationEnded(
-                        conversationId = conversationId,
-                        senderName = senderName,
-                        contentPreview = updatedConversation.currentMessages.lastOrNull()
-                            ?.toText()?.take(50)?.trim() ?: "",
-                    )
-                )
-            }.collect { chunk ->
-                // 逐块处理也在主线程（AppScope=Main）：把最慢的一块记下来，
-                // 长回复/带附件的回复里真正吃主线程的往往是某一块（模板、附件搬运、落库）。
-                val chunkStartedAt = SystemClock.elapsedRealtime()
-                try {
-                when (chunk) {
-                    is GenerationChunk.Messages -> {
-                        recordScheduledMemorySync(session, chunk.messages, assistant.enableMemory && !conversation.memoryDisabled && ModelAbility.TOOL in model.abilities, generationOwner)
-                        val updatedConversation = getConversationFlow(conversationId).value
-                            .mergeGenerationMessages(chunk.messages)
-                        updateConversation(conversationId, updatedConversation)
-                        session.replyMessageId.value = chunk.messages.lastOrNull()
-                            ?.takeIf { it.role == MessageRole.ASSISTANT }?.id
+            withContext(Dispatchers.Default) {
+                coroutineScope {
+                    var checkpointJob: Job? = null
+                    var lastCheckpointedMessage: UIMessage? = null
+                    try {
+                        generationHandler.generateText(
+                            settings = settings,
+                            model = model,
+                            debugKey = conversationId.toString(),
+                            // 提示缓存/账号类提供商的会话键（对齐上游 #2186 的 prompt_cache_key 语义）
+                            sessionId = conversationId.toString(),
+                            // Phone Use 回合授权：同一轮跨审批续跑时不再弹卡
+                            phoneUseApprovedForTurn = session.phoneUseApprovedForTurn,
+                            onPhoneUseApprovalPending = { toolCallId ->
+                                schedulePhoneUseApprovalTimeout(conversationId, toolCallId)
+                            },
+                            processingStatus = session.processingStatus,
+                            // 护栏取自 session（不是在此处新建）：一次「轮」会跨多次 generateText——
+                            // 工具审批让循环 break 等用户，批准后是新的调用续跑同一轮。挂在 session 上才能
+                            // 跨审批累积，并在新一轮用户消息/重新生成时由本类 reset（见 ToolCallLoopGuard）。
+                            loopGuard = session.toolLoopGuard,
+                            ruleEngine = session.ruleEngine,
+                            workspaceBudget = session.workspaceTurnBudget,
+                            // Phone Use 单轮步数：与 workspace 同款挂 session，跨审批续跑累积
+                            phoneUseBudget = session.phoneUseTurnBudget,
+                            // 思考退化护栏（家族第四员）：同上取 session 上的实例，跨审批续跑累积
+                            thinkingGuard = session.thinkingGuard,
+                            // 上下文预算守卫（design-tool-context-gate §6）：无累积状态，调用点直接新建。
+                            // 自动压缩/条数上限仍是第一道线；本守卫只管工具循环内部增长撞到
+                            // 「剩余 <4K」的优雅停止（与 B 闸 90% 硬限互补：B 管请求前，C 管执行中）
+                            contextGuard = ContextBudgetGuard(
+                                windowTokens = model.effectiveContextLength(settings),
+                            ),
+                            // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
+                            // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
+                            // 且窗口与 messageNodes 索引错位会覆盖边界内的历史节点。
+                            messages = promptMessages,
+                            // 发送窗口：压缩时 = 检查点合成消息 + 边界后原文（design §4.1 三边界对齐）；
+                            // 重生成历史时传 null（= 与 messages 相同）——保持原始轨迹，压缩不改变重生成语义。
+                            // 传「可重算的窗口描述」而非冻结列表：生成循环内每步对 live messages 重算，
+                            // 本回合工具调用的结果才能进入上下文（否则模型重复调用同一工具）。
+                            // 重生成历史时传 null（走完整轨迹，压缩不改变重生成语义）。
+                            compressionWindow = if (messageRange != null) {
+                                null
+                            } else {
+                                conversation.compressionWindow()
+                            },
+                            // 中途自动压缩（上游 bcc649abc）：普通发送路径才启用，重生成一律 null（见闭包定义）。
+                            midTurnCompress = midTurnCompress,
+                            // 输入超窗反应式兜底（§3.1）：普通发送路径才启用，重生成一律 null（同款理由）
+                            contextOverflowRecover = if (messageRange != null) null else recoverContextOverflow,
+                            // 压缩成功后检查点边界变了：窗口按会话内存态重算（压缩的提交段是同步写：
+                            // updateConversationState 已生效，故这里一定拿得到新检查点）。null 时框架保留旧窗口。
+                            refreshCompressionWindow = if (messageRange != null) {
+                                null
+                            } else {
+                                { getConversationFlow(conversationId).value.compressionWindow() }
+                            },
+                            assistant = assistant,
+                            conversationSystemPrompt = conversation.customSystemPrompt,
+                            conversationModeInjectionIds = conversation.modeInjectionIds,
+                            conversationLorebookIds = conversation.lorebookIds,
+                            workspaceCwd = conversation.workspaceCwd,
+                            // 收尾闸门：随本轮队列项带入（sendQueuedMessage），用户发起的轮次恒为 null
+                            loopGate = session.turnLoopGate,
+                            memoryDisabled = conversation.memoryDisabled,
+                            frozenAnchorIds = frozenAnchorIds,
+                            frozenFileAnchorIds = if (assistant.memoryMode == MemoryMode.FILES &&
+                                assistant.enableMemory && !conversation.memoryDisabled
+                            ) ensureFrozenFileAnchors(conversation, assistant.memoryId()) else null,
+                            // GenerationHandler logs the actual shared plan; no second selection/tokenization for logs.
+                            memories = loadedMemories,
+                            inputTransformers = transformerChains.inputTransformers,
+                            outputTransformers = transformerChains.outputTransformers,
+                            // 工具装配集中到 ChatToolFactory（记忆 + 搜索 + 本地 + 对话 + 工作区 + 技能 + MCP）；
+                            // 已在上面取好并计时（assembledTools）
+                            tools = assembledTools,
+                            initialRecoveryHint = initialRecoveryHint,
+                            // 已完成工具结果的**取消安全落点**（见 GenerationHandler 的 `onMessagesCommitted`）：
+                            // emit 走 flow/flowOn，生成协程一被取消就送不到本方法的 collect 端
+                            // ⇒ 把「已回填」的快照先记在 session 上，停止路径能补进内存态。
+                            consumeStepNotices = if (messageRange == null) ({ live -> if (session.backgroundTaskOwner == generationOwner) workspaceNoticeInbox.atStep(session, live) else live }) else null,
+                            onMessagesCommitted = { committed ->
+                                session.lastCommittedMessages.value = committed
+                            },
+                            // 用量流水的归属：聊天主流程（含工具调用的每一步、每次重试）
+                            usageTag = UsageTag(
+                                UsageSource.CHAT,
+                                assistantId = assistant.id,
+                                conversationId = conversationId,
+                            ),
+                            emitIncrementalUpdates = true,
+                        ).coalesceMessageUpdates(onUndelivered = { pending ->
+                            // Cancellation can interrupt a 50ms display window. Preserve its complete
+                            // tail synchronously before completion/stop cleanup persists the conversation.
+                            val current = getConversationFlow(conversationId).value
+                            updateConversationStreaming(conversationId, current.applyGenerationChunk(pending))
+                        }).onCompletion {
+                            // 可能被取消了，或者意外结束，兜底更新
+                            val flowValue = getConversationFlow(conversationId).value
+                            val updatedConversation = flowValue.copy(
+                                messageNodes = flowValue.messageNodes.map { node ->
+                                    node.copy(messages = node.messages.map { it.finishReasoning() })
+                                },
+                                updateAt = Instant.now()
+                            )
+                            // #2317 治本（B）：模型整轮零输出时空候选不落库——留着会被后续轮次当作上下文
+                            // 原样发出（messagesForRequest 不过滤空消息），UI 上也是一条「隐形回复」。
+                            // 摘除目标按 id 寻址（replyMessageId），守卫见 withoutEmptyGenerationCandidate；
+                            // 摘除后补一条可见提示（空回复也是一次失败，不能静默）。
+                            val trimmed = session.replyMessageId.value
+                                ?.let { updatedConversation.withoutEmptyGenerationCandidate(it) }
+                            updateConversation(conversationId, trimmed ?: updatedConversation)
+                            if (trimmed != null) {
+                                addError(
+                                    IllegalStateException(context.getString(R.string.chat_generation_empty_reply)),
+                                    conversationId,
+                                    title = context.getString(R.string.error_title_operation),
+                                )
+                            }
 
-                        // 流式检查点：节流落库（崩溃/被杀时不丢断点前的内容）。
-                        // 节点由末位消息 id 反查（id 寻址，不依赖回写列表下标；THIS_ONLY 重生成
-                        // 变动的是中间节点，见 checkpointGeneratingNode）。
-                        // 失败只记日志——检查点是尽力而为的兜底，不能反过来打断生成。
-                        val now = System.currentTimeMillis()
-                        if (now - lastCheckpointAt >= STREAM_CHECKPOINT_INTERVAL_MS) {
-                            lastCheckpointAt = now
-                            val generatingNodeId = chunk.messages.lastOrNull()?.id
-                                ?.let { updatedConversation.getMessageNodeByMessageId(it)?.id }
-                            if (generatingNodeId != null) {
-                                runCatching {
-                                    // 写库的那份副本标记「未完成」：进程被杀时流收尾那行永远不会执行，
-                                    // 不标记则恢复出来的半截内容看起来像正常完成的回复（见该函数注释）。
-                                    // 内存态不标——它由流收尾的 markLastFinish 写真实状态。
-                                    conversationRepo.checkpointGeneratingNode(
-                                        conversation = updatedConversation.markGeneratingNodeIncompleteById(generatingNodeId),
-                                        nodeId = generatingNodeId,
+                            // 生成结束：取消 Live Update 通知，后台时发送完成通知
+                            appEventBus.emit(
+                                AppEvent.ChatGenerationEnded(
+                                    conversationId = conversationId,
+                                    senderName = senderName,
+                                    contentPreview = updatedConversation.currentMessages.lastOrNull()
+                                        ?.toText()?.take(50)?.trim() ?: "",
+                                )
+                            )
+                        }.collect { chunk ->
+                            val chunkStartedAt = SystemClock.elapsedRealtime()
+                            try {
+                            when (chunk) {
+                                is GenerationChunk.Messages -> {
+                                    val updatedConversation = getConversationFlow(conversationId).value
+                                        .applyGenerationChunk(chunk)
+                                    updateConversationStreaming(conversationId, updatedConversation)
+                                    if (mayNeedScheduledMemorySync) {
+                                        val syncMessages = if (chunk.isDelta) {
+                                            updatedConversation.currentMessages
+                                        } else {
+                                            chunk.messages
+                                        }
+                                        recordScheduledMemorySync(session, syncMessages, scheduledMemorySyncAvailable, generationOwner)
+                                    }
+                                    val latestMessage = chunk.messages.lastOrNull()
+                                    session.replyMessageId.value = latestMessage
+                                        ?.takeIf { it.role == MessageRole.ASSISTANT }?.id
+
+                                    // 流式检查点：单飞异步 IO + 按消息体量自适应节流，不阻塞收集协程与主线程。
+                                    val now = System.currentTimeMillis()
+                                    if (latestMessage != null &&
+                                        latestMessage != lastCheckpointedMessage &&
+                                        checkpointJob?.isActive != true &&
+                                        now - lastCheckpointAt >= streamCheckpointIntervalMs(latestMessage)
+                                    ) {
+                                        lastCheckpointAt = now
+                                        lastCheckpointedMessage = latestMessage
+                                        val generatingNodeId = updatedConversation.getMessageNodeByMessageId(latestMessage.id)?.id
+                                        if (generatingNodeId != null) {
+                                            checkpointJob = launch(Dispatchers.IO) {
+                                                runCatching {
+                                                    conversationRepo.checkpointGeneratingNode(
+                                                        conversation = updatedConversation.markGeneratingNodeIncompleteById(generatingNodeId),
+                                                        nodeId = generatingNodeId,
+                                                    )
+                                                }.onFailure { Log.w(TAG, "stream checkpoint failed", it) }
+                                            }
+                                        }
+                                    }
+
+                                    // 通知等边缘副作用由 ChatNotificationManager 消费；
+                                    // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
+                                    latestMessage?.let { lastMessage ->
+                                        appEventBus.tryEmit(
+                                            AppEvent.ChatGenerationUpdate(conversationId, lastMessage, senderName)
+                                        )
+                                    }
+                                }
+
+                                is GenerationChunk.Notice -> {
+                                    if (chunk.notice.isTerminalStop) {
+                                        workspaceNoticeInbox.suppress(session.externalNoticeRootScope ?: session.backgroundTaskOwner)
+                                    }
+                                    when (val notice = chunk.notice) {
+                                    // 工具调用失控：本轮已**正常结束**（内容会照常落库），这里只补一条用户可见提示，
+                                    // 让「为什么突然停了」有解释。用 addError 而非写进对话：后者会被持久化并在
+                                    // 下一轮当上下文发给模型，变成自己教自己的噪音。
+                                    is GenerationNotice.ToolLoopStopped -> {
+                                        Log.w(
+                                            TAG,
+                                            "tool loop stopped: ${notice.toolName} ×${notice.repeats} (conv=$conversationId)",
+                                        )
+                                        addError(
+                                            ToolCallLoopStoppedException(notice.toolName, notice.repeats),
+                                            conversationId,
+                                            title = context.getString(R.string.chat_tool_loop_title),
+                                        )
+                                    }
+                                    is GenerationNotice.TooManyDenials -> {
+                                        // 聊天路径不会产生（denialGuard 只由无头 run 传入）；
+                                        // 分支仅为 when 穷尽，防御性记录。
+                                        Log.w(TAG, "too many denials: ${notice.denials} (conv=$conversationId)")
+                                        addError(
+                                            IllegalStateException("Too many tool denials (${notice.denials})"),
+                                            conversationId,
+                                            title = context.getString(R.string.chat_tool_loop_title),
+                                        )
+                                    }
+                                    is GenerationNotice.WorkspaceBudgetExhausted -> {
+                                        Log.w(
+                                            TAG,
+                                            "workspace budget exhausted: ${notice.usedChars}/${notice.budgetChars} chars, " +
+                                                "${notice.steps} steps (conv=$conversationId)",
+                                        )
+                                        addError(
+                                            WorkspaceBudgetExhaustedException(
+                                                usedChars = notice.usedChars,
+                                                budgetChars = notice.budgetChars,
+                                                steps = notice.steps,
+                                                by = notice.by,
+                                            ),
+                                            conversationId,
+                                            title = context.getString(R.string.chat_workspace_budget_title),
+                                        )
+                                    }
+                                    is GenerationNotice.PhoneUseBudgetExhausted -> {
+                                        Log.w(
+                                            TAG,
+                                            "phone use steps exhausted: ${notice.steps}/${notice.limit} (conv=$conversationId)",
+                                        )
+                                        addError(
+                                            PhoneUseBudgetExhaustedException(notice.steps, notice.limit),
+                                            conversationId,
+                                            title = context.getString(R.string.chat_phone_use_budget_title),
+                                        )
+                                    }
+                                    is GenerationNotice.ThinkingDegenerationStopped -> {
+                                        Log.w(
+                                            TAG,
+                                            "thinking degeneration stopped: stalled=${notice.stalledCalls} " +
+                                                "restated=${notice.restated} cut=${notice.cutRule}/${notice.repeated} " +
+                                                "(conv=$conversationId)",
+                                        )
+                                        addError(
+                                            ThinkingDegenerationStoppedException(
+                                                stalledCalls = notice.stalledCalls,
+                                                restated = notice.restated,
+                                                cutRule = notice.cutRule,
+                                                repeated = notice.repeated,
+                                            ),
+                                            conversationId,
+                                            title = context.getString(R.string.chat_thinking_loop_title),
+                                        )
+                                    }
+                                    is GenerationNotice.ContextBudgetExhausted -> {
+                                        // 上下文预算守卫（design-tool-context-gate §6）：聊天路径也传入，
+                                        // 工具循环内部增长撞到「剩余 <4K」时优雅停止并在此浮出错误条目
+                                        Log.w(
+                                            TAG,
+                                            "context budget exhausted: ${notice.usedTokens}/${notice.windowTokens} tokens " +
+                                                "(conv=$conversationId)",
+                                        )
+                                        addError(
+                                            IllegalStateException(
+                                                "Context budget exhausted (${notice.usedTokens}/${notice.windowTokens})"
+                                            ),
+                                            conversationId,
+                                            title = context.getString(R.string.agent_run_error_context_budget),
+                                        )
+                                    }
+                                    is GenerationNotice.ToolOutputEvictedOnOverflow -> {
+                                        // 非终止提示（NMoi 11-17 轮）：超窗撤回最大工具结果并同轮重发，
+                                        // 状态栏给出可读提示（不记错误、不压制外部通知）。
+                                        Log.w(
+                                            TAG,
+                                            "overflow tool eviction: tool=${notice.toolName} " +
+                                                "(${notice.originalChars} -> ${notice.shrunkChars} chars, " +
+                                                "attempt=${notice.attempt}, conv=$conversationId)",
+                                        )
+                                        session.processingStatus.value = context.getString(
+                                            R.string.chat_overflow_tool_evicted,
+                                            notice.toolName,
+                                        )
+                                    }
+                                    }
+                                }
+                            }
+                            } finally {
+                                val took = SystemClock.elapsedRealtime() - chunkStartedAt
+                                if (took > 200) {
+                                    Log.w(
+                                        TAG,
+                                        "slow chunk ${chunk::class.simpleName} took ${took}ms on " +
+                                            "${Thread.currentThread().name} (conv=$conversationId)",
                                     )
-                                }.onFailure { Log.w(TAG, "stream checkpoint failed", it) }
+                                }
                             }
                         }
-
-                        // 通知等边缘副作用由 ChatNotificationManager 消费；
-                        // tryEmit 不挂起，事件丢失只影响单次通知更新，不能反压生成链
-                        chunk.messages.lastOrNull()?.let { lastMessage ->
-                            appEventBus.tryEmit(
-                                AppEvent.ChatGenerationUpdate(conversationId, lastMessage, senderName)
-                            )
+                        checkpointJob?.join()
+                    } catch (t: Throwable) {
+                        withContext(NonCancellable) {
+                            checkpointJob?.cancelAndJoin()
                         }
-                    }
-
-                    is GenerationChunk.Notice -> {
-                        if (chunk.notice.isTerminalStop) {
-                            workspaceNoticeInbox.suppress(session.externalNoticeRootScope ?: session.backgroundTaskOwner)
-                        }
-                        when (val notice = chunk.notice) {
-                        // 工具调用失控：本轮已**正常结束**（内容会照常落库），这里只补一条用户可见提示，
-                        // 让「为什么突然停了」有解释。用 addError 而非写进对话：后者会被持久化并在
-                        // 下一轮当上下文发给模型，变成自己教自己的噪音。
-                        is GenerationNotice.ToolLoopStopped -> {
-                            Log.w(
-                                TAG,
-                                "tool loop stopped: ${notice.toolName} ×${notice.repeats} (conv=$conversationId)",
-                            )
-                            addError(
-                                ToolCallLoopStoppedException(notice.toolName, notice.repeats),
-                                conversationId,
-                                title = context.getString(R.string.chat_tool_loop_title),
-                            )
-                        }
-                        is GenerationNotice.TooManyDenials -> {
-                            // 聊天路径不会产生（denialGuard 只由无头 run 传入）；
-                            // 分支仅为 when 穷尽，防御性记录。
-                            Log.w(TAG, "too many denials: ${notice.denials} (conv=$conversationId)")
-                            addError(
-                                IllegalStateException("Too many tool denials (${notice.denials})"),
-                                conversationId,
-                                title = context.getString(R.string.chat_tool_loop_title),
-                            )
-                        }
-                        is GenerationNotice.WorkspaceBudgetExhausted -> {
-                            Log.w(
-                                TAG,
-                                "workspace budget exhausted: ${notice.usedChars}/${notice.budgetChars} chars, " +
-                                    "${notice.steps} steps (conv=$conversationId)",
-                            )
-                            addError(
-                                WorkspaceBudgetExhaustedException(
-                                    usedChars = notice.usedChars,
-                                    budgetChars = notice.budgetChars,
-                                    steps = notice.steps,
-                                    by = notice.by,
-                                ),
-                                conversationId,
-                                title = context.getString(R.string.chat_workspace_budget_title),
-                            )
-                        }
-                        is GenerationNotice.PhoneUseBudgetExhausted -> {
-                            Log.w(
-                                TAG,
-                                "phone use steps exhausted: ${notice.steps}/${notice.limit} (conv=$conversationId)",
-                            )
-                            addError(
-                                PhoneUseBudgetExhaustedException(notice.steps, notice.limit),
-                                conversationId,
-                                title = context.getString(R.string.chat_phone_use_budget_title),
-                            )
-                        }
-                        is GenerationNotice.ThinkingDegenerationStopped -> {
-                            Log.w(
-                                TAG,
-                                "thinking degeneration stopped: stalled=${notice.stalledCalls} " +
-                                    "restated=${notice.restated} cut=${notice.cutRule}/${notice.repeated} " +
-                                    "(conv=$conversationId)",
-                            )
-                            addError(
-                                ThinkingDegenerationStoppedException(
-                                    stalledCalls = notice.stalledCalls,
-                                    restated = notice.restated,
-                                    cutRule = notice.cutRule,
-                                    repeated = notice.repeated,
-                                ),
-                                conversationId,
-                                title = context.getString(R.string.chat_thinking_loop_title),
-                            )
-                        }
-                        is GenerationNotice.ContextBudgetExhausted -> {
-                            // 上下文预算守卫（design-tool-context-gate §6）：聊天路径也传入，
-                            // 工具循环内部增长撞到「剩余 <4K」时优雅停止并在此浮出错误条目
-                            Log.w(
-                                TAG,
-                                "context budget exhausted: ${notice.usedTokens}/${notice.windowTokens} tokens " +
-                                    "(conv=$conversationId)",
-                            )
-                            addError(
-                                IllegalStateException(
-                                    "Context budget exhausted (${notice.usedTokens}/${notice.windowTokens})"
-                                ),
-                                conversationId,
-                                title = context.getString(R.string.agent_run_error_context_budget),
-                            )
-                        }
-                        is GenerationNotice.ToolOutputEvictedOnOverflow -> {
-                            // 非终止提示（NMoi 11-17 轮）：超窗撤回最大工具结果并同轮重发，
-                            // 状态栏给出可读提示（不记错误、不压制外部通知）。
-                            Log.w(
-                                TAG,
-                                "overflow tool eviction: tool=${notice.toolName} " +
-                                    "(${notice.originalChars} -> ${notice.shrunkChars} chars, " +
-                                    "attempt=${notice.attempt}, conv=$conversationId)",
-                            )
-                            session.processingStatus.value = context.getString(
-                                R.string.chat_overflow_tool_evicted,
-                                notice.toolName,
-                            )
-                        }
-                        }
-                    }
-                }
-                } finally {
-                    val took = SystemClock.elapsedRealtime() - chunkStartedAt
-                    if (took > 200) {
-                        Log.w(
-                            TAG,
-                            "slow chunk ${chunk::class.simpleName} took ${took}ms on " +
-                                "${Thread.currentThread().name} (conv=$conversationId)",
-                        )
+                        throw t
                     }
                 }
             }
@@ -3396,6 +3444,14 @@ class ChatService(
         val session = getOrCreateSession(conversationId)
         if (conversation === session.state.value) return
         checkFilesDelete(conversation, session.state.value)
+        session.state.value = conversation
+    }
+
+    /** 流式生成高频更新专用：只刷新内存状态流，跳过全树文件差集扫描。 */
+    private fun updateConversationStreaming(conversationId: Uuid, conversation: Conversation) {
+        if (conversation.id != conversationId) return
+        val session = getOrCreateSession(conversationId)
+        if (conversation === session.state.value) return
         session.state.value = conversation
     }
 

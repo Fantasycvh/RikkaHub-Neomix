@@ -62,6 +62,10 @@ internal fun Flow<GenerationChunk>.coalesceMessageUpdates(
                             received.exceptionOrNull()?.let { throw it }
                             open = false
                         } else if (chunk is GenerationChunk.Messages && chunk.coalescible) {
+                            // 全量建候选快照不能被单条增量覆盖，先刷新待发全量快照再记录新增量
+                            if (pending != null && !pending!!.isDelta && chunk.isDelta) {
+                                publish(pending!!)
+                            }
                             pending = chunk
                             if (remaining == 0L) publish(chunk)
                         } else {

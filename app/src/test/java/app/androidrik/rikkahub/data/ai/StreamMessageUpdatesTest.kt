@@ -138,4 +138,16 @@ class StreamMessageUpdatesTest {
         }.coalesceMessageUpdates(timeSource = testScheduler.timeSource, onUndelivered = { fail() }).toList()
         assertEquals(listOf(first, tail, notice), output)
     }
+
+    @Test fun `coalescible full snapshot is flushed before a subsequent delta replaces pending`() = runTest {
+        val fullFirst = snapshot("init", coalescible = true).copy(isDelta = false)
+        val fullSecond = snapshot("full", coalescible = true).copy(isDelta = false)
+        val delta = snapshot("delta", coalescible = true).copy(isDelta = true)
+        val output = flow {
+            emit(fullFirst)
+            emit(fullSecond)
+            emit(delta)
+        }.coalesceMessageUpdates(timeSource = testScheduler.timeSource, onUndelivered = { fail() }).toList()
+        assertEquals(listOf(fullFirst, fullSecond, delta), output)
+    }
 }

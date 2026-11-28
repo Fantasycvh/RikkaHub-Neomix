@@ -258,6 +258,61 @@ fun Conversation.mergeGenerationMessages(messages: List<UIMessage>): Conversatio
     )
 }
 
+/**
+ * 流式增量合并（按 `message.id` 就地更新，跳过全树扫描与索引重排）。
+ *
+ * 仅用于已建好候选的增量快照；新建候选节点仍须经 [mergeGenerationMessages] 全量落位。
+ */
+fun Conversation.mergeGenerationDelta(deltaMessages: List<UIMessage>): Conversation {
+    if (deltaMessages.isEmpty()) return this
+    if (deltaMessages.size == 1) {
+        return mergeSingleDeltaMessage(deltaMessages[0])
+    }
+    var updated = this
+    for (message in deltaMessages) {
+        updated = updated.mergeSingleDeltaMessage(message)
+    }
+    return updated
+}
+
+private fun Conversation.mergeSingleDeltaMessage(message: UIMessage): Conversation {
+    val lastNode = messageNodes.lastOrNull()
+    if (lastNode != null) {
+        val lastCandidateIdx = lastNode.messages.indexOfFirst { it.id == message.id }
+        if (lastCandidateIdx >= 0) {
+            if (lastNode.messages[lastCandidateIdx] == message) return this
+            val candidates = lastNode.messages.toMutableList()
+            candidates[lastCandidateIdx] = message
+            val updatedNodes = messageNodes.toMutableList()
+            updatedNodes[updatedNodes.lastIndex] = lastNode.copy(messages = candidates)
+            return copy(messageNodes = updatedNodes)
+        }
+    }
+    // 非末节点更新（如 THIS_ONLY 中间节点重生成候选已落位后的流式追加）：倒序搜索
+    for (nodeIndex in messageNodes.indices.reversed()) {
+        val node = messageNodes[nodeIndex]
+        val candidateIdx = node.messages.indexOfFirst { it.id == message.id }
+        if (candidateIdx >= 0) {
+            if (node.messages[candidateIdx] == message) return this
+            val candidates = node.messages.toMutableList()
+            candidates[candidateIdx] = message
+            val updatedNodes = messageNodes.toMutableList()
+            updatedNodes[nodeIndex] = node.copy(messages = candidates)
+            return copy(messageNodes = updatedNodes)
+        }
+    }
+    // 防御兜底：未命中已知 id 时追加到当前激活叶子之后
+    val parent = activeLeafNodeId ?: pathNodes().lastOrNull()?.id
+    val newNode = message.toMessageNode().copy(parentId = parent)
+    return copy(
+        messageNodes = messageNodes + newNode,
+        activeLeafNodeId = newNode.id,
+    )
+}
+
+fun Conversation.applyGenerationChunk(chunk: app.androidrik.rikkahub.data.ai.GenerationChunk.Messages): Conversation =
+    if (chunk.isDelta) mergeGenerationDelta(chunk.messages) else mergeGenerationMessages(chunk.messages)
+
 /** [markGeneratingNodeIncomplete] 的 id 寻址版（流式检查点调用点用它）。 */
 fun Conversation.markGeneratingNodeIncompleteById(nodeId: Uuid): Conversation {
     val index = messageNodes.indexOfFirst { it.id == nodeId }

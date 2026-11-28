@@ -7,6 +7,8 @@ sealed interface GenerationChunk {
         val messages: List<UIMessage>,
         /** Only incremental content snapshots may be delayed; lifecycle/tool boundaries stay immediate. */
         val coalescible: Boolean = false,
+        /** True 时 [messages] 仅包含本轮发生变更的增量消息（如流式末条助手消息），按 id 就地合并。 */
+        val isDelta: Boolean = false,
     ) : GenerationChunk
 
     /**

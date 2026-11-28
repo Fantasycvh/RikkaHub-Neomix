@@ -363,6 +363,8 @@ class GenerationHandler(
     /** 每次 provider 请求写一行用量流水（见 [UsageRecorder]） */
     private val usageRecorder: UsageRecorder,
     private val memoryFiles: MemoryFileRepository? = null,
+    private val firstChunkIdleTimeoutMs: Long = DEFAULT_FIRST_CHUNK_IDLE_TIMEOUT_MS,
+    private val midStreamIdleTimeoutMs: Long = DEFAULT_MID_STREAM_IDLE_TIMEOUT_MS,
 ) {
     // 批次 10 拆出的翻译生成器（translateText 公开签名不变，委托过去；ChatService 调用面不动）
     private val translationGenerator = TranslationGenerator(context, providerManager, usageRecorder)
@@ -565,6 +567,8 @@ class GenerationHandler(
          */
         usageTag: UsageTag = UsageTag(UsageSource.CHAT),
         memoryToolBinding: String? = null,
+        /** True 时已落位的流式助手消息后续增量仅发射单条 `isDelta = true` 快照，由调用方按 id 合并。 */
+        emitIncrementalUpdates: Boolean = false,
     ): Flow<GenerationChunk> = flow {
         val phoneUseDisplay = if (tools.any { it.name == PHONE_USE_TOOL_NAME }) {
             phoneUseBudget.pinDisplay(settings.displaySetting.phoneUseTargetMode)
@@ -656,6 +660,8 @@ class GenerationHandler(
             val planToolAvailable = tools.any { it.name == TODO_TOOL_NAME } &&
                 targetModel.abilities.contains(ModelAbility.TOOL)
             var planWrittenThisTurn = false
+            // 已通过全量包建过节点/候选的助手消息 id；后续可合并增量对这些 id 仅发单条 delta。
+            val emittedAssistantIds = mutableSetOf<Uuid>()
 
             for (stepIndex in 0 until maxSteps) {
                 Log.i(TAG, "streamText: start step #$stepIndex (${targetModel.id})")
@@ -770,18 +776,42 @@ class GenerationHandler(
                                 assistant = assistant,
                                 settings = settings
                             )
-                            emit(
-                                GenerationChunk.Messages(
-                                    messages.streamVisualTransforms(
-                                        transformers = outputTransformers,
-                                        context = context,
-                                        model = targetModel,
-                                        assistant = assistant,
-                                        settings = settings
-                                    ),
-                                    coalescible = coalescible,
-                                )
+                            val visualMessages = messages.streamVisualTransforms(
+                                transformers = outputTransformers,
+                                context = context,
+                                model = targetModel,
+                                assistant = assistant,
+                                settings = settings
                             )
+                            val tail = visualMessages.lastOrNull()
+                            if (emitIncrementalUpdates && tail != null && tail.role == MessageRole.ASSISTANT) {
+                                val alreadyEmitted = tail.id in emittedAssistantIds
+                                if (alreadyEmitted && coalescible) {
+                                    emit(
+                                        GenerationChunk.Messages(
+                                            messages = listOf(tail),
+                                            coalescible = true,
+                                            isDelta = true,
+                                        )
+                                    )
+                                } else {
+                                    emittedAssistantIds += tail.id
+                                    emit(
+                                        GenerationChunk.Messages(
+                                            messages = visualMessages,
+                                            coalescible = coalescible && alreadyEmitted,
+                                            isDelta = false,
+                                        )
+                                    )
+                                }
+                            } else {
+                                emit(
+                                    GenerationChunk.Messages(
+                                        visualMessages,
+                                        coalescible = coalescible,
+                                    )
+                                )
+                            }
                         },
                         transformers = inputTransformers,
                         model = targetModel,
@@ -2025,6 +2055,9 @@ class GenerationHandler(
                                 }
                             }
 
+                            var receivedAnyChunk = false
+                            var lastActivityMark = timeSource.markNow()
+
                             try {
                                 var open = true
                                 while (open) {
@@ -2033,10 +2066,25 @@ class GenerationHandler(
                                         (intervalMs - it.elapsedNow().inWholeMilliseconds).coerceAtLeast(0L)
                                     } ?: 0L
                                     val hasPending = chunkHandler.hasBufferedChanges || pendingUsageUpdate
+                                    val idleLimitMs = if (receivedAnyChunk) midStreamIdleTimeoutMs else firstChunkIdleTimeoutMs
+                                    val idleRemainingMs = if (idleLimitMs > 0L) {
+                                        (idleLimitMs - lastActivityMark.elapsedNow().inWholeMilliseconds).coerceAtLeast(0L)
+                                    } else {
+                                        Long.MAX_VALUE
+                                    }
                                     select<Unit> {
                                         if (hasPending) {
                                             onTimeout(remaining) {
                                                 flushBufferedStream(coalescible = true)
+                                            }
+                                        } else if (idleLimitMs > 0L) {
+                                            onTimeout(idleRemainingMs) {
+                                                val phase = if (receivedAnyChunk) "mid-stream" else "first-chunk"
+                                                Log.w(
+                                                    TAG,
+                                                    "generateInternal: stream idle timeout during $phase (${idleLimitMs}ms)",
+                                                )
+                                                throw StreamIdleTimeoutException(phase = phase, timeoutMs = idleLimitMs)
                                             }
                                         }
                                         input.onReceiveCatching { received ->
@@ -2053,6 +2101,8 @@ class GenerationHandler(
                                             var current: StreamChunk? = first
                                             while (current != null) {
                                                 val chunk = current
+                                                receivedAnyChunk = true
+                                                lastActivityMark = timeSource.markNow()
                                                 processChunk(chunk)
                                                 if (chunk.isCoalescibleStreamChunk()) {
                                                     val currentInterval = adaptiveStreamBatchIntervalMs(chunkHandler.activeContentChars)
@@ -2348,6 +2398,15 @@ private fun StreamChunk.isCoalescibleStreamChunk(): Boolean =
         this is StreamChunk.ServerToolInputDelta ||
         this is StreamChunk.ImageDelta ||
         this is StreamChunk.Usage
+
+internal const val DEFAULT_FIRST_CHUNK_IDLE_TIMEOUT_MS = 300_000L
+internal const val DEFAULT_MID_STREAM_IDLE_TIMEOUT_MS = 90_000L
+
+/** 流式连接长时间无任何数据到达时由分段看门狗抛出（继承 IOException 以接入重试与半截草稿保留）。 */
+class StreamIdleTimeoutException(
+    val phase: String,
+    val timeoutMs: Long,
+) : java.io.IOException("Stream stalled during $phase for ${timeoutMs}ms")
 
 /**
  * 用工具自带的**外层上限**包一层 [withTimeout]（见 [Tool.executionTimeoutMillis]）。
