@@ -1176,9 +1176,14 @@ class GenerationHandler(
                     it.approvalState !is ToolApprovalState.Answered &&
                     it.approvalState !is ToolApprovalState.Pending
             }
+            // messages is the full persistence baseline. Compressed history must not
+            // consume the budget of results that are sent only in the active window.
+            fun toolBudgetMessages(): List<UIMessage> =
+                applyOverflowEvictions(window?.applyTo(messages) ?: messages, overflowEvictions)
+            fun toolBudgetUsedTokens(): Int = estimateTokenCount(toolBudgetMessages()) + overheadTokens
             val batchBudget = ToolOutputBatchBudget(
                 windowTokens = targetModel.effectiveContextLength(settings.contextLengthOverride),
-                initialUsedTokens = estimateTokenCount(messages),
+                initialUsedTokens = toolBudgetUsedTokens(),
                 batchSize = executableToolCount.coerceAtLeast(1),
             )
 
@@ -1239,7 +1244,7 @@ class GenerationHandler(
                 // 上下文预算：**执行前**判定（与另外两个护栏不同）——撞满窗口是硬墙，
                 // provider 会直接报错，先停能保住已经攒到的结果
                 if (contextGuard != null && stopNotice == null) {
-                    val budget = contextGuard.evaluate(messages, overheadTokens)
+                    val budget = contextGuard.evaluate(toolBudgetMessages(), overheadTokens)
                     Log.i(TAG, "generateText: context budget ${budget.describe()}")
                     if (budget.verdict is ContextBudget.Verdict.Exhausted) {
                         Log.w(
@@ -1257,7 +1262,7 @@ class GenerationHandler(
                 // 预留 `min(批次份额, 全局档位上限)`，避免并行工具合力撑爆窗口；能力判定放 runCatching 外
                 val reservation = batchBudget.reserve(
                     toolCallId = tool.toolCallId,
-                    currentUsedTokens = estimateTokenCount(messages),
+                    currentUsedTokens = toolBudgetUsedTokens(),
                 )
                 val outputBudget = reservation.budgetChars
                 val hasShellAccess = toolsInternal.any { it.name == "workspace_shell" }
@@ -1628,7 +1633,7 @@ class GenerationHandler(
                 stepIndex < maxSteps - 1 &&
                 messages.last().role == MessageRole.ASSISTANT
             ) {
-                val budget = contextGuard?.evaluate(messages, overheadTokens)
+                val budget = contextGuard?.evaluate(toolBudgetMessages(), overheadTokens)
                 // 占用口径：守卫的 usage 锚点是「**上一次请求**发出去的量」，不含刚回填的
                 // 工具输出（它们要下一次请求才计入）。而中途压缩的触发恰恰来自这批输出——
                 // 只看锚点会晚一批，若这批输出直接把窗口撞满，压缩就来不及了（请求 400）。

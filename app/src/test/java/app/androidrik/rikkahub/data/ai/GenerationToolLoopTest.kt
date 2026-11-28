@@ -60,6 +60,41 @@ import kotlin.uuid.Uuid
  * 用例互相独立：三处修复各自回滚一次都能让对应用例变红（见类尾注释里的实测记录）。
  */
 class GenerationToolLoopTest {
+    @Test fun `compressed history does not exhaust serial or parallel tool result budgets`() = runBlocking {
+        for (parallel in listOf(false, true)) {
+            val history = listOf(
+                UIMessage.user("historical value 12345 ".repeat(10_000)),
+                UIMessage.assistant("old answer"),
+                UIMessage.user("current task"),
+            )
+            assertTrue(app.androidrik.rikkahub.utils.estimateTokenCount(history) > 8_000)
+            val tools = (1..if (parallel) 2 else 1).map { index ->
+                tool("read_$index", concurrentSafe = parallel) { listOf(UIMessagePart.Text("exact result $index")) }
+            }
+            val requests = mutableListOf<List<UIMessage>>()
+            val provider = ScriptedProvider { index, messages ->
+                requests += messages
+                if (index == 0) toolCallStep(*tools.mapIndexed { i, tool -> toolCall("call-$i", tool.name) }.toTypedArray())
+                else textStep("done")
+            }
+            handler(provider).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = model.id, contextLengthOverride = 8_000),
+                model = model,
+                messages = history,
+                compressionWindow = Conversation.CompressionWindow(UIMessage.user("older turns summarized"), 1),
+                contextGuard = ContextBudgetGuard(windowTokens = 8_000),
+                assistant = Assistant(chatModelId = model.id),
+                tools = tools,
+            ).collect {}
+            assertEquals(2, requests.size)
+            val results = requests.last().flatMap { it.getTools() }.associateBy { it.toolName }
+            tools.forEachIndexed { index, tool ->
+                assertEquals(listOf(UIMessagePart.Text("exact result ${index + 1}")), results.getValue(tool.name).output)
+            }
+            assertFalse(requests.last().any { it.toText().orEmpty().contains("historical value") })
+        }
+    }
+
     @Test fun `streaming deltas can coalesce while finish boundaries stay immediate`() = runBlocking {
         val provider = ScriptedProvider { _, _ -> textStep("complete text") }
         val chunks = mutableListOf<GenerationChunk.Messages>()
