@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.text.AnnotatedString
@@ -92,11 +93,12 @@ internal fun rememberAsyncHighlightedCode(
 
     var highlighted by remember(highlighter) { mutableStateOf(cached) }
     var highlightedKey by remember(highlighter) { mutableStateOf(if (cached != null) cacheKey else null) }
+    val currentRequest by rememberUpdatedState(HighlightRequest(code, normalizedLanguage, colors, streaming))
 
     LaunchedEffect(highlighter) {
         var lastHighlightMark: kotlin.time.TimeMark? = null
         val timeSource = TimeSource.Monotonic
-        snapshotFlow { HighlightRequest(code, normalizedLanguage, colors, streaming) }
+        snapshotFlow { currentRequest }
             .distinctUntilChanged()
             .conflate()
             .collect { request ->
