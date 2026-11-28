@@ -18,7 +18,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
@@ -39,7 +38,7 @@ import me.rerere.hugeicons.stroke.View
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
 import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
-import app.androidrik.rikkahub.ui.components.webview.InlineWebViewSlotRegistry
+import app.androidrik.rikkahub.ui.components.webview.rememberAutoInlineWebViewSlot
 import app.androidrik.rikkahub.ui.components.webview.WEB_VIEW_ASSET_URL
 import app.androidrik.rikkahub.ui.components.webview.WEB_VIEW_BASE_URL
 import app.androidrik.rikkahub.ui.components.webview.WebView
@@ -105,15 +104,9 @@ fun Mermaid(
         )
     }
 
-    val inlineSlotId = remember(code) { "mermaid:${code.hashCode()}:${code.length}" }
-    var renderInline by remember(inlineSlotId) {
-        mutableStateOf(InlineWebViewSlotRegistry.tryAcquireAutoSlot(inlineSlotId))
-    }
-    DisposableEffect(inlineSlotId, renderInline) {
-        onDispose {
-            InlineWebViewSlotRegistry.releaseAutoSlot(inlineSlotId)
-        }
-    }
+    var manualRender by remember(code) { mutableStateOf(false) }
+    val autoRender = rememberAutoInlineWebViewSlot()
+    val renderInline = manualRender || autoRender
 
     val html = remember(code, colorScheme, darkMode, webSkin, accent) {
         buildMermaidHtml(
@@ -173,7 +166,7 @@ fun Mermaid(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    TextButton(onClick = { renderInline = true }) {
+                    TextButton(onClick = { manualRender = true }) {
                         Text("点击渲染")
                     }
                 }

@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -42,10 +43,10 @@ internal const val MAX_AUTO_INLINE_WEBVIEWS = 2
  * 限制自动挂载的内联 WebView 并发数量，防止复杂回复包含多张图表/HTML 块时同时启动过多渲染进程导致 OOM。
  */
 internal object InlineWebViewSlotRegistry {
-    private val activeAutoSlots = LinkedHashSet<String>()
+    private val activeAutoSlots = LinkedHashSet<Any>()
 
     @Synchronized
-    fun tryAcquireAutoSlot(slotId: String, maxSlots: Int = MAX_AUTO_INLINE_WEBVIEWS): Boolean {
+    fun tryAcquireAutoSlot(slotId: Any, maxSlots: Int = MAX_AUTO_INLINE_WEBVIEWS): Boolean {
         if (slotId in activeAutoSlots) return true
         if (activeAutoSlots.size >= maxSlots) return false
         activeAutoSlots += slotId
@@ -53,7 +54,7 @@ internal object InlineWebViewSlotRegistry {
     }
 
     @Synchronized
-    fun releaseAutoSlot(slotId: String) {
+    fun releaseAutoSlot(slotId: Any) {
         activeAutoSlots.remove(slotId)
     }
 
@@ -61,6 +62,21 @@ internal object InlineWebViewSlotRegistry {
     internal fun clearForTest() {
         activeAutoSlots.clear()
     }
+}
+
+/** 每个组件实例独立占槽；只在组合提交后申请，且只释放自己成功申请的槽位。 */
+@Composable
+internal fun rememberAutoInlineWebViewSlot(enabled: Boolean = true): Boolean {
+    val slotId = remember { Any() }
+    var acquired by remember(enabled) { mutableStateOf(false) }
+    DisposableEffect(slotId, enabled) {
+        val owned = enabled && InlineWebViewSlotRegistry.tryAcquireAutoSlot(slotId)
+        acquired = owned
+        onDispose {
+            if (owned) InlineWebViewSlotRegistry.releaseAutoSlot(slotId)
+        }
+    }
+    return acquired
 }
 
 internal class MyWebChromeClient(private val state: WebViewState) : WebChromeClient() {

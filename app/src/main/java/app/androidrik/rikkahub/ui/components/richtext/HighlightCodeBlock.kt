@@ -40,7 +40,6 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,7 +80,7 @@ import me.rerere.hugeicons.stroke.Eye
 import me.rerere.hugeicons.stroke.View
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
-import app.androidrik.rikkahub.ui.components.webview.InlineWebViewSlotRegistry
+import app.androidrik.rikkahub.ui.components.webview.rememberAutoInlineWebViewSlot
 import app.androidrik.rikkahub.ui.components.webview.WebView
 import app.androidrik.rikkahub.ui.components.webview.WebViewContentCache
 import app.androidrik.rikkahub.ui.components.webview.rememberWebViewState
@@ -141,19 +140,9 @@ fun HighlightCodeBlock(
     val settings = LocalSettings.current
     val normalizedLanguage = remember(language) { language.lowercase() }
     val canInlinePreview = completeCodeBlock && normalizedLanguage in PREVIEWABLE_LANGUAGES
-    val inlineSlotId = remember(normalizedLanguage, code) {
-        "code:$normalizedLanguage:${code.hashCode()}:${code.length}"
-    }
-    var previewMode by remember(canInlinePreview, inlineSlotId) {
-        mutableStateOf(canInlinePreview && InlineWebViewSlotRegistry.tryAcquireAutoSlot(inlineSlotId))
-    }
-    if (canInlinePreview) {
-        DisposableEffect(inlineSlotId, previewMode) {
-            onDispose {
-                InlineWebViewSlotRegistry.releaseAutoSlot(inlineSlotId)
-            }
-        }
-    }
+    var previewOverride by remember(canInlinePreview, code, normalizedLanguage) { mutableStateOf<Boolean?>(null) }
+    val autoPreview = rememberAutoInlineWebViewSlot(canInlinePreview && previewOverride != false)
+    val previewMode = previewOverride ?: autoPreview
 
     var isExpanded by remember(settings.displaySetting.codeBlockAutoCollapse) {
         mutableStateOf(!settings.displaySetting.codeBlockAutoCollapse)
@@ -201,7 +190,7 @@ fun HighlightCodeBlock(
                 previewMode = previewMode,
                 canInlinePreview = canInlinePreview,
                 onTogglePreviewMode = {
-                    previewMode = !previewMode
+                                    previewOverride = !previewMode
                 },
             )
         }
