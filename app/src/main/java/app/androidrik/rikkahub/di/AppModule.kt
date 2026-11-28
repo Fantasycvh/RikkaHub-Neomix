@@ -287,6 +287,7 @@ val appModule = module {
             usageRecorder = get(),
             taskHandoffs = get(),
             memoryFiles = get(),
+            chatDraftStore = get(),
         )
     }
 

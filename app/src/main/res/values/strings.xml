@@ -680,6 +680,7 @@
   <string name="chat_page_new_message">New message</string>
   <string name="chat_page_nickname_placeholder">Please enter nickname</string>
   <string name="chat_page_no_conversations">No conversations</string>
+  <string name="conversation_draft_badge">Draft</string>
   <string name="chat_page_regenerate_title">Regenerate title</string>
   <string name="chat_page_save">Save</string>
   <string name="chat_page_scroll_to_bottom">Scroll to bottom</string>

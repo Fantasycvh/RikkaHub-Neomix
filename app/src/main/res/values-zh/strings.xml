@@ -717,6 +717,7 @@
   <string name="chat_page_new_message">新消息</string>
   <string name="chat_page_nickname_placeholder">请输入昵称</string>
   <string name="chat_page_no_conversations">没有对话记录</string>
+  <string name="conversation_draft_badge">草稿</string>
   <string name="chat_page_regenerate_title">重新生成标题</string>
   <string name="chat_page_save">保存</string>
   <string name="chat_page_scroll_to_bottom">滚动到底部</string>

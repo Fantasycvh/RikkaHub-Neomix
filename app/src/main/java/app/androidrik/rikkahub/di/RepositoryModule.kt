@@ -1,7 +1,10 @@
 package app.androidrik.rikkahub.di
 
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.datastore.SettingsStore
+import app.androidrik.rikkahub.data.draft.CHAT_DRAFTS_FILE_NAME
+import app.androidrik.rikkahub.data.draft.ChatDraftStore
 import app.androidrik.rikkahub.data.sync.WorkspaceBackupHelper
 import android.content.Context
 import app.androidrik.rikkahub.data.files.FileConversationScanner
@@ -37,7 +40,13 @@ import java.io.File
 val repositoryModule = module {
     single { MemoryFileRepository(get()) }
     single {
-        ConversationRepository(get(), get(), get(), get(), get(), get(), get(), get(), get())
+        ChatDraftStore(
+            storageFile = File(get<FilesManager>().getFilesDir(), CHAT_DRAFTS_FILE_NAME),
+            scope = get<AppScope>(),
+        )
+    }
+    single {
+        ConversationRepository(get(), get(), get(), get(), get(), get(), get(), get(), get(), get())
     }
 
     single {

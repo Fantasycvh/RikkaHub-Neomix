@@ -11,6 +11,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -29,9 +30,14 @@ import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.isEmptyInputMessage
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.AppScope
 import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.datastore.SettingsStore
 import app.androidrik.rikkahub.data.datastore.getCurrentAssistant
+import app.androidrik.rikkahub.data.draft.ChatDraft
+import app.androidrik.rikkahub.data.draft.ChatDraftStore
+import app.androidrik.rikkahub.data.draft.ConversationDraftEvent
+import app.androidrik.rikkahub.data.draft.localDraftFileExists
 import app.androidrik.rikkahub.utils.DEFAULT_CONTEXT_LENGTH
 import app.androidrik.rikkahub.utils.effectiveContextLength
 import app.androidrik.rikkahub.data.export.ExportDisplayConfig
@@ -87,13 +93,23 @@ class ChatVM(
     private val chatService: ChatService,
     private val filesManager: FilesManager,
     private val favoriteRepository: FavoriteRepository,
+    private val chatDraftStore: ChatDraftStore,
+    private val appScope: AppScope,
 ) : ViewModel() {
     private val _conversationId: Uuid = Uuid.parse(id)
     val conversation: StateFlow<Conversation> = chatService.getConversationFlow(_conversationId)
+    val draftConversationIds: StateFlow<Set<Uuid>> = chatDraftStore.draftConversationIds
     var chatListInitialized by mutableStateOf(false) // 聊天列表是否已经滚动到底部
 
     // 聊天输入状态 - 保存在 ViewModel 中避免 TransactionTooLargeException
     val inputState = ChatInputState()
+    private val draftRestoreCompleted = CompletableDeferred<Unit>()
+    private var draftRestored = false
+    private var skipDraftFlush = false
+    private var lastSyncedDraft: ChatDraft = ChatDraft()
+    private val conversationInitialized = CompletableDeferred<Unit>()
+    private var draftConversationIndexed = false
+    private var draftIndexJob: Job? = null
     // Navigation payloads are applied once per ViewModel, including configuration changes.
     internal var initializedShareText: String? = null
     internal var initializedShareFiles: List<android.net.Uri>? = null
@@ -118,9 +134,71 @@ class ChatVM(
         // 添加对话引用
         chatService.addConversationReference(_conversationId)
 
-        // 初始化对话
+        if (chatDraftStore.isLoaded) {
+            chatDraftStore.getImmediate(_conversationId)?.let(::restoreDraftIntoInput)
+            draftRestored = true
+            draftRestoreCompleted.complete(Unit)
+        }
+
+        // 外部路径（如压栈进入历史记录页）删除当前会话时，清空栈底仍存活的输入态防幽灵残留
         viewModelScope.launch {
+            chatDraftStore.conversationEvents.collect { event ->
+                if (event.conversationId == _conversationId && !skipDraftFlush) {
+                    when (event) {
+                        is ConversationDraftEvent.Deleted -> {
+                            lastSyncedDraft = ChatDraft()
+                            inputState.clearInput()
+                        }
+                        is ConversationDraftEvent.Restored -> {
+                            // 删除后用户若已开始新输入，不用撤销快照覆盖活跃编辑态。
+                            if (inputState.toDraft().isEmpty) {
+                                chatDraftStore.getImmediate(_conversationId)?.let(::restoreDraftIntoInput)
+                                reconcileEditingTargetAfterLoad()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 会话内删除消息 / 剪枝子树 / 重生成移除下游后，若当前编辑目标已消失则立即对账退出编辑态
+        viewModelScope.launch {
+            conversation.collect {
+                if (draftRestored) {
+                    reconcileEditingTargetAfterLoad()
+                }
+            }
+        }
+
+        // 初始化对话
+        val initialization = appScope.launch {
+            if (!draftRestored) {
+                try {
+                    val diskDraft = chatDraftStore.get(_conversationId)
+                    if (diskDraft != null && inputState.toDraft().isEmpty) {
+                        restoreDraftIntoInput(diskDraft)
+                    }
+                    draftRestored = true
+                    val current = inputState.toDraft()
+                    if (!current.isEmpty && !current.contentEquals(lastSyncedDraft)) {
+                        lastSyncedDraft = current
+                        chatDraftStore.save(_conversationId, current)
+                    }
+                } finally {
+                    draftRestoreCompleted.complete(Unit)
+                }
+            }
             chatService.initializeConversation(_conversationId)
+            conversationInitialized.complete(Unit)
+            ensureDraftConversationIndexed()
+            reconcileEditingTargetAfterLoad()
+        }
+        initialization.invokeOnCompletion { error ->
+            if (error != null) conversationInitialized.completeExceptionally(error)
+        }
+        viewModelScope.launch {
+            initialization.join()
+            if (initialization.isCancelled) return@launch
             // 初始化之后再预热：此时 settings/conversation 快照已稳定，预览 join 才对得上
             chatService.prewarmPromptTokenCounts(
                 _conversationId,
@@ -132,7 +210,59 @@ class ChatVM(
         context.writeStringPreference("lastConversationId", _conversationId.toString())
     }
 
+    suspend fun awaitDraftRestored() {
+        draftRestoreCompleted.await()
+    }
+
+    private fun restoreDraftIntoInput(draft: ChatDraft) {
+        inputState.restoreDraft(draft) { url ->
+            localDraftFileExists(url, filesManager.getFilesDir())
+        }
+        val restored = inputState.toDraft()
+        lastSyncedDraft = restored
+        if (!restored.contentEquals(draft)) {
+            chatDraftStore.save(_conversationId, restored)
+        }
+    }
+
+    private fun reconcileEditingTargetAfterLoad() {
+        val editingId = inputState.editingMessage ?: return
+        val loadedConv = conversation.value
+        if (loadedConv.newConversation || loadedConv.isSparse) return
+        if (loadedConv.getMessageNodeByMessageId(editingId) == null) {
+            inputState.reconcileDeletedEditingTarget()
+            onInputDraftChanged(inputState.toDraft())
+        }
+    }
+
+    fun onInputDraftChanged(draft: ChatDraft) {
+        if (!draftRestored || skipDraftFlush) return
+        if (draft.contentEquals(lastSyncedDraft)) return
+        lastSyncedDraft = draft
+        chatDraftStore.save(_conversationId, draft, immediate = draft.isEmpty)
+        if (!draft.isEmpty) ensureDraftConversationIndexed()
+    }
+
+    private fun ensureDraftConversationIndexed() {
+        if (draftConversationIndexed || skipDraftFlush || draftIndexJob?.isActive == true) return
+        draftIndexJob = appScope.launch {
+            conversationInitialized.await()
+            if (!skipDraftFlush) {
+                draftConversationIndexed = conversationRepo.ensureDraftConversation(conversation.value)
+            }
+        }
+    }
+
+    fun flushInputDraftNow() {
+        if (!draftRestored || skipDraftFlush) return
+        val current = inputState.toDraft()
+        lastSyncedDraft = current
+        chatDraftStore.save(_conversationId, current, immediate = true)
+        if (!current.isEmpty) ensureDraftConversationIndexed()
+    }
+
     override fun onCleared() {
+        flushInputDraftNow()
         super.onCleared()
         // 移除对话引用
         chatService.removeConversationReference(_conversationId)
@@ -615,6 +745,12 @@ class ChatVM(
 
     fun deleteConversation(conversation: Conversation): Job =
         viewModelScope.launch {
+            if (conversation.id == _conversationId) {
+                skipDraftFlush = true
+                lastSyncedDraft = ChatDraft()
+                inputState.clearInput()
+                chatDraftStore.remove(_conversationId)
+            }
             conversationRepo.deleteConversation(conversation)
         }
 

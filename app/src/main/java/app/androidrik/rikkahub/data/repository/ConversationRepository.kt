@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.map
 import app.androidrik.rikkahub.data.db.AppDatabase
 import app.androidrik.rikkahub.data.db.fts.MessageFtsManager
 import app.androidrik.rikkahub.data.db.fts.MessageSearchSort
+import app.androidrik.rikkahub.data.draft.ChatDraft
+import app.androidrik.rikkahub.data.draft.ChatDraftStore
+import app.androidrik.rikkahub.data.draft.localDraftNormalizedPath
 import app.androidrik.rikkahub.data.db.dao.CompressionCheckpointDAO
 import app.androidrik.rikkahub.data.db.dao.ConversationDAO
 import app.androidrik.rikkahub.data.db.dao.FavoriteDAO
@@ -72,6 +75,7 @@ class ConversationRepository(
     private val checkpointDAO: CompressionCheckpointDAO,
     private val messageFileRefDAO: MessageFileRefDAO,
     private val mediaCreationRepository: MediaCreationRepository? = null,
+    private val chatDraftStore: ChatDraftStore? = null,
 ) {
     /** filesDir 是启动后不变的应用目录；同步核心无状态，lazy 单份即可 */
     private val fileRefSync by lazy {
@@ -81,6 +85,8 @@ class ConversationRepository(
     // 批次 9 拆出的两个存储：Koin 不动，仓库内部组装（调用面保持原样）。
     private val checkpointStore = CompressionCheckpointStore(checkpointDAO)
     private val nodeStore = ConversationNodeStore(messageNodeDAO, favoriteDAO, database)
+    /** 历史页可撤销删除暂存的草稿：撤销恢复时还原草稿，到期清理时一并回收其独占临时附件。 */
+    private val pendingUndoDrafts = java.util.concurrent.ConcurrentHashMap<Uuid, ChatDraft>()
     suspend fun updateConversationWorkspaceCwd(conversationId: Uuid, cwd: String?) {
         conversationDAO.updateWorkspaceCwd(conversationId.toString(), cwd.orEmpty())
     }
@@ -563,6 +569,17 @@ class ConversationRepository(
         }.toMap()
     }
 
+    /** 草稿只补建缺失的会话入口，绝不覆盖已发送消息或复活已删除会话。 */
+    suspend fun ensureDraftConversation(conversation: Conversation): Boolean = database.withTransaction {
+        val id = conversation.id.toString()
+        if (conversationDAO.existsById(id)) return@withTransaction true
+        if (database.lanConversationTombstoneDao().time(id) != null ||
+            chatDraftStore?.getImmediate(conversation.id) == null
+        ) return@withTransaction false
+        insertConversation(conversation)
+        true
+    }
+
     suspend fun insertConversation(conversation: Conversation) {
         database.withTransaction {
             val id = conversation.id.toString()
@@ -594,6 +611,9 @@ class ConversationRepository(
             if (deletedAt != null) tombstones.clear(id)
         }
         messageFtsManager.indexConversation(conversation)
+        pendingUndoDrafts.remove(conversation.id)?.let { draft ->
+            chatDraftStore?.restore(conversation.id, draft)
+        }
     }
 
     internal suspend fun applyLanConversation(incoming: Conversation, previous: Conversation?) {
@@ -857,24 +877,40 @@ class ConversationRepository(
             val deletedAt = propagatedAt ?: maxOf(System.currentTimeMillis(), present.updateAt + 1)
             markLanDeletion(conversationId, deletedAt)
         }
+        val removedDraft = chatDraftStore?.onConversationDeleted(conversation.id)
         // 历史页撤销场景：deleteFiles=false 时保留附件文件，
         // 撤销窗口结束后由调用方清理（否则撤销恢复的对话附件会永久丢失）。
         if (deleteFiles) {
-            deleteFilesWithReferenceCheck(fullConversation.files)
+            pendingUndoDrafts.remove(conversation.id)
+            val draftUris = removedDraft?.referencedLocalFileUrls().orEmpty().map { Uri.parse(it) }
+            deleteFilesWithReferenceCheck(fullConversation.files + draftUris)
+        } else if (propagatedAt == null && removedDraft != null) {
+            pendingUndoDrafts[conversation.id] = removedDraft
         }
     }
 
     /**
      * 删除会话附件前做引用计数保护：fork/分支复制、同一附件发到多个会话时，
-     * 文件 URI 可能仍被其他会话的消息引用，此时跳过物理删除避免他处裂图。
+     * 文件 URI 可能仍被其他会话的消息或草稿引用，此时跳过物理删除避免他处裂图。
      *
-     * 调用时机必须在**会话行（含节点）已从库中删除**之后——[MessageNodeDAO.hasFileReference]
-     * 扫全表，此时天然只统计「剩余的其他会话」。
+     * 调用时机必须在**会话行（含节点）与该会话草稿已移除**之后——[MessageNodeDAO.hasFileReference]
+     * 与 [ChatDraftStore.allReferencedLocalFileUrls] 此时天然只统计「剩余的其他会话」。
      */
     private suspend fun deleteFilesWithReferenceCheck(uris: List<Uri>) {
         if (uris.isEmpty()) return
+        val filesDir = runCatching { filesManager.getFilesDir() }.getOrNull()
+        val draftUrls = chatDraftStore?.allReferencedLocalFileUrls().orEmpty()
+        val draftPaths = if (filesDir != null) {
+            draftUrls.mapNotNullTo(HashSet()) { localDraftNormalizedPath(it, filesDir) }
+        } else {
+            emptySet()
+        }
         val orphaned = uris.distinct().filter { uri ->
-            !messageNodeDAO.hasFileReference(JsonInstant.encodeToString(uri.toString()))
+            val urlStr = uri.toString()
+            val normPath = filesDir?.let { localDraftNormalizedPath(urlStr, it) }
+            urlStr !in draftUrls &&
+                (normPath == null || normPath !in draftPaths) &&
+                !messageNodeDAO.hasFileReference(JsonInstant.encodeToString(urlStr))
         }
         if (orphaned.isNotEmpty()) {
             filesManager.deleteChatFiles(orphaned)
@@ -882,7 +918,9 @@ class ConversationRepository(
     }
 
     suspend fun deleteConversationFiles(conversation: Conversation) {
-        deleteFilesWithReferenceCheck(conversation.files)
+        val draftUris = pendingUndoDrafts.remove(conversation.id)
+            ?.referencedLocalFileUrls().orEmpty().map { Uri.parse(it) }
+        deleteFilesWithReferenceCheck(conversation.files + draftUris)
     }
 
     /** 删除这些节点的收藏，节点从会话里移除后调用（#2299 同构） */

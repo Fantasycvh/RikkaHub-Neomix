@@ -202,6 +202,9 @@ fun ChatDrawerContent(
     val conversationJobs by vm.conversationJobs.collectAsStateWithLifecycle(
         initialValue = emptyMap(),
     )
+    val draftConversationIds by vm.draftConversationIds.collectAsStateWithLifecycle(
+        initialValue = emptySet(),
+    )
 
     val currentSummary by remember(current.id) {
         repo.observeConversationSummary(current.id)
@@ -640,6 +643,7 @@ fun ChatDrawerContent(
                     showLastActive = customOrderActive,
                     conversations = conversations,
                     conversationJobs = conversationJobs.keys,
+                    draftConversationIds = draftConversationIds,
                     listState = conversationListState,
                     header = if (headerInList) drawerHeader else null,
                     modifier = Modifier

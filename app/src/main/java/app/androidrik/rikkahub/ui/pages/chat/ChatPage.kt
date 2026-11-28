@@ -60,6 +60,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.adaptive.currentWindowDpSize
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -391,6 +392,16 @@ fun ChatPage(
 
     val inputState = vm.inputState
 
+    // 单向草稿写出（TextField Host Rules 第 4 条）：绝不向活跃 inputState 回灌；
+    // 去抖持久化在 ChatDraftStore 内走 AppScope，离页 dispose 时立即补写最后未提交内容。
+    LaunchedEffect(vm, inputState) {
+        snapshotFlow { inputState.toDraft() }
+            .collect { draft -> vm.onInputDraftChanged(draft) }
+    }
+    DisposableEffect(vm, inputState) {
+        onDispose { vm.flushInputDraftNow() }
+    }
+
     val shareContext = LocalContext.current
     val shareToaster = LocalToaster.current
 
@@ -405,13 +416,31 @@ fun ChatPage(
         )
     }
 
-    // 初始化输入状态（处理传入的 files 和 text 参数）
+    // 初始化输入状态（处理传入的 files 和 text 参数；先等待草稿恢复完成，保证顺序恒定不覆盖旧草稿）
     LaunchedEffect(files, text) {
+        val needsShareInit = (vm.initializedShareText != text && !text.isNullOrEmpty()) ||
+            (files.isNotEmpty() && vm.initializedShareFiles != files)
+        if (needsShareInit) {
+            vm.awaitDraftRestored()
+        }
+        val decodedShareText = text?.base64Decode()?.takeIf { it.isNotEmpty() }
+        val hasNewShareText = vm.initializedShareText != text && decodedShareText != null
+        val hasNewShareFiles = files.isNotEmpty() && vm.initializedShareFiles != files
+        if ((hasNewShareText || hasNewShareFiles) && inputState.isEditing()) {
+            // 收到外部分享内容时退出历史消息编辑态，避免把分享内容错当历史编辑覆盖原消息
+            inputState.clearInput()
+        }
         if (vm.initializedShareText != text) {
-            text?.base64Decode()?.takeIf { it.isNotEmpty() }?.let { inputState.setMessageText(it) }
+            decodedShareText?.let { sharedText ->
+                if (inputState.textContent.text.isBlank()) {
+                    inputState.setMessageText(sharedText)
+                } else {
+                    inputState.appendText(sharedText)
+                }
+            }
             vm.initializedShareText = text
         }
-        if (files.isNotEmpty() && vm.initializedShareFiles != files) {
+        if (hasNewShareFiles) {
             sharedImportJob = currentCoroutineContext().job
             try {
                 val imported = withContext(Dispatchers.IO) {
@@ -657,8 +686,7 @@ private fun ChatPageContent(
     var exportThenRegenerateFor by remember { mutableStateOf<UIMessage?>(null) }
     // 剪枝确认：删除整节点 = 剪掉其子树（含全部下游，不可恢复），有下游时先确认（树形分支 P1）
     var deleteConfirmFor by remember { mutableStateOf<UIMessage?>(null) }
-    // 编辑「保留后续」开关（§四.4）：开 = 候选追加（下游共享，默认）；关 = 纯分支（下游归旧版本）
-    var editKeepFollowing by rememberSaveable { mutableStateOf(true) }
+    // 编辑「保留后续」开关（§四.4）：随 ChatInputState 持久化，开 = 候选追加（下游共享，默认）；关 = 纯分支（下游归旧版本）
     val showEditKeepFollowing = inputState.isEditing() &&
         (inputState.editingMessage?.let { conversation.followingCount(it) } ?: 0) > 0
 
@@ -1197,7 +1225,7 @@ private fun ChatPageContent(
                                 vm.handleMessageEdit(
                                     parts = parts,
                                     messageId = editingId,
-                                    keepFollowing = editKeepFollowing,
+                                    keepFollowing = inputState.editKeepFollowing,
                                 )
                                 inputState.clearInput()
                             }
@@ -1216,7 +1244,7 @@ private fun ChatPageContent(
                                 vm.handleMessageEdit(
                                     parts = parts,
                                     messageId = editingId,
-                                    keepFollowing = editKeepFollowing,
+                                    keepFollowing = inputState.editKeepFollowing,
                                 )
                                 inputState.clearInput()
                             }
@@ -1279,8 +1307,8 @@ private fun ChatPageContent(
                     pendingQuote = inputState.pendingQuote.takeUnless { inputState.isEditing() },
                     onCancelQuote = { inputState.pendingQuote = null },
                     // 编辑「保留后续」开关（树形分支 P1 §四.4）：仅编辑有下游的消息时显示
-                    editKeepFollowing = editKeepFollowing,
-                    onEditKeepFollowingChange = { editKeepFollowing = it },
+                    editKeepFollowing = inputState.editKeepFollowing,
+                    onEditKeepFollowingChange = { inputState.editKeepFollowing = it },
                     showEditKeepFollowing = showEditKeepFollowing,
                 )
                 }
@@ -1354,21 +1382,19 @@ private fun ChatPageContent(
                     chatListScrollController.scrollToBottom()
                 },
                 onEdit = {
-                    editKeepFollowing = true // 每次进入编辑默认「保留后续」（最小惊讶）
                     inputState.editingMessage = it.id
                     inputState.setContents(it.parts)
                 },
                 onEditSegment = { message, textPartIndex ->
                     // 多文本段消息（工具轮续跑形状）按段编辑：装的是被选中那段文本，
                     // 提交时 mergeEditedParts 只替换该段、原样保留 Tool/Reasoning。
-                    editKeepFollowing = true
                     inputState.editingMessage = message.id
                     inputState.setContents(message.parts, textPartIndex)
                 },
                 onQuoteMessage = { message ->
                     // 引用是「下一条新消息」的行为：进入引用即退出编辑态，
                     // 否则发送会走编辑分支、引用被丢掉。
-                    inputState.editingMessage = null
+                    inputState.exitEditingMode()
                     inputState.pendingQuote = message.toQuotedMessage()
                 },
                 onForkMessage = {
@@ -1424,7 +1450,7 @@ private fun ChatPageContent(
                     }
                 },
                 onClickSuggestion = { suggestion ->
-                    inputState.editingMessage = null
+                    inputState.exitEditingMode()
                     inputState.setMessageText(suggestion)
                 },
                 onLongClickSuggestion = { suggestion ->
@@ -1434,7 +1460,7 @@ private fun ChatPageContent(
                             type = ToastType.Error,
                         )
                     } else if (suggestion.isNotBlank()) {
-                        inputState.editingMessage = null
+                        inputState.exitEditingMode()
                         vm.handleMessageSend(listOf(UIMessagePart.Text(suggestion)))
                         chatListScrollController.scrollToBottomAfter(conversation.currentMessages.lastOrNull()?.id)
                     }

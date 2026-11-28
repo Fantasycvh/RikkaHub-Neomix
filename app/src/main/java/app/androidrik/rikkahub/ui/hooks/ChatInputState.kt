@@ -5,10 +5,14 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.text.input.placeCursorAtEnd
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.androidrik.ai.ui.UIMessageAnnotation
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.rikkahub.data.draft.ChatDraft
+import app.androidrik.rikkahub.data.draft.EditingDraftState
+import app.androidrik.rikkahub.data.draft.ReplacedAttachmentDraft
 import kotlin.uuid.Uuid
 
 class ChatInputState {
@@ -16,6 +20,9 @@ class ChatInputState {
     val textContent = TextFieldState()
     var messageContent by mutableStateOf(listOf<UIMessagePart>())
     var editingMessage by mutableStateOf<Uuid?>(null)
+    /** 编辑「保留后续」开关（树形分支 P1 §四.4）：随输入草稿一起持久化。 */
+    var editKeepFollowing by mutableStateOf(true)
+    private var stateVersion by mutableLongStateOf(0L)
 
     /**
      * #1906：输入框待发的引用（引用某条历史消息后，在输入框上方显示预览卡）。
@@ -63,9 +70,22 @@ class ChatInputState {
         segmentedDraft = null
         textContent.setTextAndPlaceCursorAtEnd("")
         messageContent = emptyList()
-        editingMessage = null
         pendingQuote = null
         pendingSkills = emptyList()
+        clearEditingFields()
+        stateVersion++
+    }
+
+    /** 退出历史消息编辑态并清理编辑元数据，保留当前已输入的普通文本/附件/引用等。 */
+    fun exitEditingMode() {
+        if (editingMessage == null && editingParts == null && replacedAttachments.isEmpty()) return
+        clearEditingFields()
+        stateVersion++
+    }
+
+    private fun clearEditingFields() {
+        editingMessage = null
+        editKeepFollowing = true
         editingParts = null
         editingAttachmentUrls = emptySet()
         replacedAttachments = emptyMap()
@@ -108,7 +128,9 @@ class ChatInputState {
             segmentedDraft = null
             textContent.undoState.clearHistory()
         }
+        pendingQuote = null
         pendingSkills = emptyList()
+        editKeepFollowing = true
         setMessageText(text)
         loadedEditingMessage = editingMessage
         messageContent = contents.filter { it.isEditableAttachment() }
@@ -116,6 +138,7 @@ class ChatInputState {
         editingTextIndex = resolvedIndex.takeIf { it >= 0 }
         editingAttachmentUrls = contents.mapNotNull { it.attachmentUrlOrNull() }.toSet()
         replacedAttachments = emptyMap()
+        stateVersion++
     }
 
     fun getContents(): List<UIMessagePart> {
@@ -196,6 +219,96 @@ class ChatInputState {
         messageContent = messageContent.toMutableList().also { it[index] = replacement }
         if (isEditing()) {
             replacedAttachments = replacedAttachments + (target to replacement)
+            stateVersion++
+        }
+    }
+
+    fun toDraft(updatedAt: Long = 0L): ChatDraft {
+        // 读取 stateVersion 确保非 MutableState 的编辑内部字段变动也能触发 snapshotFlow 采集
+        @Suppress("UNUSED_VARIABLE")
+        val version = stateVersion
+        val editingId = editingMessage
+        val editingState = editingId?.let { id ->
+            EditingDraftState(
+                messageId = id,
+                originalParts = editingParts.orEmpty(),
+                textIndex = editingTextIndex,
+                replacedAttachments = replacedAttachments.entries.map { (original, replacement) ->
+                    ReplacedAttachmentDraft(original = original, replacement = replacement)
+                },
+                keepFollowing = editKeepFollowing,
+            )
+        }
+        return ChatDraft(
+            text = textContent.text.toString(),
+            attachments = messageContent.toList(),
+            pendingQuote = pendingQuote,
+            pendingSkills = pendingSkills.toList(),
+            editing = editingState,
+            updatedAt = updatedAt,
+        )
+    }
+
+    fun restoreDraft(
+        draft: ChatDraft,
+        fileExists: (String) -> Boolean = { true },
+    ) {
+        segmentedDraft = null
+        textContent.undoState.clearHistory()
+        setMessageText(draft.text)
+
+        val validAttachments = draft.attachments.filter { part ->
+            val url = part.attachmentUrlOrNull()
+            url == null || !url.startsWith("file:") || fileExists(url)
+        }
+        val validAttachmentSet = validAttachments.toSet()
+        messageContent = validAttachments
+        pendingQuote = draft.pendingQuote
+        pendingSkills = draft.pendingSkills.distinct()
+
+        val edit = draft.editing
+        if (edit != null) {
+            editingMessage = edit.messageId
+            loadedEditingMessage = edit.messageId
+            editingParts = edit.originalParts
+            editingTextIndex = edit.textIndex?.takeIf { edit.originalParts.getOrNull(it) is UIMessagePart.Text }
+                ?: edit.originalParts.indexOfLast { it is UIMessagePart.Text }.takeIf { it >= 0 }
+            editingAttachmentUrls = edit.originalParts.mapNotNull { it.attachmentUrlOrNull() }.toSet()
+            replacedAttachments = edit.replacedAttachments
+                .filter { (_, replacement) ->
+                    replacement in validAttachmentSet &&
+                        replacement.attachmentUrlOrNull()?.let { !it.startsWith("file:") || fileExists(it) } != false
+                }
+                .associate { it.original to it.replacement }
+            editKeepFollowing = edit.keepFollowing
+        } else {
+            clearEditingFields()
+        }
+        stateVersion++
+    }
+
+    /**
+     * 当历史编辑态对应的原消息已从会话中删除时，决定保留或丢弃草稿：
+     * - 未修改原消息文本与附件 ⇒ 清空输入框（不留幽灵内容）；
+     * - 用户已改写文本或附件 ⇒ 退出编辑态、保留当前输入转为普通新消息草稿。
+     */
+    fun reconcileDeletedEditingTarget() {
+        val original = editingParts ?: run {
+            exitEditingMode()
+            return
+        }
+        val targetTextIndex = editingTextIndex
+            ?.takeIf { original.getOrNull(it) is UIMessagePart.Text }
+            ?: original.indexOfLast { it is UIMessagePart.Text }
+        val originalText = (targetTextIndex.takeIf { it >= 0 }?.let { original[it] } as? UIMessagePart.Text)?.text.orEmpty()
+        val originalAttachments = original.filter { it.isEditableAttachment() }
+        val unchanged = textContent.text.toString() == originalText &&
+            messageContent == originalAttachments &&
+            replacedAttachments.isEmpty()
+        if (unchanged) {
+            clearInput()
+        } else {
+            exitEditingMode()
         }
     }
 

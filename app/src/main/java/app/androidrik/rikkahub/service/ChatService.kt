@@ -264,6 +264,7 @@ class ChatService(
     private val usageRecorder: UsageRecorder,
     private val taskHandoffs: TaskHandoffRegistry = TaskHandoffRegistry(),
     private val memoryFiles: MemoryFileRepository,
+    private val chatDraftStore: app.androidrik.rikkahub.data.draft.ChatDraftStore? = null,
 ) {
     private val transformerRegistry = defaultTransformerChainRegistry(
         templateTransformer, WorkspaceReminderTransformer(workspaceRepository),
@@ -1061,7 +1062,7 @@ class ChatService(
                     pendingMessages = currentSessions.flatMap {
                         it.messageQueue.state.value.messages + listOfNotNull(it.submittingMessage)
                     },
-                ) - persistedReferences
+                ) - persistedReferences - chatDraftStore?.allReferencedLocalFileUrls().orEmpty()
                 if (unusedFiles.isNotEmpty()) {
                     filesManager.deleteChatFiles(unusedFiles.map { it.toUri() })
                 }
@@ -3873,7 +3874,8 @@ class ChatService(
         val newFiles = newConversation.files
         val oldFiles = oldConversation.files
         val deletedFiles = oldFiles.filter { file ->
-            newFiles.none { it == file }
+            newFiles.none { it == file } &&
+                chatDraftStore?.referencesLocalFile(file.toString(), filesManager.getFilesDir()) != true
         }
         if (deletedFiles.isNotEmpty()) {
             filesManager.deleteChatFiles(deletedFiles)

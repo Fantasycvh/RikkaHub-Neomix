@@ -92,6 +92,7 @@ internal fun ColumnScope.ConversationList(
     current: Conversation,
     conversations: LazyPagingItems<ConversationListItem>,
     conversationJobs: Collection<Uuid>,
+    draftConversationIds: Set<Uuid> = emptySet(),
     listState: LazyListState,
     /**
      * 是否在行内显示「最近活跃」时间。
@@ -254,6 +255,7 @@ internal fun ColumnScope.ConversationList(
                         lastActiveAt = (item.conversation.lastMessageAt ?: item.conversation.updateAt)
                             .takeIf { showLastActive },
                         selected = item.conversation.id == current.id,
+                        hasDraft = item.conversation.id in draftConversationIds,
                         enabled = !holdingSnapshot,
                         loading = item.conversation.id in conversationJobs,
                         selectionMode = selectionMode,
@@ -349,6 +351,7 @@ private fun ConversationItem(
     lastActiveAt: Instant?,
     selected: Boolean,
     loading: Boolean,
+    hasDraft: Boolean = false,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
     /** 多选模式：行首显示勾选框，长按菜单隐藏 */
@@ -419,11 +422,27 @@ private fun ConversationItem(
                     onCheckedChange = { onClick(conversation) }
                 )
             }
+            if (hasDraft) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    shape = RoundedCornerShape(4.dp),
+                    modifier = Modifier.padding(end = 6.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.conversation_draft_badge),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                }
+            }
             Text(
                 text = conversation.title.ifBlank { stringResource(id = R.string.chat_page_new_message) },
                 color = itemInk,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
             Spacer(Modifier.weight(1f))
 
