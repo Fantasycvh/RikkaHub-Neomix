@@ -2038,7 +2038,9 @@ class ChatService(
                 }
             val scheduledMemorySyncAvailable = assistant.enableMemory && !conversation.memoryDisabled && ModelAbility.TOOL in model.abilities
 
-            withContext(Dispatchers.Default) {
+            // 会话状态与前台编辑共用 Main 串行执行；生成/转换仍由 generateText.flowOn(IO)
+            // 承担，检查点另起 IO。不能在 Default 上读旧会话再整对象回写。
+            withContext(Dispatchers.Main.immediate) {
                 coroutineScope {
                     var checkpointJob: Job? = null
                     var lastCheckpointedMessage: UIMessage? = null
