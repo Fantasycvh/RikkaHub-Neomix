@@ -59,6 +59,7 @@ internal class LanSyncDownloadServer(
             if (request.headers[PROTOCOL_HEADER.lowercase()] != LAN_PROTOCOL.toString()) return@request LanHttpResponse(426)
             if (uploads != null) {
                 if (request.method == "POST" && request.path == MANIFEST_PATH) return@request uploads.offer(fingerprint, request)
+                if (!uploads.acceptsRound(request)) return@request LanHttpResponse(409)
                 if (request.method == "POST" && request.path == LAN_APPLIED_PATH) return@request uploads.finish(request)
                 if (request.path.startsWith(LAN_INBOX_PATH)) {
                     return@request uploads.receive(request.path.removePrefix(LAN_INBOX_PATH), request)
@@ -66,9 +67,11 @@ internal class LanSyncDownloadServer(
             }
             if (request.contentLength != 0L) return@request LanHttpResponse(400)
             if (request.method == "GET" && request.path == MANIFEST_PATH) {
-                return@request LanHttpResponse.bytes(200, manifestBody, "application/json")
+                return@request LanHttpResponse.bytes(200, uploads?.manifestBody() ?: manifestBody, "application/json")
             }
-            val file = request.path.takeIf { it.startsWith(OBJECT_PATH) }?.removePrefix(OBJECT_PATH)?.let(inventory::get)
+            val file = request.path.takeIf { it.startsWith(OBJECT_PATH) }?.removePrefix(OBJECT_PATH)?.let { digest ->
+                if (uploads != null) uploads.downloadObject(digest) else inventory[digest]
+            }
                 ?: return@request LanHttpResponse(404)
             val total = file.length()
             if (total !in 1..LAN_OBJECT_MAX_BYTES) return@request LanHttpResponse(404)
@@ -105,6 +108,7 @@ internal class LanSyncDownloadClient(
     }
 
     private val base = "https://${address.hostAddress}:$port"
+    private val roundId = java.util.UUID.randomUUID().toString()
     private val trust = pairingTrust(fingerprint)
     private val client = OkHttpClient.Builder()
         .sslSocketFactory(credentials.tlsContext(trust).socketFactory, trust)
@@ -206,6 +210,7 @@ internal class LanSyncDownloadClient(
         .url(base + path)
         .header(TOKEN_HEADER, token)
         .header(PROTOCOL_HEADER, LAN_PROTOCOL.toString())
+        .header(LAN_ROUND_HEADER, roundId)
         .header("Accept-Encoding", "identity")
 
     private fun uploadOffset(response: Response): Long = response.header(LAN_OFFSET_HEADER)?.toLongOrNull()

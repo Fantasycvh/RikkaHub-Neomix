@@ -18,21 +18,25 @@ internal data class LanSyncApplyRequest(val keys: Set<String>)
 internal const val LAN_INBOX_PATH = "/v1/inbox/"
 internal const val LAN_APPLIED_PATH = "/v1/applied"
 internal const val LAN_OFFSET_HEADER = "X-Rikka-Offset"
+internal const val LAN_ROUND_HEADER = "X-Rikka-Round"
 private val contentRange = Regex("bytes ([0-9]{1,9})-([0-9]{1,9})/([0-9]{1,9})")
 
 /** One explicit receive window for one paired fingerprint. Only objects required by its negotiated plan may be uploaded. */
 internal class LanSyncUploadSession(
-    private val local: LanManifest,
+    private var local: LanManifest,
     private val staging: LanObjectStore,
     private val json: Json,
     private val now: () -> Long,
-    private val localObjects: Map<String, File> = emptyMap(),
+    private var localObjects: Map<String, File> = emptyMap(),
+    private val refreshLocal: (suspend () -> Pair<LanManifest, Map<String, File>>)? = null,
     private val apply: suspend (LanManifest, LanMergePlan) -> LanSyncReport,
 ) {
     private var exchange: Exchange? = null
     private var transferred = 0L
+    private var downloadDigests = downloadDigests(local)
 
     private class Exchange(
+        val roundId: String?,
         val remote: LanManifest,
         val plan: LanMergePlan,
         val plannedAt: Long,
@@ -41,7 +45,9 @@ internal class LanSyncUploadSession(
         var appliedKeys: Set<String>? = null,
     )
 
-    fun offer(peer: String, request: LanHttpRequest): LanHttpResponse {
+    suspend fun offer(peer: String, request: LanHttpRequest): LanHttpResponse {
+        val roundId = request.headers[LAN_ROUND_HEADER.lowercase()]
+        if (roundId != null && !roundId.matches(Regex("[A-Za-z0-9-]{1,64}"))) return LanHttpResponse(400)
         val bytes = request.readBytes(LAN_MANIFEST_BYTES.toInt()) ?: return LanHttpResponse(400)
         val remote = try {
             json.decodeFromString<LanManifest>(bytes.decodeToString()).also {
@@ -51,17 +57,33 @@ internal class LanSyncUploadSession(
         } catch (_: IllegalArgumentException) {
             return LanHttpResponse(426)
         }
-        val active = exchange
+        var active = exchange
+        if (active != null && (active.roundId != roundId || (roundId == null && active.report != null))) {
+            // A fresh client operation starts a new quota and captures changes made
+            // by the preceding partial apply. Staging remains available for resume.
+            val refreshed = refreshLocal?.invoke() ?: return LanHttpResponse(409)
+            refreshed.first.validate(local.device.dbVersion, local.device.id)
+            require(json.encodeToString(refreshed.first).encodeToByteArray().size <= LAN_MANIFEST_BYTES)
+            val digests = downloadDigests(refreshed.first)
+            require(digests.all { digest -> refreshed.second[digest]?.let { it.isFile && it.length() in 1..LAN_OBJECT_MAX_BYTES } == true })
+            local = refreshed.first
+            localObjects = refreshed.second
+            downloadDigests = digests
+            exchange = null
+            transferred = 0L
+            active = null
+        }
         if (active != null && active.remote != remote) return LanHttpResponse(409)
         val accepted = active ?: run {
             val timestamp = now()
             val plan = planLanMerge(local, remote, timestamp)
-            Exchange(remote, plan, timestamp, lanObjectSizes(plan.objectsFrom(remote))).also { exchange = it }
+            Exchange(roundId, remote, plan, timestamp, lanObjectSizes(plan.objectsFrom(remote))).also { exchange = it }
         }
         return LanHttpResponse.bytes(200, json.encodeToString(LanSyncOffer(local, accepted.plannedAt)).encodeToByteArray(), "application/json")
     }
 
     suspend fun receive(digest: String, request: LanHttpRequest): LanHttpResponse {
+        if (!acceptsRound(request)) return LanHttpResponse(409)
         val active = exchange ?: return LanHttpResponse(409)
         if (!active.expected.containsKey(digest)) return LanHttpResponse(404)
         val complete = completed(digest)
@@ -102,6 +124,7 @@ internal class LanSyncUploadSession(
     }
 
     suspend fun finish(request: LanHttpRequest): LanHttpResponse {
+        if (!acceptsRound(request)) return LanHttpResponse(409)
         val active = exchange ?: return LanHttpResponse(409)
         val known = (local.objects.map { it.key } + active.remote.objects.map { it.key } +
             local.tombstones.map { it.key } + active.remote.tombstones.map { it.key }).toSet()
@@ -132,6 +155,19 @@ internal class LanSyncUploadSession(
     private suspend fun completed(digest: String): File? =
         staging.completed(digest) ?: localObjects[digest]?.takeIf(File::isFile)
 
+    fun acceptsRound(request: LanHttpRequest): Boolean =
+        exchange?.let { it.roundId == request.headers[LAN_ROUND_HEADER.lowercase()] }
+            ?: (request.headers[LAN_ROUND_HEADER.lowercase()] == null)
+
+    fun downloadObject(digest: String): File? = localObjects[digest]?.takeIf {
+        digest in downloadDigests
+    }
+
+    fun manifestBody(): ByteArray = json.encodeToString(local).encodeToByteArray()
+
     private fun offsetResponse(status: Int, offset: Long) =
         LanHttpResponse(status, headers = mapOf(LAN_OFFSET_HEADER to offset.toString()))
+
+    private fun downloadDigests(manifest: LanManifest): Set<String> =
+        manifest.objects.flatMap { listOf(it.sha256) + it.attachmentShas }.toSet()
 }

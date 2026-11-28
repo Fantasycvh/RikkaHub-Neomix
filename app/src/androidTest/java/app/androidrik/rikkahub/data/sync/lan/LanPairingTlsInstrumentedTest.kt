@@ -22,6 +22,75 @@ import javax.net.ssl.SSLHandshakeException
 @RunWith(AndroidJUnit4::class)
 class LanPairingTlsInstrumentedTest {
     @Test
+    fun partialSyncStartsAnotherRoundOnTheSameTlsListenerAndDownloadsRefreshedObjects() = runBlocking {
+        val address = findPrivateAddress()
+        assumeNotNull(address)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        check(context.packageName.contains("backupverification"))
+        val aliases = List(2) { "lan-round-${UUID.randomUUID()}" }
+        val temp = File(context.cacheDir, "lan-round-${UUID.randomUUID()}").apply { check(mkdir()) }
+        try {
+            val host = LanIdentity.load(aliases[0])
+            val client = LanIdentity.load(aliases[1])
+            suspend fun entry(name: String): Pair<LanManifestObject, File> {
+                val file = File(temp, name).apply { writeText(name) }
+                return LanManifestObject("conversation:${UUID.randomUUID()}", hashLanFile(file), 50, file.length()) to file
+            }
+            val first = entry("first-client-object")
+            val second = entry("second-client-object")
+            val addedOnHost = entry("added-between-rounds")
+            val remote = LanManifest(LAN_PROTOCOL, LanManifestDevice(client.fingerprint, "Client", 82, LAN_FORMAT_VERSION),
+                listOf(first.first, second.first))
+            var local = LanManifest(LAN_PROTOCOL, remote.device.copy(id = host.fingerprint, name = "Host"))
+            var localFiles = emptyMap<String, File>()
+            var applications = 0
+            val staging = LanObjectStore(File(temp, "host-staging"))
+            val uploads = LanSyncUploadSession(local, staging, Json, { 100L }, refreshLocal = { local to localFiles }) { _, plan ->
+                applications++
+                local = local.copy(conversations = (local.conversations + plan.pull).distinctBy { it.key })
+                localFiles = localFiles + plan.pull.associate { it.sha256 to requireNotNull(staging.completed(it.sha256)) }
+                LanSyncReport(added = plan.pull.size)
+            }
+            val token = newPairToken()
+            LanSyncDownloadServer(host, requireNotNull(address), local, localFiles, Json,
+                tokenForPeer = { token.takeIf { _ -> it == client.fingerprint } }, uploads = uploads,
+            ).use { server ->
+                val handler = launch(Dispatchers.IO) { server.serve() }
+                try {
+                    val source = mapOf(first.first.sha256 to first.second, second.first.sha256 to second.second)
+                    val round1 = LanSyncDownloadClient(client, address, server.port, host.fingerprint, token, Json)
+                    round1.exchange(remote)
+                    val sent = round1.push(remote.conversations, source, first.second.length())
+                    assertEquals(setOf(second.first.sha256), sent.remainingObjects)
+                    assertEquals(1, round1.finish(setOf(first.first.key)).added)
+                    assertEquals(1, round1.finish(setOf(first.first.key)).added)
+                    assertEquals(1, applications)
+                    local = local.copy(conversations = local.conversations + addedOnHost.first)
+                    localFiles = localFiles + (addedOnHost.first.sha256 to addedOnHost.second)
+
+                    val round2 = LanSyncDownloadClient(client, address, server.port, host.fingerprint, token, Json)
+                    val offer = round2.exchange(remote)
+                    assertEquals(2, offer.manifest.conversations.size)
+                    assertEquals(409, (runCatching { round1.finish(setOf(first.first.key)) }.exceptionOrNull() as LanSyncHttpException).status)
+                    val plan = planLanMerge(remote, offer.manifest, offer.plannedAt)
+                    val rest = round2.push(plan.objectsFrom(remote), source)
+                    assertEquals(second.second.length(), rest.transferredBytes)
+                    assertTrue(rest.remainingObjects.isEmpty())
+                    val target = LanObjectStore(File(temp, "client-staging"))
+                    val downloaded = round2.pull(plan.objectsFrom(offer.manifest), target)
+                    assertTrue(downloaded.remainingObjects.isEmpty())
+                    assertEquals(addedOnHost.second.readText(), target.completed(addedOnHost.first.sha256)?.readText())
+                    assertEquals(1, round2.finish(plan.completedKeys(remote, offer.manifest, rest, downloaded)).added)
+                    assertEquals(2, applications)
+                } finally { server.close(); handler.join() }
+            }
+        } finally {
+            temp.deleteRecursively()
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.let { store -> aliases.forEach(store::deleteEntry) }
+        }
+    }
+
+    @Test
     fun downloadsOnlyAuthorizedInventoryAndResumesFromTheLastRange() = runBlocking {
         val address = findPrivateAddress()
         assumeNotNull(address)

@@ -71,8 +71,17 @@ internal class LanSyncService(
                 }
                 onStage(LanSyncStage.PREPARING)
                 try {
-                    data.capture(credentials.fingerprint, deviceName, System.currentTimeMillis()).use { local ->
-                        val uploads = LanSyncUploadSession(local.manifest, staging, json, System::currentTimeMillis, local.files) { remote, plan ->
+                    var local = data.capture(credentials.fingerprint, deviceName, System.currentTimeMillis())
+                    try {
+                        val uploads = LanSyncUploadSession(local.manifest, staging, json, System::currentTimeMillis, local.files,
+                            refreshLocal = {
+                                val refreshed = data.capture(credentials.fingerprint, deviceName, System.currentTimeMillis())
+                                val previous = local
+                                local = refreshed
+                                previous.close()
+                                refreshed.manifest to refreshed.files
+                            },
+                        ) { remote, plan ->
                             onStage(LanSyncStage.APPLYING)
                             try {
                                 data.apply(local, remote, plan, staging).also { report ->
@@ -109,6 +118,8 @@ internal class LanSyncService(
                                 }
                             }
                         }
+                    } finally {
+                        local.close()
                     }
                 } catch (_: SocketException) {
                     // Removing a Wi-Fi interface can fail accept/bind before the address
