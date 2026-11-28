@@ -495,55 +495,77 @@ private fun FileContentPreview(path: String?, code: String) {
 }
 
 /**
- * 工作空间执行 Shell: 摘要显示退出状态与输出首部, 详情为命令 + stdout/stderr
+ * 工作空间执行 Shell: 有 description 时标题用它, 命令放进摘要; 摘要显示退出状态与输出首部, 详情为命令 + stdout/stderr
  */
 object ShellToolUI : ToolUIRenderer {
     private const val TITLE_MAX_CHARS = 40
     private const val SUMMARY_MAX_LINES = 8
+    private const val SUMMARY_COMMAND_MAX_LINES = 3
 
     override val toolName: String = "workspace_shell"
 
     override fun icon(context: ToolUIContext): ImageVector = HugeIcons.ComputerTerminal01
 
+    // 标题换成 description 后命令要在摘要里露出来, 等待审批时用户才看得到要执行什么
+    private fun descriptionOf(context: ToolUIContext): String? =
+        context.arguments.getStringContent("description")?.trim()?.takeIf { it.isNotEmpty() }
+
     @Composable
     override fun title(context: ToolUIContext): String {
+        descriptionOf(context)?.let { return it }
         val command = context.arguments.getStringContent("command") ?: return stringResource(R.string.tool_ui_shell_default)
         val preview = command.replace("\n", " ").trim()
         val truncated = if (preview.length > TITLE_MAX_CHARS) preview.take(TITLE_MAX_CHARS) + "…" else preview
         return stringResource(R.string.tool_ui_shell, truncated)
     }
 
-    override fun hasSummary(context: ToolUIContext): Boolean = context.content != null
+    override fun hasSummary(context: ToolUIContext): Boolean =
+        context.content != null || descriptionOf(context) != null
 
     @Composable
     override fun Summary(context: ToolUIContext) {
-        val content = context.content ?: return
+        val content = context.content
+        val command = context.arguments.getStringContent("command")?.trim()
+            ?.takeIf { descriptionOf(context) != null && it.isNotEmpty() }
         val combined = remember(content) {
-            listOf(content.getStringContent("stdout"), content.getStringContent("stderr"))
+            listOf(content?.getStringContent("stdout"), content?.getStringContent("stderr"))
                 .filterNot { it.isNullOrBlank() }
                 .joinToString("\n")
                 .let { limitLineLength(it) }
                 .trim()
         }
+        if (content == null && command == null) return
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            ShellExitStatus(content, MaterialTheme.typography.labelSmall)
-            if (combined.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.small)
-                        .background(MaterialTheme.colorScheme.surfaceContainer)
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                        .shimmer(isLoading = context.loading),
-                ) {
-                    Text(
-                        text = combined.lineSequence().take(SUMMARY_MAX_LINES).joinToString("\n"),
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                        fontSize = appSkinTextSize(11.sp),
-                        lineHeight = appSkinTextSize(14.sp),
-                        maxLines = SUMMARY_MAX_LINES,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+            if (command != null) {
+                Text(
+                    text = command.lineSequence().take(SUMMARY_COMMAND_MAX_LINES).joinToString("\n"),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    fontSize = appSkinTextSize(11.sp),
+                    lineHeight = appSkinTextSize(14.sp),
+                    maxLines = SUMMARY_COMMAND_MAX_LINES,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (content != null) {
+                ShellExitStatus(content, MaterialTheme.typography.labelSmall)
+                if (combined.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .shimmer(isLoading = context.loading),
+                    ) {
+                        Text(
+                            text = combined.lineSequence().take(SUMMARY_MAX_LINES).joinToString("\n"),
+                            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                            fontSize = appSkinTextSize(11.sp),
+                            lineHeight = appSkinTextSize(14.sp),
+                            maxLines = SUMMARY_MAX_LINES,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
