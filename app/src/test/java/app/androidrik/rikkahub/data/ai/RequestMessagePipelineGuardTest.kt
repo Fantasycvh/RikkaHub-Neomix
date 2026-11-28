@@ -23,8 +23,8 @@ import java.io.File
  *
  * 两条不变量：
  * 1. **不许把 `.transforms(...)` 写成裸语句**——链的产物必须被接住（赋给变量）。
- * 2. **未经处理链的列表不得发给 provider**——`GenerationHandler` 里不许把 `internalMessages`
- *    直接塞进 `messages =`。
+ * 2. **未经处理链的列表不得发给 provider**——实际 provider 调用必须传输入链的产物；
+ *    处理链前的预算辅助函数仍然可以接收 `internalMessages`。
  */
 class RequestMessagePipelineGuardTest {
 
@@ -47,6 +47,10 @@ class RequestMessagePipelineGuardTest {
 
     /** 疑似裸语句调用：`internalMessages.transforms(`（无 `val x =` 前缀）——正是事故形态 */
     private val bareStatementTransforms = Regex("""^\s*[A-Za-z_]\w*\.transforms\($""")
+
+    private fun providerMessageArguments(source: String): List<String> = Regex(
+        """providerImpl\.(?:streamText|generateText)\(\s*providerSetting\s*=\s*[^,\r\n]+,\s*messages\s*=\s*([A-Za-z_]\w*)""",
+    ).findAll(source).map { it.groupValues[1] }.toList()
 
     /**
      * 判断某行是否为「被丢弃的裸语句」。
@@ -85,13 +89,20 @@ class RequestMessagePipelineGuardTest {
         assertEquals("GenerationHandler 里应恰有一处「接住」的输入链调用", 1, assigned.size)
         val requestMessages = assigned.single()
 
-        assertTrue(
-            "provider 调用应使用处理后的 $requestMessages",
-            source.contains("messages = $requestMessages"),
+        assertEquals(
+            "流式和非流式 provider 调用都必须使用处理后的 $requestMessages",
+            listOf(requestMessages, requestMessages),
+            providerMessageArguments(source),
         )
-        assertTrue(
-            "未经处理链的 internalMessages 不得直接发给 provider",
-            !source.contains("messages = internalMessages"),
-        )
+    }
+
+    @Test
+    fun `budget helper input is allowed but an untransformed provider input is detected`() {
+        val fixture = """
+            enforceContextBudget(context = context, messages = internalMessages, model = model)
+            providerImpl.streamText(providerSetting = provider, messages = requestMessages, params = params)
+            providerImpl.generateText(providerSetting = provider, messages = internalMessages, params = params)
+        """.trimIndent()
+        assertEquals(listOf("requestMessages", "internalMessages"), providerMessageArguments(fixture))
     }
 }
