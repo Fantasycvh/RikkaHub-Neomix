@@ -37,7 +37,7 @@ class MediaInterruptionTest {
     fun `death before submission fails safely`() {
         assertEquals(MediaInterruptionOutcome.MARK_FAILED, outcome(null, MediaCreationStatus.PREPARING))
         assertEquals(MediaInterruptionOutcome.MARK_FAILED, outcome(null, MediaCreationStatus.QUEUED))
-        assertEquals(MediaInterruptionOutcome.MARK_FAILED, outcome(null, MediaCreationStatus.DOWNLOADING))
+        assertEquals(MediaInterruptionOutcome.SUBMIT_UNKNOWN, outcome(null, MediaCreationStatus.DOWNLOADING))
     }
 
     @Test
@@ -54,6 +54,22 @@ class MediaInterruptionTest {
         code = "20012",
         message = "Task not found",
     )
+
+    @Test
+    fun `gateway errors and lost responses remain unknown but explicit rejection is safe`() {
+        listOf(IOException("connection lost"), apiError(504), apiError(408)).forEach {
+            assertEquals(MediaCreationStatus.SUBMIT_UNKNOWN, mediaFailureStatus(MediaCreationStatus.RUNNING, null, it))
+        }
+        assertEquals(MediaCreationStatus.FAILED, mediaFailureStatus(MediaCreationStatus.RUNNING, null, apiError(400)))
+        assertEquals(MediaCreationStatus.FAILED, mediaFailureStatus(MediaCreationStatus.PREPARING, null, IOException()))
+        assertEquals(MediaCreationStatus.FAILED, mediaFailureStatus(MediaCreationStatus.RUNNING, "remote-task", IOException()))
+        assertEquals(MediaCreationStatus.SUBMIT_UNKNOWN, mediaFailureStatus(MediaCreationStatus.DOWNLOADING, null, IOException()))
+    }
+
+    @Test
+    fun `unknown submissions remain eligible for read only reconciliation`() {
+        assertEquals(MediaInterruptionOutcome.SUBMIT_UNKNOWN, outcome(null, MediaCreationStatus.SUBMIT_UNKNOWN))
+    }
 
     private fun task(id: String = "req-1") =
         MediaGenerationTask(id = id, provider = "siliconflow", status = MediaGenerationStatus.RUNNING)

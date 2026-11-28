@@ -74,6 +74,9 @@ class MediaGenerationExecutor(
         taskId: String,
     ): Result<MediaGenerationTask> = mediaGenerationManager.query(target.provider, target.model, taskId)
 
+    internal fun supportsQuery(target: MediaGenerationTarget.Media): Boolean =
+        mediaGenerationManager.supportsQuery(target.provider, target.model)
+
     /** 该供应商的这个模型是否支持按对账键对账（启动期据此决定 SUBMIT_UNKNOWN 记录能否自动找回）。 */
     internal fun supportsReconciliation(
         provider: MediaGenerationProviderSetting,

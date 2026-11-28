@@ -111,6 +111,9 @@ interface MediaCreationDAO {
     @Query("SELECT * FROM media_creation_node WHERE id = :id")
     suspend fun getNode(id: String): MediaCreationNodeEntity?
 
+    @Query("SELECT session_id FROM media_creation_node WHERE id = :id")
+    suspend fun getNodeSessionId(id: String): String?
+
     @Insert
     suspend fun insertNode(node: MediaCreationNodeEntity)
 
@@ -132,6 +135,9 @@ interface MediaCreationDAO {
 
     @Query("SELECT * FROM media_creation_record WHERE session_id = :sessionId")
     suspend fun getRecordsOfSession(sessionId: String): List<MediaCreationRecordEntity>
+
+    @Query("SELECT id FROM media_creation_record WHERE session_id = :sessionId")
+    suspend fun getRecordIdsOfSession(sessionId: String): List<String>
 
     @Query("SELECT * FROM media_creation_record WHERE status IN (:statuses)")
     suspend fun getRecordsByStatus(statuses: List<String>): List<MediaCreationRecordEntity>

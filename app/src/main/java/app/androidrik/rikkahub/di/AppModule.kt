@@ -250,6 +250,7 @@ val appModule = module {
             pluginManager = get(),
             imageGenerationRunner = get(),
             scheduledMediaRunner = get(),
+            chatMediaGeneration = get(),
             // **延迟解析**：SubagentRunner 依赖本工厂（它要用装配点装配工具），
             // 直接在此 `get()` 会构成构造环。lambda 体在装配工具时才执行 ⇒ 环断在这里。
             // 依赖窄接口而非具体 Runner，见下方 single<SubagentDispatcher> 的绑定。
@@ -257,6 +258,8 @@ val appModule = module {
             memoryFiles = get(),
         )
     }
+
+    single { app.androidrik.rikkahub.data.media.ChatMediaGeneration(get(), get(), get()) }
 
     // 窄接口绑定：解析出的就是同一个 SubagentRunner 单例（不新建实例）
     single<SubagentDispatcher> { get<SubagentRunner>() }
@@ -276,6 +279,7 @@ val appModule = module {
             pluginManager = get(),
             providerManager = get(),
             chatToolFactory = get(),
+            chatMediaGeneration = get(),
             mcpManager = get(),
             filesManager = get(),
             workspaceRepository = get(),
@@ -373,6 +377,7 @@ val appModule = module {
             remoteFileStore = get(),
             okHttpClient = get(),
             usageRecorder = get(),
+            genMediaRepository = get(),
         )
     }
 

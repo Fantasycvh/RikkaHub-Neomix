@@ -102,7 +102,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         MessageFileRefEntity::class,
         LanConversationTombstoneEntity::class,
     ],
-    version = 81,
+    version = 82,
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
@@ -250,6 +250,7 @@ import app.androidrik.rikkahub.utils.JsonInstant
         // 纯新增表、无外键无回填——存量由运行时回填 Job 灌入，理由见实体 kdoc）。
         AutoMigration(from = 79, to = 80),
         AutoMigration(from = 80, to = 81),
+        AutoMigration(from = 81, to = 82),
     ]
 )
 @TypeConverters(TokenUsageConverter::class)
@@ -314,7 +315,7 @@ abstract class AppDatabase : RoomDatabase() {
          * 双保险防再犯：SchemaVersionConsistencyTest 在编译期拿 schemas/ 最新 JSON 对账；
          * RikkaHubApp 启动哨兵在运行时拿 Room 真实开库版本兜底。
          */
-        const val SCHEMA_VERSION = 81
+        const val SCHEMA_VERSION = 82
     }
 }
 

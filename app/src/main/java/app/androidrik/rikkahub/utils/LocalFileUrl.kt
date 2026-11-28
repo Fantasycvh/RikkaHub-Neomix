@@ -46,7 +46,7 @@ internal fun normalizeLocalFilePath(
 private val CHAT_FILE_FOLDERS = listOf("avatars", "upload")
 
 /** 会话内生图产物目录（`generate_image` 工具输出的绝对路径）。 */
-private val GENERATED_IMAGE_FOLDERS = listOf("images")
+private val GENERATED_IMAGE_FOLDERS = listOf("images", "media_creation")
 
 /** 附件/头像归一化：识别成功时返回带 `file://` 的 URL，否则原样返回。 */
 fun normalizeLocalFileUrl(filesDir: File, url: String): String {

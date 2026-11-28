@@ -71,6 +71,7 @@ class ConversationRepository(
     private val messageFtsManager: MessageFtsManager,
     private val checkpointDAO: CompressionCheckpointDAO,
     private val messageFileRefDAO: MessageFileRefDAO,
+    private val mediaCreationRepository: MediaCreationRepository? = null,
 ) {
     /** filesDir 是启动后不变的应用目录；同步核心无状态，lazy 单份即可 */
     private val fileRefSync by lazy {
@@ -393,7 +394,13 @@ class ConversationRepository(
 
     private suspend fun loadConversation(entity: ConversationEntity): Conversation {
         val nodes = loadMessageNodes(entity.id)
-        return conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
+        val conversation = conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
+        val media = mediaCreationRepository ?: return conversation
+        return app.androidrik.rikkahub.data.media.materializeChatMediaSnapshot(conversation, media::getRecord) { record, index, output ->
+            val gallery = media.resolve(app.androidrik.rikkahub.data.media.chatMediaGalleryPath(record.id, index, output))
+            // Only the existing gallery attachment directory participates in export/sync snapshots.
+            gallery.absolutePath
+        }
     }
 
     /**

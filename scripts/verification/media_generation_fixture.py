@@ -11,13 +11,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
-def png():
+def png(width=64, height=64):
     def chunk(kind, value):
         return struct.pack(">I", len(value)) + kind + value + struct.pack(">I", zlib.crc32(kind + value))
 
-    row = b"\0" + b"\x28\x78\xc0" * 64
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 64, 64, 8, 2, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(row * 64)) + chunk(b"IEND", b""))
+    row = b"\0" + b"\x28\x78\xc0" * width
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(row * height)) + chunk(b"IEND", b""))
 
 
 def image_bytes(value):
@@ -49,6 +49,8 @@ class Fixture(BaseHTTPRequestHandler):
             self.send_json(snapshot)
         elif self.path == "/fixture.png":
             self.send_bytes(png(), "image/png")
+        elif self.path == "/large-preview.png":
+            self.send_bytes(png(8192, 4096), "image/png")
         elif self.path == "/fixture.mp4":
             self.send_bytes(self.server.video, "video/mp4")
         else:
@@ -74,6 +76,11 @@ class Fixture(BaseHTTPRequestHandler):
             self.record(path=self.path, prompt=body["prompt"], model=body["model"],
                         count=body.get("n"), size=body.get("size"),
                         fixtureAuth=self.headers.get("Authorization") == "Bearer media-fixture-key")
+            if body["prompt"].endswith("-gateway"):
+                self.send_error(504)
+                return
+            if body["prompt"].endswith("-unknown"):
+                self.server.unknown_release.wait(60)
             self.send_json({"data": [{"b64_json": base64.b64encode(png()).decode()}]})
         elif self.path == "/v1/video/submit":
             prompt = body["prompt"]
@@ -175,10 +182,10 @@ class Fixture(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, required=True)
-    parser.add_argument("--video", type=Path, required=True, help="A small synthetic MP4 file")
+    parser.add_argument("--video", type=Path, help="A small synthetic MP4 file, required for video scenarios")
     args = parser.parse_args()
     with ThreadingHTTPServer(("127.0.0.1", args.port), Fixture) as server:
-        server.video = args.video.read_bytes()
+        server.video = args.video.read_bytes() if args.video else b""
         server.trace = []
         server.released = set()
         server.tasks = {}

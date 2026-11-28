@@ -113,6 +113,7 @@ class ChatToolFactory(
     /** 会话内生图工具（#2123）的写路径；见 [app.androidrik.rikkahub.data.image.ImageGenerationRunner] */
     private val imageGenerationRunner: ImageGenerationRunner,
     private val scheduledMediaRunner: ScheduledMediaRunner,
+    private val chatMediaGeneration: app.androidrik.rikkahub.data.media.ChatMediaGeneration,
     /**
      * 对话内子代理派发器（[SubagentDispatcher] 的**延迟解析**）。
      *
@@ -162,6 +163,7 @@ class ChatToolFactory(
          * 手动重生成/续写视同交互回合传 true。
          */
         allowPhoneUse: Boolean = true,
+        imageMessages: List<app.androidrik.ai.ui.UIMessage> = emptyList(),
     ): List<Tool> = createToolSegments(
         settings = settings,
         assistant = assistant,
@@ -174,6 +176,7 @@ class ChatToolFactory(
         onPluginToolsRejected = onPluginToolsRejected,
         awaitBackgroundTasks = awaitBackgroundTasks,
         allowPhoneUse = allowPhoneUse,
+        imageMessages = imageMessages,
     )
         .flatMap { it.tools }
 
@@ -218,6 +221,7 @@ class ChatToolFactory(
         awaitBackgroundTasks: (suspend () -> List<String>)? = null,
         /** Phone Use 来源门控，见 [createTools] */
         allowPhoneUse: Boolean = true,
+        imageMessages: List<app.androidrik.ai.ui.UIMessage> = emptyList(),
     ): List<ToolSegment> {
         val segments = mutableListOf<ToolSegment>()
         if (settings.workspaceTaskNoticeEnabled && workspaceNoticeTarget?.allowWake == true && awaitBackgroundTasks != null) {
@@ -313,10 +317,25 @@ class ChatToolFactory(
         val imageModel = if (scheduledRunId == null) settings.resolveImageGenerationModel()
             else scheduledMediaRunner.agentModel(scheduledRunId)
         if (imageModel != null) {
+            val mediaTurnId = turnOwner?.wire ?: Uuid.random().toString()
+            val references = if (scheduledRunId == null && conversationId != null) {
+                chatMediaGeneration.references(imageMessages)
+            } else linkedMapOf()
             segments += ToolSegment(
                 ToolSource.Image,
                 createImageTools(
                     assistant = if (scheduledRunId == null) assistant else assistant.copy(imageGenApproval = false),
+                    referenceIds = { references.keys },
+                    generateMedia = if (scheduledRunId == null && conversationId != null) {
+                        { prompt, num, size, ids ->
+                            val record = chatMediaGeneration.generate(
+                                conversationId, mediaTurnId, imageModel, prompt, num, size,
+                                ids.map { requireNotNull(references[it]) { "Reference image unavailable" } },
+                            )
+                            references.putAll(chatMediaGeneration.outputReferences(record))
+                            imageToolMediaResult(record) { java.io.File(filesDirPath, it).absolutePath }
+                        }
+                    } else null,
                     generate = { prompt, num, size ->
                         val (option, resolution) = if (scheduledRunId == null) imageModel to size
                             else scheduledMediaRunner.authorizeImage(scheduledRunId, num, size)

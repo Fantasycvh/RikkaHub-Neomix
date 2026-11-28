@@ -86,9 +86,12 @@ class MediaCreationRepository(
 
     suspend fun getSession(id: Uuid): MediaCreationSession? = dao.getSession(id.toString())?.toSession()
 
-    suspend fun getOrCreateSession(id: Uuid, title: String): MediaCreationSession =
+    suspend fun nodeBelongsToSession(nodeId: Uuid, sessionId: Uuid): Boolean =
+        dao.getNodeSessionId(nodeId.toString()) == sessionId.toString()
+
+    suspend fun getOrCreateSession(id: Uuid, title: String, draft: MediaCreationDraft = MediaCreationDraft()): MediaCreationSession =
         database.withTransaction {
-            dao.getSession(id.toString())?.toSession() ?: MediaCreationSession(id = id, title = title).also {
+            dao.getSession(id.toString())?.toSession() ?: MediaCreationSession(id = id, title = title, draft = draft).also {
                 dao.insertSession(it.toEntity())
             }
         }
@@ -99,7 +102,7 @@ class MediaCreationRepository(
      * 返回一个还没有任何记录的会话：已经有空会话时直接复用，避免攒下一堆空会话。
      */
     suspend fun getOrCreateEmptySession(draft: MediaCreationDraft): MediaCreationSession = database.withTransaction {
-        dao.getEmptySession()?.toSession() ?: MediaCreationSession(draft = draft).also {
+        dao.getEmptySession()?.toSession()?.takeIf { it.draft.sourceConversationId == null } ?: MediaCreationSession(draft = draft).also {
             dao.insertSession(it.toEntity())
         }
     }
@@ -170,8 +173,11 @@ class MediaCreationRepository(
     suspend fun getRecordsOfSession(sessionId: Uuid): List<MediaCreationRecord> =
         dao.getRecordsOfSession(sessionId.toString()).map { it.toRecord() }
 
+    suspend fun getRecordIdsOfSession(sessionId: Uuid): List<Uuid> =
+        dao.getRecordIdsOfSession(sessionId.toString()).map(Uuid::parse)
+
     suspend fun getActiveRecords(): List<MediaCreationRecord> =
-        dao.getRecordsByStatus(activeStatuses).map { it.toRecord() }
+        dao.getRecordsByStatus(activeStatuses + MediaCreationStatus.SUBMIT_UNKNOWN.name).map { it.toRecord() }
 
     fun observeRecentSucceededRecords(limit: Int): Flow<List<MediaCreationRecord>> =
         dao.observeRecentRecords(MediaCreationStatus.SUCCEEDED.name, limit).map { records ->

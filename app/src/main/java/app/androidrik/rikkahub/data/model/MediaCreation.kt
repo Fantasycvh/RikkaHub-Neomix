@@ -33,6 +33,8 @@ data class MediaCreationSession(
  */
 @Serializable
 data class MediaCreationDraft(
+    /** Chat entry point; the media timeline remains independently managed. */
+    val sourceConversationId: String? = null,
     val modelId: Uuid? = null,
     val prompt: String = "",
     val assets: List<MediaCreationAsset> = emptyList(),

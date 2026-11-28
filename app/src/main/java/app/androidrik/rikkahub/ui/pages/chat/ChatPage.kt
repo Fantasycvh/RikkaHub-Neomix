@@ -587,6 +587,7 @@ private fun ChatPageContent(
     val resources = LocalResources.current
     val workspaceRepository: WorkspaceRepository = koinInject()
     val skillManager: SkillManager = koinInject()
+    val mediaFilesManager: FilesManager = koinInject()
     // 树面板的轻量树信息（稀疏会话）；全量会话为空列表，面板按内存节点渲染
     val treeNodes by vm.treeNodes.collectAsStateWithLifecycle()
     val switchingBranch by vm.switchingBranch.collectAsStateWithLifecycle()
@@ -1288,6 +1289,32 @@ private fun ChatPageContent(
             containerColor = Color.Transparent,
         ) { innerPadding ->
             Box {
+            androidx.compose.runtime.CompositionLocalProvider(
+                app.androidrik.rikkahub.ui.components.message.tools.LocalChatMediaReference provides { path, sourceRecordId ->
+                    scope.launch {
+                        if (inputState.isEditing()) {
+                            toaster.show("请先完成当前消息编辑")
+                            return@launch
+                        }
+                        val copied = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            mediaFilesManager.createChatFilesByContents(listOf(android.net.Uri.fromFile(java.io.File(path))))
+                        }
+                        if (copied.isEmpty()) {
+                            toaster.show("无法读取参考图")
+                        } else {
+                            if (inputState.isEditing() || vm.conversation.value.id != conversation.id) {
+                                toaster.show("请先完成当前消息编辑")
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    copied.forEach { uri -> java.io.File(requireNotNull(uri.path)).delete() }
+                                }
+                            } else {
+                                inputState.addMediaReference(copied, sourceRecordId)
+                                toaster.show("已添加参考图，输入修改要求后发送")
+                            }
+                        }
+                    }
+                },
+            ) {
             ChatList(
                 scrollController = chatListScrollController,
                 innerPadding = innerPadding,
@@ -1449,6 +1476,7 @@ private fun ChatPageContent(
                     vm.updateConversationGoal(newGoal)
                 },
             )
+            }
             // 隐形会话（design-proactive-task-management.md §二.3）：任务工作台的唯一 UI 开关。
             // 覆盖在列表顶部（不挤占 ChatList 的 padding）；「移出隐藏」= 收养进列表。
             if (conversation.hidden) {

@@ -17,6 +17,13 @@ interface GenMediaDAO {
     @Insert
     suspend fun insert(media: GenMediaEntity)
 
+    @Query("""
+        INSERT INTO genmediaentity (path, model_id, prompt, create_at, type, source_paths)
+        SELECT :path, :model, :prompt, :createdAt, :type, :sources
+        WHERE NOT EXISTS (SELECT 1 FROM genmediaentity WHERE path = :path)
+    """)
+    suspend fun insertIfMissing(path: String, model: String, prompt: String, createdAt: Long, type: String, sources: String?)
+
     @Query("DELETE FROM genmediaentity WHERE id = :id")
     suspend fun delete(id: Int)
 }

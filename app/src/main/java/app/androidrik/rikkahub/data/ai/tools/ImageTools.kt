@@ -18,6 +18,9 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.CancellationException
+import app.androidrik.rikkahub.data.model.MediaCreationRecord
+import app.androidrik.rikkahub.data.model.MediaCreationStatus
 
 /**
  * 会话内生图工具（上游 #2123）。设计与取舍见 `docs/design/design-agent-image-tool.md`。
@@ -107,6 +110,32 @@ internal fun imageToolSuccess(modelName: String, paths: List<String>): String = 
     }
 )
 
+internal fun imageToolMediaResult(record: MediaCreationRecord, resolve: (String) -> String): String =
+    JsonInstantPretty.encodeToString(buildJsonObject {
+        val succeeded = record.status == MediaCreationStatus.SUCCEEDED
+        put("ok", succeeded || record.status.isActive)
+        put("record_id", record.id.toString())
+        put("session_id", record.sessionId.toString())
+        put("status", record.status.name)
+        put("model", record.modelId)
+        put("count", record.outputs.size)
+        put("images", buildJsonArray {
+            record.outputs.forEachIndexed { index, output ->
+                if (!output.isVideo) add(buildJsonObject {
+                    put("id", "${record.id}:$index")
+                    put("path", resolve(output.path))
+                })
+            }
+        })
+        record.error?.let { put("error", it) }
+        put("note", when {
+            record.status.isActive -> "Generation continues in the media task card. Do not submit again."
+            record.status == MediaCreationStatus.SUBMIT_UNKNOWN -> "Submission outcome unknown; it may be billed. Do not retry automatically."
+            succeeded -> "Images are shown to the user. Use their IDs as reference_images to edit. You have not seen their contents."
+            else -> "Open the media task card for details. Do not automatically resubmit this request."
+        })
+    })
+
 /**
  * 从工具结果里取出图片路径——[imageToolSuccess] 的**逆函数**，两个方向必须成对改动。
  *
@@ -132,6 +161,8 @@ internal fun parseGeneratedImagePaths(content: JsonElement?): List<String> {
  */
 internal fun createImageTools(
     assistant: Assistant,
+    referenceIds: () -> Set<String> = { emptySet() },
+    generateMedia: (suspend (String, Int, String, List<String>) -> String)? = null,
     /**
      * 真正去生成的那一步（由调用方注入）。
      *
@@ -146,6 +177,7 @@ internal fun createImageTools(
     // 作用域 = 本次生成（工具装配每轮一次、生成循环内复用同一份 List<Tool>）。
     var generationsThisTurn = 0
     var attemptsThisTurn = 0
+    val mediaResults = mutableMapOf<String, String>()
     return listOf(
         Tool(
             name = IMAGE_TOOL_NAME,
@@ -156,6 +188,8 @@ internal fun createImageTools(
                 describe the result in detail. Use this when the user asks for a picture, illustration,
                 diagram-like artwork, avatar, wallpaper, or similar. At most $MAX_IMAGES_PER_CALL images
                 per call and $MAX_IMAGE_GENERATIONS_PER_TURN successful generations per turn.
+                When reference_images is available, use explicit image IDs to edit an existing image.
+                A pending or unknown submission must not be submitted again. Stopping chat does not cancel media tasks.
             """.trimIndent(),
             parameters = {
                 InputSchema.Obj(
@@ -176,6 +210,13 @@ internal fun createImageTools(
                             put("type", "integer")
                             put("description", "How many images, 1-$MAX_IMAGES_PER_CALL (default 1).")
                         })
+                        if (generateMedia != null) put("reference_images", buildJsonObject {
+                            put("type", "array")
+                            put("maxItems", 4)
+                            put("items", buildJsonObject { put("type", "string") })
+                            put("description", "Image IDs to edit, never file paths. Available in chronological order (last is newest) in this branch: " +
+                                referenceIds().joinToString(", ") + ". IDs returned by this tool in this turn are also allowed.")
+                        })
                     },
                     required = listOf("prompt"),
                 )
@@ -187,6 +228,11 @@ internal fun createImageTools(
                 val prompt = args["prompt"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
                 val size = args["size"]?.jsonPrimitive?.contentOrNull?.trim()?.ifBlank { null }
                 val requestedNum = args["num"]?.jsonPrimitive?.intOrNull
+                val references = (args["reference_images"] as? JsonArray)?.mapNotNull {
+                    (it as? JsonPrimitive)?.takeIf { value -> value.isString }?.contentOrNull
+                }.orEmpty()
+                val mediaKey = listOf(prompt, size ?: "auto", clampImageCount(requestedNum).toString(),
+                    references.joinToString("\u0000")).joinToString("\u0001")
 
                 val result = when {
                     prompt.isBlank() -> imageToolFailure(
@@ -198,6 +244,15 @@ internal fun createImageTools(
                         error = "unsupported_size",
                         hint = "Supported sizes: ${IMAGE_TOOL_SIZES.joinToString(", ")}.",
                     )
+
+                    (args.containsKey("reference_images") && args["reference_images"] !is JsonArray) ||
+                        references.size != ((args["reference_images"] as? JsonArray)?.size ?: 0) ->
+                        imageToolFailure("invalid_references", "reference_images must be an array of image IDs.")
+
+                    references.size > 4 || references.any { it !in referenceIds() } ->
+                        imageToolFailure("invalid_references", "Use up to four image IDs available in this conversation branch.")
+
+                    generateMedia != null && mediaKey in mediaResults -> mediaResults.getValue(mediaKey)
 
                     generationsThisTurn >= MAX_IMAGE_GENERATIONS_PER_TURN -> imageToolFailure(
                         error = "too_many_calls",
@@ -214,6 +269,19 @@ internal fun createImageTools(
                     else -> {
                         attemptsThisTurn++
                         val count = clampImageCount(requestedNum)
+                        if (generateMedia != null) {
+                            // Reserve a submission, including pending/unknown outcomes. They may already be billed.
+                            generationsThisTurn++
+                            val result = try {
+                                generateMedia(prompt, count, size ?: "auto", references)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                imageToolFailure("generation_failed", e.message ?: "Unable to create media task.")
+                            }
+                            mediaResults[mediaKey] = result
+                            return@Tool listOf(UIMessagePart.Text(result))
+                        }
                         runCatching {
                             generate(prompt, count, size ?: "auto")
                         }.fold(
@@ -234,6 +302,7 @@ internal fun createImageTools(
                                 }
                             },
                             onFailure = { error ->
+                                if (error is CancellationException) throw error
                                 imageToolFailure(
                                     error = "generation_failed",
                                     hint = error.message ?: "Unknown error from the image provider.",

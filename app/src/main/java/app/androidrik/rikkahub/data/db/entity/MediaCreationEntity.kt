@@ -70,7 +70,7 @@ data class MediaCreationNodeEntity(
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("session_id"), Index("node_id")]
+    indices = [Index("session_id"), Index("node_id"), Index("status")]
 )
 data class MediaCreationRecordEntity(
     @PrimaryKey

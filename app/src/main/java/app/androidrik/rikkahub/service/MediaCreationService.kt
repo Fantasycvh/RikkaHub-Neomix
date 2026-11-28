@@ -97,6 +97,7 @@ class MediaCreationService(
     private val remoteFileStore: RemoteFileStore,
     private val okHttpClient: OkHttpClient,
     private val usageRecorder: UsageRecorder,
+    private val genMediaRepository: app.androidrik.rikkahub.data.repository.GenMediaRepository,
 ) {
     private val jobs = ConcurrentHashMap<Uuid, Job>()
 
@@ -187,7 +188,10 @@ class MediaCreationService(
     suspend fun cancel(recordId: Uuid) = inAppScope {
         jobs[recordId]?.cancelAndJoin()
         repository.updateRecord(recordId) { record ->
-            if (record.status.isActive) record.copy(status = MediaCreationStatus.CANCELLED) else record
+            if (record.status.isActive) record.copy(status = when {
+                record.taskId == null && record.status in setOf(MediaCreationStatus.RUNNING, MediaCreationStatus.DOWNLOADING) -> MediaCreationStatus.SUBMIT_UNKNOWN
+                else -> MediaCreationStatus.CANCELLED
+            }) else record
         }
     }
 
@@ -207,7 +211,7 @@ class MediaCreationService(
     }
 
     suspend fun deleteSession(sessionId: Uuid) = inAppScope {
-        repository.getRecordsOfSession(sessionId).forEach { jobs[it.id]?.cancelAndJoin() }
+        repository.getRecordIdsOfSession(sessionId).forEach { jobs[it]?.cancelAndJoin() }
         repository.deleteSession(sessionId)
     }
 
@@ -260,13 +264,15 @@ class MediaCreationService(
                 // 把任务 ID 落库转回可续查，再注册接着跑。写库在前：注册前再死一次的话，
                 // 下轮启动 taskId 已在，按 RESUME_QUERY 接着查，不会重复对账
                 val resumed = repository.updateRecord(record.id) {
-                    if (it.status == MediaCreationStatus.RUNNING) {
-                        it.copy(taskId = disposition.taskId, error = null)
+                    if (it.status in setOf(MediaCreationStatus.RUNNING, MediaCreationStatus.SUBMIT_UNKNOWN, MediaCreationStatus.DOWNLOADING)) {
+                        it.copy(taskId = disposition.taskId, status = MediaCreationStatus.RUNNING, error = null)
                     } else {
                         it
                     }
                 }
-                if (resumed != null) register(record.id, record.sessionId)?.start()
+                if (resumed?.taskId == disposition.taskId && resumed.status.isActive) {
+                    register(record.id, record.sessionId)?.start()
+                }
             }
 
             MediaReconciliationDisposition.ConfirmAbsent -> markSubmitUnknown(record.id)
@@ -277,7 +283,7 @@ class MediaCreationService(
     private suspend fun markSubmitUnknown(recordId: Uuid) {
         repository.updateRecord(recordId) {
             // 条件守卫避免盖掉并发进来的 retry：它已经把状态改成 PREPARING 了
-            if (it.status == MediaCreationStatus.RUNNING) {
+            if (it.status in setOf(MediaCreationStatus.RUNNING, MediaCreationStatus.SUBMIT_UNKNOWN, MediaCreationStatus.DOWNLOADING)) {
                 it.copy(status = MediaCreationStatus.SUBMIT_UNKNOWN)
             } else {
                 it
@@ -314,7 +320,7 @@ class MediaCreationService(
                 sanitizeSensitiveText(e.toDisplayMessage()))
             repository.updateRecord(recordId) {
                 // provider 报错可能回显带签名的输入 URL：入库前抹掉签名类 query，只保留可读错误
-                it.copy(status = MediaCreationStatus.FAILED, error = sanitizeSensitiveText(e.toDisplayMessage()))
+                it.copy(status = mediaFailureStatus(it.status, it.taskId, e), error = sanitizeSensitiveText(e.toDisplayMessage()))
             }
         }
         repository.getRecord(recordId)?.let(::notifyFinished)
@@ -330,6 +336,11 @@ class MediaCreationService(
             awaitTask(target as MediaGenerationTarget.Media, record.id, record.taskId, since = record.updateAt)
         } else {
             val created = create(option, record)
+            if (executor.supportsQuery(option.target)) {
+                withContext(NonCancellable) {
+                    repository.updateRecord(record.id) { it.copy(taskId = created.id) }
+                }
+            }
             if (created.isTerminal) {
                 created
             } else {
@@ -363,6 +374,9 @@ class MediaCreationService(
 
         repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.DOWNLOADING) }
         val outputs = downloadOutputs(option.mediaProvider, record, task.outputs)
+        if (repository.getSession(record.sessionId)?.draft?.sourceConversationId != null) {
+            publishChatGallery(record, outputs)
+        }
         repository.updateRecord(record.id) {
             if (outputs.isEmpty()) {
                 it.copy(
@@ -391,13 +405,39 @@ class MediaCreationService(
         } else {
             record.inputs.map { repository.resolve(it.path).absolutePath }
         }
-        repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.RUNNING) }
         val request = buildMediaGenerationRequest(record.prompt, record.params, record.inputs, inputUrls, capabilities)
             // 对账键随提交载荷下发（支持对账的适配器写进请求体），键本身已在提交前落库
             .copy(requestId = record.requestId)
+        repository.updateRecord(record.id) { it.copy(status = MediaCreationStatus.RUNNING) }
         // M3b-1 目录切换后只有 mediagen 任务链路（legacy 生图模型已在目录层映射成 Media target）
         return executor.submit(option.target, request)
     }
+
+    private suspend fun publishChatGallery(record: MediaCreationRecord, outputs: List<MediaCreationOutput>) =
+        withContext(Dispatchers.IO) {
+            outputs.filterNot { it.isVideo }.forEachIndexed { index, output ->
+                val source = repository.resolve(output.path)
+                // Gallery owns its copy: deleting the media timeline must not invalidate gallery entries.
+                val path = app.androidrik.rikkahub.data.media.chatMediaGalleryPath(record.id, index, output)
+                val target = repository.resolve(path)
+                target.parentFile?.mkdirs()
+                val partial = File(target.parentFile, target.name + ".part")
+                try {
+                    source.copyTo(partial, overwrite = true)
+                    check(partial.renameTo(target)) { "Unable to save gallery image" }
+                    genMediaRepository.insertIfMissing(app.androidrik.rikkahub.data.db.entity.GenMediaEntity(
+                        path = path,
+                        modelId = record.modelId,
+                        prompt = record.prompt,
+                        createAt = record.createAt.toEpochMilli(),
+                        type = if (record.inputs.isEmpty()) "image_generation" else "image_edit",
+                        sourcePaths = record.inputs.takeIf { it.isNotEmpty() }?.joinToString("\n") { it.path },
+                    ))
+                } finally {
+                    partial.delete()
+                }
+            }
+        }
 
     /**
      * 轮询到终态。网络抖动和服务端的临时错误不代表任务失败，退避后继续查询；
@@ -568,12 +608,13 @@ class MediaCreationService(
     }
 
     private fun notifyFinished(record: MediaCreationRecord) {
-        if (record.status != MediaCreationStatus.SUCCEEDED && record.status != MediaCreationStatus.FAILED) return
+        if (record.status !in setOf(MediaCreationStatus.SUCCEEDED, MediaCreationStatus.FAILED, MediaCreationStatus.SUBMIT_UNKNOWN)) return
         // 应用在前台时时间线上已经能看到结果（媒体域的抑制策略：前台静默）
         if (CompletionNotifications.isAppForeground()) return
         val isVideo = record.kind == MediaKind.VIDEO
         val succeeded = record.status == MediaCreationStatus.SUCCEEDED
         val titleRes = when {
+            record.status == MediaCreationStatus.SUBMIT_UNKNOWN -> R.string.media_creation_status_submit_unknown
             isVideo && succeeded -> R.string.media_creation_notification_video_succeeded
             isVideo -> R.string.media_creation_notification_video_failed
             succeeded -> R.string.media_creation_notification_image_succeeded
@@ -584,7 +625,7 @@ class MediaCreationService(
             notificationId = NotificationIds.mediaFinished(record.id.toString()),
         ) {
             title = context.getString(titleRes)
-            content = record.error?.takeIf { record.status == MediaCreationStatus.FAILED }
+            content = record.error?.takeIf { record.status != MediaCreationStatus.SUCCEEDED }
                 ?: record.prompt.ifBlank { record.modelId }
             autoCancel = true
             useDefaults = true

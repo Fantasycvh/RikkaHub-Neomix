@@ -32,7 +32,7 @@ internal enum class MediaInterruptionOutcome {
  */
 internal fun resolveMediaInterruption(taskId: String?, status: MediaCreationStatus): MediaInterruptionOutcome = when {
     taskId != null -> MediaInterruptionOutcome.RESUME_QUERY
-    status == MediaCreationStatus.RUNNING -> MediaInterruptionOutcome.SUBMIT_UNKNOWN
+    status in setOf(MediaCreationStatus.RUNNING, MediaCreationStatus.DOWNLOADING, MediaCreationStatus.SUBMIT_UNKNOWN) -> MediaInterruptionOutcome.SUBMIT_UNKNOWN
     else -> MediaInterruptionOutcome.MARK_FAILED
 }
 
@@ -68,3 +68,11 @@ internal fun classifyReconciliation(result: Result<MediaGenerationTask>): MediaR
             }
         },
     )
+
+/** A lost create response is not proof of rejection. Never offer it as an ordinary safe failure. */
+internal fun mediaFailureStatus(status: MediaCreationStatus, taskId: String?, error: Throwable): MediaCreationStatus {
+    if (taskId != null || status !in setOf(MediaCreationStatus.RUNNING, MediaCreationStatus.DOWNLOADING)) return MediaCreationStatus.FAILED
+    if (status == MediaCreationStatus.DOWNLOADING) return MediaCreationStatus.SUBMIT_UNKNOWN
+    val rejected = error is MediaGenerationApiException && error.statusCode in 400..499 && error.statusCode != 408
+    return if (rejected) MediaCreationStatus.FAILED else MediaCreationStatus.SUBMIT_UNKNOWN
+}

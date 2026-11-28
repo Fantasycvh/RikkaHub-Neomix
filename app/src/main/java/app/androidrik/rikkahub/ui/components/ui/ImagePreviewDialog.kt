@@ -36,6 +36,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
+import coil3.request.ImageRequest
+import coil3.request.CachePolicy
+import coil3.size.Precision
+import coil3.size.Scale
 import com.dokar.sonner.ToastType
 import com.jvziyaoyao.scale.image.pager.ImagePager
 import com.jvziyaoyao.scale.zoomable.pager.rememberZoomablePagerState
@@ -49,6 +53,15 @@ import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.files.FilesManager
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import org.koin.compose.koinInject
+
+internal fun boundedImagePreviewRequest(context: android.content.Context, image: String): ImageRequest =
+    ImageRequest.Builder(context)
+        .data(image)
+        .size(2048, 2048)
+        .scale(Scale.FIT)
+        .precision(Precision.EXACT)
+        .memoryCachePolicy(CachePolicy.DISABLED)
+        .build()
 
 /**
  * 当前会话内全部消息图片的 URL（已按渲染口径归一化，见 `normalizeLocalFileUrl`）。
@@ -103,7 +116,11 @@ fun ImagePreviewDialog(
                 modifier = Modifier.fillMaxSize(),
                 pagerState = state,
                 imageLoader = { index ->
-                    val painter = rememberAsyncImagePainter(images[index])
+                    // Bound decoded pixels independently of compressed upload size. Originals remain available for export.
+                    val request = remember(context, images[index]) {
+                        boundedImagePreviewRequest(context, images[index])
+                    }
+                    val painter = rememberAsyncImagePainter(request)
                     val painterState by painter.state.collectAsState()
                     val failed = painterState is AsyncImagePainter.State.Error
                     LaunchedEffect(failed) { failedPages[index] = failed }

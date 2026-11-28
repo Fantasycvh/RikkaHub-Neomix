@@ -147,6 +147,16 @@ class ChatInputState {
         messageContent = newMessage
     }
 
+    fun addMediaReference(uris: List<Uri>, recordId: String?) {
+        messageContent = messageContent + uris.map { uri ->
+            UIMessagePart.Image(uri.toString(), metadata = recordId?.let {
+                kotlinx.serialization.json.buildJsonObject {
+                    put("media_record_id", kotlinx.serialization.json.JsonPrimitive(it))
+                }
+            })
+        }
+    }
+
     fun addVideos(uris: List<Uri>) {
         val newMessage = messageContent.toMutableList()
         uris.forEach { uri ->

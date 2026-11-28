@@ -149,7 +149,10 @@ private fun collectUrls(parts: List<UIMessagePart>, out: MutableSet<String>, dep
     if (depth >= MAX_PARTS_DEPTH) return
     parts.forEach { part ->
         part.localFileUrlOrNull()?.let { out.add(it) }
-        if (part is UIMessagePart.Tool) collectUrls(part.output, out, depth + 1)
+        if (part is UIMessagePart.Tool) {
+            out.addAll(part.generatedImageFileUrls())
+            collectUrls(part.output, out, depth + 1)
+        }
     }
 }
 
@@ -178,7 +181,7 @@ private fun List<UIMessagePart>.rewriteParts(
             is UIMessagePart.Document -> part.copy(url = mapping[part.url] ?: part.url)
             is UIMessagePart.Video -> part.copy(url = mapping[part.url] ?: part.url)
             is UIMessagePart.Audio -> part.copy(url = mapping[part.url] ?: part.url)
-            is UIMessagePart.Tool -> part.copy(output = part.output.rewriteParts(mapping, depth + 1))
+            is UIMessagePart.Tool -> part.copy(output = part.output.rewriteParts(mapping, depth + 1)).rewriteGeneratedImageFiles(mapping)
             else -> part
         }
     }

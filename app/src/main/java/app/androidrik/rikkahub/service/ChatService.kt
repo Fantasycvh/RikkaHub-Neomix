@@ -235,6 +235,7 @@ class ChatService(
     private val pluginManager: PluginManager,
     private val providerManager: ProviderManager,
     private val chatToolFactory: ChatToolFactory,
+    private val chatMediaGeneration: app.androidrik.rikkahub.data.media.ChatMediaGeneration,
     val mcpManager: McpManager,
     private val filesManager: FilesManager,
     private val workspaceRepository: WorkspaceRepository,
@@ -1757,7 +1758,7 @@ class ChatService(
             } else {
                 val tagged = newUserMessage.copy(memoryContext = assistant.memoryContext(liveConversation.memoryDisabled))
                 liveConversation.mergeGenerationMessages(listOf(tagged)).also { updateConversation(conversationId, it) }
-            }
+            }.let { chatMediaGeneration.snapshot(it) }
             val afterCompressAt = SystemClock.elapsedRealtime()
 
             // start generating
@@ -1773,6 +1774,8 @@ class ChatService(
             }
             val loadedMemoriesAt = SystemClock.elapsedRealtime()
             val assembledTools = chatToolFactory.createTools(
+                imageMessages = if (messageRange == null) conversation.requestWindowMessages() else
+                    conversation.currentMessages.subList(messageRange.start, messageRange.endInclusive + 1),
                 settings = settings,
                 assistant = assistant,
                 model = model,

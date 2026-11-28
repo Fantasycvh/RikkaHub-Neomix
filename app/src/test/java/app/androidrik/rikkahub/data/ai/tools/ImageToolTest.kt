@@ -41,7 +41,7 @@ class ImageToolTest {
     private fun toolOf(
         approval: Boolean = false,
         generate: suspend (String, Int, String) -> List<GeneratedImage>,
-    ) = createImageTools(assistant(approval), generate).single()
+    ) = createImageTools(assistant(approval), generate = generate).single()
 
     private fun args(prompt: String? = "a cat", size: String? = null, num: Int? = null) = buildJsonObject {
         if (prompt != null) put("prompt", prompt)

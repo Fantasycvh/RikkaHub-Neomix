@@ -3,8 +3,9 @@ package app.androidrik.rikkahub.data.db.entity
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.Index
 
-@Entity
+@Entity(indices = [Index("path")])
 data class GenMediaEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,

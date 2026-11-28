@@ -37,7 +37,7 @@ import java.io.File
 val repositoryModule = module {
     single { MemoryFileRepository(get()) }
     single {
-        ConversationRepository(get(), get(), get(), get(), get(), get(), get(), get())
+        ConversationRepository(get(), get(), get(), get(), get(), get(), get(), get(), get())
     }
 
     single {

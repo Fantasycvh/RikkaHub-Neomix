@@ -4,6 +4,15 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.net.Uri
+import androidx.activity.compose.setContent
+import androidx.test.core.app.ActivityScenario
+import app.androidrik.rikkahub.SketchTestHostActivity
+import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.ui.components.message.tools.GenerateImageToolUI
+import app.androidrik.rikkahub.ui.components.message.tools.ToolUIContext
+import app.androidrik.rikkahub.ui.components.message.tools.LocalChatMediaReference
+import app.androidrik.rikkahub.ui.context.LocalNavController
+import app.androidrik.rikkahub.ui.context.Navigator
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
@@ -13,6 +22,12 @@ import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ModelAbility
 import app.androidrik.ai.provider.ProviderSetting
 import app.androidrik.ai.ui.UIMessagePart
+import app.androidrik.ai.ui.UIMessage
+import app.androidrik.ai.core.MessageRole
+import app.androidrik.rikkahub.data.media.ChatMediaGeneration
+import app.androidrik.rikkahub.data.ai.tools.imageToolMediaResult
+import app.androidrik.rikkahub.data.files.FilesManager
+import app.androidrik.rikkahub.ui.components.ui.boundedImagePreviewRequest
 import app.androidrik.mediagen.model.ImageRole
 import app.androidrik.mediagen.model.MediaGenerationModel
 import app.androidrik.mediagen.model.MediaGenerationRequest
@@ -134,10 +149,13 @@ class MediaGenerationAcceptanceTest {
         try {
             val fixture = Harness(koin, app, evidence, root.trimEnd('/'), token)
             val scenario = args.getString("mediaFixtureScenario") ?: "templates"
-            if (scenario != "recover" && scenario != "recoverreconcile") fixture.configure()
+            if (scenario !in listOf("recover", "recoverreconcile", "recoverchatmedia")) fixture.configure()
             when (scenario) {
                 "templates" -> fixture.templates()
                 "chat" -> fixture.chat()
+                "chatmedia" -> fixture.chatMedia()
+                "seedchatmedia" -> fixture.seedChatMedia()
+                "recoverchatmedia" -> fixture.recoverChatMedia()
                 "prompt" -> fixture.promptOptimization()
                 "seed" -> fixture.seedInterruption()
                 "recover" -> fixture.recoverInterruption()
@@ -380,6 +398,202 @@ class MediaGenerationAcceptanceTest {
             assertEquals(TaskRunStatus.OK, run(removed))
             assertTrue(events(removed.prompt, "/v1/chat/completions").all { !it["imageTool"]!!.jsonPrimitive.boolean })
             assertTrue(events(removed.prompt, "/v1/images/generations").isEmpty())
+        }
+
+        suspend fun chatMedia() {
+            verifyIndexMigration()
+            val coordinator = koin.get<ChatMediaGeneration>()
+            val conversation = Uuid.random().toString()
+            val prompt = "media-e2e-$token-chatmedia"
+            val first = coordinator.generate(conversation, "turn1", option(mediaImage), prompt, 1, "auto", emptyList())
+            assertEquals(first.id, coordinator.generate(conversation, "turn1", option(mediaImage), prompt, 1, "auto", emptyList()).id)
+            val completed = awaitRecord(first.id)
+            assertOutput(completed, "image/png")
+            assertEquals(1, events(prompt, "/v1/images/generations").size)
+            val result = imageToolMediaResult(completed) { media.resolve(it).absolutePath }
+            val generatedMessage = UIMessage(
+                role = MessageRole.ASSISTANT,
+                parts = listOf(UIMessagePart.Tool("call", "generate_image", "{}", listOf(UIMessagePart.Text(result)))),
+            )
+            val references = coordinator.references(listOf(generatedMessage))
+            assertEquals(1, references.size)
+            assertTrue(coordinator.references(emptyList()).isEmpty())
+            renderChatMediaCard(generatedMessage.parts.single() as UIMessagePart.Tool, completed)
+
+            // Match the UI handoff: a private chat attachment copy retains provenance for versioning.
+            val files = koin.get<FilesManager>()
+            val copies = withContext(Dispatchers.IO) {
+                files.createChatFilesByContents(listOf(Uri.fromFile(media.resolve(completed.outputs.single().path))))
+            }
+            val attachment = UIMessage(role = MessageRole.USER, parts = listOf(UIMessagePart.Image(copies.single().toString(),
+                metadata = kotlinx.serialization.json.buildJsonObject {
+                    put("media_record_id", kotlinx.serialization.json.JsonPrimitive(completed.id.toString()))
+                })))
+            val selected = coordinator.references(listOf(generatedMessage, attachment)).values.last()
+            assertTrue("Reference path must resolve inside this installation: ${selected.path}", media.resolve(selected.path).isFile)
+            assertEquals(completed.nodeId, selected.nodeId)
+            val edited = coordinator.generate(conversation, "turn2", option(mediaImage), "$prompt-edit", 1, "auto", listOf(selected))
+            val editedResult = awaitRecord(edited.id)
+            assertOutput(editedResult, "image/png")
+            assertEquals(completed.nodeId, editedResult.nodeId)
+            assertEquals(2, media.getVersionIds(completed.nodeId).size)
+            assertEquals(true, events("$prompt-edit", "/v1/images/edits").single()["hasImage"]!!.jsonPrimitive.boolean)
+            val fork = coordinator.generate(Uuid.random().toString(), "fork", option(mediaImage), "$prompt-fork", 1, "auto", listOf(selected))
+            assertTrue(completed.nodeId != awaitRecord(fork.id).nodeId)
+            service.deleteRecord(completed.id)
+            assertTrue(media.resolve(editedResult.inputs.single().path).isFile)
+
+            val gateway = coordinator.generate(conversation, "gateway", option(mediaImage), "$prompt-gateway", 1, "auto", emptyList())
+            assertEquals(MediaCreationStatus.SUBMIT_UNKNOWN, awaitRecord(gateway.id).status)
+            repeat(2) { service.resumePending(); delay(250) }
+            assertEquals(1, events("$prompt-gateway", "/v1/images/generations").size)
+            assertEquals(1, events(prompt, "/v1/images/generations").size)
+
+            val db = koin.get<AppDatabase>().openHelper.writableDatabase
+            fun plan(sql: String): String = db.query("EXPLAIN QUERY PLAN $sql").use { cursor ->
+                buildString { while (cursor.moveToNext()) append(cursor.getString(3)) }
+            }
+            assertTrue(plan("SELECT id FROM media_creation_record WHERE session_id = '${edited.sessionId}'").contains("index_media_creation_record_session_id"))
+            assertTrue(plan("SELECT id FROM media_creation_record WHERE status = 'RUNNING'").contains("index_media_creation_record_status"))
+            assertTrue(plan("SELECT id FROM genmediaentity WHERE path = 'missing'").contains("index_GenMediaEntity_path", ignoreCase = true))
+            db.execSQL("""
+                WITH RECURSIVE seq(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM seq WHERE x<5000)
+                INSERT INTO media_creation_record
+                    (id, session_id, node_id, provider_id, provider_name, model_id, kind, prompt,
+                     params, inputs, status, task_id, error, outputs, create_at, update_at, catalog_model_id, request_id)
+                SELECT printf('00000000-0000-0000-0001-%012d', x), session_id, node_id,
+                    provider_id, provider_name, model_id, kind, prompt, params, inputs, status, task_id,
+                    error, outputs, create_at, update_at, catalog_model_id, request_id
+                FROM media_creation_record, seq WHERE id = '${edited.id}'
+            """.trimIndent())
+            val galleryPath = "images/chat_${edited.id}_0.png"
+            assertTrue(media.resolve(galleryPath).isFile)
+            val start = android.os.SystemClock.elapsedRealtime()
+            service.deleteSession(edited.sessionId)
+            File(evidence, "delete-5000-ms.txt").writeText((android.os.SystemClock.elapsedRealtime() - start).toString())
+            assertTrue(media.getRecordIdsOfSession(edited.sessionId).isEmpty())
+            assertFalse(media.sessionDir(edited.sessionId).exists())
+            assertTrue(media.resolve(galleryPath).isFile)
+
+            val loader = coil3.ImageLoader.Builder(app).components {
+                add(coil3.network.okhttp.OkHttpNetworkFetcherFactory(callFactory = { http }))
+            }.build()
+            try {
+                val decoded = loader.execute(boundedImagePreviewRequest(app, "$url/large-preview.png"))
+                check(decoded is coil3.request.SuccessResult) { decoded.toString() }
+                assertTrue(decoded.image.width <= 2048 && decoded.image.height <= 2048)
+                File(evidence, "preview-size.txt").writeText("${decoded.image.width}x${decoded.image.height}")
+            } finally { loader.shutdown() }
+        }
+
+        suspend fun seedChatMedia() {
+            val coordinator = koin.get<ChatMediaGeneration>()
+            val conversation = Uuid.random().toString()
+            val prompt = "media-e2e-$token-restart"
+            val completed = coordinator.generate(conversation, "completed", option(mediaImage), prompt, 1, "auto", emptyList())
+            assertOutput(awaitRecord(completed.id), "image/png")
+            val unknown = coordinator.generate(conversation, "unknown", option(mediaImage), "$prompt-unknown", 1, "auto", emptyList())
+            await { events("$prompt-unknown", "/v1/images/generations").singleOrNull() }
+            File(evidence, "chat-restart.ids").writeText("${completed.id}\n${unknown.id}\n$prompt")
+            File(evidence, "chat-restart.ready").writeText("Kill the isolated test process now")
+            awaitCancellation()
+        }
+
+        private fun verifyIndexMigration() {
+            val schema = JsonInstant.parseToJsonElement(app.assets.open(
+                "app.androidrik.rikkahub.data.db.AppDatabase/81.json").bufferedReader().use { it.readText() })
+                .jsonObject.getValue("database").jsonObject
+            val name = "media-index-migration-$token.db"
+            val file = app.getDatabasePath(name).also { it.parentFile?.mkdirs() }
+            android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+                schema.getValue("entities").jsonArray.forEach { entity ->
+                    val table = entity.jsonObject.getValue("tableName").jsonPrimitive.content
+                    fun sql(value: kotlinx.serialization.json.JsonElement) = value.jsonPrimitive.content.replace("\${TABLE_NAME}", table)
+                    db.execSQL(sql(entity.jsonObject.getValue("createSql")))
+                    (entity.jsonObject["indices"] as? kotlinx.serialization.json.JsonArray).orEmpty().forEach { index ->
+                        db.execSQL(sql(index.jsonObject.getValue("createSql")))
+                    }
+                }
+                schema.getValue("setupQueries").jsonArray.forEach { db.execSQL(it.jsonPrimitive.content) }
+                db.execSQL("INSERT INTO GenMediaEntity(path,model_id,prompt,create_at,type) VALUES('images/old.png','old-model','old-prompt',1,'image_generation')")
+                db.version = 81
+            }
+            val migrated = Room.databaseBuilder(app, AppDatabase::class.java, name).build()
+            try {
+                val db = migrated.openHelper.writableDatabase
+                assertEquals(82, db.version)
+                db.query("SELECT model_id,prompt FROM GenMediaEntity WHERE path='images/old.png'").use {
+                    assertTrue(it.moveToFirst())
+                    assertEquals("old-model", it.getString(0))
+                    assertEquals("old-prompt", it.getString(1))
+                }
+            } finally { migrated.close() }
+            File(evidence, "migration-81-82.passed").writeText("Old gallery row retained; Room schema validated")
+        }
+
+        private suspend fun renderChatMediaCard(tool: UIMessagePart.Tool, record: MediaCreationRecord) {
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            val selected = java.util.concurrent.atomic.AtomicReference<String?>()
+            val stack = mutableListOf<androidx.navigation3.runtime.NavKey>()
+            val navigator = Navigator(stack)
+            val content = JsonInstant.parseToJsonElement((tool.output.single() as UIMessagePart.Text).text)
+            ActivityScenario.launch<SketchTestHostActivity>(android.content.Intent(app, SketchTestHostActivity::class.java)).use { scenario ->
+                scenario.onActivity { activity ->
+                    activity.setContent {
+                        androidx.compose.material3.MaterialTheme {
+                            androidx.compose.runtime.CompositionLocalProvider(
+                                LocalNavController provides navigator,
+                                LocalChatMediaReference provides { path, _ -> selected.set(path) },
+                            ) {
+                                androidx.compose.foundation.layout.Column {
+                                    GenerateImageToolUI.Summary(ToolUIContext(tool, JsonObject(emptyMap()), content, false))
+                                }
+                            }
+                        }
+                    }
+                }
+                fun button(label: String): android.view.accessibility.AccessibilityNodeInfo? {
+                    fun visit(node: android.view.accessibility.AccessibilityNodeInfo): android.view.accessibility.AccessibilityNodeInfo? {
+                        if (node.text?.toString()?.contains(label) == true) {
+                            generateSequence(node) { it.parent }.firstOrNull { it.isClickable }?.let { return it }
+                        }
+                        for (index in 0 until node.childCount) node.getChild(index)?.let { visit(it) }?.let { return it }
+                        return null
+                    }
+                    return automation.rootInActiveWindow?.let(::visit)
+                }
+                delay(500)
+                automation.takeScreenshot()?.let { bitmap ->
+                    File(evidence, "chat-media-before.png").outputStream().use {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    bitmap.recycle()
+                }
+                File(evidence, "ui-stage.txt").writeText("Awaiting reference button")
+                val referenceButton = await { button("作为参考图继续编辑") }
+                assertTrue(referenceButton.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
+                await { selected.get() }
+                assertEquals(media.resolve(record.outputs.single().path).absolutePath, selected.get())
+                automation.takeScreenshot()?.let { bitmap ->
+                    File(evidence, "chat-media-card.png").outputStream().use {
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                    }
+                    bitmap.recycle()
+                }
+                assertTrue(await { button("打开创作记录") }.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))
+                await { (stack.lastOrNull() == Screen.MediaCreation(record.sessionId.toString())).takeIf { it } }
+            }
+        }
+
+        suspend fun recoverChatMedia() {
+            val (completedId, unknownId, prompt) = File(evidence, "chat-restart.ids").readLines()
+            service.resumePending()
+            await { media.getRecord(Uuid.parse(unknownId))?.takeIf { it.status == MediaCreationStatus.SUBMIT_UNKNOWN } }
+            service.resumePending()
+            delay(500)
+            assertOutput(checkNotNull(media.getRecord(Uuid.parse(completedId))), "image/png")
+            assertEquals(1, events(prompt, "/v1/images/generations").size)
+            assertEquals(1, events("$prompt-unknown", "/v1/images/generations").size)
         }
 
         suspend fun seedInterruption() {
