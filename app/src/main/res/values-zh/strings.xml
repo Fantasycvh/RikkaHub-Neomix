@@ -2310,7 +2310,7 @@ mDNS 地址：使用 .local 主机名，同一网络中的其他设备可通过�
   <string name="setting_page_kb_doc_count">%1$d 个文档</string>
   <string name="setting_page_kb_settings">设置</string>
   <string name="setting_page_kb_embedding_model">嵌入模型</string>
-  <string name="setting_page_kb_embedding_model_desc">需选择 OpenAI 兼容提供商下的嵌入模型</string>
+  <string name="setting_page_kb_embedding_model_desc">需选择 OpenAI 兼容提供商下的嵌入模型。更换模型或维度会清空已存向量，文档需重建索引。</string>
   <string name="setting_page_kb_model_not_set">未设置</string>
   <string name="setting_page_kb_pick_model">选择嵌入模型</string>
   <string name="setting_page_kb_no_models">没有可用模型，请先在提供商中添加嵌入模型</string>

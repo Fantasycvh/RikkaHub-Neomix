@@ -2261,7 +2261,7 @@ Not counted here: the encoded size of images/documents (their count is shown ins
   <string name="setting_page_kb_doc_count">%1$d documents</string>
   <string name="setting_page_kb_settings">Settings</string>
   <string name="setting_page_kb_embedding_model">Embedding model</string>
-  <string name="setting_page_kb_embedding_model_desc">Must be an embedding model on an OpenAI-compatible provider</string>
+  <string name="setting_page_kb_embedding_model_desc">Must be an embedding model on an OpenAI-compatible provider. Changing the model or dimensions clears stored vectors; documents need re-indexing.</string>
   <string name="setting_page_kb_model_not_set">Not set</string>
   <string name="setting_page_kb_pick_model">Pick embedding model</string>
   <string name="setting_page_kb_no_models">No models found. Add a provider with an embedding model first.</string>

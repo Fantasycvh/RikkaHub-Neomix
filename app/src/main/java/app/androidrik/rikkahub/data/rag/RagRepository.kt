@@ -95,6 +95,11 @@ class RagRepository(
      *
      * 页面侧不再传组合期实体快照（`onUpdate(kb.copy(...))` 会用旧实体覆盖并发字段），
      * 改为传 `{ it.copy(field = ...) }`。
+     *
+     * 嵌入配置（模型 / 维度）变更时把存量向量作废（PurrCat 判据）：不同 embedding 空间的
+     * 向量不可比——[cosineSimilarity] 维度不一致恒 0，旧库会静默检索失效而不报错。按文档
+     * 实体注释里「源内容变更或模型更换后需重建」的既有约定落盘：清向量、文档打回未索引，
+     * 重建入口就是现有的按文档 reindex（向量化只依赖 chunk_text，无需源文件还在）。
      */
     suspend fun updateKnowledgeBase(
         id: String,
@@ -103,6 +108,17 @@ class RagRepository(
         updateMutex.withLock {
             val current = dao.getKnowledgeBase(id) ?: return
             val updated = transform(current)
+            val embeddingConfigChanged = updated.embeddingModelId != current.embeddingModelId ||
+                updated.dimensions != current.dimensions
+            if (embeddingConfigChanged) {
+                val docs = dao.getDocumentsOfKnowledgeBase(id)
+                if (docs.any { it.indexed }) {
+                    dao.deleteEmbeddingsOfKnowledgeBase(id)
+                    docs.filter { it.indexed }.forEach { doc ->
+                        dao.updateDocumentIndexState(doc.id, indexed = false, chunkCount = 0, error = null)
+                    }
+                }
+            }
             dao.updateKnowledgeBase(
                 id = updated.id,
                 name = updated.name,

@@ -2296,7 +2296,7 @@
   <string name="setting_page_kb_doc_count">%1$d 個文件</string>
   <string name="setting_page_kb_settings">設定</string>
   <string name="setting_page_kb_embedding_model">嵌入模型</string>
-  <string name="setting_page_kb_embedding_model_desc">需選擇 OpenAI 相容提供商下的嵌入模型</string>
+  <string name="setting_page_kb_embedding_model_desc">需選擇 OpenAI 相容提供商下的嵌入模型。更換模型或維度會清空已存向量，文件需重建索引。</string>
   <string name="setting_page_kb_model_not_set">未設定</string>
   <string name="setting_page_kb_pick_model">選擇嵌入模型</string>
   <string name="setting_page_kb_no_models">沒有可用模型，請先在提供商中新增嵌入模型</string>
