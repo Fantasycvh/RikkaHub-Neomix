@@ -435,3 +435,37 @@ arm64 debug）走查通知权限卡与世界书编辑对话框，logcat 无新�
 
 - **rev-list 大数值先用 merge-base 核验祖先关系**：华灯分支重建使 `93c4421e3..ssh-fresh/huadeng` 报出 1360 条，实为历史重构噪音；无 clone 关系的远端（如 Miffan 浅 fetch）更要核对 HEAD 日期与上轮记录是否自洽。
 - **「零新增」判决必须报出比对锚点哈希**：bigeye `4f4c0cf`（11-09）被 11-17 轮「零新增」漏检，本轮以 `a67fab1` 为锚重算才补上。
+
+## 十一、2026-11-28 全量克隆同步轮判决（上游 5 提交 + 16 来源复检）
+
+> 距 11-18 全量 10 天（期间 11-23/24/25 只追上游+BiliPai+kelivo）。fetch：github 来源 SSH（`ssh-fresh/*`），镜像仓走 origin，Miffan/agentd 走 gh api。**SillyTavern 本地 fork `Fantasycvh/SillyTavern` 已被作者删除**，改跟踪上游 staging（锚点 merge-base 核验通过）——教训：fork 源要在台账记上游正主，fork 生命周期不可控。总评：**吸收 0 / 候选 6（P2×1 + P3×5）/ 已有等价 ~10 / 销账 ~7 / 判据记账 ~30 / 不适用其余**。逐条见 [upstream-analysis 11-28 节](upstream-analysis.md)。
+
+本轮两件最有价值：**悬浮球 dropShadow 阴影缓存 OOM 是本仓在场活 bug**（P2，上游逐字同构可移植）；**KB 嵌入模型切换静默错检是本仓数据正确性缺口**（P3，PurrCat 判据实锤同病）。已有等价面收获大：中途落库（本仓 2s 流式检查点强于上游 30s 工具边界）、loopback DNS rebinding 防护（WebRequestSecurity 已覆盖）、连接测试模型覆写、DB 原子升级、`#` 文件名导入。
+
+### 11.1 本轮候选池（按优先级）
+
+1. **悬浮球 dropShadow 缓存 OOM**（P2，在场活 bug，~半天）：上游 `b2b4eca6a`，本仓 `ChatFloatingContent.kt:160` 全仓唯一站点，逐字移植。
+2. **KB 嵌入模型切换重建提示**（P3，~1 天）：PurrCat `5ca56af`/`fece8f7` 判据，本仓 `updateKnowledgeBase` 无过期标记无重建信号。
+3. **workspace_shell description 参数**（P3，~半天）：上游 `55a0631fe`，审批可见性判据（标题换 description 后命令必须进摘要）。
+4. **ANCHOR_START 末节点最小高度补白**（P3，~半天）：上游 `2afc907d2` 判据，短回复锚顶能力。
+5. **workspace 会话文件变更摘要卡片**（P3 需拍板，~1-2 天）：NMoi D372–D391。
+6. **终端键盘重唤起+复制粘贴对照排查**（P3）：dsh-Go `a99b5e19`，先核对本仓是否同病。
+
+### 11.2 本轮销账
+
+- 上游 11-18 候选 2「快速入门页」→ `c08d72003` 上游自己撤了聊天页入口，销账。
+- #2375/#2376/#2377/#2379 四项待复核 + `1fb091529` 连接测试 → 全部清完（等价/免疫/不适用，明细见 upstream-analysis 11-28 节）。
+
+### 11.3 本轮判据记账（进 §二 口径的增量）
+
+- **逐帧变形 Shape 不得走 `Modifier.dropShadow`**——ShadowContext 缓存按 Shape 只增不减，变形轮廓必须直接构造 `DropShadowPainter` 画完即弃（上游 `b2b4eca6a`，OOM 实锤）。
+- **末节点最小高度补白**：锚定置顶类滚动必须处理「尾部内容不足一屏」钳制，加载行并入末条 item（上游 `2afc907d2`）。
+- **嵌入模型与向量空间绑定**：模型可切换的向量索引必须带模型指纹，切换即标记过期+提示重建（PurrCat `5ca56af`/`fece8f7`）。
+- **标题抽象出指令后，原信息必须降级到摘要**而非消失——审批/确认场景的可见性守恒（上游 `55a0631fe`）。
+- **校验错误不拆散 tool-call 批次**（SDK `3f1ddad8f`，#2317 拦截族同域）。
+- **锁不 settle 要有释放路径**（ST `ada8c4958` save lock / BC `ae9cfcb0d5` egress pin deadlock，互证两案）。
+- **滑动期间请求高刷新率/帧率投真实输出面**（NMoi D360 + BiliPai `217c33726`，三源互证含 11-24 BiliPai 判据）。
+- **图片解码缓存按内存压力释放、离开预览放掉整图解码**（dsh-Go `3fa1a5e3`）。
+- **空检索返回最近缓存条目而非空手**（PurrCat `a277d2e`，诚实空态族反向：空≠零信息）。
+- **回归修复的适用范围按开关收窄**（BC `571426984c`，regression-conservative scoping）。
+- **删除差异要 occurrence-aware，不产生幽灵**（BC `7904d44c05`，节点差集钩子同族）。

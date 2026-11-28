@@ -124,3 +124,11 @@ USER_CONTEXT / TASK_TRACKING（**强约束保留任务 ID 与状态**）/ COMPLE
 - 溢出判据落地时对照过 SDK `classifier.py`（`LONG_PROMPT_PATTERNS` 8 条全量移植）；`MALFORMED_HISTORY_PATTERNS` 存档于 `GenerationErrorPolicy.kt` 注释不进 v1。
 - #4 轻量版已实施（同日第四笔提交）：完成报告 = 手动压缩 toast + 轮前失败可见 + 全路径节省量 Log；三态中的「timeout 判失败」判已有等价（手动压缩是直接 suspend 调用，失败本来就抛）。
 - #6 已实施（同日第三笔提交）：`Redactor` 判定层 + 压缩侧双落点 + 导出三出口 + Web API 三端点；NMoi 待办④（内容级脱敏，仅导出/备份）随之收官——两线合并结算。
+
+## 2026-11-28 增量备忘（`6fa7686d3..4adc3d6d0`，134 提交；SDK `06f643ca4..cf8158bc2`，112 提交）
+
+> fetch：origin 镜像。主体是前端 deps 与 CI（域外）。总评：**吸收 0 / 已有等价（更强）1 / 记账 2 / 其余 deps**。
+
+**已有等价（更强）**：`be48abe25` fix(security) loopback 服务器防 DNS rebinding 与 CSWSH——本仓 web 模块 WebRequestSecurity.kt 已覆盖同威胁模型且更严：Host 头按字面量设备地址白名单（**不解析 DNS**，rebinding 失效）+ Origin 必须与 target host:port 同源 + `Sec-Fetch-Site: cross-site` 直接拒。
+
+**记账**：① `ccdc5f51c` fix(canvas) 历史中隔离损坏会话（损坏行不崩整页）——列表容错判据；② SDK `3f1ddad8f` fix(sdk) 校验错误时保留 tool-call 批次——#2317 拦截族同域：部分工具调用校验失败不拆散批次 id 关联；③ SDK `ce9206efb` sub-agent 用量按 model 归账——本仓 UsageSource 流水线已做。

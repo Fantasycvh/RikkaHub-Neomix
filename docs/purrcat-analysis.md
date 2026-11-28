@@ -475,3 +475,11 @@ git -C F:/build/projects/purrcat show 016a8a7 --stat    # 5696 行 host.js → 2
 **总评：吸收 0 / 候选 0 / 判据记账 5 / 等价倾向 1 / 不适用 8。** 本轮亮点是检索出口的「置信截止」与出厂资产「只读 + 可恢复」，均为判据级，暂无实施动作。
 
 > 判决汇总见 [docs/peer-verdicts-2026-11-08.md](peer-verdicts-2026-11-08.md) §十。
+
+## 2026-11-18 → 11-28 增量评估（`a085aad..502d465`，32 提交）
+
+> fetch：SSH。本轮是 memory 域密集批（体验库重建/置信衰减/RRF 权重/嵌入模型切换）。总评：**吸收 0 / 候选 1（本仓实锤同病）/ 记账 ~5 / 域外其余（draft 会话生命周期/skill graphs/部署切换）**。明细见 upstream-analysis 11-28 节。
+
+**候选（P3）**：**KB 嵌入模型切换后旧向量静默错检——本仓实锤同病**。PurrCat `5ca56af`（embedding model 变更重建向量索引）+ `fece8f7`（opt-in 更新+原子交换）；本仓 `RagRepository.updateKnowledgeBase` 直接改 `embeddingModelId`（RagRepository.kt:109），存量 embeddings 不重建、无过期标记，检索拿新模型 query 向量对旧空间向量比 cosine；手动 reindex 按文档存在（SettingKnowledgeBaseDetailPage onReindex）但无「该重建了」信号。修法=切换时校验存量向量模型指纹 → 标记过期+提示重建（~1 天）。
+
+**记账**：① `5972b13`/`7b39c13` 体验库 SQLite 重建+置信度随时间衰减、遗忘调度持久化增量衰减——本仓记忆回收站/consolidation 设计稿可引用；② `c7ba6c3`/`26eaea8` BM25 与向量等权 RRF + 事件向量余弦分数外显——11-18「分数可解释」判据延续；③ `872cd4a` 托管配置文件版本化+启动自动迁移——数据文件版本化判据；④ `a277d2e` 空搜索返回最近 3 条缓存而非空手——诚实空态族反向（空≠零信息）；⑤ `18b0a4a` 短时记忆默认只注入最近 5 条——注入条数上限判据。`e392920` 追加记忆后提醒 agent 整理——记忆卫生提示词。

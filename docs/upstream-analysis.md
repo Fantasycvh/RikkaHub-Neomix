@@ -2144,6 +2144,67 @@ gh API 本轮 TLS 超时（3 次），无法全量扫描。从提交引用确认
 
 > 借鉴克隆：BiliPai 15 提交 → v0.10.2（门控层零触及）见 [bilipai.md](references/other%20projects/bilipai.md) 2026-11-25 节。kelivo 同步至 `78dd1784`（45+ 提交创作大版本：图片/视频生成工作台整合进聊天、sidebar 重做、#1518 minimap 搜索性能、**#1539 大会话级联删除补 DB 索引**——与本仓长会话物理清理/附件删除链对照的判据，观察级）。评估记账（2026-11-26：主线路径无吸收主体，恢复语义实弹对照等 3 判据 + 2 观察）见 [cuplivo-kelivo.md](references/other%20projects/cuplivo-kelivo.md) §五。
 
+## 2026-11-28 同步（`1fb091529..c08d72003`，5 新提交；16 来源全量复检）
+
+全量克隆同步轮（距 11-18 全量 10 天，期间 11-23/24/25 三轮只追了上游+BiliPai+kelivo）。fetch 方式：github 来源 SSH（`ssh-fresh/*` 临时 ref），镜像仓（OpenHands/SDK/kelivo）走 origin，Miffan/agentd 走 gh api；SillyTavern 本地 fork `Fantasycvh/SillyTavern` 已被删除，改跟踪上游 `SillyTavern/SillyTavern` staging（锚点 `0a85854ee` merge-base 核验通过）。总评：**吸收 0 / 候选 6（P2×1 + P3×5）/ 已有等价 ~10 / 销账 ~7 / 判据记账 ~30 / 不适用其余**。本轮价值最高的是一颗**在场活 bug**（悬浮球阴影缓存 OOM）与一处**数据正确性缺口**（KB 嵌入模型切换静默错检）。
+
+| 提交 | 实质 | 判定 |
+|---|---|---|
+| `3aade2e59` | **长时间工具调用中途定期落库**（#2377）：一批工具执行完且距上次落库满 30 秒时 `session.flush()`，崩溃不丢整轮；失败只记日志，结束时仍存一次 | **已有等价（本仓更强）**。本仓 ChatService 有 2s 节流流式检查点（[ChatService.kt:222](../app/src/main/java/app/androidrik/rikkahub/service/ChatService.kt#L222) `STREAM_CHECKPOINT_INTERVAL_MS` + :2157 检查点写入），且带 `checkpointGeneratingNode` + 未完成标记（崩溃恢复不把半截内容当正常回复）+ id 寻址节点反查；上游 30s 仅工具边界，覆盖面窄于本仓。**#2377 复核销账** |
+| `b2b4eca6a` | **悬浮球变形阴影缓存无限增长 OOM**（#2377 根因之二）：`Modifier.dropShadow` 把渲染器连同模糊位图按 Shape 缓存在窗口 ShadowContext 里从不淘汰，变形轮廓每帧新 Shape 实例 → 生成十几分钟内存耗尽；修法 `drawBehind` + 直接构造 `DropShadowPainter`（不经缓存） | **候选 P2（在场活 bug，逐字同构可移植）**。本仓 [ChatFloatingContent.kt:160](../app/src/main/java/app/androidrik/rikkahub/ui/floating/ChatFloatingContent.kt#L160) 逐帧 `logoMorphShape` + 同款 `Modifier.dropShadow`，全仓唯一 dropShadow 站点。~15 行修法可直接移植，长期 Phone Use/悬浮聊天场景必复现 |
+| `2afc907d2` | **发送后用户消息滚到顶部，回复在下方展开不跟随**（#2371 上游实装）：新增 ChatScrollAnchor（182 行）；末节点最小高度补白让短回复也能锚到顶；加载行并入末条 item（补白在加载行下方） | **判据记账 1 + 候选 P3**。#2371 本仓已同日落地三态（ANCHOR_START = [AnchorReplyStartEffect.kt](../app/src/main/java/app/androidrik/rikkahub/ui/pages/chat/AnchorReplyStartEffect.kt)），但缺上游的**末节点最小高度补白**——尾部内容不足一屏时 `requestScrollToItem` 被钳制，锚定到不了真正的顶。补白 + 加载行并入末条 item 两判据同构宿主现成（~半天） |
+| `55a0631fe` | **workspace_shell 新增可选 description 参数**：有 description 时标题显示它，命令移到摘要（等待审批时仍能看到实际命令） | **候选 P3**。本仓 [WorkspaceTools.kt:518](../app/src/main/java/app/androidrik/rikkahub/data/ai/tools/WorkspaceTools.kt#L518) schema 与 [WorkspaceToolUIs.kt:500](../app/src/main/java/app/androidrik/rikkahub/ui/components/message/tools/WorkspaceToolUIs.kt#L500) ShellToolUI 同构，无 description 参数。审批可见性是核心判据（标题换 description 后命令必须在摘要露出） |
+| `c08d72003` | **移除聊天页未配置模型时的快速入门卡片**：判断条件与设置页/快速入门页不一致，选完模型紧接着发送时淡出卡片残留在消息上方 | **销账**。11-18 候选 2「快速入门页（onboarding 线需拍板）」上游自己撤回了聊天页入口——本仓未立项正好；将来若立项只参考「快速入门仍从设置页进入」的形态 |
+
+### 前两轮遗留复核销账（本轮全部清完）
+
+- **#2377**（长时间 Phone Use 崩溃）→ 关闭：中途落库已有等价（上表 `3aade2e59`）；悬浮球 OOM 是真缺口（上表 `b2b4eca6a` 候选）。
+- **#2376**（模型页自定义 body 的 tools 字段覆盖助手工具）→ 关闭：上游定性「单独适配 ds，别滥用自定义请求」，无合并语义改动可借。本仓 `mergeCustomBody` 同名键 JsonObject 递归合并语义与上游同构，`REASONING_OVERRIDE_BODY_KEYS` 告警面已覆盖滥用风险。销账。
+- **#2375**（异步生图 API 客户端不显示已生成图片）→ 关闭：本仓 mediagen 独立架构（请求 ID 对账 + 查无待确认两场景已真机实弹），不适用。销账。
+- **#2379**（删除记忆 md 后做梦无法再生成）→ 关闭（上游无修复提交触及，疑似用户侧关闭）：**本仓无同构病灶**——整理基线 `consolidationSince` 持久在 Assistant 设置（[MemoryConsolidation.kt:34](../app/src/main/java/app/androidrik/rikkahub/data/ai/MemoryConsolidation.kt#L34)），删除记忆文件不卡死状态机，新回合照常累积触发重建；备注=删除后需新回合积累，立即重建走手动。销账。
+- **`1fb091529`**（连接测试用模型级覆写重写配置）→ **已有等价**：本仓 [ProviderConnectionTester.kt:147](../app/src/main/java/app/androidrik/rikkahub/ui/pages/setting/components/ProviderConnectionTester.kt#L147) 已 `testModel.findProvider(...)` 取重写后配置。销账。
+- **#2384**（deepseek 总是缓存未命中，closed）→ 上游定性预期行为（系统提示词带当天日期，跨天缓存必丢）。无需行动。
+
+### 上游 issues 扫描（#2384–#2389 新增）
+
+- **#2385**（Kimi 联网搜索 Pro / 网页抓取）→ enhancement 观察：本仓 search SDK 无 Kimi，无用户诉求不立项。
+- **#2386**（自动归纳复用 Prompt Cache + 做梦与定期整理拆分模型配置）→ 观察/记账级：本仓做梦与压缩共用 `resolveCompressionModel`，拆分是配置面增强；Prompt Cache 复用依赖前缀稳定，与系统提示词日期变量冲突（同 #2384 教训）。
+- **#2387**（压缩上下文后删除旧消息的模式）→ 观察：与 NMoi 候选①「压缩分界线可撤回」同族（删线即删旧 vs 分支树保旧），等压缩域批次一起拍板。
+- **#2388**（对话分组功能增强）→ 观察：本仓无对话分组（IA 大特性，真未立项残留）。
+- **#2389**（OpenAI TTS provider response_format 可配）→ 记账级小改：本仓 speech 模块 TTS 参数面核对后可跟（无诉求不排期）。
+
+### 借鉴克隆复检（16 来源，锚点全部报出）
+
+| 来源 | 锚点 → HEAD | 新增 | 判决摘要 |
+|---|---|---|---|
+| NMoi | `a0c80bb` → `1c374470`（main） | 150（D340–D443） | 候选 1（P3 需拍板）：**workspace 会话文件变更摘要卡片**（D372–D391：写入口+shell 双归属判据、去抖合并、三行芯片/整页/详情面板三形态——本仓 workspace 无变更聚合展示，~1-2 天）。记账 ~6：D342 先摘图+提示行说清撤了什么；D343 read_file 48KB 分页 force_full 不豁免；D355–D367 分页五页缓存+「滑动中读库撤回」revert 教训（与懒加载台账互证）；D346–D353 后台预渲染整页+页面自报 ready；D359 启动七段计时；D360 滑动 120 帧/钉高刷。已有等价：tokenizer 自写（本仓真 BPE）、usage 落库、attachments 连删（kelivo #1539 互证） |
+| BiliPai | `7a1ce1ef7` → `5e17eea67`（v0.10.7） | 70 | 候选 0；记账 ~5：玻璃透镜+提色缓存复用（`2d0e27d97`）；超长组合宿主拆分（`a3ac6b569`，与 longfile 台账互证）；自适应帧率（`217c33726`，与 NMoi D360 三源互证）；多节点并行分块下载自适应并发（`a4095e284`，与工具车道并行同族）；过载/弱网一键降级提示（`d2b19dd2b`，诚实降级族）。其余 Wear OS/Cast/截图识字/播放器域不适用 |
+| PurrCat | `a085aad` → `502d465` | 32 | **候选 1（P3）：KB 嵌入模型切换静默错检——本仓实锤同病**。`updateKnowledgeBase` 直接改 `embeddingModelId`（[RagRepository.kt:109](../app/src/main/java/app/androidrik/rikkahub/data/rag/RagRepository.kt#L109)），存量向量不重建/无过期标记，检索跨向量空间比 cosine；手动 reindex 按文档存在但无「该重建」信号。PurrCat 判据=模型变更重建索引+opt-in 原子切换（`5ca56af`/`fece8f7`，~1 天）。记账 ~5：置信度衰减+遗忘调度持久化（`5972b13`/`7b39c13`）；BM25 等权 RRF+分数外显（`c7ba6c3`/`26eaea8`，11-18 判据延续）；配置文件版本化+启动自动迁移（`872cd4a`）；空搜索返回最近 3 条缓存（`a277d2e`）；短时记忆注入条数上限（`18b0a4a`） |
+| 华灯 | `df96dff40` → `e5006f36c`（v3.3.1-huadeng） | 20 | 免疫确认 2：`#` 文件名导入崩溃（`7767af6a1`）——本仓存储名走 `buildUuidFileName` UUID 重生成（[FileUtils.kt:28](../app/src/main/java/app/androidrik/rikkahub/data/files/FileUtils.kt#L28)），`#` 不落路径；连接测试覆写（`205136326`，与上游 `1fb091529` 同源互证）。记账 ~4：静态快捷方式挂 activity-alias（本仓已注明「切 alias 后不可见属预期」，跟随 alias=行为变更需拍板）；正则总开关接管子项（本仓逐条 enabled 无总开关）；数据救助页与上游 2d93676e4 安全模式导出互证（P2 候选维持）；随机宏按回合取值=宏引擎域外。已在候选池 2：图片像素上限（`227441be7`）、mediagen 5s 轮询（`c64774d34`） |
+| dsh-Go | `01c2d6bab` → `c4b6f481`（v1.4.1） | fp 260（非 merge 13） | 候选 1（P3）：终端键盘重唤起+复制粘贴（`a99b5e19`，本仓 terminal 同源，对照排查）。记账 ~3：头像静帧内存压力释放+离开预览放掉整图解码（`3fa1a5e3`）；等主机空闲再发送（`c4b6f481`）；首启隐私说明（`dc2874fb`）。其余 companion/1.4.x perf 批/ohos/workshop 域外 |
+| bigeye | `4f4c0cf` → HEAD | **0** | 零新增（HEAD 仍为锚点值） |
+| OpenHands | `6fa7686d3` → `4adc3d6d0` | 134 | **已有等价（更强）1**：loopback DNS rebinding+CSWSH 防护（`be48abe25`）——本仓 WebRequestSecurity 字面量地址白名单（不解析 DNS）+ Origin 同源校验 + Sec-Fetch-Site 拒跨站，同威胁模型已覆盖（[WebRequestSecurity.kt](../web/src/main/java/app/androidrik/rikkahub/web/WebRequestSecurity.kt)）。记账 2：损坏会话隔离（`ccdc5f51c`）；auto-refresh 节流（`4adc3d6d0`）。其余 deps/域外 |
+| SDK | `06f643ca4` → `cf8158bc2` | 112 | 记账 2：校验错误不拆散 tool-call 批次（`3f1ddad8f`，#2317 拦截族同域）；sub-agent usage 按 model 归账（`ce9206efb`，本仓 UsageSource 已做）。其余 deps |
+| kelivo | `78dd1784` → `ae246a09` | 6 | 已有等价 1：DB 原子可恢复升级（`03ba7b6d`，本仓 MigrationSnapshotStore）。记账 1：迁移进度展示（`19edb25a`，本仓迁移无进度 UI，P3 级）。观察 2：Realtime TTS（`69144d44`）；聊天与媒体共享原图（`643cfcaf`）。其余域外 |
+| Miffan | `45dc6e941`（11-13） → `39e3f23b0`（11-26，4.10.6） | 12 | 记账 1：模型列表 metadata 非原始类型字段容错（`dbcc64eb3`）。其余 relay/IM 域外（QUIC/UDP relay、partner approvals） |
+| SillyTavern | `0a85854ee` → `c96a1d0c6`（staging，1.19.1） | 18 | 记账 1：保存锁不 settle 时释放（`ada8c4958`，锁卡死族，与 BC egress pin deadlock `ae9cfcb0d5` 互证）。其余 web 域外（glm-5.3 条目；私有地址过滤=本仓 web 模块已有更强） |
+| billion-context | `a446a3c1c` → `5a17dedd0e`（v0.1.216） | 829（抽样） | 记账 ~3：attach 校验对端会话目录一致（`43fac6b383`）；egress diff occurrence-aware 删除不幽灵（`7904d44c05`，节点差集钩子同族）；回归修复按开关收窄范围（`571426984c`）。其余内部基建（egress op-log/store lanes） |
+| archify | `7bd5526e1` → `b42e7d7fd7` | 857（抽样） | 候选 0；GEO/SEO 营销线+发版工程，不适用 |
+| Yuihub | `08825f5a7` → HEAD | **0** | 零新增 |
+| senera | `614b11176` → HEAD | **0** | 零新增 |
+| rikkahub-agent | `a88f5854b`（9-24） | **0** | 零新增（仓库停更） |
+| solab | `72d28b149` → HEAD | **0** | 零新增 |
+| agentd | `eb554bfa9`（10-13） | **0** | 零新增（连续五轮） |
+
+### 本轮候选池（按优先级）
+
+1. **悬浮球 dropShadow 缓存 OOM**（P2，在场活 bug，~半天）：上游 `b2b4eca6a` 逐字同构移植（`morphingDropShadow` = drawBehind + 直接 DropShadowPainter），本仓唯一站点 ChatFloatingContent.kt:160。
+2. **KB 嵌入模型切换重建提示**（P3，~1 天）：PurrCat 判据，本仓同病实锤（无过期标记无重建信号）。
+3. **workspace_shell description 参数**（P3，~半天）：上游 `55a0631fe`，同构宿主。
+4. **ANCHOR_START 末节点最小高度补白**（P3，~半天）：上游 `2afc907d2` 判据，短回复锚顶能力。
+5. **workspace 会话文件变更摘要卡片**（P3 需拍板，~1-2 天）：NMoi D372–D391。
+6. **终端键盘重唤起+复制粘贴对照排查**（P3，需先核对本仓是否同病）：dsh-Go `a99b5e19`。
+
 ## 关联
 
 [peer-apps-benchmark.md](peer-apps-benchmark.md)（A1 前台服务取舍/落地顺序基准）、[handoff-2026-09-04.md](handoff-2026-09-04.md)、[design-partial-failure-draft.md](design/completed/design-partial-failure-draft.md

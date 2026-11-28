@@ -268,3 +268,9 @@ breakevenTurns = 一次性成本 / 每轮节省
 - 总评：无动摇既有结论的信号；其「压缩树 × 剪枝叶快照水合」仍在活跃迭代，与本仓树形分支线同题不同域（其面向 web 渲染、本仓面向数据语义），维持记账。
 
 > 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §八。
+
+## 2026-11-28 增量（`a446a3c1c..5a17dedd0e`，829 提交抽样，v0.1.216）
+
+> fetch：SSH（master）。本轮主体是 egress op-log/存储 lane/CLI `-c` 三 lane 化等内部基建。总评：**吸收 0 / 记账 ~3 / 内部基建其余**。
+
+**记账**：① `43fac6b383` attach 拒绝服务于不同会话目录的存活 peer——附加运行中实例先校验数据目录一致性（身份核对判据）；② `7904d44c05` egress diff occurrence-aware（碰撞对的删除不再产生幽灵/错配）——删除差异要 occurrence-aware，与本仓节点差集钩子（#2299）同族；③ `571426984c` delta-resend 臂按开关收窄（regression-conservative）——回归修复的适用范围按开关收窄，不全局放开。

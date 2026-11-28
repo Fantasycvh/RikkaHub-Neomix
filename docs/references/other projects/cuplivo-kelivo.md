@@ -82,3 +82,15 @@
 ### 无借鉴面
 
 **sidebar 重做**（`c2ef5d46` 移动端自定义布局 + 桌面 rail、`629ad5e7` handoff rail 配套）：Flutter 双端形态，本仓 Android 手机+平板、抽屉形态无对应诉求。
+
+## 六、2026-11-25 → 11-28 增量（`78dd1784..ae246a09`，6 提交）
+
+> fetch：origin（gh-proxy 镜像）。总评：**吸收 0 / 已有等价 1 / 记账 1 / 观察 2 / 域外 2**。
+
+**已有等价**：`03ba7b6d` fix(database) 聊天库升级原子化且可恢复——本仓 MigrationSnapshotStore（迁移前快照 fail-open）+ 降级隔离重建已覆盖同威胁。
+
+**记账**：`19edb25a` feat(startup) 升级聊天库时展示进度——本仓迁移目前无进度展示（真机 64→69 全链迁移可感知耗时），P3 级小改可排。
+
+**观察**：`69144d44` OpenAI narration 迁移到 Realtime API（TTS 延迟/成本优化方向，与 #2382 Realtime ASR 同族）；`643cfcaf` 聊天与媒体请求共享原图（创作工作台线，本仓媒体生成独立架构）。
+
+**域外**：`ae246a09` Claude OAuth 会话续期失败恢复（本仓无 OAuth 会话线）；`e1e918e5` 测试等待状态写入。

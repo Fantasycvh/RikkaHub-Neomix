@@ -256,3 +256,11 @@ App，比轻弹窗**重得多也慢得多**（起完整导航栈）。
 **销账**：上轮候选 #4（引用卡片剥 Markdown `9531ec767`）确认已落地——本仓 `MessageQuoteCard.kt:92` 已调 `stripMarkdown()`；其缓存化（quote 缓存）记账待量测。
 
 > 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §八。
+
+## 2026-11-14 → 11-28 增量评估（远端 `45dc6e941..39e3f23b0`，12 提交，4.10.2 → 4.10.6）
+
+> 同步方式：gh api（直连重试成功）。锚点 11-13 `45dc6e941`（PR #73 合入）。总评：**吸收 0 / 记账 1 / relay/IM 域外其余**。证据级别：标题全量（无代表提交抽样需求——实质变更 6 条）。
+
+**记账**：`dbcc64eb3` fix(ai) 解析 provider 模型列表时忽略非原始类型 metadata 字段——本仓 ModelCatalog/catalog 解析面对对象型 metadata 字段的容错需核对（对象直塞会炸解析还是被忽略）。
+
+**域外**：`d1293896b` 原生 UDP 数据报通道、`73059c64d` HTTP/3 QUIC 流传输（relay 线）、`d80b76a11` 无直连 SSH 的 relay 配对、`0b2298a22` IM 伙伴实时步骤+中途审批、relay connector 版本钉扎与发版 5 条。

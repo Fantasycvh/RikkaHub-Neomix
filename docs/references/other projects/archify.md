@@ -65,3 +65,7 @@
 | `7e45f36c6` | 11-10 | `fix(check)`: macOS 下 `process.stdout` 为**管道**时是异步的——Explainer 分支 `console.log` 收据后紧接 `process.exit()`，**超过一个管道块（~8 KiB）的收据 JSON 被截断** → `deliver`/`finalize` 报 `Could not parse the successful artifact-check receipt: Unterminated fractional number in JSON`（产物其实已通过）。修：收据改 `process.stdout.write` 并在 write 回调里退出（旧图路径用 `process.exitCode` 自然 drain），carry #1131 的管道回归测试；复现例 = 7 panel / 4 diagram、receipt **21,289 B**（截到 8192）。**stable 回迁**（cherry-pick + 重建 `archify.zip`）。 | **记账级（收据契约增量）**：机器可读收据经**进程管道**交付时，完整性要求 =「退出前必须 flush，且与大小无关」；>8 KiB 截断是实测值。本仓若吸收「交付前原子校验 + 修复清单」，宿主是 Android 进程内（Compose/WebView 进程内调用），**不经过 OS 管道、不踩此坑**，故**不做候选**；将来若出现 CLI / 桌面侧 stdout 交付面再启用此条。 |
 
 **结论**：「抄契约、不抄运行时」不变。3 条里 2 条是发行 / 安装文档，1 条是收据交付的 flush 细节（记账级）；IR / 校验 / 原子替换 / 修复清单四件套无变化，C1（第二产物族同一契约）与 C2（嵌套产物只用子收据核对哈希与字节）仍是 10-31 时的状态。Node 运行时在 Android 仍不可用，故仍不装技能。
+
+## 2026-11-28 增量（`7bd5526e1..b42e7d7fd7`，857 提交抽样）
+
+> fetch：SSH（main）。本轮主体是 GEO/SEO 营销线 v5/v6（比较精度/中文流程图 H1/llms.txt）、发版 manifest 与 CI、lifecycle legend 修复。总评：**候选 0 / 不适用其余**——营销线与发版工程无本仓对应面；`1dc4c0255c` Viewer header 内嵌更新通知 dock 与本仓更新弹窗（已有）同域不立项。

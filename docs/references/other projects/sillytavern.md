@@ -598,3 +598,11 @@ system 里仍贡献换行的逐字节契约由 `PromptAssemblyTest` 锁着）；
 ## 2026-11-03 增量核查
 
 公开仓 `release` 仍为 `06bde939f`（v1.19.0，2026-09-14，与本地一致）；`staging` 自 09-14 仅 12 条：文档 / PR 模板 / 拼写修正、`API` 按钮文案 credit→charge、若干模型清单补充（GPT-6 Sol/Luna、Opus 5.5、Gemini 3.8 Flash）。**无注入/预设/世界书面变化**，本文件 §六 结论维持；模型清单本仓由 models.dev 快照维护，不需要跟。
+
+## 2026-11-18 → 11-28 增量核查（`0a85854ee..c96a1d0c6`，18 提交，1.19.1）
+
+> **来源变更：本地 fork `Fantasycvh/SillyTavern` 已删除，本轮起跟踪上游 SillyTavern/SillyTavern staging**（锚点 merge-base 核验通过）。总评：**吸收 0 / 记账 1 / web 域域外其余**。
+
+**记账**：`ada8c4958` fix(chat) saveChat() 不落定（never settles）时释放保存锁——锁卡死族：任何带互斥的写路径都要有超时/异常释放路径（与 billion-context `ae9cfcb0d5` egress pin deadlock 本轮互证，两案同判据）。
+
+**域外**：glm-5.3 模型条目（`7cbb3c4fe`，本仓模型目录走目录源）；私有地址过滤两连（`59f536fe9`/`4415f9104`，SSRF 防护——本仓 web 模块 WebRequestSecurity 已有更强字面量白名单）；style block/资产目录/user 端点校验、备份/删除前验证主体存在（`bbf9b3239`）等 web 服务器面。

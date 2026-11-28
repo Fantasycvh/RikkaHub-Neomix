@@ -24,6 +24,8 @@
 
 > **2026-11-25 新增 #17/#18 Cuplivo + Kelivo**：两者同源（Cuplivo 为 Kelivo 社区 fork），本轮围绕**备份 / 同步**单一域合并评估，故共用一份台账。判定为**源码级参照 + 已落地**：Cuplivo 提供局域网双向同步的协议形态（证书指纹身份、PIN 配对、对称确定性合并、内容寻址差集、续传预算），Kelivo 提供本地副本的产品口径（延迟检查、N+周+月留存、容量上限、整包备份模型）。本仓按 Android 平台与自身数据模型重写为 `data/sync/lan/` 与 `data/sync/localsnapshot/`，**未复制其 Dart 代码**。原文 [`cuplivo-kelivo.md`](references/other%20projects/cuplivo-kelivo.md)。
 
+> **2026-11-28 全量克隆同步**：上游 5 提交（候选 6：P2 悬浮球 dropShadow 阴影缓存 OOM 在场活 bug + P3×5 KB 嵌入切换重建/shell description/锚定补白/NMoi 变更卡片/终端 IME 排查）；16 来源复检（NMoi 150/BiliPai 55/PurrCat 32/华灯 20/dsh-Go fp 260/OpenHands 134/SDK 112/kelivo 6/Miffan 12/ST 18/BC 829/archify 857 抽样；bigeye/Yuihub/senera/solab/rikkahub-agent/agentd 六源零新增）；已有等价 ~10（中途落库 2s 流式检查点强于上游 30s 工具边界、WebRequestSecurity 覆盖 DNS rebinding 防护等）；销账 7（前两轮复核项全清）。判决见 [peer-verdicts §十一](peer-verdicts-2026-11-08.md) 与 [upstream-analysis 11-28 节](upstream-analysis.md)。
+
 **怎么读这份文档**：
 
 1. 要**做事** → 直接看 §三「落地顺序与状态」（唯一口径的当前状态）。

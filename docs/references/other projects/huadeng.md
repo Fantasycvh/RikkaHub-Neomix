@@ -195,3 +195,15 @@ migration not found 崩溃；现在降级时清库重建」。实现只 **2 处 
 **总评：吸收 0 / 候选 0 / 判据记账 2。** 本轮主要事件是分支重建本身（同步方法论教训：**锚点必须用 merge-base 核验祖先关系，rev-list 大数值先怀疑历史重构**）。
 
 > 判决汇总见 [docs/peer-verdicts-2026-11-08.md](../../peer-verdicts-2026-11-08.md) §十。
+
+## 8.5、2026-11-18 → 11-28 增量（`df96dff40..e5006f36c`，20 提交，v3.3.1-huadeng）
+
+> fetch：SSH。总评：**吸收 0 / 免疫确认 2 / 已在候选池 2 / 记账 ~4 / 已有等价 2 / 域外其余**。明细见 upstream-analysis 11-28 节华灯行。
+
+**免疫确认**：`7767af6a1` Android 9/10 导入含 `#` 文件名附件崩溃——本仓存储名走 `FileUtils.buildUuidFileName` UUID 重生成（displayName 只出扩展名不落路径），`#` 进不了 URI；`205136326` 连接测试用模型覆写配置——本仓 ProviderConnectionTester 已 `findProvider` 重写（与上游 `1fb091529` 三方互证已有等价）。
+
+**已在候选池**（与上游同源互证）：`227441be7` 限制图片编码总像素（=上游 f37f66b31 P3 候选）；`c64774d34` mediagen 轮询 15s→5s（=上游 e258d9de2 P3 候选）。
+
+**记账**：① `1f1c38dce`/`e5006f36c` 静态快捷方式必须声明在 activity-alias 上（切 alias 后长按菜单才跟随）——本仓 shortcuts.xml 挂主入口并注明「切 alias 后不可见属预期」，若要跟随 alias 是行为变更需拍板；② `9ca20af04` 正则总开关真正接管子项——本仓 regexes 逐条 enabled 无总开关，记账级；③ `d1298eb08` 数据救助页（整页 WebView 前端恢复为对话兼容模式+DATA_RESCUE 快捷方式）——与上游 2d93676e4 安全模式导出/导入互证，P2 候选（安全模式备份）维持；④ `c988e47d7` 随机宏按回合取值——宏引擎本仓未立项，域外记账。
+
+**已有等价**：`15fda5f24` 世界书条目一键开关（本仓 lorebook 条目 enabled）；`6d3301554` 会话级提示词绑定（本仓 conversation 级 system prompt+注入绑定）；`0a718587f` 请求体日志只在 debug 构建（本仓 verbose log 用户开关门控）。`b524b2975` message_node 复合索引 v34——本仓 0bf49eed4 已同源落地。
