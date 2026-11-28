@@ -615,7 +615,7 @@ private fun MessagePartsBlock(
     }
 
     // Render parts in original order (group thinking/tool as chain-of-thought)
-    // 整轮折叠把过程解说与工具并进思考链，具体边界由 groupMessageParts 判断。
+    // 整轮折叠只控制显式思考/工具步骤，普通文本始终保留为正文。
     val wholeTurnFolding = settings.displaySetting.wholeTurnFolding
     val displayDocument = remember(messageId, parts, role, wholeTurnFolding) {
         messageDisplayDocument(messageId, parts, role, wholeTurnFolding)

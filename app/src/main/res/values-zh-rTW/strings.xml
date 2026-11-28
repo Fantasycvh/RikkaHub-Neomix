@@ -2397,7 +2397,7 @@
   <!-- 整轮折叠（docs/design/design-whole-turn-folding.md） -->
   <string name="chain_of_thought_fold_summary">%1$d 步 · %2$d 工具 · %3$d 段說明</string>
   <string name="setting_display_page_whole_turn_folding_title">整輪折疊</string>
-  <string name="setting_display_page_whole_turn_folding_desc">把一則回覆裡的思考、工具調用與過程說明收進一個可展開區塊，只留最後一次工具調用之後的文字作為最終回答</string>
+  <string name="setting_display_page_whole_turn_folding_desc">有後續正文時摺疊明確的思考與工具步驟。保留全部回覆文字，包括工具呼叫之前及之間的文字。</string>
   <string name="setting_display_page_auto_collapse_thinking_taken_over">由整輪折疊接管</string>
   <string name="shortcut_media_creation">媒體創作</string>
   <string name="media_creation_page_params">參數</string>

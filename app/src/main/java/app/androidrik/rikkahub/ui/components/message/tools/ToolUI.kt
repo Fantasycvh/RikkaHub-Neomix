@@ -91,7 +91,7 @@ interface ToolUIRenderer {
      *
      * 这类工具的产物留在链里时会被“只显示最后若干步”折叠掉，本次交付物就看不见了；
      * 返回 true 表示它独占一块、永远可见。生成中 / 失败时不切断（仍是普通步骤）。
-     * 注意：切断链不影响 `lastToolIndex`，两者正交。
+     * 文本归属不受此标志影响：普通 Text 始终保留为正文。
      */
     fun cutsChain(): Boolean = false
 

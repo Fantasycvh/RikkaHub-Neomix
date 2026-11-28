@@ -49,4 +49,17 @@ class MessageDisplayDocumentTest {
         assertTrue(document.body.all { it.block is MessagePartBlock.ContentBlock })
         assertEquals(listOf(1, 2), document.body.flatMap { it.sourcePartIndices })
     }
+
+    @Test fun `appending tools preserves existing body identity in chat and static export grouping`() {
+        val text = UIMessagePart.Text("# 已显示的正文\n\n正文不能因后续工具变为思考。")
+        val initial = messageDisplayDocument(id, listOf(text), MessageRole.ASSISTANT, true).body.single()
+        val parts = listOf(text, UIMessagePart.Tool("later", "todo_write", "{}"))
+        for (fold in listOf(false, true)) {
+            val document = messageDisplayDocument(id, parts, MessageRole.ASSISTANT, fold)
+            assertEquals(initial.key, document.body.first().key)
+            assertEquals(initial.textDocumentId, document.body.first().textDocumentId)
+            assertEquals(listOf(0), document.body.first().sourcePartIndices)
+            assertSame(text, (document.body.first().block as MessagePartBlock.ContentBlock).part)
+        }
+    }
 }

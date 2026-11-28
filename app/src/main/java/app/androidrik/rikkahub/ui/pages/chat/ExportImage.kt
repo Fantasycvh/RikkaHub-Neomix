@@ -396,10 +396,9 @@ private fun ExportedChatMessage(
     val showModelLabel = message.role == MessageRole.ASSISTANT &&
         prevMessage?.role == MessageRole.USER &&
         exportLabel.label.isNotBlank()
-    // 导出是静态图：解说也进思考链一起展示（export 内 collapse 关掉，全部步骤都渲染），
-    // 角色守卫照旧生效，用户消息里掺的工具调用不会被折进链里。
+    // 导出完整展示显式步骤；与聊天页共用正文归属规则，不根据工具位置猜测过程解说。
     val groupedParts = remember(message.parts, message.role) {
-        message.parts.groupMessageParts(role = message.role, wholeTurnFolding = true)
+        message.parts.groupMessageParts(role = message.role)
     }
     val messageContent: @Composable () -> Unit = {
         Column(

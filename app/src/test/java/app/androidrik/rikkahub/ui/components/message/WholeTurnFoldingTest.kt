@@ -58,21 +58,17 @@ class WholeTurnFoldingTest {
     // ---- 1. 单工具 + 前后文本 ----
 
     @Test
-    fun `1 single tool with text before and after folds narration and keeps the answer`() {
-        val blocks = listOf(text("我先查一下"), tool("search_web"), text("最终回答"))
-            .groupMessageParts(wholeTurnFolding = true)
-
-        assertEquals(2, blocks.size)
+    fun `1 plain text before and after a tool remains body content`() {
+        val before = text("我先查一下")
+        val answer = text("最终回答")
+        val blocks = listOf(before, tool("search_web"), answer).groupMessageParts(wholeTurnFolding = true)
+        assertEquals(3, blocks.size)
+        assertEquals(listOf(before, answer), blocks.filterIsInstance<MessagePartBlock.ContentBlock>().map { it.part })
         val chain = blocks.onlyThinking()
-        assertEquals(2, chain.steps.size)
-        assertTrue(chain.steps[0] is ThinkingStep.NarrationStep)
-        assertTrue(chain.steps[1] is ThinkingStep.ToolStep)
-        // 决策 1 / 6：链可整块收起，因为后面还有回答
+        assertEquals(1, chain.steps.size)
+        assertTrue(chain.steps.single() is ThinkingStep.ToolStep)
         assertTrue(chain.canCollapse)
         assertFalse(chain.forceExpand)
-
-        val answer = blocks[1] as MessagePartBlock.ContentBlock
-        assertEquals("最终回答", (answer.part as UIMessagePart.Text).text)
     }
 
     // ---- 2. 无工具纯文本 ----
@@ -90,15 +86,12 @@ class WholeTurnFoldingTest {
     // ---- 3. 工具前后各一段文本 ----
 
     @Test
-    fun `3 text before the tool folds while text after the tool stays`() {
-        val blocks = listOf(text("过程解说"), tool("search_web"), text("回答"))
-            .groupMessageParts(wholeTurnFolding = true)
-
-        assertEquals(2, blocks.size)
-        val chain = blocks.onlyThinking()
-        assertTrue(chain.steps.any { it is ThinkingStep.NarrationStep })
-        val answer = blocks[1] as MessagePartBlock.ContentBlock
-        assertEquals("回答", (answer.part as UIMessagePart.Text).text)
+    fun `3 enabling folding never changes plain text ownership`() {
+        val parts = listOf(text("过程解说或正文，无法确定"), tool("search_web"), text("回答"))
+        val folded = parts.groupMessageParts(wholeTurnFolding = true)
+        val expanded = parts.groupMessageParts(wholeTurnFolding = false)
+        assertEquals(expanded.filterIsInstance<MessagePartBlock.ContentBlock>(), folded.filterIsInstance<MessagePartBlock.ContentBlock>())
+        assertEquals(2, folded.count { it is MessagePartBlock.ContentBlock })
     }
 
     @Test
@@ -110,12 +103,12 @@ class WholeTurnFoldingTest {
         val blocks = listOf(text("Let me check"), tool("lookup"), answer, grounding)
             .groupMessageParts(wholeTurnFolding = true)
 
-        val content = blocks.filterIsInstance<MessagePartBlock.ContentBlock>().single()
+        val content = blocks.filterIsInstance<MessagePartBlock.ContentBlock>().last()
         assertEquals(answer, content.part)
         assertEquals(2, content.index)
         val (clientChain, groundingChain) = blocks.thinkingBlocks()
         assertTrue(clientChain.canCollapse)
-        assertTrue(clientChain.steps.first() is ThinkingStep.NarrationStep)
+        assertTrue(clientChain.steps.single() is ThinkingStep.ToolStep)
         assertEquals(listOf(ThinkingStep.ServerToolStep(grounding)), groundingChain.steps)
     }
 
@@ -133,12 +126,12 @@ class WholeTurnFoldingTest {
         val blocks = listOf(text("Let me check"), tool("lookup"), answer, grounding)
             .groupMessageParts(wholeTurnFolding = true)
 
-        val content = blocks.filterIsInstance<MessagePartBlock.ContentBlock>().single()
+        val content = blocks.filterIsInstance<MessagePartBlock.ContentBlock>().last()
         assertEquals(answer, content.part)
         assertEquals(2, content.index)
         val (clientChain, groundingChain) = blocks.thinkingBlocks()
         assertTrue(clientChain.canCollapse)
-        assertTrue(clientChain.steps.first() is ThinkingStep.NarrationStep)
+        assertTrue(clientChain.steps.single() is ThinkingStep.ToolStep)
         assertEquals(listOf(ThinkingStep.ServerToolStep(grounding)), groundingChain.steps)
     }
 
@@ -257,38 +250,26 @@ class WholeTurnFoldingTest {
     // ---- 8. ServerTool 入链且参与 lastToolIndex ----
 
     @Test
-    fun `8 server tool joins the chain and counts as a tool for the split`() {
-        val blocks = listOf(text("正在搜索"), serverTool(), text("最终回答"))
-            .groupMessageParts(wholeTurnFolding = true)
-
-        assertEquals(2, blocks.size)
-        val chain = blocks.onlyThinking()
-        assertEquals(2, chain.steps.size)
-        assertTrue(chain.steps[0] is ThinkingStep.NarrationStep)
-        assertTrue(chain.steps[1] is ThinkingStep.ServerToolStep)
-        val answer = blocks[1] as MessagePartBlock.ContentBlock
-        assertEquals("最终回答", (answer.part as UIMessagePart.Text).text)
+    fun `8 unknown server steps cannot reclassify preceding text`() {
+        val answer = text("正在搜索也可能是回答正文")
+        val blocks = listOf(answer, serverTool(), text("最终回答")).groupMessageParts(wholeTurnFolding = true)
+        assertEquals(3, blocks.size)
+        assertEquals(answer, (blocks.first() as MessagePartBlock.ContentBlock).part)
+        assertTrue(blocks.onlyThinking().steps.single() is ThinkingStep.ServerToolStep)
     }
 
     // ---- 9. 连续 Reasoning + Tool + Text 合成单块 ----
 
     @Test
-    fun `9 reasoning tool narration and tool merge into a single block`() {
-        val blocks = listOf(
-            reasoning("想一想"),
-            tool("search_web", id = "call_a"),
-            text("再读一下这个页面"),
-            tool("scrape_web", id = "call_b"),
-            text("最终回答"),
-        ).groupMessageParts(wholeTurnFolding = true)
-
-        assertEquals(2, blocks.size)
-        val chain = blocks.onlyThinking()
-        assertEquals(4, chain.steps.size)
-        assertTrue(chain.steps[0] is ThinkingStep.ReasoningStep)
-        assertTrue(chain.steps[1] is ThinkingStep.ToolStep)
-        assertTrue(chain.steps[2] is ThinkingStep.NarrationStep)
-        assertTrue(chain.steps[3] is ThinkingStep.ToolStep)
+    fun `9 tool calls on both sides of text keep text outside thinking chains`() {
+        val middle = text("再读一下这个页面，或是一段已经完成的回答")
+        val blocks = listOf(reasoning("想一想"), tool("search_web"), middle, tool("scrape_web"), text("最终回答"))
+            .groupMessageParts(wholeTurnFolding = true)
+        assertEquals(4, blocks.size)
+        assertEquals(2, blocks.thinkingBlocks().size)
+        assertEquals(middle, (blocks[1] as MessagePartBlock.ContentBlock).part)
+        assertEquals(2, blocks.thinkingBlocks().first().steps.size)
+        assertTrue(blocks.thinkingBlocks().flatMap { it.steps }.none { it is ThinkingStep.NarrationStep })
     }
 
     // ---- 10. todo_write 作为最后工具 ----
@@ -373,10 +354,10 @@ class WholeTurnFoldingTest {
             text("最终回答"),
         ).groupMessageParts(wholeTurnFolding = true)
 
-        val summary = blocks.onlyThinking().steps.thinkingChainSummary()
-        assertEquals(6, summary.stepCount)
+        val summary = blocks.thinkingBlocks().flatMap { it.steps }.thinkingChainSummary()
+        assertEquals(4, summary.stepCount)
         assertEquals(3, summary.toolCount)
-        assertEquals(2, summary.narrationCount)
+        assertEquals(0, summary.narrationCount)
     }
 
     // ---- 额外：§5.1 审批入口不能被藏起来（与整轮折叠开关无关）----
@@ -500,7 +481,64 @@ class WholeTurnFoldingTest {
         assertFalse("交付物块本身是工具，但仍须始终可见", deliverable.canCollapse)
     }
 
+    @Test
+    fun `answer before charts remains body content during generation and after completion`() {
+        val answer = text("下面是一篇技术长文。\n\n# KV Cache\n\n|方案|收益|\n|---|---|\n|缓存|节省计算|")
+        val continuation = text("图表之后继续解释。")
+        for (output in listOf(null, """{"success":true}""", """{"error":"INVALID_CHART"}""")) {
+            val blocks = listOf(
+                reasoning("plan the answer"), answer,
+                tool("chart_display", output = output), continuation,
+            ).groupMessageParts(wholeTurnFolding = true)
+
+            assertEquals(listOf(answer, continuation), blocks.filterIsInstance<MessagePartBlock.ContentBlock>().map { it.part })
+            assertTrue(blocks.thinkingBlocks().flatMap { it.steps }.none { it is ThinkingStep.NarrationStep })
+        }
+    }
+
+    @Test
+    fun `research tools fold without hiding text before or after them`() {
+        val answer = text("# 研究结果\n\n下面用图片解释。")
+        val before = text("先检索资料")
+        val blocks = listOf(before, tool("search_web"), answer,
+            tool("generate_image", output = """{"images":["/files/a.png"]}"""), text("图片说明"))
+            .groupMessageParts(wholeTurnFolding = true)
+        val research = blocks[1] as MessagePartBlock.ThinkingBlock
+        assertTrue(research.steps.single() is ThinkingStep.ToolStep)
+        assertTrue(research.canCollapse)
+        assertEquals(before, (blocks[0] as MessagePartBlock.ContentBlock).part)
+        assertEquals(answer, (blocks[2] as MessagePartBlock.ContentBlock).part)
+    }
+
     // ---- helpers ----
+
+    @Test
+    fun `later housekeeping search and plugin tools cannot absorb previous answer segments`() {
+        val intro = text("# 正文\n\n这是已经输出的回答。")
+        val explanation = text("图表的说明和结论。")
+        for (name in listOf("todo_write", "memory_tool", "search_web", "plugin__unknown_tool")) {
+            val parts = listOf(
+                intro, tool("chart_display", output = """{"success":true}"""),
+                explanation, tool(name),
+            )
+            for (fold in listOf(false, true)) {
+                val blocks = parts.groupMessageParts(wholeTurnFolding = fold)
+                assertEquals(listOf(intro, explanation), blocks.filterIsInstance<MessagePartBlock.ContentBlock>().map { it.part })
+                assertTrue(blocks.thinkingBlocks().flatMap { it.steps }.none { it is ThinkingStep.NarrationStep })
+            }
+        }
+    }
+
+    @Test
+    fun `unrecognized trailing server tools keep all earlier answer text visible`() {
+        val answer = text("已经完成的回答")
+        val steps = listOf(serverTool("web_search"), serverTool("unknown_provider_tool"))
+        for (step in steps) {
+            val blocks = listOf(answer, step).groupMessageParts(wholeTurnFolding = true)
+            assertEquals(answer, (blocks.first() as MessagePartBlock.ContentBlock).part)
+            assertEquals(listOf(ThinkingStep.ServerToolStep(step)), blocks.onlyThinking().steps)
+        }
+    }
 
     private fun MessagePartBlock.ThinkingBlock.tools() =
         steps.filterIsInstance<ThinkingStep.ToolStep>()
