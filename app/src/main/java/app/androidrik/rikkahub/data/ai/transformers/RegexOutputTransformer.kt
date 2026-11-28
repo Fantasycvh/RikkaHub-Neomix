@@ -8,33 +8,58 @@ import app.androidrik.rikkahub.data.model.replaceRegexes
 import org.koin.core.component.KoinComponent
 
 object RegexOutputTransformer : OutputMessageTransformer, KoinComponent {
+    override val affectsOnlyLatestOnStream: Boolean = true
+
     override suspend fun visualTransform(
         ctx: TransformerContext,
         messages: List<UIMessage>,
     ): List<UIMessage> {
         val assistant = ctx.assistant
         if (assistant.regexes.isEmpty()) return messages // No regexes, return original messages
-        return messages.map { message ->
+        var anyMessageChanged = false
+        val mapped = messages.map { message ->
             val scope = when (message.role) {
                 MessageRole.ASSISTANT -> AssistantAffectScope.ASSISTANT
                 else -> return@map message // Skip non-assistant messages
             }
-            message.copy(
-                parts = message.parts.map { part ->
-                    when (part) {
-                        is UIMessagePart.Text -> part.copy(
-                            text = replaceRegexesGuarded(part.text) { it.replaceRegexes(assistant, scope, visual = false) }
-                        )
-
-                        is UIMessagePart.Reasoning -> part.copy(
-                            reasoning = replaceRegexesGuarded(part.reasoning) { it.replaceRegexes(assistant, scope, visual = false) }
-                        )
-
-                        else -> part
+            var partsChanged = false
+            val newParts = message.parts.map { part ->
+                when (part) {
+                    is UIMessagePart.Text -> {
+                        val updatedText = replaceRegexesGuarded(part.text) {
+                            it.replaceRegexes(assistant, scope, visual = false)
+                        }
+                        if (updatedText != part.text) {
+                            partsChanged = true
+                            part.copy(text = updatedText)
+                        } else {
+                            part
+                        }
                     }
+
+                    is UIMessagePart.Reasoning -> {
+                        val updatedReasoning = replaceRegexesGuarded(part.reasoning) {
+                            it.replaceRegexes(assistant, scope, visual = false)
+                        }
+                        if (updatedReasoning != part.reasoning) {
+                            partsChanged = true
+                            part.copy(reasoning = updatedReasoning)
+                        } else {
+                            part
+                        }
+                    }
+
+                    else -> part
                 }
-            )
+            }
+            if (partsChanged) {
+                anyMessageChanged = true
+                message.copy(parts = newParts)
+            } else {
+                message
+            }
         }
+        return if (anyMessageChanged) mapped else messages
     }
 }
 

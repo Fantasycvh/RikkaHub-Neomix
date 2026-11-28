@@ -56,6 +56,16 @@ interface InputMessageTransformer : MessageTransformer
 
 interface OutputMessageTransformer : MessageTransformer {
     /**
+     * 流式生成过程中是否仅需处理最后一条消息。
+     *
+     * 为 true 时，`streamOutputTransforms` / `streamVisualTransforms` 只把末条消息传给
+     * 本转换器并在原地替换回列表末尾，避免长会话每个刷新窗对全部历史消息重扫。
+     * 生成结束（`onGenerationFinish`）和最终收尾仍走全量列表。
+     */
+    val affectsOnlyLatestOnStream: Boolean
+        get() = false
+
+    /**
      * 一个视觉的转换，例如转换think tag为reasoning parts
      * 但是不实际转换消息，因为流式输出需要处理消息delta chunk
      * 不能还没结束生成就transform，因此提供一个visualTransform
@@ -200,6 +210,64 @@ suspend fun List<UIMessage>.visualTransforms(
             acc
         }
     }
+}
+
+/**
+ * 流式增量输出转换：对声明 [OutputMessageTransformer.affectsOnlyLatestOnStream] 的内置转换器
+ * 仅传入末条消息，未变化时直接复用原列表实例。
+ */
+internal suspend fun List<UIMessage>.streamOutputTransforms(
+    transformers: List<OutputMessageTransformer>,
+    context: Context,
+    model: Model,
+    assistant: Assistant,
+    settings: Settings,
+): List<UIMessage> {
+    if (isEmpty() || transformers.isEmpty()) return this
+    val ctx = TransformerContext(context, model, assistant, settings)
+    return applyStreamOutputChain(ctx, transformers, visual = false)
+}
+
+/**
+ * 流式增量视觉转换：对声明 [OutputMessageTransformer.affectsOnlyLatestOnStream] 的内置转换器
+ * 仅传入末条消息，未变化时直接复用原列表实例。
+ */
+internal suspend fun List<UIMessage>.streamVisualTransforms(
+    transformers: List<OutputMessageTransformer>,
+    context: Context,
+    model: Model,
+    assistant: Assistant,
+    settings: Settings,
+): List<UIMessage> {
+    if (isEmpty() || transformers.isEmpty()) return this
+    val ctx = TransformerContext(context, model, assistant, settings)
+    return applyStreamOutputChain(ctx, transformers, visual = true)
+}
+
+private suspend fun List<UIMessage>.applyStreamOutputChain(
+    ctx: TransformerContext,
+    transformers: List<OutputMessageTransformer>,
+    visual: Boolean,
+): List<UIMessage> {
+    var acc = this
+    for (transformer in transformers) {
+        if (transformer.affectsOnlyLatestOnStream && acc.isNotEmpty()) {
+            val tail = acc.last()
+            val single = listOf(tail)
+            val updated = if (visual) transformer.visualTransform(ctx, single) else transformer.transform(ctx, single)
+            if (updated.size == 1) {
+                val updatedTail = updated[0]
+                if (updatedTail !== tail && updatedTail != tail) {
+                    acc = acc.dropLast(1) + updatedTail
+                }
+            } else {
+                acc = acc.dropLast(1) + updated
+            }
+        } else {
+            acc = if (visual) transformer.visualTransform(ctx, acc) else transformer.transform(ctx, acc)
+        }
+    }
+    return acc
 }
 
 suspend fun List<UIMessage>.onGenerationFinish(

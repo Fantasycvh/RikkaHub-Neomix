@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.sp
 import com.caverock.androidsvg.SVG
 import com.dokar.sonner.ToastType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Download01
@@ -57,6 +59,8 @@ import app.androidrik.rikkahub.utils.exportImage
  * 3. 原始代码展示
  */
 private const val MAX_SVG_DIMENSION = 20_000f
+// 单并发门控：避免复杂回复包含多个 TikZ 图时同时拉起多个原生 TeX 编译导致内存尖峰
+private val TikzCompileSemaphore = Semaphore(permits = 1)
 
 @Composable
 fun TikzJax(
@@ -95,6 +99,7 @@ fun TikzJax(
     }
 
     LaunchedEffect(code) {
+        if (nativeSvg != null) return@LaunchedEffect
         if (!nativeFailed && TectonicNative.isPackaged) {
             // 缓存命中：历史消息秒开（TeX 确定性输出，sha256(code) 内容寻址）
             val cached: String? = withContext(Dispatchers.IO) { TikzSvgCache.get(context, code) }
@@ -104,20 +109,22 @@ fun TikzJax(
             }
             // SVG 来源：mupdf（PDF 内嵌字体→<text>，文字保真）优先，失败降级 PDF 位图。
             // mupdf 链只打包 arm64-v8a，x86_64 模拟器上自动落位图链。
-            val (svgText, bitmap) = withContext(Dispatchers.IO) {
-                if (MupdfSvgBridge.available) {
-                    // mupdf 链：compile pdf（tectonic 必内嵌字体）= 单次编译即得
-                    // <text> 保留型 SVG
-                    val pdf = TectonicNative.compileIsolated(context, code)
-                    val mupdfSvg = pdf?.let { MupdfSvgBridge.pdfToSvg(it) }
-                    if (mupdfSvg != null) {
-                        TikzSvgCache.put(context, code, mupdfSvg)
-                        mupdfSvg to null
+            val (svgText, bitmap) = TikzCompileSemaphore.withPermit {
+                withContext(Dispatchers.IO) {
+                    if (MupdfSvgBridge.available) {
+                        // mupdf 链：compile pdf（tectonic 必内嵌字体）= 单次编译即得
+                        // <text> 保留型 SVG
+                        val pdf = TectonicNative.compileIsolated(context, code)
+                        val mupdfSvg = pdf?.let { MupdfSvgBridge.pdfToSvg(it) }
+                        if (mupdfSvg != null) {
+                            TikzSvgCache.put(context, code, mupdfSvg)
+                            mupdfSvg to null
+                        } else {
+                            fallbackBitmap(context, code, widthPx)
+                        }
                     } else {
                         fallbackBitmap(context, code, widthPx)
                     }
-                } else {
-                    fallbackBitmap(context, code, widthPx)
                 }
             }
             nativeSvg = svgText

@@ -5,6 +5,8 @@ import app.androidrik.rikkahub.data.files.FilesManager
 import org.koin.java.KoinJavaComponent.getKoin
 
 object Base64ImageToLocalFileTransformer : OutputMessageTransformer {
+    override val affectsOnlyLatestOnStream: Boolean = true
+
     override suspend fun onGenerationFinish(
         ctx: TransformerContext,
         messages: List<UIMessage>,

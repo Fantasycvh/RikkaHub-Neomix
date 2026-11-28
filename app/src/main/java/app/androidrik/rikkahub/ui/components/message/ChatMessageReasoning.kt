@@ -140,7 +140,7 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
             snapshotFlow { scrollState.maxValue }
                 .distinctUntilChanged()
                 .collect { max ->
-                    if (max > 0) scrollState.animateScrollTo(max)
+                    if (max > 0) scrollState.scrollTo(max)
                 }
         }
     }
@@ -149,7 +149,7 @@ private fun rememberReasoningState(reasoning: UIMessagePart.Reasoning): Pair<Rea
         if (loading) {
             while (isActive) {
                 state.duration = (reasoning.finishedAt ?: Clock.System.now()) - reasoning.createdAt
-                delay(50)
+                delay(200)
             }
         }
     }
@@ -208,14 +208,23 @@ private fun ReasoningContent(
                 }
             }
     ) {
+        val rawSource = if (isPreview && loading) {
+            reasoningPreviewTail(reasoning.reasoning)
+        } else {
+            reasoning.reasoning
+        }
+        val displayContent = remember(rawSource, assistant) {
+            rawSource.replaceRegexes(
+                assistant = assistant,
+                scope = AssistantAffectScope.ASSISTANT,
+                visual = true,
+            )
+        }
         val reasoningContent = @Composable {
             MarkdownBlock(
-                content = reasoning.reasoning.replaceRegexes(
-                    assistant = assistant,
-                    scope = AssistantAffectScope.ASSISTANT,
-                    visual = true,
-                ),
+                content = displayContent,
                 style = reasoningTextStyle,
+                streaming = loading,
                 // fillMaxWidth 而非 fillMaxSize：LazyColumn item 内 fillMaxSize 会把
                 // 思考卡片撑到整个视口高度——短思考内容后出现整屏空白的根因
                 modifier = Modifier.fillMaxWidth(),
@@ -226,6 +235,27 @@ private fun ReasoningContent(
             reasoningContent()
         }
     }
+}
+
+private const val REASONING_PREVIEW_TAIL_CHARS = 2_000
+
+/** 流式预览仅保留末尾窗口，避免百dp预览区全量排版上万字思考内容。 */
+internal fun reasoningPreviewTail(text: String, maxChars: Int = REASONING_PREVIEW_TAIL_CHARS): String {
+    if (text.length <= maxChars) return text
+    var start = (text.length - maxChars).coerceAtLeast(0)
+    if (start > 0 && start < text.length && text[start].isLowSurrogate() && text[start - 1].isHighSurrogate()) {
+        start++
+    }
+    val boundaryLimit = (text.length - 200).coerceAtLeast(start)
+    val paragraphBreak = text.indexOf("\n\n", start)
+    val cut = when {
+        paragraphBreak in start until boundaryLimit -> paragraphBreak + 2
+        else -> {
+            val lineBreak = text.indexOf('\n', start)
+            if (lineBreak in start until boundaryLimit) lineBreak + 1 else start
+        }
+    }
+    return text.substring(cut)
 }
 
 @Composable
@@ -244,8 +274,10 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
     editDisabled: Boolean = false,
 ) {
     val (state, loading) = rememberReasoningState(reasoning)
-    val thinkingTitle = reasoning.reasoning.extractThinkingTitle()
-    val showThinkingTitle = loading && thinkingTitle != null
+    val thinkingTitle = remember(reasoning.reasoning, loading) {
+        if (loading) reasoning.reasoning.extractThinkingTitle() else null
+    }
+    val showThinkingTitle = thinkingTitle != null
     val chatFontFamily = LocalTextStyle.current.fontFamily
 
     ControlledChainOfThoughtStep(
@@ -263,22 +295,17 @@ fun ChainOfThoughtScope.ChatMessageReasoningStep(
             if (showThinkingTitle) {
                 ReasoningTitle(title = thinkingTitle!!)
             } else {
-                Text(
-                    text = stringResource(
-                        R.string.deep_thinking_seconds,
-                        state.duration.toDouble(DurationUnit.SECONDS).toFloat()
-                    ),
-                    style = MaterialTheme.typography.titleSmall.copy(fontFamily = chatFontFamily),
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.shimmer(isLoading = loading),
+                ReasoningDurationLabel(
+                    durationProvider = { state.duration },
+                    loading = loading,
+                    chatFontFamily = chatFontFamily,
                 )
             }
         },
         extra = {
             RowOfExtra(
-                durationText = if (showThinkingTitle && state.duration > 0.seconds) {
-                    state.duration.toString(DurationUnit.SECONDS, 1)
-                } else null,
+                durationProvider = { state.duration },
+                showDuration = showThinkingTitle,
                 showEdit = !loading && onEditRequest != null,
                 onEditRequest = onEditRequest,
                 editDisabled = editDisabled,
@@ -415,22 +442,43 @@ internal fun ReasoningEditDialog(
 }
 
 @Composable
+private fun ReasoningDurationLabel(
+    durationProvider: () -> Duration,
+    loading: Boolean,
+    chatFontFamily: FontFamily?,
+) {
+    Text(
+        text = stringResource(
+            R.string.deep_thinking_seconds,
+            durationProvider().toDouble(DurationUnit.SECONDS).toFloat()
+        ),
+        style = MaterialTheme.typography.titleSmall.copy(fontFamily = chatFontFamily),
+        color = MaterialTheme.colorScheme.secondary,
+        modifier = Modifier.shimmer(isLoading = loading),
+    )
+}
+
+@Composable
 private fun RowOfExtra(
-    durationText: String?,
+    durationProvider: () -> Duration,
+    showDuration: Boolean,
     showEdit: Boolean,
     onEditRequest: (() -> Unit)?,
     editDisabled: Boolean = false,
     chatFontFamily: FontFamily?,
 ) {
-    if (durationText == null && !showEdit) return
+    if (!showDuration && !showEdit) return
     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        if (durationText != null) {
-            Text(
-                text = durationText,
-                style = MaterialTheme.typography.labelSmall.copy(fontFamily = chatFontFamily),
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.shimmer(isLoading = false),
-            )
+        if (showDuration) {
+            val duration = durationProvider()
+            if (duration > 0.seconds) {
+                Text(
+                    text = duration.toString(DurationUnit.SECONDS, 1),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = chatFontFamily),
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.shimmer(isLoading = false),
+                )
+            }
         }
         if (showEdit) {
             val toaster = LocalToaster.current

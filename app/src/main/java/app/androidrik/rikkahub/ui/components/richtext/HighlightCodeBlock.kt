@@ -69,7 +69,6 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import me.rerere.bettertext.highlight.CodeHighlighter
 import me.rerere.bettertext.highlight.HighlightTextColorPalette
-import me.rerere.bettertext.highlight.rememberHighlightedCode
 import me.rerere.bettertext.text.BetterText
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
@@ -197,6 +196,10 @@ fun HighlightCodeBlock(
         Column(
             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
         ) {
+            // 仅在代码块闭合后进入 TikZ 原生编译：流式阶段每帧内容变化都会重触发 3-6s 级编译。
+            val shouldRenderTikz = remember(completeCodeBlock, normalizedLanguage, code) {
+                completeCodeBlock && (normalizedLanguage in TIKZ_FENCE_LANGS || isTikzContent(code))
+            }
             when {
                 canInlinePreview && previewMode -> {
                     CodeBlockPreview(
@@ -213,11 +216,7 @@ fun HighlightCodeBlock(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                // TikZ 内容无需等待代码块闭合：AI 流式输出中 completeCodeBlock 可能为 false，
-                // 但内容已含 \begin{tikzpicture} 即可渲染；闭合后再次触发会重新渲染完整版。
-                // 语言标注（tikz/latex 等）或内容检测命中其一即可。
-                (isTikzContent(code) || (completeCodeBlock && normalizedLanguage in TIKZ_FENCE_LANGS)) -> {
-                    android.util.Log.i("TikzJax", "HighlightCodeBlock->TikzJax lang=$normalizedLanguage complete=$completeCodeBlock isTikz=${isTikzContent(code)} codeHead=${code.take(60)}")
+                shouldRenderTikz -> {
                     TikzJax(
                         // AI 常在 ``` 块内包 $$...$$ 包裹 tikz，剥掉外层定界符再传给引擎
                         code = stripTikzWrappers(code),
@@ -225,7 +224,6 @@ fun HighlightCodeBlock(
                     )
                 }
                 else -> {
-                    android.util.Log.i("TikzJax", "HighlightCodeBlock->ELSE lang=$normalizedLanguage complete=$completeCodeBlock isTikz=${code.let { isTikzContent(it) }} codeHead=${code.take(60)}")
                     val textStyle = LocalTextStyle.current.merge(style)
                     val codeLines = remember(code) { code.lines() }
                     val collapsedCode = remember(codeLines) { codeLines.take(COLLAPSE_LINES).joinToString("\n") }
@@ -236,10 +234,12 @@ fun HighlightCodeBlock(
                     when {
                         showLineNumbers && autoWrap -> {
                             CodeBlockWithLineNumbersWrapped(
+                                displayCode = displayCode,
                                 displayLines = displayLines,
                                 language = language,
                                 textStyle = textStyle,
                                 colorPalette = colorPalette,
+                                completeCodeBlock = completeCodeBlock,
                             )
                         }
                         else -> {
@@ -252,6 +252,7 @@ fun HighlightCodeBlock(
                                 autoWrap = autoWrap,
                                 showLineNumbers = showLineNumbers,
                                 scrollState = scrollState,
+                                completeCodeBlock = completeCodeBlock,
                             )
                         }
                     }
@@ -303,10 +304,11 @@ private fun BetterCodeText(
     language: String,
     colors: HighlightTextColorPalette,
     style: TextStyle,
+    streaming: Boolean,
     modifier: Modifier = Modifier,
 ) {
     BetterText(
-        text = rememberHighlightedCode(code, language, colors),
+        text = rememberAsyncHighlightedCode(code, language, colors, streaming = streaming),
         modifier = modifier,
         style = style,
     )
@@ -324,15 +326,24 @@ private fun codeTextStyle(textStyle: TextStyle): TextStyle = textStyle.merge(
 
 @Composable
 private fun CodeBlockWithLineNumbersWrapped(
+    displayCode: String,
     displayLines: List<String>,
     language: String,
     textStyle: TextStyle,
     colorPalette: HighlightTextColorPalette,
+    completeCodeBlock: Boolean,
 ) {
     val lineNumberWidth = remember(displayLines.size) {
         displayLines.size.toString().length
     }
     val codeStyle = codeTextStyle(textStyle)
+    val highlighted = rememberAsyncHighlightedCode(
+        code = displayCode,
+        language = language,
+        colors = colorPalette,
+        streaming = !completeCodeBlock,
+    )
+    val highlightedLines = remember(highlighted) { splitAnnotatedStringByLines(highlighted) }
     // 行号用普通的 Text，不参与选择；每行代码是一个 BetterText，选中多行时以换行连接
     SelectableContent {
         Column {
@@ -349,10 +360,8 @@ private fun CodeBlockWithLineNumbersWrapped(
                         softWrap = false,
                         modifier = Modifier.padding(end = 8.dp)
                     )
-                    BetterCodeText(
-                        code = line,
-                        language = language,
-                        colors = colorPalette,
+                    BetterText(
+                        text = highlightedLines.getOrElse(index) { AnnotatedString(line) },
                         style = codeStyle,
                         modifier = Modifier.weight(1f)
                     )
@@ -372,6 +381,7 @@ private fun CodeBlockDefault(
     autoWrap: Boolean,
     showLineNumbers: Boolean,
     scrollState: ScrollState,
+    completeCodeBlock: Boolean,
 ) {
     Row(
         modifier = if (autoWrap) Modifier else Modifier.horizontalScroll(scrollState)
@@ -404,7 +414,8 @@ private fun CodeBlockDefault(
                 language = language,
                 colors = colorPalette,
                 style = codeTextStyle(textStyle),
-                modifier = Modifier.animateContentSize(),
+                streaming = !completeCodeBlock,
+                modifier = if (completeCodeBlock) Modifier.animateContentSize() else Modifier,
             )
         }
     }

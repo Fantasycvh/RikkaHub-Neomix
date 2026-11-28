@@ -12,6 +12,8 @@ private val THINKING_REGEX = Regex("\\A\\s*<think>([\\s\\S]*?)(</think>|$)")
 
 // 部分供应商不会返回reasoning parts, 所以需要这个transformer
 object ThinkTagTransformer : OutputMessageTransformer {
+    override val affectsOnlyLatestOnStream: Boolean = true
+
     override suspend fun visualTransform(
         ctx: TransformerContext,
         messages: List<UIMessage>,
@@ -61,6 +63,7 @@ internal fun List<UIMessage>.transformThinkTags(
     }
     val textPart = message.parts.getOrNull(textPartIndex) as? UIMessagePart.Text
         ?: return@map message
+    if (!textPart.text.trimStart().startsWith("<think>")) return@map message
     val match = THINKING_REGEX.find(textPart.text) ?: return@map message
     val hasClosingTag = match.groups[2]?.value == "</think>"
     val reasoning = UIMessagePart.Reasoning(

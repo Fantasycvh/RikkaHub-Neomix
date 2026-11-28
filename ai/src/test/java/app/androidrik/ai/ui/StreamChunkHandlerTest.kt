@@ -281,4 +281,92 @@ class StreamChunkHandlerTest {
         assertEquals(listOf("call-1", "call-9"), tools.map { it.toolCallId })
         assertFalse(tools.first { it.toolCallId == "call-1" }.isExecuted)
     }
+
+    @Test
+    fun `batched accept and flush should match per-chunk handle across text reasoning tool and image`() {
+        val chunks = listOf(
+            StreamChunk.ReasoningStart("r1"),
+            StreamChunk.ReasoningDelta("r1", "step 1 "),
+            StreamChunk.ReasoningDelta("r1", "step 2"),
+            StreamChunk.ReasoningEnd("r1"),
+            StreamChunk.TextStart("t1"),
+            StreamChunk.TextDelta("t1", "Hello "),
+            StreamChunk.TextDelta("t1", "world"),
+            StreamChunk.ToolCallStart("c1", toolName = "read_"),
+            StreamChunk.ToolCallDelta("c1", toolNameDelta = "file", inputDelta = "{\"path\":"),
+            StreamChunk.ToolCallDelta("c1", inputDelta = "\"a.kt\"}"),
+            StreamChunk.ToolCallEnd("c1"),
+            StreamChunk.ImageStart("i1", mimeType = "image/png"),
+            StreamChunk.ImageDelta("i1", "abc"),
+            StreamChunk.ImageDelta("i1", "def"),
+            StreamChunk.ImageEnd("i1"),
+            StreamChunk.Usage(TokenUsage(promptTokens = 5, completionTokens = 10)),
+        )
+
+        val eagerHandler = StreamChunkHandler(model)
+        var eagerMessages = listOf(UIMessage.user("go"))
+        chunks.forEach { eagerMessages = eagerHandler.handle(eagerMessages, it) }
+
+        val batchHandler = StreamChunkHandler(model)
+        var batchMessages = listOf(UIMessage.user("go"))
+        chunks.forEach { batchHandler.accept(batchMessages, it) }
+        assertTrue(batchHandler.hasBufferedChanges)
+        assertTrue(batchHandler.activeContentChars > 0)
+        batchMessages = batchHandler.flush(batchMessages)
+        assertFalse(batchHandler.hasBufferedChanges)
+
+        val eagerAssistant = eagerMessages.last()
+        val batchAssistant = batchMessages.last()
+        assertEquals(eagerAssistant.toText(), batchAssistant.toText())
+        assertEquals(
+            eagerAssistant.parts.filterIsInstance<UIMessagePart.Reasoning>().map { it.reasoning },
+            batchAssistant.parts.filterIsInstance<UIMessagePart.Reasoning>().map { it.reasoning },
+        )
+        assertEquals(
+            eagerAssistant.parts.filterIsInstance<UIMessagePart.Tool>().map { it.toolName to it.input },
+            batchAssistant.parts.filterIsInstance<UIMessagePart.Tool>().map { it.toolName to it.input },
+        )
+        assertEquals(
+            eagerAssistant.parts.filterIsInstance<UIMessagePart.Image>().map { it.url },
+            batchAssistant.parts.filterIsInstance<UIMessagePart.Image>().map { it.url },
+        )
+        assertEquals(eagerAssistant.usage, batchAssistant.usage)
+    }
+
+    @Test
+    fun `accept should preserve external modifications between flushes`() {
+        val handler = StreamChunkHandler(model)
+        var messages = listOf(UIMessage.user("hi"))
+
+        handler.accept(messages, StreamChunk.TextStart("t1"))
+        handler.accept(messages, StreamChunk.TextDelta("t1", "first "))
+        messages = handler.flush(messages)
+
+        // 模拟外部给末条消息挂载 usage / memoryContext
+        val externalUsage = TokenUsage(promptTokens = 42, completionTokens = 7)
+        messages = messages.dropLast(1) + messages.last().copy(usage = externalUsage)
+
+        handler.accept(messages, StreamChunk.TextDelta("t1", "second"))
+        messages = handler.flush(messages)
+
+        assertEquals("first second", messages.last().toText())
+        assertEquals(externalUsage, messages.last().usage)
+    }
+
+    @Test
+    fun `finish chunk should flush buffered deltas and reset handler buffers`() {
+        val handler = StreamChunkHandler(model)
+        var messages = listOf(UIMessage.user("hi"))
+
+        handler.accept(messages, StreamChunk.TextStart("t1"))
+        handler.accept(messages, StreamChunk.TextDelta("t1", "done"))
+        handler.accept(messages, StreamChunk.Finish(finishReason = "stop"))
+        messages = handler.flush(messages)
+
+        assertTrue(handler.finished)
+        assertFalse(handler.hasBufferedChanges)
+        assertEquals("done", messages.last().toText())
+        assertEquals("stop", messages.last().finishReason)
+        assertEquals(4, handler.activeContentChars)
+    }
 }

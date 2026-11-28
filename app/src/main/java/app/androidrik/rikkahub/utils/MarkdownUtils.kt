@@ -94,23 +94,23 @@ fun String.stripMarkdown(): String {
     return INLINE_CODE_PLACEHOLDER.replace(stripped) { inlineCodes[it.groupValues[1].toInt()] }
 }
 
+private val THINKING_TITLE_BOLD_REGEX = Regex("^\\*\\*(.+?)\\*\\*$")
+
 fun String.extractThinkingTitle(): String? {
-    // 按行分割文本
-    val lines = this.lines()
-
-    // 从后往前查找最后一个符合条件的加粗文本行
-    for (i in lines.indices.reversed()) {
-        val line = lines[i].trim()
-
-        // 检查是否为加粗格式且独占一整行
-        val boldPattern = Regex("^\\*\\*(.+?)\\*\\*$")
-        val match = boldPattern.find(line)
-
-        if (match != null) {
-            // 返回加粗标记内的文本内容
-            return match.groupValues[1].trim().takeUnless { it.isBlank() }
+    if (isEmpty()) return null
+    // 从末尾逐行向前扫描，避免 lines() 整篇切分与每帧重新编译正则
+    var lineEnd = length
+    while (lineEnd > 0) {
+        val lineStart = lastIndexOf('\n', lineEnd - 1) + 1
+        val line = substring(lineStart, lineEnd).trim()
+        if (line.length >= 4 && line.startsWith("**") && line.endsWith("**")) {
+            val match = THINKING_TITLE_BOLD_REGEX.matchEntire(line)
+            if (match != null) {
+                val title = match.groupValues[1].trim()
+                if (title.isNotEmpty()) return title
+            }
         }
+        lineEnd = lineStart - 1
     }
-
     return null
 }

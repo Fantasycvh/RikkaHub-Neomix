@@ -3,8 +3,14 @@ package app.androidrik.rikkahub.data.ai.transformers
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
+import android.content.ContextWrapper
+import app.androidrik.ai.provider.Model
+import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.model.Assistant
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 import kotlin.time.Instant
 
@@ -80,6 +86,25 @@ class ThinkTagTransformerTest {
         val finishedResult = visualResult.transformThinkTags(now, generationFinished = true).single()
 
         assertEquals(now, finishedResult.parts.filterIsInstance<UIMessagePart.Reasoning>().single().finishedAt)
+    }
+
+    @Test
+    fun `streamVisualTransforms only touches latest message and keeps historical references`() = runBlocking {
+        val historical = UIMessage.assistant("earlier message without think")
+        val latest = UIMessage.assistant("<think>streaming thought</think>answer")
+        val messages = listOf(UIMessage.user("q1"), historical, UIMessage.user("q2"), latest)
+
+        val result = messages.streamVisualTransforms(
+            transformers = listOf(ThinkTagTransformer),
+            context = ContextWrapper(null),
+            model = Model(modelId = "test-model"),
+            assistant = Assistant(),
+            settings = Settings(),
+        )
+
+        assertSame(historical, result[1])
+        assertEquals("streaming thought", result.last().parts.filterIsInstance<UIMessagePart.Reasoning>().single().reasoning)
+        assertEquals("answer", result.last().parts.filterIsInstance<UIMessagePart.Text>().single().text)
     }
 
     private fun transform(text: String): UIMessage {

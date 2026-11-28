@@ -10,7 +10,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import me.rerere.bettertext.highlight.HighlightTextColorPalette
-import me.rerere.bettertext.highlight.rememberHighlightedCode
 import me.rerere.bettertext.text.BetterText
 
 /**
@@ -32,7 +31,7 @@ fun CodeHighlightText(
     @Suppress("UNUSED_PARAMETER") overflow: TextOverflow = TextOverflow.Clip,
     maxLines: Int = Int.MAX_VALUE,
 ) {
-    val annotated = rememberHighlightedCode(code, language, colors)
+    val annotated = rememberAsyncHighlightedCode(code, language, colors)
     BetterText(
         text = annotated,
         modifier = modifier,

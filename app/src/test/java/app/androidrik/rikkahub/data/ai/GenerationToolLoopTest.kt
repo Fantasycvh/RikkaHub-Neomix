@@ -37,6 +37,7 @@ import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import kotlin.uuid.Uuid
 
@@ -747,6 +748,131 @@ class GenerationToolLoopTest {
         assertTrue(marked.single().approvalState is ToolApprovalState.Denied)
         assertFalse(marked.single().isPending)
         assertEquals(1, toolsToExecute(marked).size)
+    }
+
+    @Test
+    fun `high-frequency text deltas batch before emission without losing characters`() = runBlocking {
+        val provider = object : Provider<ProviderSetting.OpenAI> {
+            override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> = emptyList()
+            override suspend fun generateText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): TextGenerationResult = error("stream only")
+
+            override suspend fun streamText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): Flow<StreamChunk> = flow {
+                emit(StreamChunk.TextStart("t1"))
+                repeat(60) { idx ->
+                    emit(StreamChunk.TextDelta("t1", "w$idx "))
+                }
+                emit(StreamChunk.TextEnd("t1"))
+                emit(StreamChunk.Finish(finishReason = "stop"))
+            }
+        }
+        val chunks = mutableListOf<GenerationChunk.Messages>()
+        handler(provider).generateText(
+            settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
+            model = model,
+            messages = listOf(UIMessage.user("hi")),
+            assistant = Assistant(chatModelId = model.id),
+            tools = emptyList(),
+        ).collect { if (it is GenerationChunk.Messages) chunks += it }
+
+        val expected = (0 until 60).joinToString("") { "w$it " }
+        assertEquals(expected, chunks.last().messages.last().toText())
+        assertTrue("60 个同步 delta 应合批发射，实际发射次数=${chunks.size}", chunks.size < 20)
+        assertTrue(chunks.any { it.coalescible })
+        assertFalse(chunks.last().coalescible)
+    }
+
+    @Test
+    fun `stream failure after buffered deltas preserves complete partial draft`() = runBlocking {
+        val expectedText = "A".repeat(80)
+        val provider = object : Provider<ProviderSetting.OpenAI> {
+            override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> = emptyList()
+            override suspend fun generateText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): TextGenerationResult = error("stream only")
+
+            override suspend fun streamText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): Flow<StreamChunk> = flow {
+                emit(StreamChunk.TextStart("t1"))
+                expectedText.chunked(4).forEach { part ->
+                    emit(StreamChunk.TextDelta("t1", part))
+                }
+                throw IllegalStateException("upstream cut")
+            }
+        }
+        try {
+            handler(provider).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
+                model = model,
+                messages = listOf(UIMessage.user("hi")),
+                assistant = Assistant(chatModelId = model.id),
+                tools = emptyList(),
+            ).collect {}
+            fail("expected GenerationPartialFailureException")
+        } catch (partial: GenerationPartialFailureException) {
+            assertEquals(expectedText, partial.partialMessages.last().toText())
+        }
+    }
+
+    @Test
+    fun `trailing timer flushes buffered delta when provider pauses mid-stream`() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val provider = object : Provider<ProviderSetting.OpenAI> {
+            override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> = emptyList()
+            override suspend fun generateText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): TextGenerationResult = error("stream only")
+
+            override suspend fun streamText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): Flow<StreamChunk> = flow {
+                emit(StreamChunk.TextStart("t1"))
+                emit(StreamChunk.TextDelta("t1", "first "))
+                emit(StreamChunk.TextDelta("t1", "second"))
+                gate.await()
+                emit(StreamChunk.TextEnd("t1"))
+                emit(StreamChunk.Finish(finishReason = "stop"))
+            }
+        }
+        val flushedSecond = CompletableDeferred<Unit>()
+        val collectedTexts = mutableListOf<String>()
+        val job = launch {
+            handler(provider).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
+                model = model,
+                messages = listOf(UIMessage.user("hi")),
+                assistant = Assistant(chatModelId = model.id),
+                tools = emptyList(),
+            ).collect { chunk ->
+                if (chunk is GenerationChunk.Messages) {
+                    val text = chunk.messages.last().toText()
+                    collectedTexts += text
+                    if (text == "first second") flushedSecond.complete(Unit)
+                }
+            }
+        }
+        withTimeout(3_000) {
+            flushedSecond.await()
+        }
+        gate.complete(Unit)
+        job.join()
+        assertTrue(collectedTexts.contains("first second"))
     }
 
     private companion object {

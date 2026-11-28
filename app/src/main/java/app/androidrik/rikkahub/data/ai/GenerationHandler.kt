@@ -7,11 +7,15 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.onTimeout
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
@@ -70,8 +74,11 @@ import app.androidrik.rikkahub.data.ai.transformers.OutputMessageTransformer
 import java.io.File
 import app.androidrik.rikkahub.data.ai.transformers.balancedForRequest
 import app.androidrik.rikkahub.data.ai.transformers.onGenerationFinish
+import app.androidrik.rikkahub.data.ai.transformers.streamOutputTransforms
+import app.androidrik.rikkahub.data.ai.transformers.streamVisualTransforms
 import app.androidrik.rikkahub.data.ai.transformers.transforms
 import app.androidrik.rikkahub.data.ai.transformers.visualTransforms
+import kotlin.time.TimeSource
 import app.androidrik.ai.provider.RetrySetting
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.data.datastore.Settings
@@ -715,24 +722,48 @@ class GenerationHandler(
                             if (coalescible) sawRequestDelta = true
                             val last = updated.lastOrNull()
                             val tagged = if (last?.role == MessageRole.ASSISTANT) {
-                                val previous = messages.lastOrNull()?.takeIf { it.id == last.id }
-                                    ?.getTools().orEmpty().associateBy { it.toolCallId }
-                                updated.dropLast(1) + last.copy(
-                                    memoryContext = memoryBinding,
-                                    parts = last.parts.map { part ->
-                                        if (part is UIMessagePart.Tool && isMemoryTool(part.toolName)) {
-                                            val old = previous[part.toolCallId]
-                                            val binding = if (old == null || !isMemoryTool(old.toolName)) memoryBinding else old.memoryContext
-                                            part.copy(memoryContext = binding)
-                                        } else {
-                                            part
+                                val needsMessageTag = last.memoryContext != memoryBinding
+                                val hasMemoryTools = last.parts.any { it is UIMessagePart.Tool && isMemoryTool(it.toolName) }
+                                if (!needsMessageTag && !hasMemoryTools) {
+                                    updated
+                                } else {
+                                    val previous = if (hasMemoryTools) {
+                                        messages.lastOrNull()?.takeIf { it.id == last.id }
+                                            ?.getTools().orEmpty().associateBy { it.toolCallId }
+                                    } else emptyMap()
+                                    val newParts = if (!hasMemoryTools) {
+                                        last.parts
+                                    } else {
+                                        var partsChanged = false
+                                        val mapped = last.parts.map { part ->
+                                            if (part is UIMessagePart.Tool && isMemoryTool(part.toolName)) {
+                                                val old = previous[part.toolCallId]
+                                                val binding = if (old == null || !isMemoryTool(old.toolName)) memoryBinding else old.memoryContext
+                                                if (part.memoryContext != binding) {
+                                                    partsChanged = true
+                                                    part.copy(memoryContext = binding)
+                                                } else {
+                                                    part
+                                                }
+                                            } else {
+                                                part
+                                            }
                                         }
-                                    },
-                                )
+                                        if (partsChanged) mapped else last.parts
+                                    }
+                                    if (!needsMessageTag && newParts === last.parts) {
+                                        updated
+                                    } else {
+                                        updated.dropLast(1) + last.copy(
+                                            memoryContext = memoryBinding,
+                                            parts = newParts,
+                                        )
+                                    }
+                                }
                             } else {
                                 updated
                             }
-                            messages = tagged.transforms(
+                            messages = tagged.streamOutputTransforms(
                                 transformers = outputTransformers,
                                 context = context,
                                 model = targetModel,
@@ -741,7 +772,7 @@ class GenerationHandler(
                             )
                             emit(
                                 GenerationChunk.Messages(
-                                    messages.visualTransforms(
+                                    messages.streamVisualTransforms(
                                         transformers = outputTransformers,
                                         context = context,
                                         model = targetModel,
@@ -1128,7 +1159,7 @@ class GenerationHandler(
                 }
                 emit(
                     GenerationChunk.Messages(
-                        committed.transforms(
+                        committed.streamOutputTransforms(
                             transformers = outputTransformers,
                             context = context,
                             model = targetModel,
@@ -1188,10 +1219,12 @@ class GenerationHandler(
             )
 
             suspend fun emitLaneSnapshots() {
-                lanePendingEmissions.forEach { snapshot ->
+                val latestSnapshot = lanePendingEmissions.lastOrNull()
+                lanePendingEmissions.clear()
+                if (latestSnapshot != null) {
                     emit(
                         GenerationChunk.Messages(
-                            snapshot.transforms(
+                            latestSnapshot.streamOutputTransforms(
                                 transformers = outputTransformers,
                                 context = context,
                                 model = targetModel,
@@ -1201,7 +1234,6 @@ class GenerationHandler(
                         )
                     )
                 }
-                lanePendingEmissions.clear()
             }
 
             /**
@@ -1699,6 +1731,7 @@ class GenerationHandler(
         }
     }.flowOn(Dispatchers.IO)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun generateInternal(
         assistant: Assistant,
         settings: Settings,
@@ -1909,6 +1942,7 @@ class GenerationHandler(
                 // 与进入本步前的累计值相加得到全轮口径，见 TokenUsage.plus
                 val roundBaseUsage = messages.last().usage ?: TokenUsage()
                 var stepUsage: TokenUsage? = null
+                var pendingUsageUpdate = false
                 // 流结束语义：本次流是否见到 provider 的显式终止事件（[StreamChunk.Finish]：
                 // `[DONE]` / `message_stop` / `response.completed` / 带 finishReason 的末块）。
                 // 没有 = 裸断流（网关/中转提前切连接）——此前与「正常收尾」无法区分，整轮被当成功。
@@ -1916,58 +1950,144 @@ class GenerationHandler(
                 var finishReason: String? = null
                 var receivedAssistantContent = false
                 // 每步一个 chunk 处理器（移植自上游 #1648）：内部维护 open text/reasoning/image 的
-                // 索引与 toolCallId → part 的映射，逐条把 StreamChunk 折叠进消息列表。
+                // 索引与 toolCallId → part 的映射，通过 StringBuilder 缓冲合批后物化为不可变快照。
                 val chunkHandler = StreamChunkHandler(model = model, providerName = provider.name)
+                val timeSource = TimeSource.Monotonic
+                var lastDeltaFlushMark: kotlin.time.TimeMark? = null
+
+                suspend fun flushBufferedStream(coalescible: Boolean) {
+                    var flushed = chunkHandler.flush(messages)
+                    if (pendingUsageUpdate && stepUsage != null) {
+                        val last = flushed.lastOrNull()
+                        if (last != null) {
+                            flushed = flushed.dropLast(1) + last.copy(
+                                usage = roundBaseUsage.accumulateRound(stepUsage!!),
+                                // #2307：同一次写入顺带记「本步自己的 usage」——统计行的输入/
+                                // 缓存要显示最近一次请求，而 usage 是整轮口径
+                                lastUsage = stepUsage,
+                            )
+                        }
+                        pendingUsageUpdate = false
+                    }
+                    messages = flushed
+                    onUpdateMessages(flushed, coalescible)
+                    if (coalescible) {
+                        lastDeltaFlushMark = timeSource.markNow()
+                    }
+                }
+
                 // 思考退化护栏：调用内逐字重复 ⇒ 从内部中止本次流（抛出沿链取消上游 SSE 连接），
                 // 已生成内容照常保留，由步骤循环收尾（见 [ThinkingDegenerationGuard]）。
                 degenerationGuard?.onCallStarted()
                 try {
                     try {
-                        providerImpl.streamText(
-                            providerSetting = provider,
-                            messages = requestMessages,
-                            params = params
-                        ).collect { chunk ->
-                            if (chunk.hasGenerationContent()) {
-                                receivedAssistantContent = true
-                            }
-                            // "unknown" 是 chat/completions 解析层「字段缺失」的占位，归一成 null
-                            (chunk as? StreamChunk.Finish)?.finishReason
-                                ?.takeIf { it.isNotBlank() && it != "unknown" }
-                                ?.let { finishReason = it }
-                            messages = chunkHandler.handle(messages, chunk)
-                            // 显式结束标记由 handler 记录（本次流已处理过 Finish）
-                            if (chunkHandler.finished) sawExplicitEnd = true
-                            (chunk as? StreamChunk.Usage)?.usage?.let { usage ->
-                                stepUsage = stepUsage.merge(usage)
-                                messages = messages.mapIndexed { index, message ->
-                                    if (index == messages.lastIndex) {
-                                        message.copy(
-                                            usage = roundBaseUsage.accumulateRound(stepUsage ?: TokenUsage()),
-                                            // #2307：同一次写入顺带记「本步自己的 usage」——统计行的输入/
-                                            // 缓存要显示最近一次请求，而 usage 是整轮口径
-                                            lastUsage = stepUsage,
-                                        )
-                                    } else {
-                                        message
-                                    }
+                        coroutineScope {
+                            val input = Channel<StreamChunk>(capacity = 64)
+                            val producer = launch {
+                                try {
+                                    providerImpl.streamText(
+                                        providerSetting = provider,
+                                        messages = requestMessages,
+                                        params = params
+                                    ).collect { input.send(it) }
+                                } catch (error: Throwable) {
+                                    input.close(error)
+                                } finally {
+                                    input.close()
                                 }
                             }
-                            onUpdateMessages(
-                                messages,
-                                chunk is StreamChunk.TextDelta || chunk is StreamChunk.ReasoningDelta ||
-                                    chunk is StreamChunk.ToolCallDelta || chunk is StreamChunk.ServerToolInputDelta ||
-                                    chunk is StreamChunk.Usage,
-                            )
-                            // 判定放在**本条已并入 messages 且已回调之后**：断流不丢已生成内容
-                            val deltaVerdict = degenerationGuard?.onDelta(chunk.toGuardDelta())
-                            if (deltaVerdict is ThinkingDegenerationGuard.Verdict.Repeating) {
-                                Log.w(
-                                    TAG,
-                                    "generateInternal: thinking degeneration (${deltaVerdict.rule}, " +
-                                        "repeated=${deltaVerdict.repeated}), cutting this call",
-                                )
-                                throw ThinkingDegenerationCut
+
+                            suspend fun processChunk(chunk: StreamChunk) {
+                                if (chunk.hasGenerationContent()) {
+                                    receivedAssistantContent = true
+                                }
+                                // "unknown" 是 chat/completions 解析层「字段缺失」的占位，归一成 null
+                                (chunk as? StreamChunk.Finish)?.finishReason
+                                    ?.takeIf { it.isNotBlank() && it != "unknown" }
+                                    ?.let { finishReason = it }
+                                chunkHandler.accept(messages, chunk)
+                                // 显式结束标记由 handler 记录（本次流已处理过 Finish）
+                                if (chunkHandler.finished) sawExplicitEnd = true
+                                (chunk as? StreamChunk.Usage)?.usage?.let { usage ->
+                                    stepUsage = stepUsage.merge(usage)
+                                    pendingUsageUpdate = true
+                                }
+                                // 判定放在**本条已并入缓冲且遇命中即先冲刷**之后：断流不丢已生成内容
+                                val deltaVerdict = degenerationGuard?.onDelta(chunk.toGuardDelta())
+                                if (deltaVerdict is ThinkingDegenerationGuard.Verdict.Repeating) {
+                                    flushBufferedStream(coalescible = true)
+                                    Log.w(
+                                        TAG,
+                                        "generateInternal: thinking degeneration (${deltaVerdict.rule}, " +
+                                            "repeated=${deltaVerdict.repeated}), cutting this call",
+                                    )
+                                    throw ThinkingDegenerationCut
+                                }
+                            }
+
+                            try {
+                                var open = true
+                                while (open) {
+                                    val intervalMs = adaptiveStreamBatchIntervalMs(chunkHandler.activeContentChars)
+                                    val remaining = lastDeltaFlushMark?.let {
+                                        (intervalMs - it.elapsedNow().inWholeMilliseconds).coerceAtLeast(0L)
+                                    } ?: 0L
+                                    val hasPending = chunkHandler.hasBufferedChanges || pendingUsageUpdate
+                                    select<Unit> {
+                                        if (hasPending) {
+                                            onTimeout(remaining) {
+                                                flushBufferedStream(coalescible = true)
+                                            }
+                                        }
+                                        input.onReceiveCatching { received ->
+                                            val first = received.getOrNull()
+                                            if (first == null) {
+                                                if (chunkHandler.hasBufferedChanges || pendingUsageUpdate) {
+                                                    flushBufferedStream(coalescible = true)
+                                                }
+                                                received.exceptionOrNull()?.let { throw it }
+                                                open = false
+                                                return@onReceiveCatching
+                                            }
+
+                                            var current: StreamChunk? = first
+                                            while (current != null) {
+                                                val chunk = current
+                                                processChunk(chunk)
+                                                if (chunk.isCoalescibleStreamChunk()) {
+                                                    val currentInterval = adaptiveStreamBatchIntervalMs(chunkHandler.activeContentChars)
+                                                    val elapsed = lastDeltaFlushMark?.elapsedNow()?.inWholeMilliseconds
+                                                    if (elapsed == null || elapsed >= currentInterval) {
+                                                        flushBufferedStream(coalescible = true)
+                                                        current = null
+                                                    } else {
+                                                        val next = input.tryReceive()
+                                                        current = if (next.isSuccess) {
+                                                            next.getOrThrow()
+                                                        } else {
+                                                            if (next.isClosed) {
+                                                                if (chunkHandler.hasBufferedChanges || pendingUsageUpdate) {
+                                                                    flushBufferedStream(coalescible = true)
+                                                                }
+                                                                next.exceptionOrNull()?.let { throw it }
+                                                                open = false
+                                                            }
+                                                            null
+                                                        }
+                                                    }
+                                                } else {
+                                                    if (chunkHandler.hasBufferedChanges || pendingUsageUpdate) {
+                                                        flushBufferedStream(coalescible = false)
+                                                    }
+                                                    current = null
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } finally {
+                                producer.cancel()
+                                input.cancel()
                             }
                         }
                     } catch (e: ThinkingDegenerationCut) {
@@ -1997,6 +2117,10 @@ class GenerationHandler(
                     onUpdateMessages(messages, false)
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
+                    // 兜底：若异常处理前缓冲中仍有未物化增量（如非缓冲分支抛错），先合入 messages 以保留完整草稿
+                    if (chunkHandler.hasBufferedChanges) {
+                        messages = chunkHandler.flush(messages)
+                    }
                     val plan = provider.retryOption ?: settings.retrySetting
                     // #1812 分流：已流式输出可见内容后断开 → 保留为草稿（不再回滚清空）；
                     // 阈值可配（partialOutputMinChars），防呆下限 1（避免误配 0/负数把零输出也当半截）
@@ -2209,6 +2333,21 @@ internal fun isPartialOutput(
     }
     return visibleChars >= minChars
 }
+
+/** 根据当前活跃字符规模自适应调整流前合批刷新间隔，长回复降低全链调度频率。 */
+internal fun adaptiveStreamBatchIntervalMs(activeChars: Int): Long = when {
+    activeChars < 4_000 -> 50L
+    activeChars < 16_000 -> 80L
+    else -> 120L
+}
+
+private fun StreamChunk.isCoalescibleStreamChunk(): Boolean =
+    this is StreamChunk.TextDelta ||
+        this is StreamChunk.ReasoningDelta ||
+        this is StreamChunk.ToolCallDelta ||
+        this is StreamChunk.ServerToolInputDelta ||
+        this is StreamChunk.ImageDelta ||
+        this is StreamChunk.Usage
 
 /**
  * 用工具自带的**外层上限**包一层 [withTimeout]（见 [Tool.executionTimeoutMillis]）。
