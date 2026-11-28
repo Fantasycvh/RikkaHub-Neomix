@@ -91,6 +91,8 @@ class ConversationSession(
      * 所以这里不需要「送达即清空」的时序配合：快照只增补，不会把正文改回去。
      */
     val lastCommittedMessages = MutableStateFlow<List<UIMessage>?>(null)
+    /** 取消后的流式尾部快照；停止路径等待生成 Job 后再合并，避免旧显示缓冲覆盖它。 */
+    val interruptedStreamMessages = MutableStateFlow<List<UIMessage>?>(null)
 
     // 原子引用计数
     private val refCount = AtomicInteger(0)

@@ -1880,6 +1880,7 @@ class ChatService(
             // 新一轮生成：清掉上一轮遗留的「未确认回填」快照（见 ConversationSession.lastCommittedMessages）。
             // 不清的话，本轮若在**任何工具回填之前**被取消，停止路径会把上一轮的旧快照并进内存态。
             session.lastCommittedMessages.value = null
+            session.interruptedStreamMessages.value = null
             val generationOwner = session.backgroundTaskOwner
             val transformerChains = transformerRegistry.snapshot(pluginManager.plugins.value)
 
@@ -2125,6 +2126,9 @@ class ChatService(
                             onMessagesCommitted = { committed ->
                                 session.lastCommittedMessages.value = committed
                             },
+                            onStreamInterrupted = { interrupted ->
+                                session.interruptedStreamMessages.value = interrupted
+                            },
                             // 用量流水的归属：聊天主流程（含工具调用的每一步、每次重试）
                             usageTag = UsageTag(
                                 UsageSource.CHAT,
@@ -2138,6 +2142,8 @@ class ChatService(
                             val current = getConversationFlow(conversationId).value
                             updateConversationStreaming(conversationId, current.applyGenerationChunk(pending))
                         }).onCompletion {
+                            // 上游取消安全回调已经在 Flow 子协程退出前提交；先合入再清理空候选。
+                            restoreInterruptedStream(session)
                             // 可能被取消了，或者意外结束，兜底更新
                             val flowValue = getConversationFlow(conversationId).value
                             val updatedConversation = flowValue.copy(
@@ -4515,6 +4521,7 @@ class ChatService(
             val restored = current.withRestoredToolOutputs(committed)
             if (restored !== current) updateConversation(conversationId, restored)
         }
+        restoreInterruptedStream(session)
         // 注意：不因 jobs 为空而早退——生成可能刚结束而收尾保存尚未落库，
         // 此时同样需要下面的持久化（见 persistStoppedGeneration 的说明）。
         val receiptedEvents = app.androidrik.rikkahub.data.task.selectedWorkspaceCompletionEvents(
@@ -4578,6 +4585,15 @@ class ChatService(
         if (!appended) return nodes
         val newMessages = node.messages.toMutableList().also { it[node.selectIndex] = updated.first() }
         return nodes.toMutableList().also { it[lastIndex] = node.copy(messages = newMessages) }
+    }
+
+    private fun restoreInterruptedStream(session: ConversationSession) {
+        session.interruptedStreamMessages.value?.let { interrupted ->
+            updateConversation(session.id, session.state.value.applyGenerationChunk(
+                GenerationChunk.Messages(interrupted, isDelta = true),
+            ))
+            session.interruptedStreamMessages.value = null
+        }
     }
 
     private suspend fun persistStoppedGeneration(conversationId: Uuid, preserveTasks: Boolean = false) {

@@ -11,9 +11,12 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Semaphore
@@ -557,6 +560,8 @@ class GenerationHandler(
          * 默认 null：无头 run（`SubagentRunner`）自己维护 `currentMessages`，无需此落点。
          */
         onMessagesCommitted: ((List<UIMessage>) -> Unit)? = null,
+        /** 取消时直接交付最新流式快照，不依赖已取消的 Flow；调用方应在停止落库前合并。 */
+        onStreamInterrupted: ((List<UIMessage>) -> Unit)? = null,
         consumeStepNotices: (suspend (List<UIMessage>) -> List<UIMessage>)? = null,
         /**
          * 用量流水的归属标记（来源 / 助手 / 会话）。
@@ -724,6 +729,20 @@ class GenerationHandler(
                         frozenFileAnchorIds = frozenFileAnchorIds,
                         debugKey = debugKey,
                         sessionId = sessionId,
+                        onStreamInterrupted = { interrupted ->
+                            val tail = interrupted.lastOrNull()?.takeIf { it.role == MessageRole.ASSISTANT }
+                            if (tail != null && onStreamInterrupted != null) {
+                                val tagged = listOf(tail.copy(memoryContext = memoryBinding))
+                                val snapshot = runCatching {
+                                    tagged.streamOutputTransforms(outputTransformers, context, targetModel, assistant, settings)
+                                        .streamVisualTransforms(outputTransformers, context, targetModel, assistant, settings)
+                                }.getOrElse { error ->
+                                    Log.w(TAG, "interrupted stream transform failed; keeping raw snapshot", error)
+                                    tagged
+                                }
+                                onStreamInterrupted(snapshot)
+                            }
+                        },
                         onUpdateMessages = { updated, coalescible ->
                             if (coalescible) sawRequestDelta = true
                             val last = updated.lastOrNull()
@@ -1775,6 +1794,7 @@ class GenerationHandler(
          */
         compressionWindow: Conversation.CompressionWindow? = null,
         onUpdateMessages: suspend (List<UIMessage>, Boolean) -> Unit,
+        onStreamInterrupted: suspend (List<UIMessage>) -> Unit,
         transformers: List<MessageTransformer>,
         model: Model,
         providerImpl: Provider<ProviderSetting>,
@@ -1985,7 +2005,7 @@ class GenerationHandler(
                 val timeSource = TimeSource.Monotonic
                 var lastDeltaFlushMark: kotlin.time.TimeMark? = null
 
-                suspend fun flushBufferedStream(coalescible: Boolean) {
+                fun bufferedStreamSnapshot(): List<UIMessage> {
                     var flushed = chunkHandler.flush(messages)
                     if (pendingUsageUpdate && stepUsage != null) {
                         val last = flushed.lastOrNull()
@@ -2000,7 +2020,11 @@ class GenerationHandler(
                         pendingUsageUpdate = false
                     }
                     messages = flushed
-                    onUpdateMessages(flushed, coalescible)
+                    return flushed
+                }
+
+                suspend fun flushBufferedStream(coalescible: Boolean) {
+                    onUpdateMessages(bufferedStreamSnapshot(), coalescible)
                     if (coalescible) {
                         lastDeltaFlushMark = timeSource.markNow()
                     }
@@ -2027,7 +2051,7 @@ class GenerationHandler(
                                 }
                             }
 
-                            suspend fun processChunk(chunk: StreamChunk) {
+                            fun bufferChunk(chunk: StreamChunk) {
                                 if (chunk.hasGenerationContent()) {
                                     receivedAssistantContent = true
                                 }
@@ -2042,6 +2066,10 @@ class GenerationHandler(
                                     stepUsage = stepUsage.merge(usage)
                                     pendingUsageUpdate = true
                                 }
+                            }
+
+                            suspend fun processChunk(chunk: StreamChunk) {
+                                bufferChunk(chunk)
                                 // 判定放在**本条已并入缓冲且遇命中即先冲刷**之后：断流不丢已生成内容
                                 val deltaVerdict = degenerationGuard?.onDelta(chunk.toGuardDelta())
                                 if (deltaVerdict is ThinkingDegenerationGuard.Verdict.Repeating) {
@@ -2136,7 +2164,18 @@ class GenerationHandler(
                                     }
                                 }
                             } finally {
-                                producer.cancel()
+                                if (!currentCoroutineContext().isActive) {
+                                    // 先停生产者，再接收其已入队的有限尾部；不再触发 emit 或护栏。
+                                    withContext(NonCancellable) {
+                                        producer.cancelAndJoin()
+                                        while (true) {
+                                            val queued = input.tryReceive().getOrNull() ?: break
+                                            bufferChunk(queued)
+                                        }
+                                    }
+                                } else {
+                                    producer.cancel()
+                                }
                                 input.cancel()
                             }
                         }
@@ -2166,7 +2205,15 @@ class GenerationHandler(
                     }
                     onUpdateMessages(messages, false)
                 } catch (e: Throwable) {
-                    if (e is CancellationException) throw e
+                    if (e is CancellationException) {
+                        // flush 到局部变量不足以保存：取消后的 emit/flowOn 无法交付。
+                        // 即使最后一次 flush 已发生，快照也可能仍在 Flow channel 中。
+                        messages = bufferedStreamSnapshot()
+                        withContext(NonCancellable) {
+                            onStreamInterrupted(messages)
+                        }
+                        throw e
+                    }
                     // 兜底：若异常处理前缓冲中仍有未物化增量（如非缓冲分支抛错），先合入 messages 以保留完整草稿
                     if (chunkHandler.hasBufferedChanges) {
                         messages = chunkHandler.flush(messages)

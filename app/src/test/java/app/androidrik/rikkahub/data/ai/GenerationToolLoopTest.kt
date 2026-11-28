@@ -965,6 +965,54 @@ class GenerationToolLoopTest {
         }
     }
 
+    @Test
+    fun `cancellation preserves stream tail outside the cancelled flow`() = runBlocking {
+        val prefix = "A".repeat(16_000)
+        val tailSent = CompletableDeferred<Unit>()
+        val prefixDisplayed = CompletableDeferred<Unit>()
+        val interrupted = AtomicReference<List<UIMessage>?>()
+        val provider = object : Provider<ProviderSetting.OpenAI> {
+            override suspend fun listModels(providerSetting: ProviderSetting.OpenAI): List<Model> = emptyList()
+            override suspend fun generateText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): TextGenerationResult = error("stream only")
+
+            override suspend fun streamText(
+                providerSetting: ProviderSetting.OpenAI,
+                messages: List<UIMessage>,
+                params: TextGenerationParams,
+            ): Flow<StreamChunk> = flow {
+                emit(StreamChunk.TextStart("t"))
+                emit(StreamChunk.TextDelta("t", prefix))
+                prefixDisplayed.await()
+                emit(StreamChunk.TextDelta("t", " last characters"))
+                tailSent.complete(Unit)
+                awaitCancellation()
+            }
+        }
+        val job = launch {
+            handler(provider).generateText(
+                settings = Settings(providers = listOf(providerSetting), chatModelId = model.id),
+                model = model,
+                messages = listOf(UIMessage.user("hi")),
+                assistant = Assistant(chatModelId = model.id),
+                onStreamInterrupted = { interrupted.set(it) },
+            ).collect { chunk ->
+                if (chunk is GenerationChunk.Messages && chunk.messages.last().toText() == prefix) {
+                    prefixDisplayed.complete(Unit)
+                }
+            }
+        }
+        withTimeout(5_000) { tailSent.await() }
+        // Stop immediately: the tail may still be queued or accepted but not flushed.
+        job.cancel()
+        job.join()
+        assertTrue(job.isCancelled)
+        assertEquals(prefix + " last characters", interrupted.get()?.last()?.toText())
+    }
+
     private companion object {
         // ---- 证伪记录（把任一修复改回原样后跑本类，逐条实测）----
         // Bug 4 回滚：`a tool with empty output ...` 红 —— 空输出使 isExecuted 仍为假，
