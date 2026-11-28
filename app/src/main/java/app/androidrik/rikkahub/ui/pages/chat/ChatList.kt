@@ -644,6 +644,18 @@ private fun ChatListNormal(
             }
         }
 
+        // ANCHOR_START 锚定补白（上游 2afc907d2）：短回复不足一屏时末行补白补足一屏，
+        // 锚定才能落到真正的视口顶。只在生成窗口生效（enabled 含 loading），结束清零。
+        val anchorTailMinHeight = rememberAnchorTailMinHeight(
+            listState = state,
+            enabled = settings.displaySetting.chatListScrollMode == ChatListScrollMode.ANCHOR_START && loadingState,
+            generationKey = generationKey,
+            dragging = dragging,
+            anchorRowIndex = { replyMessageId?.let { renderIndexUpdated.target(it) } ?: -1 },
+            lastRowKey = renderIndexUpdated.rows.lastOrNull()?.key.orEmpty(),
+            bottomKey = ScrollBottomKey,
+        )
+
         // 判断最近是否滚动
         LaunchedEffect(state.isScrollInProgress) {
             if (state.isScrollInProgress) {
@@ -740,7 +752,14 @@ private fun ChatListNormal(
                 val node = visibleNodes[index]
                 // 哨兵只兜异常高度（防 Int.MAX 崩溃），正常长内容不再被裁剪
                 HeightClamp(normalLimit = 100_000.dp) {
-                Column(Modifier.padding(top = row.topGapDp.dp).testTag("chat_row:${row.key}")) {
+                // 锚定补白只挂最后一行（空白在行下方，见 rememberAnchorTailMinHeight）
+                val isLastRow = row.key == renderIndex.rows.lastOrNull()?.key
+                Column(
+                    modifier = Modifier
+                        .padding(top = row.topGapDp.dp)
+                        .then(if (isLastRow) Modifier.anchorTailMinHeight(anchorTailMinHeight) else Modifier)
+                        .testTag("chat_row:${row.key}")
+                ) {
                     ListSelectableItem(
                         key = node.id,
                         onSelectChange = {
