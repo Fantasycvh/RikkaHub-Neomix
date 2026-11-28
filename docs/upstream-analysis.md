@@ -2177,7 +2177,7 @@ gh API 本轮 TLS 超时（3 次），无法全量扫描。从提交引用确认
 
 | 来源 | 锚点 → HEAD | 新增 | 判决摘要 |
 |---|---|---|---|
-| NMoi | `a0c80bb` → `1c374470`（main） | 150（D340–D443） | 候选 1（P3 需拍板）：**workspace 会话文件变更摘要卡片**（D372–D391：写入口+shell 双归属判据、去抖合并、三行芯片/整页/详情面板三形态——本仓 workspace 无变更聚合展示，~1-2 天）。记账 ~6：D342 先摘图+提示行说清撤了什么；D343 read_file 48KB 分页 force_full 不豁免；D355–D367 分页五页缓存+「滑动中读库撤回」revert 教训（与懒加载台账互证）；D346–D353 后台预渲染整页+页面自报 ready；D359 启动七段计时；D360 滑动 120 帧/钉高刷。已有等价：tokenizer 自写（本仓真 BPE）、usage 落库、attachments 连删（kelivo #1539 互证） |
+| NMoi | `a0c80bb` → `1c374470`（main） | 150（D340–D443） | 候选 1 → **当日落地核查反转为已有等价（吸收 0）**：本仓 `EditedFilesList`（[ChatMessageEditedFiles.kt](../app/src/main/java/app/androidrik/rikkahub/ui/components/message/ChatMessageEditedFiles.kt)，`ChatMessage.kt:381` 已接线）就是工具调用聚合形态的变更卡片——`workspace_write_file`/`workspace_edit_file` 去重聚合、默认 3 条 chips + N 展开、点按出导出/分享 sheet，同 NMoi 芯片+详情形态。**11-28 节初判「本仓无变更聚合展示」漏检了该组件，勘误**；NMoi 超出部分只有 shell 侧写入归属（共享扫描器），列观察级不立项。记账 ~6：D342 先摘图+提示行说清撤了什么；D343 read_file 48KB 分页 force_full 不豁免；D355–D367 分页五页缓存+「滑动中读库撤回」revert 教训（与懒加载台账互证）；D346–D353 后台预渲染整页+页面自报 ready；D359 启动七段计时；D360 滑动 120 帧/钉高刷。已有等价：tokenizer 自写（本仓真 BPE）、usage 落库、attachments 连删（kelivo #1539 互证） |
 | BiliPai | `7a1ce1ef7` → `5e17eea67`（v0.10.7） | 70 | 候选 0；记账 ~5：玻璃透镜+提色缓存复用（`2d0e27d97`）；超长组合宿主拆分（`a3ac6b569`，与 longfile 台账互证）；自适应帧率（`217c33726`，与 NMoi D360 三源互证）；多节点并行分块下载自适应并发（`a4095e284`，与工具车道并行同族）；过载/弱网一键降级提示（`d2b19dd2b`，诚实降级族）。其余 Wear OS/Cast/截图识字/播放器域不适用 |
 | PurrCat | `a085aad` → `502d465` | 32 | **候选 1（P3）：KB 嵌入模型切换静默错检——本仓实锤同病**。`updateKnowledgeBase` 直接改 `embeddingModelId`（[RagRepository.kt:109](../app/src/main/java/app/androidrik/rikkahub/data/rag/RagRepository.kt#L109)），存量向量不重建/无过期标记，检索跨向量空间比 cosine；手动 reindex 按文档存在但无「该重建」信号。PurrCat 判据=模型变更重建索引+opt-in 原子切换（`5ca56af`/`fece8f7`，~1 天）。记账 ~5：置信度衰减+遗忘调度持久化（`5972b13`/`7b39c13`）；BM25 等权 RRF+分数外显（`c7ba6c3`/`26eaea8`，11-18 判据延续）；配置文件版本化+启动自动迁移（`872cd4a`）；空搜索返回最近 3 条缓存（`a277d2e`）；短时记忆注入条数上限（`18b0a4a`） |
 | 华灯 | `df96dff40` → `e5006f36c`（v3.3.1-huadeng） | 20 | 免疫确认 2：`#` 文件名导入崩溃（`7767af6a1`）——本仓存储名走 `buildUuidFileName` UUID 重生成（[FileUtils.kt:28](../app/src/main/java/app/androidrik/rikkahub/data/files/FileUtils.kt#L28)），`#` 不落路径；连接测试覆写（`205136326`，与上游 `1fb091529` 同源互证）。记账 ~4：静态快捷方式挂 activity-alias（本仓已注明「切 alias 后不可见属预期」，跟随 alias=行为变更需拍板）；正则总开关接管子项（本仓逐条 enabled 无总开关）；数据救助页与上游 2d93676e4 安全模式导出互证（P2 候选维持）；随机宏按回合取值=宏引擎域外。已在候选池 2：图片像素上限（`227441be7`）、mediagen 5s 轮询（`c64774d34`） |
@@ -2202,8 +2202,20 @@ gh API 本轮 TLS 超时（3 次），无法全量扫描。从提交引用确认
 2. **KB 嵌入模型切换重建提示**（P3，~1 天）：PurrCat 判据，本仓同病实锤（无过期标记无重建信号）。
 3. **workspace_shell description 参数**（P3，~半天）：上游 `55a0631fe`，同构宿主。
 4. **ANCHOR_START 末节点最小高度补白**（P3，~半天）：上游 `2afc907d2` 判据，短回复锚顶能力。
-5. **workspace 会话文件变更摘要卡片**（P3 需拍板，~1-2 天）：NMoi D372–D391。
+5. ~~workspace 会话文件变更摘要卡片~~ → **销账（已有等价）**：`EditedFilesList` 已覆盖芯片+展开+详情形态（见上表 NMoi 行勘误）；shell 侧扫描器归属列观察级。
 6. **终端键盘重唤起+复制粘贴对照排查**（P3，需先核对本仓是否同病）：dsh-Go `a99b5e19`。
+
+### 2026-11-28 当日落地记录（用户拍板「分批实现」，四批本地提交未推送）
+
+| 批 | 内容 | 提交 |
+|---|---|---|
+| 1 | 悬浮球 OOM（候选 1，P2）：`morphingDropShadow` 直绘 | `4f7e810a28` |
+| 2 | KB 嵌入模型/维度变更作废向量+打回未索引（候选 2）：updateKnowledgeBase 检测变更清向量+文档打回未索引，重建走现有按文档 reindex；说明文案三语言 | `81a8c7ed5e` |
+| 3 | workspace_shell description 参数（候选 3）：schema+标题/摘要分工 | `8dc022d4b8` |
+| 4 | ANCHOR_START 末节点最小高度补白（候选 4）：rememberAnchorTailMinHeight 并入末行自身测量防抖 + 生成窗口内纠偏闩锁 | `b6273c3d16` |
+| 5 | workspace 变更卡片（候选 5）→ 落地核查**已有等价**（EditedFilesList），销账并勘误 |
+
+验证：`:app:compileDebugKotlin` + 全模块 `compileDebugKotlin` 绿、`:app:testDebugUnitTest` 绿。UI 类改动待真机验证（用户亲自跑）：悬浮球长时间聊天内存、短回复锚定置顶、shell 审批摘要、KB 切换模型后重建提示。
 
 ## 关联
 
