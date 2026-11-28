@@ -8,16 +8,22 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -32,6 +38,8 @@ import me.rerere.hugeicons.stroke.Download01
 import me.rerere.hugeicons.stroke.View
 import app.androidrik.rikkahub.R
 import app.androidrik.rikkahub.Screen
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
+import app.androidrik.rikkahub.ui.components.webview.InlineWebViewSlotRegistry
 import app.androidrik.rikkahub.ui.components.webview.WEB_VIEW_ASSET_URL
 import app.androidrik.rikkahub.ui.components.webview.WEB_VIEW_BASE_URL
 import app.androidrik.rikkahub.ui.components.webview.WebView
@@ -97,6 +105,16 @@ fun Mermaid(
         )
     }
 
+    val inlineSlotId = remember(code) { "mermaid:${code.hashCode()}:${code.length}" }
+    var renderInline by remember(inlineSlotId) {
+        mutableStateOf(InlineWebViewSlotRegistry.tryAcquireAutoSlot(inlineSlotId))
+    }
+    DisposableEffect(inlineSlotId, renderInline) {
+        onDispose {
+            InlineWebViewSlotRegistry.releaseAutoSlot(inlineSlotId)
+        }
+    }
+
     val html = remember(code, colorScheme, darkMode, webSkin, accent) {
         buildMermaidHtml(
             code = code,
@@ -108,31 +126,59 @@ fun Mermaid(
         )
     }
 
-    val webViewState = rememberWebViewState(
-        data = html,
-        baseUrl = WEB_VIEW_BASE_URL,
-        mimeType = "text/html",
-        encoding = "UTF-8",
-        interfaces = mapOf(
-            "AndroidInterface" to jsInterface
-        ),
-        settings = {
-            builtInZoomControls = true
-            displayZoomControls = false
-            useWideViewPort = true
-            loadWithOverviewMode = true
-        }
-    )
+    val webViewState = if (renderInline) {
+        rememberWebViewState(
+            data = html,
+            baseUrl = WEB_VIEW_BASE_URL,
+            mimeType = "text/html",
+            encoding = "UTF-8",
+            interfaces = mapOf(
+                "AndroidInterface" to jsInterface
+            ),
+            settings = {
+                builtInZoomControls = true
+                displayZoomControls = false
+                useWideViewPort = true
+                loadWithOverviewMode = true
+            }
+        )
+    } else {
+        null
+    }
 
     Column(
         modifier = modifier
     ) {
-        WebView(
-            state = webViewState,
-            modifier = Modifier
-                .clip(appSkinRoundedShape(4f))
-                .height(200.dp),
-        )
+        if (webViewState != null) {
+            WebView(
+                state = webViewState,
+                modifier = Modifier
+                    .clip(appSkinRoundedShape(4f))
+                    .height(200.dp),
+            )
+        } else {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(appSkinRoundedShape(4f)),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = "Mermaid 图表",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = { renderInline = true }) {
+                        Text("点击渲染")
+                    }
+                }
+            }
+        }
 
         if (activity != null) {
             Row(
@@ -152,18 +198,20 @@ fun Mermaid(
                         contentDescription = "Preview"
                     )
                 }
-                IconButton(
-                    onClick = {
-                        webViewState.webView?.evaluateJavascript(
-                            "exportSvgToPng();",
-                            null
+                if (webViewState != null) {
+                    IconButton(
+                        onClick = {
+                            webViewState.webView?.evaluateJavascript(
+                                "exportSvgToPng();",
+                                null
+                            )
+                        },
+                    ) {
+                        Icon(
+                            HugeIcons.Download01,
+                            contentDescription = stringResource(R.string.mermaid_export)
                         )
-                    },
-                ) {
-                    Icon(
-                        HugeIcons.Download01,
-                        contentDescription = stringResource(R.string.mermaid_export)
-                    )
+                    }
                 }
             }
         }

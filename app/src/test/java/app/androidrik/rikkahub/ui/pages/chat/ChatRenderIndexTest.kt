@@ -33,6 +33,36 @@ class ChatRenderIndexTest {
         assertFalse(nextInput.copy(message = message.copy(parts = listOf(UIMessagePart.Text("edited")))).canRetain(input))
     }
 
+    @Test fun `stream session retains prefix markdown documents across appended tool calls and results`() = runBlocking {
+        val longPrefix = "early paragraph\n\n".repeat(600)
+        val baseMessage = UIMessage.assistant(longPrefix)
+        val input1 = StaticMessageInput(Uuid.random(), baseMessage, null, false, "truncated", streaming = true)
+        val session = MessageDocumentSession(99)
+        val doc1 = session.prepare(input1)
+
+        val pendingTool = UIMessagePart.Tool(toolCallId = "call-1", toolName = "read_file", input = "{\"path\":\"a.kt\"}")
+        val input2 = input1.copy(message = baseMessage.copy(parts = listOf(UIMessagePart.Text(longPrefix), pendingTool)))
+        assertTrue(input2.canRetain(input1))
+        val doc2 = session.prepare(input2)
+        assertEquals(doc1.epoch, doc2.epoch)
+        assertSame(doc1.markdown.getValue(0), doc2.markdown.getValue(0))
+
+        val executedTool = pendingTool.copy(output = listOf(UIMessagePart.Text("file content")))
+        val input3 = input2.copy(
+            message = baseMessage.copy(
+                parts = listOf(
+                    UIMessagePart.Text(longPrefix),
+                    executedTool,
+                    UIMessagePart.Text("after tool"),
+                )
+            )
+        )
+        assertTrue(input3.canRetain(input2))
+        val doc3 = session.prepare(input3)
+        assertEquals(doc1.epoch, doc3.epoch)
+        assertSame(doc1.markdown.getValue(0), doc3.markdown.getValue(0))
+    }
+
     private val longText = (0..149).joinToString("\n\n") { "段落 $it：" + "正文与内容。".repeat(18) }
     private val appearance = ChatAppearance()
     private fun prepared(node: MessageNode, epoch: Long = 1) = runBlocking {

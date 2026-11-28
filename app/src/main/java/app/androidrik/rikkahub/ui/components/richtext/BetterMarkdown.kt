@@ -76,7 +76,9 @@ import app.androidrik.rikkahub.ui.theme.LocalChatTextGradient
 import app.androidrik.rikkahub.ui.theme.LocalMotionTokens
 import app.androidrik.rikkahub.ui.theme.toBrush
 import app.androidrik.rikkahub.data.model.AppearanceGradient
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import me.rerere.bettertext.latex.LatexBlock
@@ -125,6 +127,8 @@ fun MarkdownBlock(
     renderDocument: MarkdownRenderDocument? = null,
     /** 流式新块淡入（方向 F）：仅生成中的文档路径启用，静态/历史路径保持 false */
     blockFadeIn: Boolean = false,
+    preprocessKey: Any? = null,
+    preprocess: ((String) -> String)? = null,
 ) {
     val displaySetting = LocalSettings.current.displaySetting
     val enableLatexRendering = displaySetting.enableLatexRendering
@@ -188,16 +192,6 @@ fun MarkdownBlock(
     val solid = merged.copy(color = merged.color.takeOrElse { LocalContentColor.current })
     val brush = remember(textGradient) { textGradient?.toBrush() }
     val resolved = if (brush != null) solid.copy(brush = brush) else solid
-    // 渲染前两步归一化（顺序敏感）：
-    // 1. LatexEnvironments.normalize 给裸的 \begin{tikzpicture}/\begin{align} 等补 $$ 定界符
-    //    （与导出路径 MarkdownHtml.preProcess 同步；BetterText 迁移时聊天路径漏了这步，
-    //    裸环境直接以普通段落显示源码）；
-    // 2. normalizeDisplayMath 折叠 $$…$$ 内空行——BetterText 的 GFM block math 遇空行会
-    //    结束公式块，模型常在块内用空行分隔 \node/\draw。必须后跑，否则刚补上的 $$ 块
-    //    内部仍是带空行的原样。
-    val normalizedContent = remember(content) {
-        normalizeMarkdownForDisplay(content)
-    }
     // 插槽里的组件（代码块、表格工具栏等）用 Material 的 Text，让它们也拿到正文样式
     // 块淡入时长跟随皮肤 motion token（库内不引 app token，由这里传标准档）
     val blockFadeInDurationMs = LocalMotionTokens.current.standardMs
@@ -206,7 +200,16 @@ fun MarkdownBlock(
             if (renderUnit != null) BetterMarkdown(unit = renderUnit, modifier = modifier.padding(horizontal = 4.dp),
                 style = resolved, theme = theme, components = components)
             else {
-                val document = renderDocument ?: rememberMarkdownRenderDocument(normalizedContent, streaming = streaming)
+                // 渲染前两步归一化（顺序敏感：LatexEnvironments → normalizeDisplayMath）与视觉正则一同迁到后台解析线程执行
+                val document = renderDocument ?: rememberMarkdownRenderDocument(
+                    content = content,
+                    streaming = streaming,
+                    preprocessKey = preprocessKey,
+                    preprocess = { raw ->
+                        val transformed = preprocess?.invoke(raw) ?: raw
+                        normalizeMarkdownForDisplay(transformed)
+                    },
+                )
                 BetterMarkdown(document = document.document, modifier = modifier.padding(horizontal = 4.dp),
                     style = resolved, theme = theme, components = components, blockFadeIn = blockFadeIn,
                     blockFadeInDurationMillis = blockFadeInDurationMs)
@@ -387,26 +390,39 @@ private fun TableCard(table: MarkdownBlock.Table) {
     val columnCount = max(table.header.size, table.rows.maxOfOrNull { it.size } ?: 0)
     if (columnCount == 0) return
 
-    val headers: List<@Composable () -> Unit> = table.header.mapIndexed { index, cell ->
-        @Composable {
-            TableCellContent(
-                cell = cell,
-                columnAlign = table.alignments.getOrNull(index),
-                fontWeight = FontWeight.SemiBold,
-            )
+    val headers: List<@Composable () -> Unit> = remember(table) {
+        table.header.mapIndexed { index, cell ->
+            @Composable {
+                TableCellContent(
+                    cell = cell,
+                    columnAlign = table.alignments.getOrNull(index),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
-    val rows: List<List<@Composable () -> Unit>> = table.rows.map { row ->
-        List(columnCount) { index ->
-            @Composable {
-                val cell = row.getOrNull(index)
-                if (cell != null) {
-                    TableCellContent(
-                        cell = cell,
-                        columnAlign = table.alignments.getOrNull(index),
-                        fontWeight = null,
-                    )
+    val rows: List<List<@Composable () -> Unit>> = remember(table, columnCount) {
+        table.rows.map { row ->
+            List(columnCount) { index ->
+                @Composable {
+                    val cell = row.getOrNull(index)
+                    if (cell != null) {
+                        TableCellContent(
+                            cell = cell,
+                            columnAlign = table.alignments.getOrNull(index),
+                            fontWeight = null,
+                        )
+                    }
                 }
+            }
+        }
+    }
+    val columnAlignments = remember(table.alignments, columnCount) {
+        List(columnCount) { index ->
+            when (table.alignments.getOrNull(index)) {
+                TextAlign.Center -> Alignment.Center
+                TextAlign.End, TextAlign.Right -> Alignment.CenterEnd
+                else -> Alignment.CenterStart
             }
         }
     }
@@ -414,15 +430,7 @@ private fun TableCard(table: MarkdownBlock.Table) {
     val clipboardManager = LocalClipboard.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-
-    val tableCsv = remember(table) {
-        buildTableCsv(
-            headerCells = table.header.map { it.content.plainText() },
-            rows = table.rows.map { row -> row.map { it.content.plainText() } },
-        )
-    }
-    // HTML 写出的表格没有 Markdown 源码，复制时退回到 CSV
-    val tableText = table.source ?: tableCsv
+    val latestTable by rememberUpdatedState(table)
 
     // 浮窗/悬浮面板等无 Activity 宿主的组合环境没有 ActivityResultRegistryOwner，
     // rememberLauncherForActivityResult 会直接抛异常——此时隐藏「导出 CSV」入口（复制走 Clipboard 不受影响）
@@ -432,10 +440,12 @@ private fun TableCard(table: MarkdownBlock.Table) {
             contract = ActivityResultContracts.CreateDocument("text/csv")
         ) { uri ->
             uri?.let {
-                scope.launch {
+                val snapshot = latestTable
+                scope.launch(Dispatchers.IO) {
                     try {
+                        val csvBytes = buildMarkdownTableCsv(snapshot).toByteArray()
                         context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                            outputStream.write(tableCsv.toByteArray())
+                            outputStream.write(csvBytes)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -483,7 +493,12 @@ private fun TableCard(table: MarkdownBlock.Table) {
                     modifier = Modifier
                         .clip(appSkinRoundedShape(4f))
                         .onClick {
+                            val snapshot = latestTable
                             scope.launch {
+                                // 懒计算 CSV，避免表格流式生成期每帧在主线程拼装整表字符串
+                                val tableText = snapshot.source ?: withContext(Dispatchers.Default) {
+                                    buildMarkdownTableCsv(snapshot)
+                                }
                                 clipboardManager.setClipEntry(ClipEntry(ClipData.newPlainText("table", tableText)))
                             }
                         }
@@ -516,11 +531,17 @@ private fun TableCard(table: MarkdownBlock.Table) {
             rows = rows,
             columnMinWidths = List(columnCount) { 80.dp },
             columnMaxWidths = List(columnCount) { 200.dp },
+            columnAlignments = columnAlignments,
             outerBorder = null,
             shape = RectangleShape,
         )
     }
 }
+
+private fun buildMarkdownTableCsv(table: MarkdownBlock.Table): String = buildTableCsv(
+    headerCells = table.header.map { it.content.plainText() },
+    rows = table.rows.map { row -> row.map { it.content.plainText() } },
+)
 
 @Composable
 private fun TableCellContent(

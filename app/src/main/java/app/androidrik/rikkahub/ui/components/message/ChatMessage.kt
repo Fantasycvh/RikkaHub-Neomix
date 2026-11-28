@@ -461,6 +461,8 @@ private fun MessageTextContent(
     markdownSlice: ChatMessageSlice.Markdown? = null,
     prepared: MarkdownRenderDocument? = null,
     onReadFullText: (() -> Unit)? = null,
+    preprocessKey: Any? = null,
+    preprocess: ((String) -> String)? = null,
 ) {
     val settings = LocalSettings.current.displaySetting
     val appearance = rememberChatAppearance(settings)
@@ -476,9 +478,11 @@ private fun MessageTextContent(
     val splitByParagraph = !user && markdownSlice == null && prepared == null &&
         appearance.assistantBubble.visible && settings.splitAssistantBubbleByParagraph &&
         content.isNotBlank()
-    val paragraphs = remember(content, splitByParagraph) {
-        if (splitByParagraph) splitMarkdownParagraphs(content).ifEmpty { listOf(content) }
-        else listOf(content)
+    val paragraphs = remember(content, splitByParagraph, preprocessKey) {
+        if (splitByParagraph) {
+            val preparedText = preprocess?.invoke(content) ?: content
+            splitMarkdownParagraphs(preparedText).ifEmpty { listOf(preparedText) }
+        } else listOf(content)
     }
     SelectableContent(group = markdownSlice?.group) {
         if (paragraphs.size > 1) {
@@ -534,7 +538,8 @@ private fun MessageTextContent(
                     if (markdownSlice?.preview != null) TextButton(onClick = { expanded = false }) { Text("折叠超长内容") }
                     MarkdownBlock(documentKey = documentKey, content = content, renderUnit = markdownSlice?.unit,
                         renderDocument = prepared, onClickCitation = onClickCitation, streaming = loading,
-                        blockFadeIn = loading && settings.enableGenerationSizeAnimation)
+                        blockFadeIn = loading && settings.enableGenerationSizeAnimation,
+                        preprocessKey = preprocessKey, preprocess = preprocess)
                 }
             }
         }
@@ -741,10 +746,15 @@ private fun MessagePartsBlock(
                             is ChatMessageSlice.Prepared -> slice.documents[block.index]
                             else -> null
                         }
+                        val preprocessKey = remember(assistant, role, truncatedNotice) {
+                            Triple(assistant?.regexes, role, truncatedNotice)
+                        }
                         MessageTextContent(role = role,
-                            content = if (prepared != null) "" else messageMarkdownText(part.text, truncatedNotice, assistant, role),
+                            content = if (prepared != null) "" else part.text,
                             documentKey = section.textDocumentId, loading = loading, onClickCitation = handleClickCitation,
-                            onUserMessageClick = onUserMessageClick, prepared = prepared)
+                            onUserMessageClick = onUserMessageClick, prepared = prepared,
+                            preprocessKey = preprocessKey,
+                            preprocess = { raw -> messageMarkdownText(raw, truncatedNotice, assistant, role) })
                     }
 
                     is UIMessagePart.Video -> {

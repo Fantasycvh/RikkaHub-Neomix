@@ -106,27 +106,61 @@ internal fun packStaticUnits(units: List<MarkdownRenderUnit>): List<MarkdownRend
 }
 
 /** Called off the UI thread. No message copies, persistence changes or per-slice reparsing. */
-internal suspend fun prepareStaticMessage(input: StaticMessageInput, epoch: Long,
-    parsers: MutableMap<Int, MarkdownStreamParser> = mutableMapOf()): StaticMessageDocument {
+internal suspend fun prepareStaticMessage(
+    input: StaticMessageInput,
+    epoch: Long,
+    parsers: MutableMap<Int, MarkdownStreamParser> = mutableMapOf(),
+    reusable: StaticMessageDocument? = null,
+): StaticMessageDocument {
     val markdown = linkedMapOf<Int, MarkdownRenderDocument>()
+    val canReusePartDoc = reusable != null &&
+        input.streaming == reusable.input.streaming &&
+        input.assistant == reusable.input.assistant &&
+        input.notice == reusable.input.notice
     input.message.parts.forEachIndexed { index, part ->
         coroutineContext.ensureActive()
         if (part is UIMessagePart.Text && part.text.length >= LONG_MESSAGE_MIN_CHARS) {
-            val source = messageMarkdownText(part.text, input.notice, input.assistant, input.message.role)
-            markdown[index] = parsers.getOrPut(index) { MarkdownStreamParser() }
-                .parseRenderDocument(normalizeMarkdownForDisplay(source), streaming = input.streaming)
+            val previousPart = if (canReusePartDoc) {
+                reusable.input.message.parts.getOrNull(index) as? UIMessagePart.Text
+            } else {
+                null
+            }
+            val cachedDoc = if (previousPart != null && previousPart.text == part.text) {
+                reusable?.markdown?.get(index)
+            } else {
+                null
+            }
+            if (cachedDoc != null) {
+                markdown[index] = cachedDoc
+            } else {
+                val source = messageMarkdownText(part.text, input.notice, input.assistant, input.message.role)
+                markdown[index] = parsers.getOrPut(index) { MarkdownStreamParser() }
+                    .parseRenderDocument(normalizeMarkdownForDisplay(source), streaming = input.streaming)
+            }
         }
     }
     return StaticMessageDocument(input, epoch,
         messageDisplayDocument(input.message.id, input.message.parts, input.message.role, input.folding), markdown)
 }
 
-/** Safe to keep the preceding display while an append is parsed. Structural edits never borrow it. */
+/**
+ * Safe to keep the preceding display while an append is parsed.
+ * 允许同一条消息在末尾追加工具调用、回填工具结果或追加新文本段时复用既有解析会话；非追加改写仍重建。
+ */
 internal fun StaticMessageInput.canRetain(previous: StaticMessageInput): Boolean =
     nodeId == previous.nodeId && message.id == previous.message.id && message.role == previous.message.role &&
         assistant == previous.assistant && folding == previous.folding && notice == previous.notice &&
-        message.parts.size == previous.message.parts.size && message.parts.zip(previous.message.parts).all { (next, old) ->
-            if (next is UIMessagePart.Text && old is UIMessagePart.Text) next.text.startsWith(old.text) else next == old
+        message.parts.size >= previous.message.parts.size &&
+        previous.message.parts.indices.all { index ->
+            val next = message.parts[index]
+            val old = previous.message.parts[index]
+            when {
+                next is UIMessagePart.Text && old is UIMessagePart.Text -> next.text.startsWith(old.text)
+                next is UIMessagePart.Tool && old is UIMessagePart.Tool -> next.toolCallId == old.toolCallId
+                next is UIMessagePart.Reasoning && old is UIMessagePart.Reasoning ->
+                    next.createdAt == old.createdAt && next.reasoning.startsWith(old.reasoning)
+                else -> next == old
+            }
         }
 
 /** Owned exclusively by one serial background collector; parsers are never shared across jobs. */
@@ -135,7 +169,7 @@ internal class MessageDocumentSession(private val epoch: Long) {
     private var previous: StaticMessageDocument? = null
     suspend fun prepare(input: StaticMessageInput): StaticMessageDocument {
         previous?.takeIf { it.input == input }?.let { return it }
-        return prepareStaticMessage(input, epoch, parsers).also { previous = it }
+        return prepareStaticMessage(input, epoch, parsers, reusable = previous).also { previous = it }
     }
 }
 

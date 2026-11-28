@@ -3,17 +3,25 @@ package app.androidrik.rikkahub.ui.components.webview
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.util.Log
+import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams
 import android.webkit.ConsoleMessage
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -21,10 +29,39 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import app.androidrik.rikkahub.ui.components.ui.AppTextButton as TextButton
 
 private const val TAG = "WebView"
+internal const val MAX_AUTO_INLINE_WEBVIEWS = 2
+
+/**
+ * 限制自动挂载的内联 WebView 并发数量，防止复杂回复包含多张图表/HTML 块时同时启动过多渲染进程导致 OOM。
+ */
+internal object InlineWebViewSlotRegistry {
+    private val activeAutoSlots = LinkedHashSet<String>()
+
+    @Synchronized
+    fun tryAcquireAutoSlot(slotId: String, maxSlots: Int = MAX_AUTO_INLINE_WEBVIEWS): Boolean {
+        if (slotId in activeAutoSlots) return true
+        if (activeAutoSlots.size >= maxSlots) return false
+        activeAutoSlots += slotId
+        return true
+    }
+
+    @Synchronized
+    fun releaseAutoSlot(slotId: String) {
+        activeAutoSlots.remove(slotId)
+    }
+
+    @Synchronized
+    internal fun clearForTest() {
+        activeAutoSlots.clear()
+    }
+}
 
 internal class MyWebChromeClient(private val state: WebViewState) : WebChromeClient() {
     override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -74,6 +111,27 @@ internal class MyWebViewClient(private val state: WebViewState) : WebViewClient(
         state.currentUrl = url
         view?.let { state.applySkin(it) }
     }
+
+    override fun onRenderProcessGone(
+        view: WebView?,
+        detail: RenderProcessGoneDetail?,
+    ): Boolean {
+        Log.w(
+            TAG,
+            "WebView render process gone: didCrash=${detail?.didCrash()} priority=${detail?.rendererPriorityAtExit()}",
+        )
+        state.renderProcessCrashed = true
+        state.isLoading = false
+        state.lastLoadedData = null
+        if (state.webView === view) {
+            state.webView = null
+        }
+        runCatching {
+            (view?.parent as? ViewGroup)?.removeView(view)
+            view?.destroy()
+        }
+        return true
+    }
 }
 
 private fun WebView.resetState(
@@ -115,97 +173,125 @@ fun WebView(
     Box(
         modifier = modifier
     ) {
-        AndroidView(
-            factory = { context ->
-                WebView(context).apply {
-                    layoutParams = LayoutParams(
-                        LayoutParams.MATCH_PARENT,
-                        LayoutParams.MATCH_PARENT
+        if (state.renderProcessCrashed) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "预览渲染进程已重置",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-
-                    state.webView = this // Assign the WebView instance to the state
-
-                    onCreated(this)
-
-                    settings.javaScriptEnabled = true // Enable JavaScript
-                    settings.domStorageEnabled = true
-                    settings.allowContentAccess = true
-                    settings.apply(state.settings)
-
-                    // Use the created clients
-                    this.webChromeClient = webChromeClient
-                    this.webViewClient = webViewClient
-
-                    state.interfaces.forEach { (name, obj) ->
-                        addJavascriptInterface(obj, name)
+                    TextButton(
+                        onClick = {
+                            state.renderProcessCrashed = false
+                            state.forceReload = true
+                        },
+                    ) {
+                        Text("重新加载")
                     }
                 }
-            },
-            modifier = Modifier.fillMaxWidth(), // Make WebView fill the width
-            onReset = {
-                it.resetState(state.interfaces)
-                Log.d(TAG, "AndroidView: Resetting WebView")
-            },
-            onRelease = {
-                if (state.webView === it) {
-                    state.webView = null
-                }
-                it.release(state.interfaces)
-                Log.d(TAG, "AndroidView: Releasing WebView")
-            },
-            update = { webView ->
-                state.webView = webView
-                state.skinScript = skinScript
-                webView.webChromeClient = webChromeClient
-                webView.webViewClient = webViewClient
-                state.interfaces.forEach { (name, obj) ->
-                    webView.addJavascriptInterface(obj, name)
-                }
-                Log.d(TAG, "AndroidView: Updating WebView")
-                // Update settings that might change
-                webView.settings.javaScriptEnabled = state.javaScriptEnabled
-
-                when (val content = state.content) {
-                    is WebContent.Url -> {
-                        val url = content.url
-                        // Only load new URL if it's different from the current one or if the state forces reload
-                        // Also check if the webView's url is null or blank, which might happen initially
-                        val currentWebViewUrl = webView.url
-                        if (url.isNotEmpty() && (currentWebViewUrl.isNullOrBlank() || url != currentWebViewUrl || state.forceReload)) {
-                            webView.loadUrl(content.url, content.additionalHttpHeaders)
-                            state.forceReload = false // Reset force reload flag
-                        }
-                    }
-
-                    is WebContent.Data -> {
-                        if (content != state.lastLoadedData || state.forceReload) {
-                            webView.loadDataWithBaseURL(
-                                content.baseUrl,
-                                content.data,
-                                content.mimeType,
-                                content.encoding,
-                                content.historyUrl
-                            )
-                            state.lastLoadedData = content
-                            state.forceReload = false
-                        }
-                    }
-
-                    WebContent.NavigatorOnly -> {
-                        // NO-OP: State changes related to navigation are handled by the methods in WebViewState
-                    }
-                }
-                state.applySkin(webView)
-                onUpdated(webView)
             }
-        )
+        } else {
+            AndroidView(
+                factory = { context ->
+                    WebView(context).apply {
+                        layoutParams = LayoutParams(
+                            LayoutParams.MATCH_PARENT,
+                            LayoutParams.MATCH_PARENT
+                        )
 
-        // Loading Progress Indicator
-        if (state.isLoading) {
-            LinearProgressIndicator(
-                progress = { state.loadingProgress },
-                modifier = Modifier.fillMaxWidth()
+                        state.webView = this // Assign the WebView instance to the state
+
+                        onCreated(this)
+
+                        settings.javaScriptEnabled = true // Enable JavaScript
+                        settings.domStorageEnabled = true
+                        settings.allowContentAccess = true
+                        settings.apply(state.settings)
+
+                        // Use the created clients
+                        this.webChromeClient = webChromeClient
+                        this.webViewClient = webViewClient
+
+                        state.interfaces.forEach { (name, obj) ->
+                            addJavascriptInterface(obj, name)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(), // Make WebView fill the width
+                onReset = {
+                    it.resetState(state.interfaces)
+                    Log.d(TAG, "AndroidView: Resetting WebView")
+                },
+                onRelease = {
+                    if (state.webView === it) {
+                        state.webView = null
+                    }
+                    it.release(state.interfaces)
+                    Log.d(TAG, "AndroidView: Releasing WebView")
+                },
+                update = { webView ->
+                    state.webView = webView
+                    state.skinScript = skinScript
+                    webView.webChromeClient = webChromeClient
+                    webView.webViewClient = webViewClient
+                    state.interfaces.forEach { (name, obj) ->
+                        webView.addJavascriptInterface(obj, name)
+                    }
+                    Log.d(TAG, "AndroidView: Updating WebView")
+                    // Update settings that might change
+                    webView.settings.javaScriptEnabled = state.javaScriptEnabled
+
+                    when (val content = state.content) {
+                        is WebContent.Url -> {
+                            val url = content.url
+                            // Only load new URL if it's different from the current one or if the state forces reload
+                            // Also check if the webView's url is null or blank, which might happen initially
+                            val currentWebViewUrl = webView.url
+                            if (url.isNotEmpty() && (currentWebViewUrl.isNullOrBlank() || url != currentWebViewUrl || state.forceReload)) {
+                                webView.loadUrl(content.url, content.additionalHttpHeaders)
+                                state.forceReload = false // Reset force reload flag
+                            }
+                        }
+
+                        is WebContent.Data -> {
+                            if (content != state.lastLoadedData || state.forceReload) {
+                                webView.loadDataWithBaseURL(
+                                    content.baseUrl,
+                                    content.data,
+                                    content.mimeType,
+                                    content.encoding,
+                                    content.historyUrl
+                                )
+                                state.lastLoadedData = content
+                                state.forceReload = false
+                            }
+                        }
+
+                        WebContent.NavigatorOnly -> {
+                            // NO-OP: State changes related to navigation are handled by the methods in WebViewState
+                        }
+                    }
+                    state.applySkin(webView)
+                    onUpdated(webView)
+                }
             )
+
+            // Loading Progress Indicator
+            if (state.isLoading) {
+                LinearProgressIndicator(
+                    progress = { state.loadingProgress },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }
@@ -247,6 +333,8 @@ class WebViewState(
     var isLoading: Boolean by mutableStateOf(false)
         internal set // Only WebViewClients should modify this
     var loadingProgress: Float by mutableFloatStateOf(0f)
+        internal set
+    var renderProcessCrashed: Boolean by mutableStateOf(false)
         internal set
 
     // --- Page Information ---

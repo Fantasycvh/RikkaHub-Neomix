@@ -126,15 +126,14 @@ internal fun ChartTable(
                             text = cell,
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = if (numeric) TextAlign.End else TextAlign.Start,
-                            modifier = if (numeric) Modifier.fillMaxWidth() else Modifier,
                         )
                     }
                 }
             },
             cellPadding = 6.dp,
             columnMinWidths = table.columns.map { if (it.numeric) 64.dp else 48.dp },
-            // 数值列不设上限: 首轮测量为无界约束, fillMaxWidth 不会把列撑大, 次轮固定列宽后才右对齐
             columnMaxWidths = table.columns.map { if (it.numeric) Dp.Infinity else 200.dp },
+            columnAlignments = table.columns.map { if (it.numeric) Alignment.CenterEnd else Alignment.CenterStart },
             modifier = Modifier.fillMaxWidth(),
         )
     }

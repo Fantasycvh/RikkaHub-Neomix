@@ -154,16 +154,27 @@ fun rememberMarkdownRenderDocument(
     content: String,
     softBreakAsLineBreak: Boolean = true,
     streaming: Boolean = false,
+    preprocessKey: Any? = null,
+    preprocess: ((String) -> String)? = null,
 ): MarkdownRenderDocument {
     val parser = remember(softBreakAsLineBreak) { MarkdownStreamParser(softBreakAsLineBreak) }
-    val state = remember(parser) { mutableStateOf(parser.parseRenderDocument(content, streaming)) }
-    val currentInput by rememberUpdatedState(content to streaming)
+    val state = remember(parser) {
+        val initial = preprocess?.invoke(content) ?: content
+        mutableStateOf(parser.parseRenderDocument(initial, streaming))
+    }
+    val currentInput by rememberUpdatedState(Triple(content, streaming, preprocessKey))
+    val currentPreprocess by rememberUpdatedState(preprocess)
     LaunchedEffect(parser) {
         // The parser returns the same document when the input didn't change, so the first,
         // already parsed input costs nothing.
         snapshotFlow { currentInput }
             .conflate()
-            .mapNotNull { (content, streaming) -> runCatching { parser.parseRenderDocument(content, streaming) }.getOrNull() }
+            .mapNotNull { (rawContent, isStreaming, _) ->
+                runCatching {
+                    val processed = currentPreprocess?.invoke(rawContent) ?: rawContent
+                    parser.parseRenderDocument(processed, isStreaming)
+                }.getOrNull()
+            }
             .flowOn(Dispatchers.Default)
             .collect { state.value = it }
     }

@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,12 +46,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Clock
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -137,6 +141,28 @@ fun ChainOfThoughtScope.ChatMessageServerToolStep(tool: UIMessagePart.ServerTool
     )
 }
 
+private const val TOOL_JSON_ASYNC_THRESHOLD_CHARS = 2_048
+
+private data class OutputJsonState(
+    val element: JsonElement?,
+    val settled: Boolean,
+)
+
+/**
+ * 流式参数增量尚未闭合时不尝试解析，避免每帧对半截 JSON 抛解析异常。
+ */
+internal fun shouldParseToolJson(raw: String, streaming: Boolean): Boolean {
+    if (raw.isBlank()) return false
+    if (!streaming) return true
+    val trimmedEnd = raw.trimEnd()
+    return trimmedEnd.endsWith("}") || trimmedEnd.endsWith("]")
+}
+
+internal fun parseToolJsonOrNull(raw: String, streaming: Boolean): JsonElement? {
+    if (!shouldParseToolJson(raw, streaming)) return null
+    return runCatching { JsonInstant.parseToJsonElement(raw) }.getOrNull()
+}
+
 @Composable
 fun ChainOfThoughtScope.ChatMessageToolStep(
     tool: UIMessagePart.Tool,
@@ -158,23 +184,48 @@ fun ChainOfThoughtScope.ChatMessageToolStep(
     val renderer = remember(tool.toolName, ToolUIRegistry.version) {
         ToolUIRegistry.resolve(tool.toolName)
     }
-    val outputJson = remember(tool) {
+    val rawArgs = tool.input
+    val parsedArgs = if (rawArgs.length <= TOOL_JSON_ASYNC_THRESHOLD_CHARS) {
+        remember(rawArgs, loading) {
+            parseToolJsonOrNull(rawArgs, streaming = loading)
+        }
+    } else {
+        produceState<JsonElement?>(initialValue = null, rawArgs, loading) {
+            value = withContext(Dispatchers.Default) {
+                parseToolJsonOrNull(rawArgs, streaming = loading)
+            }
+        }.value
+    }
+
+    val outputText = remember(tool.isExecuted, tool.output) {
         if (tool.isExecuted) {
-            runCatching {
-                JsonInstant.parseToJsonElement(
-                    tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
-                )
-            }.getOrNull()
+            tool.output.filterIsInstance<UIMessagePart.Text>().joinToString("\n") { it.text }
         } else {
-            null
+            ""
         }
     }
+    val outputJsonState = if (!tool.isExecuted) {
+        OutputJsonState(element = null, settled = true)
+    } else if (outputText.length <= TOOL_JSON_ASYNC_THRESHOLD_CHARS) {
+        remember(outputText) {
+            OutputJsonState(element = parseToolJsonOrNull(outputText, streaming = false), settled = true)
+        }
+    } else {
+        produceState(initialValue = OutputJsonState(element = null, settled = false), outputText) {
+            val parsed = withContext(Dispatchers.Default) {
+                parseToolJsonOrNull(outputText, streaming = false)
+            }
+            value = OutputJsonState(element = parsed, settled = true)
+        }.value
+    }
+    val outputJson = outputJsonState.element
     // 输出不是 JSON (例如超长被截断后只剩文本预览) 时, 定制渲染器读不到任何字段, 详情改用默认渲染展示原文
-    val outputUnparsable = tool.isExecuted && outputJson == null
-    val context = remember(tool, loading, workspaceId, memoryStoreId) {
+    // 大载荷后台解析完成前不误判为不可解析
+    val outputUnparsable = tool.isExecuted && outputJsonState.settled && outputJson == null
+    val context = remember(tool, parsedArgs, outputJson, loading, workspaceId, memoryStoreId) {
         ToolUIContext(
             tool = tool,
-            arguments = tool.inputAsJson(),
+            arguments = parsedArgs ?: JsonObject(emptyMap()),
             content = if (tool.isExecuted) outputJson ?: JsonObject(emptyMap()) else null,
             loading = loading,
             workspaceId = workspaceId,
