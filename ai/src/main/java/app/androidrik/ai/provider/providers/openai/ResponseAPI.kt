@@ -580,6 +580,10 @@ class ResponseAPI(
         // 下面的 SYSTEM→user 降级分支成了**死代码**、内容被静默丢弃（2026-10-06 单测实测；Claude/
         // Google 两处同款写法同样如此，一并修正）。首条的跳过由 `when` 里的分支负责。
         val firstSystem = messages.firstOrNull { it.role == MessageRole.SYSTEM }
+        // Per-request, chronological loading state. Rebuild after context trimming; never mutate stored history.
+        val loadedToolNames = toolsByName.values
+            .filter { !it.deferLoading && !it.isDeferredToolSearch }
+            .mapTo(mutableSetOf()) { it.name }
         messages
             .filter { it.isValidToUpload() }
             .forEach { message ->
@@ -591,6 +595,7 @@ class ResponseAPI(
                         reasoningTextRequired = reasoningTextRequired,
                         deferredProtocol = deferredProtocol,
                         toolsByName = toolsByName,
+                        loadedToolNames = loadedToolNames,
                     )
                     else -> addUserItems(message)
                 }
@@ -602,6 +607,7 @@ class ResponseAPI(
         reasoningTextRequired: Boolean = false,
         deferredProtocol: DeferredToolProtocol = DeferredToolProtocol.NONE,
         toolsByName: Map<String, Tool> = emptyMap(),
+        loadedToolNames: MutableSet<String> = mutableSetOf(),
     ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
@@ -729,7 +735,7 @@ class ResponseAPI(
                                 putJsonArray("tools") {
                                     loadedNames.forEach { name ->
                                         val matched = toolsByName[name]
-                                        if (matched != null && !matched.isDeferredToolSearch) {
+                                        if (matched != null && !matched.isDeferredToolSearch && loadedToolNames.add(name)) {
                                             add(buildJsonObject {
                                                 put("type", "function")
                                                 put("name", matched.name)

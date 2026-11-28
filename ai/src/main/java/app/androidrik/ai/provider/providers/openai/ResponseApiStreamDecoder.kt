@@ -137,9 +137,8 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                             execution = item["execution"]?.jsonPrimitive?.contentOrNull ?: "client",
                             itemId = item["id"]?.jsonPrimitive?.contentOrNull,
                         ).toMetadata()
-                        state.startTool(
+                        state.startToolSearch(
                             id = canonicalId,
-                            name = DEFERRED_TOOL_SEARCH_TOOL_NAME,
                             initialInput = extractToolSearchArgumentsJson(item["arguments"]),
                             metadata = meta,
                         )
@@ -198,13 +197,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                     "function_call" -> state.endTool(canonicalId)
 
                     "tool_search_call" -> if (item.isClientToolSearchCall()) {
-                        val args = extractToolSearchArgumentsJson(item["arguments"])
-                        buildList {
-                            if (canonicalId !in state.toolIdsWithInput && args.isNotEmpty()) {
-                                addAll(state.toolDelta(canonicalId, args))
-                            }
-                            addAll(state.endTool(canonicalId))
-                        }
+                        state.finishToolSearch(canonicalId, extractToolSearchArgumentsJson(item["arguments"]))
                     } else {
                         val tool = item.toOpenAIServerTool()
                         state.endServerTool(
@@ -233,15 +226,17 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
 
             "response.function_call_arguments.delta",
             "response.tool_search_call_arguments.delta" -> {
-                state.toolDelta(
-                    state.toolCallIdResolver.resolveArgumentsId(payload),
-                    payload["delta"]?.jsonPrimitive?.contentOrNull ?: "",
-                )
+                val id = state.toolCallIdResolver.resolveArgumentsId(payload)
+                val delta = payload["delta"]?.jsonPrimitive?.contentOrNull ?: ""
+                if (state.bufferToolSearchDelta(id, delta)) emptyList() else state.toolDelta(id, delta)
             }
 
             "response.function_call_arguments.done",
             "response.tool_search_call_arguments.done" -> {
                 val toolCallId = state.toolCallIdResolver.resolveArgumentsId(payload)
+                if (state.setToolSearchArguments(toolCallId, extractToolSearchArgumentsJson(payload["arguments"]))) {
+                    return emptyList()
+                }
                 buildList {
                     if (toolCallId !in state.toolIdsWithInput) {
                         addAll(
@@ -377,6 +372,7 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
         private val openReasoningIds = linkedSetOf<String>()
         private val openImageIds = linkedSetOf<String>()
         private val openToolIds = linkedSetOf<String>()
+        private val toolSearchInputs = mutableMapOf<String, StringBuilder>()
         private val openServerToolIds = linkedSetOf<String>()
         private val knownServerToolIds = mutableSetOf<String>()
         var finished = false
@@ -445,6 +441,35 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             emptyList()
         }
         fun endImage(id: String) = if (openImageIds.remove(id)) listOf(StreamChunk.ImageEnd(id)) else emptyList()
+
+        // DeepSeek starts searches with arguments={} and supplies the authoritative object at done.
+        // Buffer search arguments so a final snapshot replaces initial/partial input instead of appending JSON.
+        fun startToolSearch(id: String, initialInput: String, metadata: JsonObject?): List<StreamChunk> {
+            toolSearchInputs[id] = StringBuilder(initialInput.takeUnless { it == "{}" }.orEmpty())
+            return startTool(id, DEFERRED_TOOL_SEARCH_TOOL_NAME, "", metadata)
+        }
+
+        fun bufferToolSearchDelta(id: String, delta: String): Boolean {
+            val buffer = toolSearchInputs[id] ?: return false
+            buffer.append(delta)
+            return true
+        }
+
+        fun setToolSearchArguments(id: String, arguments: String): Boolean {
+            val buffer = toolSearchInputs[id] ?: return false
+            if (arguments.isNotBlank()) {
+                buffer.clear()
+                buffer.append(arguments)
+            }
+            return true
+        }
+
+        fun finishToolSearch(id: String, arguments: String = ""): List<StreamChunk> {
+            val buffered = toolSearchInputs.remove(id) ?: return emptyList()
+            val input = arguments.ifBlank { buffered.toString().ifBlank { "{}" } }
+            return toolDelta(id, input) + endTool(id)
+        }
+
         fun startTool(
             id: String,
             name: String,
@@ -516,7 +541,9 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                 }
                 openReasoningIds.toList().forEach { addAll(endReasoning(it, null)) }
                 openImageIds.toList().forEach { addAll(endImage(it)) }
-                openToolIds.toList().forEach { addAll(endTool(it)) }
+                openToolIds.toList().forEach {
+                    addAll(if (it in toolSearchInputs) finishToolSearch(it) else endTool(it))
+                }
                 openServerToolIds.clear()
                 add(StreamChunk.Finish(finishReason, responseId, model))
             }
