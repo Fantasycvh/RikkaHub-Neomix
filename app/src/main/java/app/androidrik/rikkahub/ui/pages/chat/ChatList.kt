@@ -102,7 +102,6 @@ import kotlinx.coroutines.withContext
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.datetime.toJavaLocalDateTime
-import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.R
@@ -169,6 +168,8 @@ fun ChatList(
     conversation: Conversation,
     state: LazyListState,
     loading: Boolean,
+    replyMessageId: Uuid? = null,
+    generationKey: Any? = null,
     processingStatus: String? = null,
     previewMode: Boolean,
     settings: Settings,
@@ -265,6 +266,8 @@ fun ChatList(
                     conversation = conversation,
                     state = state,
                     loading = loading,
+                    replyMessageId = replyMessageId,
+                    generationKey = generationKey,
                     processingStatus = processingStatus,
                     settings = settings,
                     hazeState = hazeState,
@@ -315,6 +318,8 @@ private fun ChatListNormal(
     conversation: Conversation,
     state: LazyListState,
     loading: Boolean,
+    replyMessageId: Uuid? = null,
+    generationKey: Any? = null,
     processingStatus: String? = null,
     settings: Settings,
     hazeState: HazeState,
@@ -604,18 +609,15 @@ private fun ChatListNormal(
     ) {
         // 流式滚动三态（#2371）：BOTTOM 跟随贴底 / ANCHOR_START 锚定新回复开头后放手 / NONE 不动
         if (settings.displaySetting.chatListScrollMode != ChatListScrollMode.NONE) {
-            val conversationLatest by rememberUpdatedState(conversation)
             // 锚定开头：本轮回复的首条 assistant 消息滚到视口顶部，然后不跟随。
             // 手动拖动视为用户已自选视口，放弃锚定；锚定覆盖发送触发的贴底请求。
             if (settings.displaySetting.chatListScrollMode == ChatListScrollMode.ANCHOR_START) {
-                LaunchedEffect(loadingState) {
-                    if (!loadingState || dragging) return@LaunchedEffect
-                    delay(100)
-                    if (dragging) return@LaunchedEffect
-                    val anchorId = conversationLatest.currentMessages
-                        .lastOrNull { it.role == MessageRole.ASSISTANT }?.id ?: return@LaunchedEffect
-                    val index = renderIndexUpdated.target(anchorId)
-                    if (index >= 0) state.requestScrollToItem(index)
+                val replyIdLatest by rememberUpdatedState(replyMessageId)
+                AnchorReplyStartEffect(conversation.id, generationKey, loadingState, dragging,
+                    targetIndex = { replyIdLatest?.let { renderIndexUpdated.target(it) } ?: -1 },
+                ) { index ->
+                    scrollController?.cancel()
+                    state.requestScrollToItem(index)
                     stickToBottom = false
                 }
             }

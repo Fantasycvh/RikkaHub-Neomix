@@ -1316,6 +1316,8 @@ private fun ChatPageContent(
                 },
             ) {
             ChatList(
+                replyMessageId = vm.replyMessageId.collectAsStateWithLifecycle().value,
+                generationKey = loadingJob,
                 scrollController = chatListScrollController,
                 innerPadding = innerPadding,
                 conversation = conversation,
