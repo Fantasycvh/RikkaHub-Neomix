@@ -8,7 +8,8 @@ import app.androidrik.ai.ui.UIMessagePart
 import kotlin.time.Clock
 import kotlin.time.Instant
 
-private val THINKING_REGEX = Regex("\\A\\s*<think>([\\s\\S]*?)(</think>|$)")
+// 不把 EOF 当作闭合标签：流式未闭合、断流或字面标签示例都应保留原文。
+private val THINKING_REGEX = Regex("\\A\\s*<think>([\\s\\S]*?)</think>")
 
 // 部分供应商不会返回reasoning parts, 所以需要这个transformer
 object ThinkTagTransformer : OutputMessageTransformer {
@@ -65,11 +66,10 @@ internal fun List<UIMessage>.transformThinkTags(
         ?: return@map message
     if (!textPart.text.trimStart().startsWith("<think>")) return@map message
     val match = THINKING_REGEX.find(textPart.text) ?: return@map message
-    val hasClosingTag = match.groups[2]?.value == "</think>"
     val reasoning = UIMessagePart.Reasoning(
         reasoning = match.groupValues[1].trim(),
         createdAt = message.createdAt.toInstant(timeZone = TimeZone.currentSystemDefault()),
-        finishedAt = if (generationFinished || hasClosingTag) now else null,
+        finishedAt = now,
     )
     val strippedText = textPart.copy(text = textPart.text.removeRange(match.range))
 

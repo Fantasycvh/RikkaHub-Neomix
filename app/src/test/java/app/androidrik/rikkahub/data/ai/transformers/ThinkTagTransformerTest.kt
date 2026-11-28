@@ -9,7 +9,6 @@ import app.androidrik.rikkahub.data.datastore.Settings
 import app.androidrik.rikkahub.data.model.Assistant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 import kotlin.time.Instant
@@ -69,22 +68,24 @@ class ThinkTagTransformerTest {
     }
 
     @Test
-    fun `unclosed prefix tag should remain unfinished while streaming`() {
+    fun `unclosed prefix tag stays visible while streaming and when generation finishes`() {
         val message = UIMessage.assistant("<think>reason in progress")
-
-        val result = listOf(message).transformThinkTags(now, generationFinished = false).single()
-
-        assertEquals("reason in progress", result.parts.filterIsInstance<UIMessagePart.Reasoning>().single().reasoning)
-        assertNull(result.parts.filterIsInstance<UIMessagePart.Reasoning>().single().finishedAt)
+        for (finished in listOf(false, true)) {
+            val result = listOf(message).transformThinkTags(now, generationFinished = finished).single()
+            assertEquals(message.parts, result.parts)
+        }
     }
 
     @Test
-    fun `generation finish should close reasoning created by visual transform`() {
+    fun `closing tag arriving later separates reasoning from the answer`() {
         val message = UIMessage.assistant("<think>reason in progress")
         val visualResult = listOf(message).transformThinkTags(now, generationFinished = false)
-
-        val finishedResult = visualResult.transformThinkTags(now, generationFinished = true).single()
-
+        assertEquals(message.parts, visualResult.single().parts)
+        val finishedResult = listOf(message.copy(parts = listOf(
+            UIMessagePart.Text("<think>reason in progress</think>answer"),
+        ))).transformThinkTags(now, generationFinished = true).single()
+        assertEquals("reason in progress", finishedResult.parts.filterIsInstance<UIMessagePart.Reasoning>().single().reasoning)
+        assertEquals("answer", finishedResult.parts.filterIsInstance<UIMessagePart.Text>().single().text)
         assertEquals(now, finishedResult.parts.filterIsInstance<UIMessagePart.Reasoning>().single().finishedAt)
     }
 
@@ -110,5 +111,23 @@ class ThinkTagTransformerTest {
     private fun transform(text: String): UIMessage {
         val message = UIMessage.assistant(text)
         return listOf(message).transformThinkTags(now, generationFinished = true).single()
+    }
+
+    @Test
+    fun `unclosed tag cannot swallow answer headings or code on finish`() {
+        val text = "<think>unfinished thought\n\n# 正文\n\n```kotlin\nval x = 1\n```"
+        assertEquals(listOf(UIMessagePart.Text(text)), transform(text).parts)
+    }
+
+    @Test
+    fun `native reasoning is never guessed from its markdown or moved into the answer`() {
+        val native = UIMessagePart.Reasoning("# A heading in provider reasoning\n\n下面是答案", finishedAt = now)
+        val body = UIMessagePart.Text("正文里的 <think>literal</think> 保留。")
+        val original = UIMessage(role = MessageRole.ASSISTANT, parts = listOf(native, body))
+        for (finished in listOf(false, true)) {
+            val result = listOf(original).transformThinkTags(now, finished).single()
+            assertEquals(original.parts, result.parts)
+            assertSame(native, result.parts.first())
+        }
     }
 }
