@@ -187,6 +187,7 @@ internal fun ModelSettingsForm(
                         }
                         val contextLengthInvalid = contextLengthText.isNotBlank() &&
                             parseContextLengthInput(contextLengthText) == null
+                        val providerContextLength = (model.providerOverwrite ?: parentProvider)?.contextLengthOverride
                         OutlinedTextField(
                             value = contextLengthText,
                             onValueChange = { input ->
@@ -203,18 +204,26 @@ internal fun ModelSettingsForm(
                             label = { Text(stringResource(R.string.setting_provider_page_context_length)) },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = {
-                                Text(
-                                    text = stringResource(
-                                        R.string.setting_provider_page_context_length_placeholder,
-                                        model.contextLength?.let { formatContextLength(it) }
-                                            ?: stringResource(R.string.setting_provider_page_context_length_default),
+                                if (providerContextLength != null) {
+                                    Text("提供商默认 ${formatContextLength(providerContextLength)}")
+                                } else {
+                                    Text(
+                                        text = stringResource(
+                                            R.string.setting_provider_page_context_length_placeholder,
+                                            model.contextLength?.let { formatContextLength(it) }
+                                                ?: stringResource(R.string.setting_provider_page_context_length_default),
+                                        )
                                     )
-                                )
+                                }
                             },
                             isError = contextLengthInvalid,
                             supportingText = {
                                 Text(
-                                    text = stringResource(R.string.setting_provider_page_context_length_hint),
+                                    text = if (providerContextLength != null) {
+                                        "留空 = 使用提供商默认窗口。支持 256k / 1M"
+                                    } else {
+                                        stringResource(R.string.setting_provider_page_context_length_hint)
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             },

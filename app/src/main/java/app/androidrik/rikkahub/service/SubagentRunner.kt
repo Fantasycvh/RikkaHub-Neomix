@@ -606,7 +606,7 @@ class SubagentRunner(
             // 上下文预算（设计 §十二）：run 的轨迹单调增长，而它既无压缩也无 contextMessageLimit
             // ⇒ 必须有自己的刹车，否则撞满窗口时 provider 直接报错、整轮白跑
             val contextGuard = ContextBudgetGuard(
-                windowTokens = model.effectiveContextLength(settings.contextLengthOverride),
+                windowTokens = model.effectiveContextLength(settings),
             )
             val autoDenyApproval = toolApproval != SubagentToolApproval.ASK
             // 用 Log.i 而非 Logging.log：策略是排查审批问题的第一现场，要能在 logcat 里直接看到

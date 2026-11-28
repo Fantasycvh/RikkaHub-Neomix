@@ -33,9 +33,10 @@ internal fun toolOutputBudget(
     messages: List<UIMessage>,
     model: Model,
     contextLengthOverride: Int? = null,
+    providerContextLengthOverride: Int? = null,
 ): Int = toolOutputBudgetFor(
     estimateTokenCount(messages),
-    model.effectiveContextLength(contextLengthOverride),
+    model.effectiveContextLength(contextLengthOverride, providerContextLengthOverride),
 )
 
 /**
@@ -55,8 +56,9 @@ internal suspend fun enforceContextBudget(
     messages: List<UIMessage>,
     model: Model,
     contextLengthOverride: Int? = null,
+    providerContextLengthOverride: Int? = null,
 ): List<UIMessage> {
-    val window = model.effectiveContextLength(contextLengthOverride).coerceAtLeast(1)
+    val window = model.effectiveContextLength(contextLengthOverride, providerContextLengthOverride).coerceAtLeast(1)
     val softLimit = (window * CONTEXT_EMERGENCY_RATIO).toInt()
     val hardLimit = (window * CONTEXT_HARD_RATIO).toInt()
     var current = messages

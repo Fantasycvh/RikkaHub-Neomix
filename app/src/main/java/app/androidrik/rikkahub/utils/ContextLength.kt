@@ -6,6 +6,8 @@ import app.androidrik.ai.ui.UIMessage
 import app.androidrik.common.tokenizer.TokenizerRegistry
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.model.Conversation
+import app.androidrik.rikkahub.data.datastore.Settings
+import app.androidrik.rikkahub.data.datastore.findProvider
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
 
@@ -16,9 +18,14 @@ const val DEFAULT_CONTEXT_LENGTH: Int = 256 * 1024
 // 的触发阈值；此处仅作 UI 警告色，不触发任何压缩动作）
 const val CONTEXT_USAGE_WARNING_RATIO: Float = 0.8f
 
-// 获取模型上下文长度：customContextLength（用户手动）> contextLength（拉取/注册）> globalOverride（全局默认）> 256K 兜底
-fun Model.effectiveContextLength(globalOverride: Int? = null): Int =
-    customContextLength ?: contextLength ?: globalOverride ?: DEFAULT_CONTEXT_LENGTH
+// 模型手动覆盖 > 提供商覆盖 > 模型内置窗口 > 全局默认 > 256K 兜底。
+fun Model.effectiveContextLength(globalOverride: Int? = null, providerOverride: Int? = null): Int =
+    customContextLength ?: providerOverride ?: contextLength ?: globalOverride ?: DEFAULT_CONTEXT_LENGTH
+
+fun Model.effectiveContextLength(settings: Settings): Int = effectiveContextLength(
+    globalOverride = settings.contextLengthOverride,
+    providerOverride = findProvider(settings.providers)?.contextLengthOverride,
+)
 
 // 解析 "256k"/"1M"/"2.5m"/"262144" 等格式为 token 数；非法返回 null
 fun parseContextLengthInput(text: String): Int? {

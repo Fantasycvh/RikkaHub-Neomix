@@ -322,7 +322,7 @@ class ChatService(
             val conversation = session.state.value
             val assistant = settings.getAssistantById(conversation.assistantId)
             val model = settings.findModelById(assistant?.chatModelId ?: settings.chatModelId)
-            val limit = model?.effectiveContextLength(settings.contextLengthOverride)
+            val limit = model?.effectiveContextLength(settings)
                 ?: settings.contextLengthOverride ?: DEFAULT_CONTEXT_LENGTH
             limit - maxOf(conversation.estimateWindowTokens(model),
                 app.androidrik.rikkahub.utils.estimateTokenCount(conversation.requestWindowMessages()))
@@ -401,7 +401,7 @@ class ChatService(
             val original = session.state.value
             val assistant = settings.getAssistantById(original.assistantId)
             val model = settings.findModelById(assistant?.chatModelId ?: settings.chatModelId)
-            val contextLength = model?.effectiveContextLength(settings.contextLengthOverride)
+            val contextLength = model?.effectiveContextLength(settings)
                 ?: settings.contextLengthOverride ?: DEFAULT_CONTEXT_LENGTH
             val used = maxOf(original.estimateWindowTokens(model),
                 app.androidrik.rikkahub.utils.estimateTokenCount(original.requestWindowMessages()))
@@ -2037,7 +2037,7 @@ class ChatService(
                 // 自动压缩/条数上限仍是第一道线；本守卫只管工具循环内部增长撞到
                 // 「剩余 <4K」的优雅停止（与 B 闸 90% 硬限互补：B 管请求前，C 管执行中）
                 contextGuard = ContextBudgetGuard(
-                    windowTokens = model.effectiveContextLength(settings.contextLengthOverride),
+                    windowTokens = model.effectiveContextLength(settings),
                 ),
                 // 回写基线：**全量**消息（与 messageNodes 索引对齐，updateCurrentMessages 依赖此对齐）；
                 // 重生成历史时取指定范围。注意不要把「发送窗口」当基线——检查点合成消息会被误持久化，
@@ -2873,7 +2873,7 @@ class ChatService(
 
         // 多步压缩二期（design-multi-pass-compression §3.2 / Q5）：按压缩模型窗口算单条帽与分块 token 预算，
         // 取消旧版 2000 字符无条件截断（损失 ①），并消除 256 条无 token 上限的潜在超窗（事实 D）。
-        val compressModelWindow = model.effectiveContextLength(settings.contextLengthOverride)
+        val compressModelWindow = model.effectiveContextLength(settings)
         val perMessageTokenCap = singleMessageTokenCap(compressModelWindow)
         val perChunkTokenBudget = chunkTokenBudget(compressModelWindow)
         val localeName = Locale.getDefault().displayName
@@ -3238,7 +3238,7 @@ class ChatService(
         preCompressJobs[conversationId]?.takeIf { it.isActive }?.join()
         val conversation = getConversationFlow(conversationId).value
         // 已有检查点时仍按窗口占用判断（检查点已把边界前内容移出窗口，不会重复压缩同一段）
-        val windowTokens = model.effectiveContextLength(settings.contextLengthOverride)
+        val windowTokens = model.effectiveContextLength(settings)
         val usedTokens = conversation.estimateWindowTokens(model)
         if (!shouldAutoCompress(usedTokens, windowTokens, settings.autoCompressThresholdPercent)) return
 
@@ -3280,7 +3280,7 @@ class ChatService(
         val model = settings.findModelById(assistant?.chatModelId ?: settings.chatModelId)
             ?: settings.getCurrentChatModel()
             ?: return
-        val windowTokens = model.effectiveContextLength(settings.contextLengthOverride)
+        val windowTokens = model.effectiveContextLength(settings)
         val usedTokens = conversation.estimateWindowTokens(model)
         if (!shouldAutoCompress(usedTokens, windowTokens, settings.autoCompressThresholdPercent)) return
 

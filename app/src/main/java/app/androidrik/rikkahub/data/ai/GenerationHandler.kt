@@ -821,7 +821,7 @@ class GenerationHandler(
                                     messages = messages,
                                     stepsExecuted = stepsExecuted,
                                     modelId = targetModel.id,
-                                    windowTokens = targetModel.effectiveContextLength(settings.contextLengthOverride),
+                                    windowTokens = targetModel.effectiveContextLength(settings),
                                     errorMessage = e.message,
                                 )
                             )
@@ -1182,7 +1182,7 @@ class GenerationHandler(
                 applyOverflowEvictions(window?.applyTo(messages) ?: messages, overflowEvictions)
             fun toolBudgetUsedTokens(): Int = estimateTokenCount(toolBudgetMessages()) + overheadTokens
             val batchBudget = ToolOutputBatchBudget(
-                windowTokens = targetModel.effectiveContextLength(settings.contextLengthOverride),
+                windowTokens = targetModel.effectiveContextLength(settings),
                 initialUsedTokens = toolBudgetUsedTokens(),
                 batchSize = executableToolCount.coerceAtLeast(1),
             )
@@ -1823,6 +1823,7 @@ class GenerationHandler(
             messages = internalMessages,
             model = model,
             contextLengthOverride = settings.contextLengthOverride,
+            providerContextLengthOverride = provider.contextLengthOverride,
         )
         if (assistant.enableMemory && !memoryDisabled) {
             val plan = assembly.memoryPlan

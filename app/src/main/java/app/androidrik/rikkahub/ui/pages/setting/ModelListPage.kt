@@ -96,6 +96,10 @@ import app.androidrik.rikkahub.ui.components.ui.AutoAIIcon
 import app.androidrik.rikkahub.ui.components.ui.Tag
 import app.androidrik.rikkahub.ui.components.ui.TagType
 import app.androidrik.rikkahub.ui.hooks.useEditState
+import app.androidrik.rikkahub.ui.context.LocalSettings
+import app.androidrik.rikkahub.ui.pages.setting.components.ModelContextLengthQuickConfigSheet
+import app.androidrik.rikkahub.utils.effectiveContextLength
+import app.androidrik.rikkahub.utils.formatContextLength
 import app.androidrik.rikkahub.utils.DragOrderState
 import app.androidrik.rikkahub.utils.plus
 import org.koin.compose.koinInject
@@ -735,6 +739,19 @@ internal fun ModelCard(
         if (model.enabled) R.string.setting_provider_page_enabled
         else R.string.setting_provider_page_disabled
     )
+    val globalContextLength = LocalSettings.current.contextLengthOverride
+    val providerContextLength = (model.providerOverwrite ?: parentProvider).contextLengthOverride
+    var showContextLengthConfig by remember { mutableStateOf(false) }
+
+    if (showContextLengthConfig) {
+        ModelContextLengthQuickConfigSheet(
+            model = model,
+            globalDefault = globalContextLength,
+            providerDefault = providerContextLength,
+            onDismiss = { showContextLengthConfig = false },
+            onApply = { onEdit(model.copy(customContextLength = it)) },
+        )
+    }
 
     if (dialogState.isEditing) {
         dialogState.currentState?.let { editingModel ->
@@ -911,6 +928,12 @@ internal fun ModelCard(
                             ModelTypeTag(model = model)
                             ModelModalityTag(model = model)
                             ModelAbilityTag(model = model)
+                            Tag(
+                                type = if (model.customContextLength != null) TagType.INFO else TagType.DEFAULT,
+                                onClick = if (selecting) null else ({ showContextLengthConfig = true }),
+                            ) {
+                                Text("上下文 ${formatContextLength(model.effectiveContextLength(globalContextLength, providerContextLength))}")
+                            }
                             if (!model.enabled) {
                                 Tag(type = TagType.WARNING) {
                                     Text(stringResource(R.string.setting_provider_page_disabled))

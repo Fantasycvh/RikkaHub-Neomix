@@ -177,7 +177,7 @@ class MemoryConsolidator(
         // 手动复核的页预算**按模型窗口放开**（用户 2026-10-16 定：上限 512K、输入占 60%），
         // 于是「全量」通常一轮走完；自动路径仍是 4K（它的本职是处理新轮次）。
         val libraryBudget = if (manual) {
-            manualLibraryBudget(model.effectiveContextLength())
+            manualLibraryBudget(model.effectiveContextLength(settings))
         } else {
             DEFAULT_LIBRARY_TOKENS
         }

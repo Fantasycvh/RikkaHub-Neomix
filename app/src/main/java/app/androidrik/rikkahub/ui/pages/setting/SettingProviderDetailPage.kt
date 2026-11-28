@@ -71,6 +71,7 @@ import app.androidrik.rikkahub.ui.context.LocalNavController
 import app.androidrik.rikkahub.ui.context.LocalToaster
 import app.androidrik.rikkahub.ui.pages.assistant.detail.CustomHeaders
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConfigure
+import app.androidrik.rikkahub.ui.pages.setting.components.ProviderContextLengthQuickConfig
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderConnectionTester
 import app.androidrik.rikkahub.ui.pages.setting.components.ProviderRetryOption
 import app.androidrik.rikkahub.ui.pages.setting.components.SettingProviderQuotaQuery
@@ -247,6 +248,11 @@ private fun SettingProviderConfigPage(
             onEdit = {
                 internalProvider = it
             }
+        )
+
+        ProviderContextLengthQuickConfig(
+            provider = internalProvider,
+            onEdit = { internalProvider = it },
         )
 
         CustomHeaders(

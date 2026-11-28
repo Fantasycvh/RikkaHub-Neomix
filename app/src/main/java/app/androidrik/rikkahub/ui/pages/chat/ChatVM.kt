@@ -371,7 +371,7 @@ class ChatVM(
     ): CompressionPreview? {
         val currentSettings = settings.value
         val model = currentChatModel.value
-        val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
+        val windowTokens = model?.effectiveContextLength(currentSettings)
             ?: DEFAULT_CONTEXT_LENGTH
         return chatService.previewCompressionPlan(
             conversationId = _conversationId,
@@ -395,7 +395,7 @@ class ChatVM(
     ) {
         val currentSettings = settings.value
         val model = currentChatModel.value
-        val windowTokens = model?.effectiveContextLength(currentSettings.contextLengthOverride)
+        val windowTokens = model?.effectiveContextLength(currentSettings)
             ?: DEFAULT_CONTEXT_LENGTH
         chatService.startManualCompression(
             ManualCompressionParams(

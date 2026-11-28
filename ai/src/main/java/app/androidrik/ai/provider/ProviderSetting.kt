@@ -134,6 +134,8 @@ sealed class ProviderSetting : Enableable {
     abstract val customHeaders: List<CustomHeader>
     /** per-provider 重试配置覆盖；null = 跟随全局 Settings.retrySetting */
     abstract val retryOption: RetrySetting?
+    /** Provider context window override; individual model overrides take precedence. */
+    abstract val contextLengthOverride: Int?
     /**
      * 思考强度映射的**提供商级兜底覆盖**（模型级 [Model.reasoningOverride] 优先）。
      * null = 该提供商全部跟随内置映射。见 [ReasoningOverride]。
@@ -157,6 +159,7 @@ sealed class ProviderSetting : Enableable {
         customHeaders: List<CustomHeader> = this.customHeaders,
         retryOption: RetrySetting? = this.retryOption,
         reasoningOverride: ReasoningOverride? = this.reasoningOverride,
+        contextLengthOverride: Int? = this.contextLengthOverride,
         builtIn: Boolean = this.builtIn,
         description: @Composable (() -> Unit) = this.description,
         shortDescription: @Composable (() -> Unit) = this.shortDescription,
@@ -195,6 +198,7 @@ sealed class ProviderSetting : Enableable {
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
+        override var contextLengthOverride: Int? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -250,6 +254,7 @@ sealed class ProviderSetting : Enableable {
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
+            contextLengthOverride: Int?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -265,6 +270,7 @@ sealed class ProviderSetting : Enableable {
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride,
+                contextLengthOverride = contextLengthOverride,
                 shortDescription = shortDescription
             )
         }
@@ -281,6 +287,7 @@ sealed class ProviderSetting : Enableable {
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
+        override var contextLengthOverride: Int? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -338,6 +345,7 @@ sealed class ProviderSetting : Enableable {
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
+            contextLengthOverride: Int?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -353,7 +361,8 @@ sealed class ProviderSetting : Enableable {
                 proxy = proxy,
                 customHeaders = customHeaders,
                 retryOption = retryOption,
-                reasoningOverride = reasoningOverride
+                reasoningOverride = reasoningOverride,
+                contextLengthOverride = contextLengthOverride
             )
         }
     }
@@ -369,6 +378,7 @@ sealed class ProviderSetting : Enableable {
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override var reasoningOverride: ReasoningOverride? = null,
+        override var contextLengthOverride: Int? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable (() -> Unit) = {},
         @Transient override val shortDescription: @Composable (() -> Unit) = {},
@@ -414,6 +424,7 @@ sealed class ProviderSetting : Enableable {
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
+            contextLengthOverride: Int?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -427,6 +438,7 @@ sealed class ProviderSetting : Enableable {
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride,
+                contextLengthOverride = contextLengthOverride,
                 builtIn = builtIn,
                 description = description,
                 shortDescription = shortDescription,
@@ -461,6 +473,7 @@ sealed class ProviderSetting : Enableable {
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override val reasoningOverride: ReasoningOverride? = null,
+        override val contextLengthOverride: Int? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable() () -> Unit = {},
         @Transient override val shortDescription: @Composable() () -> Unit = {},
@@ -500,6 +513,7 @@ sealed class ProviderSetting : Enableable {
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
+            contextLengthOverride: Int?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -513,6 +527,7 @@ sealed class ProviderSetting : Enableable {
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride,
+                contextLengthOverride = contextLengthOverride,
                 builtIn = builtIn,
                 description = description,
                 shortDescription = shortDescription,
@@ -531,6 +546,7 @@ sealed class ProviderSetting : Enableable {
         override val customHeaders: List<CustomHeader> = emptyList(),
         override val retryOption: RetrySetting? = null,
         override val reasoningOverride: ReasoningOverride? = null,
+        override val contextLengthOverride: Int? = null,
         @Transient override val builtIn: Boolean = false,
         @Transient override val description: @Composable() () -> Unit = {},
         @Transient override val shortDescription: @Composable() () -> Unit = {},
@@ -570,6 +586,7 @@ sealed class ProviderSetting : Enableable {
             customHeaders: List<CustomHeader>,
             retryOption: RetrySetting?,
             reasoningOverride: ReasoningOverride?,
+            contextLengthOverride: Int?,
             builtIn: Boolean,
             description: @Composable (() -> Unit),
             shortDescription: @Composable (() -> Unit),
@@ -583,6 +600,7 @@ sealed class ProviderSetting : Enableable {
                 customHeaders = customHeaders,
                 retryOption = retryOption,
                 reasoningOverride = reasoningOverride,
+                contextLengthOverride = contextLengthOverride,
                 builtIn = builtIn,
                 description = description,
                 shortDescription = shortDescription,

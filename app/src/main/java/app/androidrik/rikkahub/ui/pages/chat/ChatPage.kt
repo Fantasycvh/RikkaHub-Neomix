@@ -324,14 +324,14 @@ fun ChatPage(
     // ByteLevelBpe）：真 tokenizer 全窗分词 + 流式期间每个 chunk 都触发重组，在组合期
     // 同步算会被打满。这里 300ms 节流 + Default 线程计算 + latest-wins（慢计算被新
     // 实例取代即取消）；首帧 0/上限，首个计算 ≤300ms 后到达。
+    val contextWindowTokens = currentChatModel?.effectiveContextLength(setting) ?: DEFAULT_CONTEXT_LENGTH
     val contextUsage by produceState(
         initialValue = ContextUsage(
             usedTokens = 0,
-            windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
-                ?: DEFAULT_CONTEXT_LENGTH,
+            windowTokens = contextWindowTokens,
         ),
         currentChatModel,
-        setting.contextLengthOverride,
+        contextWindowTokens,
     ) {
         var lastComputedAt = 0L
         var job: Job? = null
@@ -343,8 +343,7 @@ fun ChatPage(
                 val usedTokens = convo.estimateWindowTokens(currentChatModel)
                 value = ContextUsage(
                     usedTokens = usedTokens,
-                    windowTokens = currentChatModel?.effectiveContextLength(setting.contextLengthOverride)
-                        ?: DEFAULT_CONTEXT_LENGTH,
+                    windowTokens = contextWindowTokens,
                 )
             }
         }
