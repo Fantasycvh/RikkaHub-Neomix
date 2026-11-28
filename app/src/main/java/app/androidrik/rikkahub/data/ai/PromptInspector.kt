@@ -883,18 +883,26 @@ internal fun toolsToSegment(
     labels: PromptInspectionLabels,
 ): PromptSegment? {
     if (tools.isEmpty()) return null
-    val tokens = ToolSchemaSize.estimate(tools, providerType, json)
+    val activeTools = tools.filterNot { it.deferLoading }
+    val deferredTools = tools.filter { it.deferLoading }
+    val activeTokens = ToolSchemaSize.estimateActive(tools, providerType, json)
+    val deferredTokens = ToolSchemaSize.estimateDeferred(tools, providerType, json)
     // 逐条渲染真实 JSON（与 provider 发送前的变换一致），供用户核对 schema 原文
-    val content = tools.joinToString("\n") { tool ->
+    val header = if (deferredTools.isNotEmpty()) {
+        "// active: ${activeTools.size} (~${activeTokens}t), deferred pool: ${deferredTools.size} (~${deferredTokens}t)\n"
+    } else {
+        ""
+    }
+    val content = header + tools.joinToString("\n") { tool ->
         ToolSchemaSize.wireJson(tool, providerType, json)
     }
     return PromptSegment(
         kind = PromptSegmentKind.TOOL_SCHEMA,
-        label = labels.toolSchema.format(tools.size, tokens),
+        label = labels.toolSchema.format(activeTools.size, activeTokens),
         role = "tools",
         content = content,
         isSynthetic = true,
-        tokens = tokens,
+        tokens = activeTokens,
         location = PromptSegmentLocation.TOP_LEVEL_FIELD,
     )
 }

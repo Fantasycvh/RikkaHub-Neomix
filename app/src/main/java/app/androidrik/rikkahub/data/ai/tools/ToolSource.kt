@@ -42,6 +42,9 @@ internal sealed interface ToolSource {
     /** 折叠档元工具段（`get_tool_map` + `mcp_tool_call`）。 */
     data object McpDynamic : ToolSource { override val segmentName get() = "mcp-dynamic" }
 
+    /** 原生延迟加载目录检索元工具段（`search_tools`）。 */
+    data object DeferredSearch : ToolSource { override val segmentName get() = "deferred-search" }
+
     /** 按服务器成段的 MCP 原生档；净化名去重仍发生在装配点（段内 `usedNames`）。 */
     data class McpServer(val serverName: String) : ToolSource {
         override val segmentName get() = "mcp:$serverName"

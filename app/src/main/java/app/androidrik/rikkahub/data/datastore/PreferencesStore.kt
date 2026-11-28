@@ -366,6 +366,8 @@ class SettingsStore(
 
             preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
             preferences[MCP_DYNAMIC_SCHEMA_LOADING] = settings.mcpDynamicSchemaLoading
+            preferences[NATIVE_DEFERRED_TOOL_LOADING] = settings.nativeDeferredToolLoading
+            preferences[DEFERRED_TOOL_SCOPES] = JsonInstant.encodeToString(settings.deferredToolScopes)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
             preferences[UPLOAD_S3_CONFIG] = JsonInstant.encodeToString(settings.uploadS3Config)
@@ -527,9 +529,11 @@ class SettingsStore(
         fun sanitizeSearchServiceSelected(index: Int, searchServiceCount: Int): Int =
             index.coerceIn(0, (searchServiceCount - 1).coerceAtLeast(0))
 
-        // MCP
+        // MCP & 延迟工具加载
         val MCP_SERVERS = stringPreferencesKey("mcp_servers")
         val MCP_DYNAMIC_SCHEMA_LOADING = booleanPreferencesKey("mcp_dynamic_schema_loading")
+        val NATIVE_DEFERRED_TOOL_LOADING = booleanPreferencesKey("native_deferred_tool_loading")
+        val DEFERRED_TOOL_SCOPES = stringPreferencesKey("deferred_tool_scopes")
 
         // WebDAV
         val WEBDAV_CONFIG = stringPreferencesKey("webdav_config")
@@ -784,6 +788,12 @@ class SettingsStore(
                         JsonInstant.decodeFromString(it)
                     } ?: emptyList(),
                     mcpDynamicSchemaLoading = preferences[MCP_DYNAMIC_SCHEMA_LOADING] != false,
+                    nativeDeferredToolLoading = preferences[NATIVE_DEFERRED_TOOL_LOADING] != false,
+                    deferredToolScopes = preferences[DEFERRED_TOOL_SCOPES]?.let { raw ->
+                        runCatching {
+                            JsonInstant.decodeFromString<Set<app.androidrik.rikkahub.data.ai.tools.DeferredToolScope>>(raw)
+                        }.getOrNull()
+                    } ?: app.androidrik.rikkahub.data.ai.tools.DEFAULT_DEFERRED_TOOL_SCOPES,
                     webDavConfig = preferences[WEBDAV_CONFIG]?.let {
                         JsonInstant.decodeFromString(it)
                     } ?: WebDavConfig(),

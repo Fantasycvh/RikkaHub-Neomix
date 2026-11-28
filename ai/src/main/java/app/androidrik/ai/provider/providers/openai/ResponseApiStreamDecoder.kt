@@ -1,12 +1,15 @@
 package app.androidrik.ai.provider.providers.openai
 
+import app.androidrik.ai.core.DEFERRED_TOOL_SEARCH_TOOL_NAME
 import app.androidrik.ai.core.serverToolUseCounts
 import app.androidrik.ai.core.TokenUsage
 import app.androidrik.ai.provider.stream.DecodeResult
 import app.androidrik.ai.provider.stream.SseEvent
 import app.androidrik.ai.provider.stream.StreamChunkDecoder
+import app.androidrik.ai.ui.DeferredToolSearchCallMetadata
 import app.androidrik.ai.ui.OpenAIReasoningMetadata
 import app.androidrik.ai.ui.ReasoningType
+import app.androidrik.ai.ui.ServerToolProtocol
 import app.androidrik.ai.ui.ServerToolStatus
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.toMetadata
@@ -128,6 +131,22 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                         initialInput = item["arguments"]?.jsonPrimitive?.contentOrNull ?: "",
                     )
 
+                    "tool_search_call" -> if (item.isClientToolSearchCall()) {
+                        val meta = DeferredToolSearchCallMetadata(
+                            protocol = ServerToolProtocol.OPENAI_RESPONSES,
+                            execution = item["execution"]?.jsonPrimitive?.contentOrNull ?: "client",
+                            itemId = item["id"]?.jsonPrimitive?.contentOrNull,
+                        ).toMetadata()
+                        state.startTool(
+                            id = canonicalId,
+                            name = DEFERRED_TOOL_SEARCH_TOOL_NAME,
+                            initialInput = extractToolSearchArgumentsJson(item["arguments"]),
+                            metadata = meta,
+                        )
+                    } else {
+                        state.startServerTool(item.toOpenAIServerTool())
+                    }
+
                     "image_generation_call" -> state.startImage(id)
 
                     "reasoning" -> {
@@ -178,6 +197,26 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
 
                     "function_call" -> state.endTool(canonicalId)
 
+                    "tool_search_call" -> if (item.isClientToolSearchCall()) {
+                        val args = extractToolSearchArgumentsJson(item["arguments"])
+                        buildList {
+                            if (canonicalId !in state.toolIdsWithInput && args.isNotEmpty()) {
+                                addAll(state.toolDelta(canonicalId, args))
+                            }
+                            addAll(state.endTool(canonicalId))
+                        }
+                    } else {
+                        val tool = item.toOpenAIServerTool()
+                        state.endServerTool(
+                            id = tool.toolCallId,
+                            input = tool.input,
+                            output = tool.output,
+                            status = tool.status.takeUnless { it == ServerToolStatus.IN_PROGRESS }
+                                ?: ServerToolStatus.COMPLETED,
+                            metadata = tool.metadata,
+                        )
+                    }
+
                     else -> if (isOpenAIServerToolCall(type)) {
                         val tool = item.toOpenAIServerTool()
                         state.endServerTool(
@@ -192,14 +231,16 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
                 }
             }
 
-            "response.function_call_arguments.delta" -> {
+            "response.function_call_arguments.delta",
+            "response.tool_search_call_arguments.delta" -> {
                 state.toolDelta(
                     state.toolCallIdResolver.resolveArgumentsId(payload),
                     payload["delta"]?.jsonPrimitive?.contentOrNull ?: "",
                 )
             }
 
-            "response.function_call_arguments.done" -> {
+            "response.function_call_arguments.done",
+            "response.tool_search_call_arguments.done" -> {
                 val toolCallId = state.toolCallIdResolver.resolveArgumentsId(payload)
                 buildList {
                     if (toolCallId !in state.toolIdsWithInput) {
@@ -404,10 +445,15 @@ internal class ResponseApiStreamDecoder : StreamChunkDecoder {
             emptyList()
         }
         fun endImage(id: String) = if (openImageIds.remove(id)) listOf(StreamChunk.ImageEnd(id)) else emptyList()
-        fun startTool(id: String, name: String, initialInput: String): List<StreamChunk> = buildList {
+        fun startTool(
+            id: String,
+            name: String,
+            initialInput: String,
+            metadata: JsonObject? = null,
+        ): List<StreamChunk> = buildList {
             if (openToolIds.add(id)) {
                 interruptTexts()
-                add(StreamChunk.ToolCallStart(id, name))
+                add(StreamChunk.ToolCallStart(id, name, metadata))
             }
             if (initialInput.isNotEmpty()) addAll(toolDelta(id, initialInput))
         }

@@ -223,6 +223,13 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+-keep class app.androidrik.rikkahub.data.ai.tools.DeferredToolScope {
+    <init>(...);
+    static ** Companion;
+    public static ** INSTANCE;
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
 # ---------- :common 模块 ----------
 
 -keep class app.androidrik.common.android.LogEntry {

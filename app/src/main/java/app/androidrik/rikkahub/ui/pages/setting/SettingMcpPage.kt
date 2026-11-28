@@ -38,6 +38,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -100,6 +101,7 @@ import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
 import me.rerere.hugeicons.stroke.Settings03
 import app.androidrik.rikkahub.R
+import app.androidrik.rikkahub.data.ai.tools.DeferredToolScope
 import app.androidrik.rikkahub.data.ai.mcp.McpCommonOptions
 import app.androidrik.rikkahub.data.ai.mcp.McpManager
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
@@ -223,6 +225,78 @@ fun SettingMcpPage(vm: SettingVM = koinViewModel()) {
                                         scope.launch {
                                             vm.updateSettings(
                                                 settings.copy(mcpDynamicSchemaLoading = checked)
+                                            )
+                                        }
+                                    }
+                                )
+                            },
+                        )
+                    }
+                }
+                // 原生延迟工具加载（DeepSeek deepseek-flash Responses/Anthropic & Claude 4.5+/5）
+                item(key = "native-deferred-tools-toggle") {
+                    CardGroup {
+                        item(
+                            headlineContent = {
+                                Text(stringResource(R.string.setting_mcp_page_native_deferred_title))
+                            },
+                            supportingContent = {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(stringResource(R.string.setting_mcp_page_native_deferred_desc))
+                                    if (settings.nativeDeferredToolLoading) {
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        ) {
+                                            DeferredToolScope.entries.forEach { scopeOption ->
+                                                val label = when (scopeOption) {
+                                                    DeferredToolScope.MCP_ALL ->
+                                                        stringResource(R.string.setting_mcp_page_deferred_scope_mcp_all)
+                                                    DeferredToolScope.MCP_HEAVY ->
+                                                        stringResource(R.string.setting_mcp_page_deferred_scope_mcp_heavy)
+                                                    DeferredToolScope.PLUGINS ->
+                                                        stringResource(R.string.setting_mcp_page_deferred_scope_plugins)
+                                                    DeferredToolScope.SKILLS ->
+                                                        stringResource(R.string.setting_mcp_page_deferred_scope_skills)
+                                                    DeferredToolScope.OPTIONAL_LOCAL ->
+                                                        stringResource(R.string.setting_mcp_page_deferred_scope_optional_local)
+                                                }
+                                                val selected = scopeOption in settings.deferredToolScopes
+                                                FilterChip(
+                                                    selected = selected,
+                                                    onClick = {
+                                                        val next = settings.deferredToolScopes.toMutableSet()
+                                                        if (selected) {
+                                                            next -= scopeOption
+                                                        } else {
+                                                            next += scopeOption
+                                                            // MCP_ALL 与 MCP_HEAVY 互斥切换，避免粒度歧义
+                                                            if (scopeOption == DeferredToolScope.MCP_ALL) {
+                                                                next -= DeferredToolScope.MCP_HEAVY
+                                                            } else if (scopeOption == DeferredToolScope.MCP_HEAVY) {
+                                                                next -= DeferredToolScope.MCP_ALL
+                                                            }
+                                                        }
+                                                        scope.launch {
+                                                            vm.updateSettings(
+                                                                settings.copy(deferredToolScopes = next)
+                                                            )
+                                                        }
+                                                    },
+                                                    label = { Text(label) },
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            trailingContent = {
+                                Switch(
+                                    checked = settings.nativeDeferredToolLoading,
+                                    onCheckedChange = { checked ->
+                                        scope.launch {
+                                            vm.updateSettings(
+                                                settings.copy(nativeDeferredToolLoading = checked)
                                             )
                                         }
                                     }

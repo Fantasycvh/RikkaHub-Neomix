@@ -12,6 +12,9 @@ import app.androidrik.ai.ui.UIMessagePart
 /** 工具执行的默认**外层**上限（见 [Tool.executionTimeoutMillis]）。 */
 const val DEFAULT_TOOL_EXECUTION_TIMEOUT_MS = 60_000L
 
+/** 客户端延迟加载工具目录检索工具的规范名称。 */
+const val DEFERRED_TOOL_SEARCH_TOOL_NAME = "search_tools"
+
 /**
  * 审批「**恒不拦**」的规范实例；[Tool.needsApproval] 的默认值即它。
  *
@@ -51,6 +54,10 @@ data class Tool(
      * Workspace 车道，串行防写冲突）——只有显式声明的读类工具才进并行车道。
      */
     val concurrentSafe: Boolean = false,
+    /** 是否以延迟加载形态声明（仅在目标模型与协议支持时生效；不支持时退回普通工具）。 */
+    val deferLoading: Boolean = false,
+    /** 是否为延迟加载目录检索元工具（Responses 序列化为 `type="tool_search", execution="client"`）。 */
+    val isDeferredToolSearch: Boolean = false,
     val execute: suspend (JsonElement) -> List<UIMessagePart>
 )
 

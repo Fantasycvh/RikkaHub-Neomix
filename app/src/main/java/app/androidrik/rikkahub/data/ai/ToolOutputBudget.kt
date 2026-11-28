@@ -2,6 +2,7 @@ package app.androidrik.rikkahub.data.ai
 
 import android.content.Context
 import android.util.Log
+import app.androidrik.ai.core.DEFERRED_TOOL_SEARCH_TOOL_NAME
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.UIMessagePart
@@ -73,6 +74,7 @@ internal suspend fun enforceContextBudget(
         var messageChanged = false
         val parts = message.parts.map { part ->
             if (part !is UIMessagePart.Tool || part.output.isEmpty()) return@map part
+            if (part.toolName == DEFERRED_TOOL_SEARCH_TOOL_NAME) return@map part
             val textParts = part.output.filterIsInstance<UIMessagePart.Text>()
             val fullText = textParts.joinToString("\n") { it.text }
             if (fullText.length <= EMERGENCY_TOOL_PREVIEW_CHARS ||

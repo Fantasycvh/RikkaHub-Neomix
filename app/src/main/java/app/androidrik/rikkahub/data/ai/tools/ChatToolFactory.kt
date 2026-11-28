@@ -11,8 +11,10 @@ import kotlinx.serialization.json.jsonObject
 import app.androidrik.ai.core.TOOL_NO_APPROVAL
 import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.BuiltInTools
+import app.androidrik.ai.provider.DeferredToolProtocol
 import app.androidrik.ai.provider.Model
 import app.androidrik.ai.provider.ProviderSetting
+import app.androidrik.ai.provider.deferredToolProtocol
 import app.androidrik.ai.provider.hasBuiltInSearch
 import app.androidrik.ai.util.ToolSchemaSize
 import app.androidrik.mediagen.model.MediaGenerationRequest
@@ -436,6 +438,15 @@ class ChatToolFactory(
         val mcpTimeoutMillis = 180_000L
         val usedToolNames = mutableSetOf<String>()
         val providerTypeForMcp = model.findProvider(settings.providers, checkOverwrite = false)
+        val effectiveProvider = model.findProvider(settings.providers)
+        val deferredProtocol = model.deferredToolProtocol(effectiveProvider)
+        val useNativeDeferred = settings.nativeDeferredToolLoading &&
+            deferredProtocol != DeferredToolProtocol.NONE &&
+            settings.deferredToolScopes.isNotEmpty()
+        val mcpUsesNativeDeferred = useNativeDeferred &&
+            (DeferredToolScope.MCP_ALL in settings.deferredToolScopes ||
+                DeferredToolScope.MCP_HEAVY in settings.deferredToolScopes)
+
         val mcpEntries = mcpManager.getAllAvailableTools().map { (serverId, serverName, tool) ->
             val functionName = McpNameSanitizer.buildUniqueFunctionName(
                 serverName = serverName,
@@ -464,8 +475,12 @@ class ChatToolFactory(
                 nativeTool = nativeTool,
             )
         }
-        val dynamicLoading = settings.mcpDynamicSchemaLoading
-        val split = splitMcpToolsBySchemaSize(mcpEntries)
+        val dynamicLoading = settings.mcpDynamicSchemaLoading && !mcpUsesNativeDeferred
+        val split = if (mcpUsesNativeDeferred) {
+            McpSchemaSplit(native = mcpEntries, collapsed = emptyList())
+        } else {
+            splitMcpToolsBySchemaSize(mcpEntries)
+        }
         // 显式点名的折叠工具提升回原生：信封按名求交集，摘掉即静默失效（见参数注释）
         val (promoted, collapsed) = promoteExplicitlyAllowed(split.collapsed, explicitlyAllowedToolNames)
 
@@ -559,8 +574,18 @@ class ChatToolFactory(
             onPluginToolsRejected = onPluginToolsRejected,
         )
 
-        logSchemaBreakdown(segments, settings, model)
-        return segments
+        val finalSegments = applyNativeDeferredToolPolicy(
+            segments = segments,
+            enabled = settings.nativeDeferredToolLoading,
+            protocol = deferredProtocol,
+            scopes = settings.deferredToolScopes,
+            explicitlyAllowedToolNames = explicitlyAllowedToolNames,
+            providerType = effectiveProvider,
+            json = json,
+        )
+
+        logSchemaBreakdown(finalSegments, settings, model, deferredProtocol)
+        return finalSegments
     }
 
     /**
@@ -607,10 +632,16 @@ class ChatToolFactory(
      * 估算按**当前 provider 的实际形状**（OpenAI/Claude/Google 三种包装与变换不同），
      * 故数字会随 provider 变化——这是有意的，它反映真实下发的字节数。
      */
-    private fun logSchemaBreakdown(segments: List<ToolSegment>, settings: Settings, model: Model) {
+    private fun logSchemaBreakdown(
+        segments: List<ToolSegment>,
+        settings: Settings,
+        model: Model,
+        deferredProtocol: DeferredToolProtocol = DeferredToolProtocol.NONE,
+    ) {
         runCatching {
             val providerType = model.findProvider(settings.providers, checkOverwrite = false)
-            val total = segments.sumOf { it.tools.size }
+            val allTools = segments.flatMap { it.tools }
+            val total = allTools.size
             if (total == 0) {
                 Log.i(TAG, "tool schema: no tools registered")
                 return
@@ -619,16 +650,23 @@ class ChatToolFactory(
                 .filter { it.tools.isNotEmpty() }
                 .joinToString(separator = " | ") { seg ->
                     val tok = ToolSchemaSize.estimate(seg.tools, providerType, json)
+                    val deferredCount = seg.tools.count { it.deferLoading }
+                    val deferTag = if (deferredCount > 0) " defer=$deferredCount" else ""
                     val appr = approvalDiagnostic(approvalBaseline(seg.source), seg.tools)
-                    "${seg.source.segmentName} ${seg.tools.size}/${tok}t" +
+                    "${seg.source.segmentName} ${seg.tools.size}/${tok}t$deferTag" +
                         " appr=$appr to=${timeoutSummary(seg.tools)}"
                 }
-            val totalTokens = ToolSchemaSize.estimate(
-                segments.flatMap { it.tools }, providerType, json,
-            )
+            val activeTokens = ToolSchemaSize.estimateActive(allTools, providerType, json)
+            val deferredTokens = ToolSchemaSize.estimateDeferred(allTools, providerType, json)
+            val deferredCount = allTools.count { it.deferLoading }
+            val deferredInfo = if (deferredCount > 0) {
+                " active=${total - deferredCount}/${activeTokens}t deferred=$deferredCount/${deferredTokens}t ($deferredProtocol)"
+            } else {
+                ""
+            }
             Log.i(
                 TAG,
-                "tool schema total=$total tools ≈${totalTokens} tokens " +
+                "tool schema total=$total tools ≈${activeTokens + deferredTokens} tokens$deferredInfo " +
                     "(shape=${providerType?.javaClass?.simpleName ?: "openai-default"}) → $perSource",
             )
         }.onFailure {

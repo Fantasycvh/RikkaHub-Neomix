@@ -127,7 +127,7 @@ internal fun resolveSubagentEnvelope(
         assembled.intersect(allowedTools)
     }
     return (parentToolEnvelope?.let { allowed.intersect(it) } ?: allowed) -
-        setOf(SUBAGENT_DISPATCH_TOOL_NAME, "ask_user")
+        setOf(SUBAGENT_DISPATCH_TOOL_NAME, "ask_user", app.androidrik.ai.core.DEFERRED_TOOL_SEARCH_TOOL_NAME)
 }
 
 /**
@@ -139,7 +139,11 @@ internal fun resolveSubagentEnvelope(
 internal fun runToolCatalog(segments: List<ToolSegment>): List<String> =
     segments.flatMap { it.tools }
         .map { it.name }
-        .filter { it != SUBAGENT_DISPATCH_TOOL_NAME && it != "ask_user" }
+        .filter {
+            it != SUBAGENT_DISPATCH_TOOL_NAME &&
+                it != "ask_user" &&
+                it != app.androidrik.ai.core.DEFERRED_TOOL_SEARCH_TOOL_NAME
+        }
         .distinct()
         .sorted()
 

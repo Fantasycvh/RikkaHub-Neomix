@@ -122,5 +122,67 @@ fun Model.hasBuiltInSearch(provider: ProviderSetting?): Boolean =
     BuiltInTools.Search in tools ||
         (BuiltInTools.DeepSeekWebSearch in tools && supportsDeepSeekWebTools(provider))
 
+/**
+ * 原生延迟工具加载（Deferred Tool Loading）支持的协议形态：
+ * - [NONE]：不支持（Chat Completions、`deepseek-v4-pro`、启用 DeepSeek 内置联网工具、或旧版模型）
+ * - [ANTHROPIC_DEFER_LOADING]：Messages API 的 `defer_loading: true` + `tool_reference`
+ * - [RESPONSES_TOOL_SEARCH]：Responses API 的 `type="tool_search", execution="client"` + `tool_search_call`/`tool_search_output`
+ */
+enum class DeferredToolProtocol {
+    NONE,
+    ANTHROPIC_DEFER_LOADING,
+    RESPONSES_TOOL_SEARCH,
+}
+
+// Anthropic 官方支持 defer_loading 的模型系列（Claude 4.5+ / 5 系列；4.1 及更早型号不支持会报 400）
+private val ANTHROPIC_DEFER_LOADING_MODEL_REGEX =
+    Regex("""claude-(?:fable|mythos|sonnet|opus|haiku)-(?:[5-9]|4-[5-9])""", RegexOption.IGNORE_CASE)
+
+/** 判定当前模型在指定提供商下可使用的原生延迟加载协议。 */
+fun Model.deferredToolProtocol(provider: ProviderSetting?): DeferredToolProtocol {
+    if (ModelAbility.TOOL !in abilities) return DeferredToolProtocol.NONE
+    return when (provider) {
+        is ProviderSetting.OpenAI -> deferredToolProtocol(
+            endpoint = provider.baseUrl.toHttpUrlOrNull(),
+            isOpenAIResponses = provider.useResponseApi,
+            isClaude = false,
+        )
+        is ProviderSetting.Claude -> deferredToolProtocol(
+            endpoint = provider.baseUrl.toHttpUrlOrNull(),
+            isOpenAIResponses = false,
+            isClaude = true,
+        )
+        else -> DeferredToolProtocol.NONE
+    }
+}
+
+internal fun Model.deferredToolProtocol(
+    endpoint: HttpUrl?,
+    isOpenAIResponses: Boolean,
+    isClaude: Boolean,
+): DeferredToolProtocol {
+    if (ModelAbility.TOOL !in abilities) return DeferredToolProtocol.NONE
+    if (endpoint == null || !endpoint.isHttps) return DeferredToolProtocol.NONE
+    val host = endpoint.host.lowercase()
+    if (host == "api.deepseek.com") {
+        if (modelId != DEEPSEEK_WEB_TOOLS_MODEL_ID) return DeferredToolProtocol.NONE
+        // 硬互斥：DeepSeek 延迟加载不可与 deepseek_web_search / deepseek_read_url 共存
+        if (tools.any { it.isDeepSeekWebTool }) return DeferredToolProtocol.NONE
+        return when {
+            isOpenAIResponses -> DeferredToolProtocol.RESPONSES_TOOL_SEARCH
+            isClaude -> DeferredToolProtocol.ANTHROPIC_DEFER_LOADING
+            else -> DeferredToolProtocol.NONE
+        }
+    }
+    if (host == "api.anthropic.com" && isClaude) {
+        return if (ANTHROPIC_DEFER_LOADING_MODEL_REGEX.containsMatchIn(modelId)) {
+            DeferredToolProtocol.ANTHROPIC_DEFER_LOADING
+        } else {
+            DeferredToolProtocol.NONE
+        }
+    }
+    return DeferredToolProtocol.NONE
+}
+
 
 

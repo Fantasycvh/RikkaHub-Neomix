@@ -1410,6 +1410,15 @@
   <string name="setting_mcp_page_tools">工具</string>
   <string name="setting_mcp_page_dynamic_schema_title">MCP schema 动态分层加载</string>
   <string name="setting_mcp_page_dynamic_schema_desc">schema 超过体积阈值的重型工具改由 get_tool_map + mcp_tool_call 元工具调用，小工具保留原生 schema；模型走桥传参表现差时可关（关=全部原生）</string>
+  <string name="setting_mcp_page_native_deferred_title">原生延迟工具加载</string>
+  <string name="setting_mcp_page_native_deferred_desc">在支持的模型上通过 search_tools 按需加载所选工具的原生 schema（DeepSeek deepseek-flash 需启用 Responses API 或 Anthropic 端点且未开内置联网工具；Claude 4.5+/5 原生支持）。其余场景自动回退</string>
+  <string name="setting_mcp_page_deferred_scope_mcp_all">全部 MCP</string>
+  <string name="setting_mcp_page_deferred_scope_mcp_heavy">重型 MCP（&gt;600t）</string>
+  <string name="setting_mcp_page_deferred_scope_plugins">插件工具</string>
+  <string name="setting_mcp_page_deferred_scope_skills">技能工具</string>
+  <string name="setting_mcp_page_deferred_scope_optional_local">低频本地工具</string>
+  <string name="chat_message_tool_search_tools">搜索工具：%1$s</string>
+  <string name="chat_message_tool_search_tools_loaded">已加载：%1$s</string>
   <string name="setting_mcp_page_tools_unavailable_message">添加MCP Server时无法查看工具列表，请添加完后再来查看</string>
   <string name="setting_mcp_page_transport_type">传输类型</string>
   <string name="setting_mcp_page_transport_type_desc">选择MCP服务器的传输协议类型</string>

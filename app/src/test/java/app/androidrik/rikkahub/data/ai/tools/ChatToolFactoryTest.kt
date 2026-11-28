@@ -116,6 +116,7 @@ class ChatToolFactoryTest {
             ToolSource.Knowledge to "knowledge",
             ToolSource.Subagent to "subagent",
             ToolSource.McpDynamic to "mcp-dynamic",
+            ToolSource.DeferredSearch to "deferred-search",
         )
         expected.forEach { (source, name) -> assertEquals(name, source.segmentName) }
         // 参数化来源的格式与历史字符串逐字符相同（含前缀与冒号）
@@ -181,6 +182,7 @@ class ChatToolFactoryTest {
         assertEquals(ApprovalPolicy.NONE, approvalBaseline(ToolSource.Knowledge).policy)
         assertEquals(ApprovalPolicy.DYNAMIC, approvalBaseline(ToolSource.Subagent).policy)
         assertEquals(ApprovalPolicy.FOLLOWS_TARGET, approvalBaseline(ToolSource.McpDynamic).policy)
+        assertEquals(ApprovalPolicy.NONE, approvalBaseline(ToolSource.DeferredSearch).policy)
         assertEquals(ApprovalPolicy.PROVIDER, approvalBaseline(ToolSource.McpServer("s")).policy)
         assertEquals(ApprovalPolicy.PLUGIN_DEFINED, approvalBaseline(ToolSource.Plugin("p")).policy)
     }

@@ -13,6 +13,8 @@ import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_RETAIN_
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_TARGET_TOKENS
 import app.androidrik.rikkahub.data.ai.compression.DEFAULT_AUTO_COMPRESS_THRESHOLD_PERCENT
 import app.androidrik.rikkahub.data.ai.mcp.McpServerConfig
+import app.androidrik.rikkahub.data.ai.tools.DEFAULT_DEFERRED_TOOL_SCOPES
+import app.androidrik.rikkahub.data.ai.tools.DeferredToolScope
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
 import app.androidrik.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
@@ -199,6 +201,12 @@ data class Settings(
      * token 成本 O(小工具数)）。默认开；弱模型走桥传参质量差时可关（关=全部原生 schema）。
      */
     val mcpDynamicSchemaLoading: Boolean = true,
+    /**
+     * 原生延迟工具加载（DeepSeek `deepseek-flash` Responses / Anthropic 与官方 Claude 4.5+/5）：
+     * 默认开启，仅在命中支持协议与模型时生效；不支持时无损回退到既有 MCP 桥接或全量工具。
+     */
+    val nativeDeferredToolLoading: Boolean = true,
+    val deferredToolScopes: Set<DeferredToolScope> = DEFAULT_DEFERRED_TOOL_SCOPES,
     val mcpServers: List<McpServerConfig> = emptyList(),
     val webDavConfig: WebDavConfig = WebDavConfig(),
     val s3Config: S3Config = S3Config(),

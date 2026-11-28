@@ -130,6 +130,29 @@ data class OpenRouterReasoningMetadata(
 ) : PartMetadata
 
 /**
+ * 客户端延迟工具搜索调用（如 Responses `tool_search_call`）的元数据，挂在 `UIMessagePart.Tool.metadata`。
+ */
+@Serializable
+data class DeferredToolSearchCallMetadata(
+    @SerialName("deferred_tool_search_protocol")
+    val protocol: ServerToolProtocol? = null,
+    @SerialName("deferred_tool_search_execution")
+    val execution: String? = null,
+    @SerialName("deferred_tool_search_item_id")
+    val itemId: String? = null,
+) : PartMetadata
+
+/**
+ * `search_tools` 命中的延迟工具列表，挂在工具输出 `UIMessagePart.Text.metadata`，
+ * 供多轮无状态请求重放 `tool_reference` / `tool_search_output`。
+ */
+@Serializable
+data class DeferredToolSearchResultMetadata(
+    @SerialName("deferred_loaded_tools")
+    val loadedToolNames: List<String>? = null,
+) : PartMetadata
+
+/**
  * 将 metadata 解析为类型化的 [PartMetadata], 解析失败或 metadata 为 null 时返回 null
  *
  * 由于 json 配置了 ignoreUnknownKeys, 不同 provider 的 metadata 互不干扰

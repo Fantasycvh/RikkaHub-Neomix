@@ -56,6 +56,8 @@ object ToolSchemaCompactor {
     fun compact(tools: List<Tool>, level: Level): List<Tool> {
         if (level == Level.OFF || tools.isEmpty()) return tools
         return tools.map { tool ->
+            // 搜索元工具的 description 承载延迟工具目录，不可截断
+            if (tool.isDeferredToolSearch) return@map tool
             val descriptionCap = if (tool.name in ESSENTIAL_TOOLS) {
                 minOf(level.topDescriptionMax * 3, 960)
             } else {

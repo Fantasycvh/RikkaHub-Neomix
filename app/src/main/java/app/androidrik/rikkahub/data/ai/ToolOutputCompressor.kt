@@ -1,6 +1,7 @@
 package app.androidrik.rikkahub.data.ai
 
 import android.content.Context
+import app.androidrik.ai.core.DEFERRED_TOOL_SEARCH_TOOL_NAME
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.rikkahub.data.files.FileFolders
 import java.io.File
@@ -94,6 +95,11 @@ internal object ToolOutputCompressor {
         val textParts = output.filterIsInstance<UIMessagePart.Text>()
         val nonTextParts = output.filter { it !is UIMessagePart.Text }
         val totalChars = textParts.sumOf { it.text.length }
+
+        // 延迟工具检索结果携带有 DeferredToolSearchResultMetadata（多轮重放必需），绝不截断改写
+        if (tool.toolName == DEFERRED_TOOL_SEARCH_TOOL_NAME) {
+            return verbatimResult(tool, output, totalChars)
+        }
 
         // search_web 豁免仅在基础档且非零额度生效（收缩档下窗口优先级高于豁免）
         if (tool.toolName in TOOLS_WITHOUT_OUTPUT_TRUNCATION &&

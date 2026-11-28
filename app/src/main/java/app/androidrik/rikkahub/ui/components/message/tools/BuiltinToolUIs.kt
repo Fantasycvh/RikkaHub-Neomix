@@ -1,5 +1,8 @@
 package app.androidrik.rikkahub.ui.components.message.tools
 
+import app.androidrik.ai.core.DEFERRED_TOOL_SEARCH_TOOL_NAME
+import app.androidrik.ai.ui.DeferredToolSearchResultMetadata
+import app.androidrik.ai.ui.metadataAs
 import app.androidrik.rikkahub.ui.components.ui.appSkinTextSize
 import app.androidrik.rikkahub.ui.components.ui.appSkinRoundedShape
 import app.androidrik.rikkahub.data.ai.tools.local.parseTodoPlanArgs
@@ -287,6 +290,49 @@ object MemoryToolUI : ToolUIRenderer {
                 null
             },
         )
+    }
+}
+
+/**
+ * 原生延迟工具检索（`search_tools`）：标题展示关键词，摘要展示已加载工具清单。
+ */
+object SearchToolsToolUI : ToolUIRenderer {
+    override val toolName: String = DEFERRED_TOOL_SEARCH_TOOL_NAME
+
+    override fun icon(context: ToolUIContext): ImageVector = HugeIcons.Search01
+
+    @Composable
+    override fun title(context: ToolUIContext): String {
+        val query = context.arguments.getStringContent("query")?.takeIf { it.isNotBlank() }
+        val namesCount = (context.arguments.jsonObjectOrNull?.get("names") as? JsonArray)?.size ?: 0
+        val labelArg = query ?: if (namesCount > 0) "$namesCount" else "*"
+        return stringResource(R.string.chat_message_tool_search_tools, labelArg)
+    }
+
+    private fun loadedNames(context: ToolUIContext): List<String> =
+        context.tool.output
+            .firstNotNullOfOrNull {
+                it.metadataAs<DeferredToolSearchResultMetadata>()?.loadedToolNames
+            }
+            .orEmpty()
+
+    override fun hasSummary(context: ToolUIContext): Boolean = loadedNames(context).isNotEmpty()
+
+    @Composable
+    override fun Summary(context: ToolUIContext) {
+        val names = loadedNames(context)
+        if (names.isNotEmpty()) {
+            Text(
+                text = stringResource(
+                    R.string.chat_message_tool_search_tools_loaded,
+                    names.joinToString(", "),
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

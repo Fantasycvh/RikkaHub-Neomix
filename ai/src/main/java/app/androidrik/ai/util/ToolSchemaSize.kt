@@ -71,10 +71,28 @@ object ToolSchemaSize {
                 put("name", tool.name)
                 put("description", tool.description)
                 put("input_schema", schemaElement ?: JsonObject(emptyMap()))
+                if (tool.deferLoading) put("defer_loading", true)
             }
             // OpenAI Responses API 与 Chat Completions 形状相同（都是 {type,function:{...}}）
             // 账号类（P4 接入）里 ChatGPT 也走 Responses 形状；Grok 复用 OpenAI 兼容形状
-            is ProviderSetting.OpenAI, is ProviderSetting.Account -> buildJsonObject {
+            is ProviderSetting.OpenAI -> if (providerType.useResponseApi && tool.isDeferredToolSearch) {
+                buildJsonObject {
+                    put("type", "tool_search")
+                    put("execution", "client")
+                    put("description", tool.description)
+                    put("parameters", schemaElement?.ensureArrayItems() ?: JsonObject(emptyMap()))
+                }
+            } else {
+                buildJsonObject {
+                    put("type", "function")
+                    put("function", buildJsonObject {
+                        put("name", tool.name)
+                        put("description", tool.description)
+                        put("parameters", schemaElement?.ensureArrayItems() ?: JsonObject(emptyMap()))
+                    })
+                }
+            }
+            is ProviderSetting.Account -> buildJsonObject {
                 put("type", "function")
                 put("function", buildJsonObject {
                     put("name", tool.name)
@@ -107,6 +125,20 @@ object ToolSchemaSize {
         providerType: ProviderSetting?,
         json: Json,
     ): Int = tools.sumOf { estimate(it, providerType, json) }
+
+    /** 首轮实际进入上下文的常驻工具 token 估算（排除延迟加载池）。 */
+    fun estimateActive(
+        tools: List<Tool>,
+        providerType: ProviderSetting?,
+        json: Json,
+    ): Int = tools.filterNot { it.deferLoading }.sumOf { estimate(it, providerType, json) }
+
+    /** 延迟加载池内工具的潜在 schema token 估算（按需检索后才进入上下文）。 */
+    fun estimateDeferred(
+        tools: List<Tool>,
+        providerType: ProviderSetting?,
+        json: Json,
+    ): Int = tools.filter { it.deferLoading }.sumOf { estimate(it, providerType, json) }
 
     /**
      * Google function schema 会剥掉的字段（`GoogleProvider` 调 `removeElements` 的那批）。

@@ -99,6 +99,8 @@ internal object BackupContentFilter {
     /** v4 起从 ABOUT 兜底拆出的细分类别键集（行为/服务域）。 */
     private val TOOLS_KEYS = setOf(
         "toolSchemaCompactLevel",
+        "nativeDeferredToolLoading",
+        "deferredToolScopes",
         "workspaceTurnBudgetChars",
         "workspaceTurnMaxSteps",
         "workspaceTaskMaxDurationMinutes",

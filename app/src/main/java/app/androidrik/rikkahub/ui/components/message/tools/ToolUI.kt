@@ -128,6 +128,7 @@ private object DefaultToolUIRenderer : ToolUIRenderer {
 object ToolUIRegistry {
     private val renderers: Map<String, ToolUIRenderer> = listOf(
         MemoryToolUI,
+        SearchToolsToolUI,
         SearchWebToolUI,
         ScrapeWebToolUI,
         GetTimeInfoToolUI,

@@ -49,6 +49,7 @@ import app.androidrik.ai.provider.stream.SseEvent
 import app.androidrik.ai.ui.StreamChunk
 import app.androidrik.ai.ui.UIMessage
 import app.androidrik.ai.ui.ClaudeReasoningMetadata
+import app.androidrik.ai.ui.DeferredToolSearchResultMetadata
 import app.androidrik.ai.ui.UIMessagePart
 import app.androidrik.ai.ui.metadataAs
 import app.androidrik.ai.ui.toMetadata
@@ -245,12 +246,32 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         messages: List<UIMessage>,
         params: TextGenerationParams,
         stream: Boolean = false
+    ): JsonObject = buildClaudeRequestBody(providerSetting, messages, params, stream)
+
+    internal fun buildClaudeRequestBody(
+        providerSetting: ProviderSetting.Claude,
+        messages: List<UIMessage>,
+        params: TextGenerationParams,
+        stream: Boolean = false
     ): JsonObject {
+        val deferredProtocol = params.model.deferredToolProtocol(providerSetting)
+        val hasEagerTool = params.tools.any { !it.deferLoading }
+        val hasDeferredTool = params.tools.any { it.deferLoading }
+        val useDeferLoading = deferredProtocol == DeferredToolProtocol.ANTHROPIC_DEFER_LOADING &&
+            hasEagerTool && hasDeferredTool
+        val availableToolNames = params.tools.mapTo(mutableSetOf()) { it.name }
+
         return buildJsonObject {
             put("model", params.model.modelId)
             put(
                 "messages",
-                buildMessages(messages, providerSetting.promptCaching, providerSetting.promptCacheTtl)
+                buildMessagesInternal(
+                    messages = messages,
+                    promptCaching = providerSetting.promptCaching,
+                    promptCacheTtl = providerSetting.promptCacheTtl,
+                    useDeferLoading = useDeferLoading,
+                    availableToolNames = availableToolNames,
+                )
             )
             put("max_tokens", params.maxTokens ?: 64_000)
 
@@ -316,13 +337,21 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
 
             // 处理工具
             if (params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()) {
+                val eagerTools = if (useDeferLoading) params.tools.filterNot { it.deferLoading } else params.tools
+                val deferredTools = if (useDeferLoading) params.tools.filter { it.deferLoading } else emptyList()
+                val orderedTools = eagerTools + deferredTools
+                // 缓存断点禁止打在带 defer_loading 的工具上：启用延迟加载时落到最后一个常驻工具
+                val cacheTargetIndex = if (useDeferLoading) eagerTools.lastIndex else orderedTools.lastIndex
                 putJsonArray("tools") {
-                    params.tools.forEachIndexed { index, tool ->
+                    orderedTools.forEachIndexed { index, tool ->
                         add(buildJsonObject {
                             put("name", tool.name)
                             put("description", tool.description)
                             put("input_schema", json.encodeToJsonElement(tool.parameters()))
-                            if (providerSetting.promptCaching && index == params.tools.lastIndex) {
+                            if (useDeferLoading && tool.deferLoading) {
+                                put("defer_loading", true)
+                            }
+                            if (providerSetting.promptCaching && index == cacheTargetIndex) {
                                 put("cache_control", cacheControlEphemeral(providerSetting.promptCacheTtl))
                             }
                         })
@@ -340,7 +369,21 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
     private fun buildMessages(
         messages: List<UIMessage>,
         promptCaching: Boolean,
-        promptCacheTtl: ClaudePromptCacheTtl
+        promptCacheTtl: ClaudePromptCacheTtl,
+    ) = buildMessagesInternal(
+        messages = messages,
+        promptCaching = promptCaching,
+        promptCacheTtl = promptCacheTtl,
+        useDeferLoading = false,
+        availableToolNames = emptySet(),
+    )
+
+    private fun buildMessagesInternal(
+        messages: List<UIMessage>,
+        promptCaching: Boolean,
+        promptCacheTtl: ClaudePromptCacheTtl,
+        useDeferLoading: Boolean,
+        availableToolNames: Set<String>,
     ) = buildJsonArray {
         // 第一条 system 的内容已进顶层 system 参数（见 generateRequestBody）；
         // **后续的 system 消息不能丢弃**（如轮次尾部注入的 system 段）——但 Claude 的
@@ -355,7 +398,8 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
             .filter { it.isValidToUpload() }
             .forEach { message ->
                 when {
-                    message.role == MessageRole.ASSISTANT -> addAssistantMessage(message)
+                    message.role == MessageRole.ASSISTANT ->
+                        addAssistantMessage(message, useDeferLoading, availableToolNames)
                     message === firstSystem -> return@forEach // 已进 system 参数，跳过防重复
                     message.role == MessageRole.SYSTEM -> addUserMessage(message.asDowngradedSystemMessage())
                     else -> addUserMessage(message)
@@ -407,7 +451,11 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         })
     }
 
-    private fun JsonArrayBuilder.addAssistantMessage(message: UIMessage) {
+    private fun JsonArrayBuilder.addAssistantMessage(
+        message: UIMessage,
+        useDeferLoading: Boolean = false,
+        availableToolNames: Set<String> = emptySet(),
+    ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<JsonObject>()
 
@@ -432,7 +480,7 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
                     add(buildJsonObject {
                         put("role", "user")
                         putJsonArray("content") {
-                            group.tools.forEach { add(it.toToolResultBlock()) }
+                            group.tools.forEach { add(it.toToolResultBlock(useDeferLoading, availableToolNames)) }
                         }
                     })
                 }
@@ -508,11 +556,40 @@ class ClaudeProvider(private val client: OkHttpClient, context: Context? = null)
         put("input", inputAsJson())
     }
 
-    private fun UIMessagePart.Tool.toToolResultBlock() = buildJsonObject {
+    private fun UIMessagePart.Tool.toToolResultBlock(
+        useDeferLoading: Boolean = false,
+        availableToolNames: Set<String> = emptySet(),
+    ) = buildJsonObject {
         put("type", "tool_result")
         put("tool_use_id", toolCallId)
+        val searchMeta = if (useDeferLoading) {
+            output.firstNotNullOfOrNull { it.metadataAs<DeferredToolSearchResultMetadata>() }
+        } else {
+            null
+        }
+        val validRefs = searchMeta?.loadedToolNames
+            .orEmpty()
+            .distinct()
+            .filter { it in availableToolNames }
         putJsonArray("content") {
-            output.mapNotNull { it.toContentBlock() }.forEach { add(it) }
+            if (validRefs.isNotEmpty()) {
+                validRefs.forEach { refName ->
+                    add(buildJsonObject {
+                        put("type", "tool_reference")
+                        put("tool_name", refName)
+                    })
+                }
+            } else {
+                val blocks = output.mapNotNull { it.toContentBlock() }
+                if (blocks.isNotEmpty()) {
+                    blocks.forEach { add(it) }
+                } else if (searchMeta != null) {
+                    add(buildJsonObject {
+                        put("type", "text")
+                        put("text", "No matching deferred tools available.")
+                    })
+                }
+            }
         }
     }
 

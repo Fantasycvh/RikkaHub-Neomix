@@ -66,6 +66,10 @@ internal fun approvalBaseline(source: ToolSource): ApprovalBaseline = when (sour
         ApprovalPolicy.FOLLOWS_TARGET,
         "mcp_tool_call 跟随被调工具审批（折叠不得成为审批绕行）",
     )
+    ToolSource.DeferredSearch -> ApprovalBaseline(
+        ApprovalPolicy.NONE,
+        "延迟加载工具目录检索只读，无副作用",
+    )
     is ToolSource.McpServer -> ApprovalBaseline(ApprovalPolicy.PROVIDER, "透传 MCP server 的 tool.needsApproval")
     is ToolSource.Plugin -> ApprovalBaseline(
         ApprovalPolicy.PLUGIN_DEFINED,

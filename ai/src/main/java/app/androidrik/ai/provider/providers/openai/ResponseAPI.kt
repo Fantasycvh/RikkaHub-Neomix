@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonArrayBuilder
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -28,15 +29,20 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import app.androidrik.ai.core.DEFERRED_TOOL_SEARCH_TOOL_NAME
+import app.androidrik.ai.core.InputSchema
 import app.androidrik.ai.core.MessageRole
 import app.androidrik.ai.core.ReasoningLevel
 import app.androidrik.ai.core.scalarOverride
 import app.androidrik.ai.core.ReasoningOverride
 import app.androidrik.ai.core.serverToolUseCounts
 import app.androidrik.ai.core.TokenUsage
+import app.androidrik.ai.core.Tool
 import app.androidrik.ai.provider.effectiveApiKeys
 import app.androidrik.ai.provider.providers.asDowngradedSystemMessage
 import app.androidrik.ai.provider.BuiltInTools
+import app.androidrik.ai.provider.DeferredToolProtocol
+import app.androidrik.ai.provider.deferredToolProtocol
 import app.androidrik.ai.provider.isDeepSeekWebTool
 import app.androidrik.ai.provider.supportsDeepSeekWebTools
 import app.androidrik.ai.provider.Model
@@ -50,6 +56,8 @@ import app.androidrik.ai.provider.providers.PartGroup
 import app.androidrik.ai.util.ensureArrayItems
 import app.androidrik.ai.provider.providers.groupPartsByToolBoundary
 import app.androidrik.ai.registry.ModelRegistry
+import app.androidrik.ai.ui.DeferredToolSearchCallMetadata
+import app.androidrik.ai.ui.DeferredToolSearchResultMetadata
 import app.androidrik.ai.ui.OpenAIReasoningMetadata
 import app.androidrik.ai.ui.ReasoningType
 import app.androidrik.ai.ui.StreamChunk
@@ -76,6 +84,7 @@ import app.androidrik.common.http.await
 import app.androidrik.common.http.jsonObjectOrNull
 import app.androidrik.common.http.jsonPrimitiveOrNull
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -335,15 +344,23 @@ class ResponseAPI(
         messages: List<UIMessage>,
         params: TextGenerationParams,
         stream: Boolean,
-    ): JsonObject = buildRequestBody(
-        capabilities = endpoint.capabilities,
-        messages = messages,
-        params = params,
-        stream = stream,
-        reasoningOverride = endpoint.reasoningOverride,
-        reasoningTextRequired = isKnownReasoningTextValidator(endpoint.url.toHttpUrl().host),
-        supportsDeepSeekWebTools = params.model.supportsDeepSeekWebTools(endpoint.url.toHttpUrl()),
-    )
+    ): JsonObject {
+        val endpointUrl = endpoint.url.toHttpUrl()
+        return buildRequestBody(
+            capabilities = endpoint.capabilities,
+            messages = messages,
+            params = params,
+            stream = stream,
+            reasoningOverride = endpoint.reasoningOverride,
+            reasoningTextRequired = isKnownReasoningTextValidator(endpointUrl.host),
+            supportsDeepSeekWebTools = params.model.supportsDeepSeekWebTools(endpointUrl),
+            deferredProtocol = params.model.deferredToolProtocol(
+                endpoint = endpointUrl,
+                isOpenAIResponses = true,
+                isClaude = false,
+            ),
+        )
+    }
 
     /**
      * 本仓既有的 [ProviderSetting.OpenAI] 入口（P1 的既有单测与调用点仍用它）。
@@ -357,14 +374,20 @@ class ResponseAPI(
         params: TextGenerationParams,
         stream: Boolean
     ): JsonObject {
+        val baseUrl = providerSetting.baseUrl.toHttpUrl()
         return buildRequestBody(
             capabilities = resolveResponseProviderCapabilities(providerSetting),
             messages = messages,
             params = params,
             stream = stream,
             reasoningOverride = providerSetting.reasoningOverride,
-            reasoningTextRequired = isKnownReasoningTextValidator(providerSetting.baseUrl.toHttpUrl().host),
+            reasoningTextRequired = isKnownReasoningTextValidator(baseUrl.host),
             supportsDeepSeekWebTools = params.model.supportsDeepSeekWebTools(providerSetting),
+            deferredProtocol = params.model.deferredToolProtocol(
+                endpoint = baseUrl,
+                isOpenAIResponses = true,
+                isClaude = false,
+            ),
         )
     }
 
@@ -381,7 +404,9 @@ class ResponseAPI(
         reasoningOverride: ReasoningOverride? = null,
         reasoningTextRequired: Boolean = false,
         supportsDeepSeekWebTools: Boolean = false,
+        deferredProtocol: DeferredToolProtocol = DeferredToolProtocol.NONE,
     ): JsonObject {
+        val toolsByName = params.tools.associateBy { it.name }
         val systemPrompt = messages.firstOrNull { it.role == MessageRole.SYSTEM }
             ?.parts
             ?.filterIsInstance<UIMessagePart.Text>()
@@ -416,7 +441,12 @@ class ResponseAPI(
                     })
                 }
                 // buildMessages 会跳过首条 system（上面已单独处理），其余 system 仍按本仓规则降级为 user
-                buildMessages(messages, reasoningTextRequired).forEach { add(it) }
+                buildMessages(
+                    messages = messages,
+                    reasoningTextRequired = reasoningTextRequired,
+                    deferredProtocol = deferredProtocol,
+                    toolsByName = toolsByName,
+                ).forEach { add(it) }
             })
 
             // reasoning
@@ -455,26 +485,44 @@ class ResponseAPI(
             // 否则后写入的会覆盖前者
             val useFunctionTools =
                 params.model.abilities.contains(ModelAbility.TOOL) && params.tools.isNotEmpty()
+            val useToolSearch = useFunctionTools &&
+                deferredProtocol == DeferredToolProtocol.RESPONSES_TOOL_SEARCH &&
+                params.tools.any { it.deferLoading } &&
+                params.tools.any { it.isDeferredToolSearch }
             val builtInTools = params.model.tools.filter { supportsDeepSeekWebTools || !it.isDeepSeekWebTool }
             if (useFunctionTools || builtInTools.isNotEmpty()) {
                 putJsonArray("tools") {
                     if (useFunctionTools) {
                         params.tools.forEach { tool ->
-                            add(buildJsonObject {
-                                put("type", "function")
-                                put("name", tool.name)
-                                put("description", tool.description)
-                                put(
-                                    "parameters",
-                                    json.encodeToJsonElement(
-                                        tool.parameters()
-                                    ).ensureArrayItems()
-                                )
-                                // Response API 不传 strict 时默认按严格模式处理, 会把 schema 里的可选字段全部变成必填,
-                                // 模型只能给本应省略的字段硬填默认值 (0 / "" / []), 导致工具参数校验失败
-                                // （#1990：chart_display 等带可选字段的工具即因此被中转/官方端拒绝）
-                                put("strict", false)
-                            })
+                            when {
+                                useToolSearch && tool.deferLoading -> Unit // 延迟工具不进顶层 tools[]，搜索命中后由 tool_search_output 注入
+                                useToolSearch && tool.isDeferredToolSearch -> add(buildJsonObject {
+                                    put("type", "tool_search")
+                                    put("execution", "client")
+                                    put("description", tool.description)
+                                    put(
+                                        "parameters",
+                                        json.encodeToJsonElement(
+                                            tool.parameters() ?: InputSchema.Obj(properties = JsonObject(emptyMap()))
+                                        ).ensureArrayItems()
+                                    )
+                                })
+                                else -> add(buildJsonObject {
+                                    put("type", "function")
+                                    put("name", tool.name)
+                                    put("description", tool.description)
+                                    put(
+                                        "parameters",
+                                        json.encodeToJsonElement(
+                                            tool.parameters()
+                                        ).ensureArrayItems()
+                                    )
+                                    // Response API 不传 strict 时默认按严格模式处理, 会把 schema 里的可选字段全部变成必填,
+                                    // 模型只能给本应省略的字段硬填默认值 (0 / "" / []), 导致工具参数校验失败
+                                    // （#1990：chart_display 等带可选字段的工具即因此被中转/官方端拒绝）
+                                    put("strict", false)
+                                })
+                            }
                         }
                     }
                     // built-in tools
@@ -518,6 +566,8 @@ class ResponseAPI(
     internal fun buildMessages(
         messages: List<UIMessage>,
         reasoningTextRequired: Boolean = false,
+        deferredProtocol: DeferredToolProtocol = DeferredToolProtocol.NONE,
+        toolsByName: Map<String, Tool> = emptyMap(),
     ) = buildJsonArray {
         // Responses API 的 `system` 只出现在顶层 `instructions`（见 buildRequestBody：取**第一条**
         // system 的文本），`input` 不接受 system 角色。**但后续的 system 消息不能丢弃**——轮次尾部
@@ -536,7 +586,12 @@ class ResponseAPI(
                 when {
                     message === firstSystem -> Unit // 已进 instructions，跳过防重复
                     message.role == MessageRole.SYSTEM -> addUserItems(message.asDowngradedSystemMessage())
-                    message.role == MessageRole.ASSISTANT -> addAssistantItems(message, reasoningTextRequired)
+                    message.role == MessageRole.ASSISTANT -> addAssistantItems(
+                        message = message,
+                        reasoningTextRequired = reasoningTextRequired,
+                        deferredProtocol = deferredProtocol,
+                        toolsByName = toolsByName,
+                    )
                     else -> addUserItems(message)
                 }
             }
@@ -545,6 +600,8 @@ class ResponseAPI(
     private fun JsonArrayBuilder.addAssistantItems(
         message: UIMessage,
         reasoningTextRequired: Boolean = false,
+        deferredProtocol: DeferredToolProtocol = DeferredToolProtocol.NONE,
+        toolsByName: Map<String, Tool> = emptyMap(),
     ) {
         val groups = groupPartsByToolBoundary(message.parts)
         val contentBuffer = mutableListOf<UIMessagePart>()
@@ -649,47 +706,89 @@ class ResponseAPI(
                             reasoningEmitted = true
                             toolEmittedSinceReasoning = false
                         }
-                        add(buildJsonObject {
-                            put("type", "function_call")
-                            put("call_id", tool.toolCallId)
-                            put("name", tool.toolName)
-                            // 使用 inputAsJson() 归一化，避免流式中断导致的残缺 JSON 被发送
-                            put("arguments", tool.inputAsJson().toString())
-                        })
-                        add(buildJsonObject {
-                            put("type", "function_call_output")
-                            put("call_id", tool.toolCallId)
-                            val hasImage = tool.output.any { it is UIMessagePart.Image }
-                            if (hasImage) {
-                                putJsonArray("output") {
-                                    tool.output.forEach { part ->
-                                        when (part) {
-                                            is UIMessagePart.Image -> add(buildJsonObject {
-                                                part.encodeBase64().checkAttachmentLimit().onSuccess { encoded ->
-                                                    put("type", "input_image")
-                                                    put("image_url", encoded.base64)
-                                                }.onFailure {
-                                                    it.printStackTrace()
-                                                    put("type", "input_text")
-                                                    put("text", "Error: Failed to encode image to base64")
-                                                }
+                        val isClientToolSearchReplay =
+                            deferredProtocol == DeferredToolProtocol.RESPONSES_TOOL_SEARCH &&
+                                (tool.metadataAs<DeferredToolSearchCallMetadata>()?.protocol == ServerToolProtocol.OPENAI_RESPONSES ||
+                                    tool.toolName == DEFERRED_TOOL_SEARCH_TOOL_NAME)
+                        if (isClientToolSearchReplay) {
+                            val argsObject = tool.inputAsJson() as? JsonObject ?: JsonObject(emptyMap())
+                            add(buildJsonObject {
+                                put("type", "tool_search_call")
+                                put("call_id", tool.toolCallId)
+                                put("execution", "client")
+                                put("arguments", argsObject)
+                            })
+                            val loadedNames = tool.output
+                                .firstNotNullOfOrNull { it.metadataAs<DeferredToolSearchResultMetadata>()?.loadedToolNames }
+                                .orEmpty()
+                                .distinct()
+                            add(buildJsonObject {
+                                put("type", "tool_search_output")
+                                put("call_id", tool.toolCallId)
+                                put("execution", "client")
+                                putJsonArray("tools") {
+                                    loadedNames.forEach { name ->
+                                        val matched = toolsByName[name]
+                                        if (matched != null && !matched.isDeferredToolSearch) {
+                                            add(buildJsonObject {
+                                                put("type", "function")
+                                                put("name", matched.name)
+                                                put("description", matched.description)
+                                                put(
+                                                    "parameters",
+                                                    json.encodeToJsonElement(
+                                                        matched.parameters() ?: InputSchema.Obj(properties = JsonObject(emptyMap()))
+                                                    ).ensureArrayItems()
+                                                )
+                                                put("strict", false)
                                             })
-                                            is UIMessagePart.Text -> add(buildJsonObject {
-                                                put("type", "input_text")
-                                                put("text", part.text)
-                                            })
-                                            else -> {}
                                         }
                                     }
                                 }
-                            } else {
-                                put(
-                                    "output",
-                                    tool.output.filterIsInstance<UIMessagePart.Text>()
-                                        .joinToString("\n") { it.text }
-                                )
-                            }
-                        })
+                            })
+                        } else {
+                            add(buildJsonObject {
+                                put("type", "function_call")
+                                put("call_id", tool.toolCallId)
+                                put("name", tool.toolName)
+                                // 使用 inputAsJson() 归一化，避免流式中断导致的残缺 JSON 被发送
+                                put("arguments", tool.inputAsJson().toString())
+                            })
+                            add(buildJsonObject {
+                                put("type", "function_call_output")
+                                put("call_id", tool.toolCallId)
+                                val hasImage = tool.output.any { it is UIMessagePart.Image }
+                                if (hasImage) {
+                                    putJsonArray("output") {
+                                        tool.output.forEach { part ->
+                                            when (part) {
+                                                is UIMessagePart.Image -> add(buildJsonObject {
+                                                    part.encodeBase64().checkAttachmentLimit().onSuccess { encoded ->
+                                                        put("type", "input_image")
+                                                        put("image_url", encoded.base64)
+                                                    }.onFailure {
+                                                        it.printStackTrace()
+                                                        put("type", "input_text")
+                                                        put("text", "Error: Failed to encode image to base64")
+                                                    }
+                                                })
+                                                is UIMessagePart.Text -> add(buildJsonObject {
+                                                    put("type", "input_text")
+                                                    put("text", part.text)
+                                                })
+                                                else -> {}
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    put(
+                                        "output",
+                                        tool.output.filterIsInstance<UIMessagePart.Text>()
+                                            .joinToString("\n") { it.text }
+                                    )
+                                }
+                            })
+                        }
                         // 标记：此工具调用轮次已输出，后续 function_call 需补插 reasoning
                         toolEmittedSinceReasoning = true
                     }
@@ -923,6 +1022,28 @@ class ResponseAPI(
                     }
                 }
 
+                "tool_search_call" -> if (output.isClientToolSearchCall()) {
+                    val callId = output["call_id"]?.jsonPrimitive?.contentOrNull
+                        ?: output["id"]?.jsonPrimitive?.contentOrNull
+                        ?: error("call_id not found")
+                    val arguments = extractToolSearchArgumentsJson(output["arguments"]).ifBlank { "{}" }
+                    parts.add(
+                        UIMessagePart.Tool(
+                            toolCallId = callId,
+                            toolName = DEFERRED_TOOL_SEARCH_TOOL_NAME,
+                            input = arguments,
+                            output = emptyList(),
+                            metadata = DeferredToolSearchCallMetadata(
+                                protocol = ServerToolProtocol.OPENAI_RESPONSES,
+                                execution = output["execution"]?.jsonPrimitive?.contentOrNull ?: "client",
+                                itemId = output["id"]?.jsonPrimitive?.contentOrNull,
+                            ).toMetadata(),
+                        )
+                    )
+                } else {
+                    parts.add(output.toOpenAIServerTool())
+                }
+
                 "message" -> {
                     val content = output["content"]?.jsonArray ?: error("content not found")
                     content.map { it.jsonObject }.forEach { part ->
@@ -1081,7 +1202,20 @@ internal fun isOpenAIServerToolCall(type: String): Boolean =
         "local_shell_call",
         "shell_call",
         "image_generation_call",
+        // 客户端延迟加载搜索调用（execution="client"）走客户端工具路径；
+        // execution="server" 由 isClientToolSearchCall() 反向放行回服务端分支。
+        "tool_search_call",
     )
+
+internal fun JsonObject.isClientToolSearchCall(): Boolean =
+    get("type")?.jsonPrimitive?.contentOrNull == "tool_search_call" &&
+        get("execution")?.jsonPrimitive?.contentOrNull != "server"
+
+internal fun extractToolSearchArgumentsJson(arguments: JsonElement?): String = when (arguments) {
+    null, is JsonNull -> ""
+    is JsonPrimitive -> arguments.content
+    else -> json.encodeToString(JsonElement.serializer(), arguments)
+}
 
 /** 把 Responses 的服务端工具 item 原样转换成通用 [UIMessagePart.ServerTool]，供多轮回传。 */
 internal fun JsonObject.toOpenAIServerTool(): UIMessagePart.ServerTool {
