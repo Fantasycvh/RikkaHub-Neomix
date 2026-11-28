@@ -396,11 +396,11 @@ class ConversationRepository(
         val nodes = loadMessageNodes(entity.id)
         val conversation = conversationEntityToConversation(entity, nodes, loadCompressionSummaries(entity.id))
         val media = mediaCreationRepository ?: return conversation
-        return app.androidrik.rikkahub.data.media.materializeChatMediaSnapshot(conversation, media::getRecord) { record, index, output ->
+        return app.androidrik.rikkahub.data.media.materializeChatMediaSnapshot(conversation, media::getRecord, resolveOutput = { record, index, output ->
             val gallery = media.resolve(app.androidrik.rikkahub.data.media.chatMediaGalleryPath(record.id, index, output))
             // Only the existing gallery attachment directory participates in export/sync snapshots.
             gallery.absolutePath
-        }
+        }, loadGallery = media::getChatGalleryImages)
     }
 
     /**

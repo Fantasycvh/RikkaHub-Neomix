@@ -37,9 +37,9 @@ class ChatMediaGeneration(
     private val filesManager: FilesManager,
 ) {
     internal suspend fun snapshot(conversation: app.androidrik.rikkahub.data.model.Conversation) =
-        materializeChatMediaSnapshot(conversation, repository::getRecord) { record, index, output ->
+        materializeChatMediaSnapshot(conversation, repository::getRecord, resolveOutput = { record, index, output ->
             repository.resolve(chatMediaGalleryPath(record.id, index, output)).absolutePath
-        }
+        }, loadGallery = repository::getChatGalleryImages)
 
     internal suspend fun references(messages: List<UIMessage>): MutableMap<String, ChatMediaReference> =
         withContext(Dispatchers.IO) {

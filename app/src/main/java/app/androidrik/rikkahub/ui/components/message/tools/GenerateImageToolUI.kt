@@ -62,7 +62,12 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 object GenerateImageToolUI : ToolUIRenderer {
 
-    private data class RecordLookup(val requested: Boolean, val loaded: Boolean = false, val record: MediaCreationRecord? = null)
+    private data class RecordLookup(
+        val requested: Boolean,
+        val loaded: Boolean = false,
+        val record: MediaCreationRecord? = null,
+        val galleryPaths: List<String> = emptyList(),
+    )
 
     @Composable
     private fun liveRecord(context: ToolUIContext): RecordLookup {
@@ -72,7 +77,10 @@ object GenerateImageToolUI : ToolUIRenderer {
             ?: return RecordLookup(requested = false, loaded = true)
         val repository = koinInject<MediaCreationRepository>()
         return produceState(RecordLookup(requested = true), id) {
-            repository.observeRecord(id).collect { value = RecordLookup(requested = true, loaded = true, record = it) }
+            repository.observeRecord(id).collect { record ->
+                value = RecordLookup(requested = true, loaded = true, record = record,
+                    galleryPaths = if (record == null) repository.getChatGalleryImages(id).sortedBy { it.index }.map { it.path } else emptyList())
+            }
         }.value
     }
 
@@ -92,7 +100,8 @@ object GenerateImageToolUI : ToolUIRenderer {
     override fun title(context: ToolUIContext): String {
         val lookup = liveRecord(context)
         val record = lookup.record
-        if (lookup.requested && lookup.loaded && record == null && parseGeneratedImagePaths(context.content).isEmpty()) return "未找到创作记录"
+        if (lookup.requested && lookup.loaded && record == null && lookup.galleryPaths.isEmpty() && parseGeneratedImagePaths(context.content).isEmpty()) return "未找到创作记录"
+        if (record == null && lookup.galleryPaths.isNotEmpty()) return stringResource(R.string.chat_message_image_tool_title, lookup.galleryPaths.size)
         if (record != null) return record.status.label
         val persistedStatus = ((context.content as? kotlinx.serialization.json.JsonObject)?.get("status") as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
         MediaCreationStatus.entries.firstOrNull { it.name == persistedStatus }?.let { return it.label }
@@ -110,7 +119,7 @@ object GenerateImageToolUI : ToolUIRenderer {
     override fun Summary(context: ToolUIContext) {
         val lookup = liveRecord(context)
         val record = lookup.record
-        if (lookup.requested && lookup.loaded && record == null && parseGeneratedImagePaths(context.content).isEmpty()) {
+        if (lookup.requested && lookup.loaded && record == null && lookup.galleryPaths.isEmpty() && parseGeneratedImagePaths(context.content).isEmpty()) {
             Text("未找到创作记录", style = MaterialTheme.typography.bodySmall)
             return
         }
@@ -121,9 +130,9 @@ object GenerateImageToolUI : ToolUIRenderer {
         val filesDir = LocalContext.current.applicationContext.filesDir
         // 备份恢复/跨包恢复后，工具输出里的绝对路径可能还指着旧包的 files/images/；
         // 文件已经恢复到当前包，这里按当前 filesDir 重新解析，否则会显示「已失效或无法读取」
-        val paths = remember(context.content, filesDir, record?.outputs) {
+        val paths = remember(context.content, filesDir, record?.outputs, lookup.galleryPaths) {
             record?.outputs?.filterNot { it.isVideo }?.map { java.io.File(filesDir, it.path).absolutePath }
-                ?: parseGeneratedImagePaths(context.content).map { normalizeGeneratedImagePath(filesDir, it) }
+                ?: lookup.galleryPaths.ifEmpty { parseGeneratedImagePaths(context.content).map { normalizeGeneratedImagePath(filesDir, it) } }
         }
 
         if (record != null) {

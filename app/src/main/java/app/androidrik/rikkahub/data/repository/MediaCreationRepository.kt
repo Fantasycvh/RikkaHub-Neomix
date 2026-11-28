@@ -18,6 +18,7 @@ import app.androidrik.rikkahub.data.db.entity.MediaCreationNodeEntity
 import app.androidrik.rikkahub.data.db.entity.MediaCreationRecordEntity
 import app.androidrik.rikkahub.data.db.entity.MediaCreationSessionEntity
 import app.androidrik.rikkahub.data.files.FileFolders
+import app.androidrik.rikkahub.data.media.ChatMediaGalleryImage
 import app.androidrik.rikkahub.data.model.MediaCreationDraft
 import app.androidrik.rikkahub.data.model.MediaCreationNode
 import app.androidrik.rikkahub.data.model.MediaCreationOutput
@@ -166,6 +167,19 @@ class MediaCreationRepository(
     // ---- 记录 ----
 
     suspend fun getRecord(id: Uuid): MediaCreationRecord? = dao.getRecord(id.toString())?.toRecord()
+
+    internal suspend fun getChatGalleryImages(recordId: Uuid): List<ChatMediaGalleryImage> =
+        withContext(Dispatchers.IO) {
+            val prefix = "images/chat_${recordId}_"
+            database.genMediaDao().getChatImages("$prefix*").mapNotNull { image ->
+                val suffix = image.path.removePrefix(prefix)
+                val index = suffix.substringBefore('.').toIntOrNull() ?: return@mapNotNull null
+                val extension = suffix.substringAfter('.', "")
+                if (!image.path.startsWith(prefix) || index < 0 || !extension.matches(Regex("[A-Za-z0-9]{1,12}")) ||
+                    !resolve(image.path).isFile) return@mapNotNull null
+                ChatMediaGalleryImage(index, resolve(image.path).absolutePath)
+            }.distinctBy { it.index }
+        }
 
     fun observeRecord(id: Uuid): Flow<MediaCreationRecord?> =
         dao.observeRecord(id.toString()).map { it?.toRecord() }

@@ -18,6 +18,40 @@ import kotlin.uuid.Uuid
 
 class ChatMediaSnapshotTest {
     @Test
+    fun `deleted media record recovers pending result from durable gallery and survives export`() = runBlocking {
+        val pending = MediaCreationRecord(sessionId = Uuid.random(), providerId = Uuid.random(), providerName = "fixture",
+            modelId = "image", kind = MediaKind.IMAGE, prompt = "draw")
+        val original = UIMessagePart.Tool("call", "generate_image", "{}",
+            listOf(UIMessagePart.Text(imageToolMediaResult(pending) { it })))
+        val conversation = Conversation(assistantId = Uuid.random(), messageNodes = listOf(
+            MessageNode(messages = listOf(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(original))))))
+        val recovered = materializeChatMediaSnapshot(conversation, { null }, loadGallery = { id ->
+            assertEquals(pending.id, id)
+            listOf(ChatMediaGalleryImage(2, "/files/images/third.png"), ChatMediaGalleryImage(0, "/files/images/first.png"))
+        }) { _, _, _ -> error("record was deleted") }
+        val tool = recovered.currentMessages.single().getTools().single()
+        val content = JsonInstant.parseToJsonElement((tool.output.single() as UIMessagePart.Text).text)
+        assertEquals(listOf("/files/images/first.png", "/files/images/third.png"), parseGeneratedImagePaths(content))
+        assertTrue(content.toString().contains("${pending.id}:2"))
+        assertFalse(content.toString().contains("PREPARING"))
+        assertEquals(2, recovered.collectAttachmentUrls().size)
+        val portable = recovered.rewriteAttachmentUrls(mapOf("file:///files/images/first.png" to "file:///restored/first.png"))
+        assertTrue("file:///restored/first.png" in portable.collectAttachmentUrls())
+        assertEquals(recovered, materializeChatMediaSnapshot(recovered, { null }) { _, _, _ -> error("no record") })
+        assertTrue(conversation.collectAttachmentUrls().isEmpty())
+    }
+
+    @Test
+    fun `missing media record without a gallery preserves original pending result`() = runBlocking {
+        val id = Uuid.random()
+        val tool = UIMessagePart.Tool("call", "generate_image", "{}", listOf(UIMessagePart.Text(
+            """{"record_id":"$id","status":"PREPARING","images":[]}""")))
+        val conversation = Conversation(assistantId = Uuid.random(), messageNodes = listOf(
+            MessageNode(messages = listOf(UIMessage(role = MessageRole.ASSISTANT, parts = listOf(tool))))))
+        assertEquals(conversation, materializeChatMediaSnapshot(conversation, { null }) { _, _, _ -> error("missing") })
+    }
+
+    @Test
     fun `pending chat snapshots materialize final artifacts and preserve export references`() = runBlocking {
         val pending = MediaCreationRecord(sessionId = Uuid.random(), providerId = Uuid.random(), providerName = "fixture",
             modelId = "image", kind = MediaKind.IMAGE, prompt = "draw")
